@@ -2,7 +2,7 @@
 
 Migration Guard 是一个面向重构和迁移场景的行为一致性验证工具。第一阶段采用 Node.js + TypeScript 实现，定位为 CLI 工具，不直接自动大规模改写源码，而是为人类和 AI 的迁移动作提供基线、验证、对比和审计护栏。
 
-## 推荐目录结构
+## 推荐源码结构
 
 ```text
 migration-guard/
@@ -40,37 +40,43 @@ migration-guard/
 
   dist/
     # TypeScript 编译产物
+```
 
-  .migration-guard/
-    latest-baseline.json
-    latest-run.json
-    migration-plan.md
+## 运行时 artifacts 结构
 
-    baselines/
-      baseline-*.json
+`.migration-guard/` 是工具运行时生成的目录，默认不提交到仓库。
 
-    runs/
-      run-*.json
+```text
+.migration-guard/
+  latest-baseline.json
+  latest-run.json
+  migration-plan.md
 
-    compare/
-      *.json
-      *.md
+  baselines/
+    baseline-*.json
 
-    scan/
-      *.json
+  runs/
+    run-*.json
 
-    ai/
-      brief-*.md
-      latest-brief.md
+  compare/
+    *.json
+    *.md
 
-    migration-runs/
-      run-*/
-        run.json
-        estimate.json
-        task-graph.json
-        issues.json
-        evidence.jsonl
-        checkpoints/
+  scan/
+    *.json
+
+  ai/
+    brief-*.md
+    latest-brief.md
+
+  migration-runs/
+    run-*/
+      run.json
+      estimate.json
+      task-graph.json
+      issues.json
+      evidence.jsonl
+      checkpoints/
 ```
 
 ## 核心模块职责

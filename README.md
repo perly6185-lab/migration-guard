@@ -31,6 +31,7 @@ node dist/cli.js init --target ../your-project
 node dist/cli.js scan
 node dist/cli.js baseline
 node dist/cli.js verify
+node dist/cli.js compare
 node dist/cli.js plan
 node dist/cli.js ai-brief
 ```

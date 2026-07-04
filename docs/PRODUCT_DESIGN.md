@@ -429,12 +429,7 @@ mg_checkpoint: cp-0007
 示例：
 
 ```bash
-migration-guard run `
-  --source ./legacy-web `
-  --target ./legacy-web `
-  --goal "migrate webpack to vite" `
-  --auto `
-  --issue-provider local
+migration-guard run --source ./legacy-web --target ./legacy-web --goal "migrate webpack to vite" --auto --issue-provider local
 ```
 
 ### 6.2 理解和估算
