@@ -39,6 +39,20 @@ node dist/cli.js ai-brief
 After `init`, edit `.migration-guard.json` to add behavior probes that represent
 your critical paths.
 
+Autonomous migration runtime commands:
+
+```bash
+node dist/cli.js run --goal "Webpack to Vite" --dry-run --adapter js-vite
+node dist/cli.js status --run latest
+node dist/cli.js tasks --run latest
+node dist/cli.js issues --run latest
+node dist/cli.js checkpoint create --run latest
+node dist/cli.js resume --run latest --auto
+node dist/cli.js sync-issues --run latest --provider local
+node dist/cli.js contract capture --source http://localhost:3000/health
+node dist/cli.js dual-run --source http://localhost:3000/health --target http://localhost:4000/health
+```
+
 ## Probe types
 
 Command probe:
@@ -119,3 +133,6 @@ continuous replanning.
 
 See [docs/DEVELOPMENT_PHASES.md](docs/DEVELOPMENT_PHASES.md) for the
 independently runnable implementation phases.
+
+See [docs/PHASE_COMPLETION_REPORT.md](docs/PHASE_COMPLETION_REPORT.md) for the
+current phase completion report.

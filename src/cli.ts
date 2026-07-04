@@ -3,12 +3,26 @@ import path from "node:path";
 import { CONFIG_FILE_NAME, initConfigFile, loadConfig } from "./core/config.js";
 import { ensureDir, pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./core/files.js";
 import { renderAiBrief } from "./core/aiBrief.js";
+import { createCheckpoint, listCheckpoints, rollbackToCheckpoint } from "./core/checkpoint.js";
+import { captureContract, runDualRun, testContract } from "./core/contract.js";
+import { executeReadyTasks, executeTask } from "./core/executor.js";
 import { renderCompareReport, renderScanSummary, renderSnapshotSummary } from "./core/markdown.js";
+import {
+  createMigrationRun,
+  loadRunPackage,
+  renderIssues,
+  renderRunReport,
+  renderRunStatus,
+  setRunStatus,
+  writeRunReport
+} from "./core/migrationRun.js";
 import { renderMigrationPlan } from "./core/plan.js";
 import { scanProject } from "./core/scan.js";
 import { captureSnapshot, latestBaselinePath, latestRunPath, loadSnapshot, saveSnapshot } from "./core/snapshot.js";
 import { compareSnapshots } from "./core/compare.js";
-import type { CompareReport } from "./types.js";
+import { getReadyTasks, validateTaskGraph } from "./core/taskGraph.js";
+import { syncIssues } from "./core/issueSync.js";
+import type { CompareReport, MigrationAutomationMode, MigrationRun } from "./types.js";
 
 interface ParsedArgs {
   command: string;
@@ -45,6 +59,45 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "ai-brief":
       await commandAiBrief(args);
+      return;
+    case "run":
+      await commandRun(args);
+      return;
+    case "status":
+      await commandStatus(args);
+      return;
+    case "issues":
+      await commandIssues(args);
+      return;
+    case "tasks":
+      await commandTasks(args);
+      return;
+    case "report":
+      await commandReport(args);
+      return;
+    case "checkpoint":
+      await commandCheckpoint(args);
+      return;
+    case "resume":
+      await commandResume(args);
+      return;
+    case "rollback":
+      await commandRollback(args);
+      return;
+    case "task":
+      await commandTask(args);
+      return;
+    case "sync-issues":
+      await commandSyncIssues(args);
+      return;
+    case "ci":
+      await commandCi(args);
+      return;
+    case "contract":
+      await commandContract(args);
+      return;
+    case "dual-run":
+      await commandDualRun(args);
       return;
     default:
       console.error(`Unknown command: ${args.command}`);
@@ -193,13 +246,35 @@ async function commandAiBrief(args: ParsedArgs): Promise<void> {
   const compareReport = baseline && current
     ? compareSnapshots(baseline, current, loaded.config.compare)
     : undefined;
-  const brief = renderAiBrief({
+  let brief = renderAiBrief({
     loaded,
     scan,
     baseline,
     current,
     compareReport
   });
+  const runSelector = stringOption(args, "run");
+  if (runSelector) {
+    const pkg = await loadRunPackage(loaded, runSelector);
+    const taskId = stringOption(args, "task");
+    const task = taskId ? pkg.graph.tasks.find((candidate) => candidate.id === taskId) : undefined;
+    brief += `\n\n${[
+      "## Migration Run Context",
+      "",
+      `- Run: ${pkg.run.id}`,
+      `- Goal: ${pkg.run.goal}`,
+      `- Status: ${pkg.run.status}`,
+      `- Ready tasks: ${getReadyTasks(pkg.graph).map((candidate) => candidate.id).join(", ") || "none"}`,
+      task ? "" : undefined,
+      task ? "## Task Context" : undefined,
+      task ? "" : undefined,
+      task ? `- Task: ${task.id}` : undefined,
+      task ? `- Title: ${task.title}` : undefined,
+      task ? `- Status: ${task.status}` : undefined,
+      task ? `- Affected files: ${task.affectedFiles.join(", ") || "none"}` : undefined,
+      task ? `- Acceptance criteria: ${task.acceptanceCriteria.join("; ") || "none"}` : undefined
+    ].filter(Boolean).join("\n")}`;
+  }
   const outputPath = stringOption(args, "output")
     ? path.resolve(process.cwd(), stringOption(args, "output") as string)
     : path.join(loaded.artifactsDir, "ai", `brief-${Date.now()}.md`);
@@ -207,6 +282,221 @@ async function commandAiBrief(args: ParsedArgs): Promise<void> {
   await writeTextFile(outputPath, brief);
   console.log(brief);
   console.log("");
+  console.log(`Wrote ${outputPath}`);
+}
+
+async function commandRun(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const goal = stringOption(args, "goal") ?? "General migration";
+  const sourceRoot = path.resolve(process.cwd(), stringOption(args, "source") ?? loaded.targetRoot);
+  const targetRoot = path.resolve(process.cwd(), stringOption(args, "target") ?? loaded.targetRoot);
+  const adapter = stringOption(args, "adapter");
+  const issueProvider = issueProviderOption(args) ?? "local";
+  const mode = resolveRunMode(args);
+
+  if (args.options.resume) {
+    const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+    if (args.options.auto) {
+      pkg.run.mode = "auto";
+    }
+    await executeReadyTasks(loaded, pkg, { createCheckpoint: true });
+    console.log(renderRunStatus(pkg));
+    return;
+  }
+
+  const pkg = await createMigrationRun(loaded, {
+    goal,
+    sourceRoot,
+    targetRoot,
+    mode,
+    adapter,
+    issueProvider
+  });
+
+  if (mode === "auto" || mode === "manual") {
+    await executeReadyTasks(loaded, pkg, { createCheckpoint: true });
+  }
+
+  console.log(renderRunStatus(pkg));
+  const reportPath = await writeRunReport(loaded, pkg);
+  console.log("");
+  console.log(`Wrote ${reportPath}`);
+}
+
+async function commandStatus(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  console.log(renderRunStatus(pkg));
+}
+
+async function commandIssues(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  if (args.options.json) {
+    console.log(JSON.stringify(pkg.issues, null, 2));
+    return;
+  }
+  console.log(renderIssues(pkg.issues));
+}
+
+async function commandTasks(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  if (args.options.json) {
+    console.log(JSON.stringify(pkg.graph, null, 2));
+    return;
+  }
+
+  const errors = validateTaskGraph(pkg.graph);
+  console.log(`Run: ${pkg.run.id}`);
+  console.log(`Graph: ${errors.length === 0 ? "valid" : "invalid"}`);
+  for (const task of pkg.graph.tasks) {
+    console.log(`- ${task.id} [${task.status}/${task.risk}] ${task.title}`);
+    if (task.dependsOn.length > 0) {
+      console.log(`  depends on: ${task.dependsOn.join(", ")}`);
+    }
+  }
+  if (errors.length > 0) {
+    console.log("");
+    console.log("Graph errors:");
+    console.log(errors.map((error) => `- ${error}`).join("\n"));
+  }
+}
+
+async function commandReport(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const report = await renderRunReport(loaded, pkg);
+  const reportPath = await writeRunReport(loaded, pkg);
+  console.log(report);
+  console.log("");
+  console.log(`Wrote ${reportPath}`);
+}
+
+async function commandCheckpoint(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "list";
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+
+  if (action === "create") {
+    const checkpoint = await createCheckpoint(loaded, pkg, stringOption(args, "task"), stringOption(args, "note"));
+    console.log(`Created checkpoint ${checkpoint.id}`);
+    console.log(checkpoint.patchPath);
+    return;
+  }
+
+  if (action === "list") {
+    const checkpoints = await listCheckpoints(loaded, pkg.run.id);
+    if (args.options.json) {
+      console.log(JSON.stringify(checkpoints, null, 2));
+      return;
+    }
+    console.log(checkpoints.length > 0
+      ? checkpoints.map((checkpoint) => `- ${checkpoint.id} ${checkpoint.createdAt} ${checkpoint.taskId ?? ""}`).join("\n")
+      : "No checkpoints.");
+    return;
+  }
+
+  throw new Error(`Unknown checkpoint action: ${action}`);
+}
+
+async function commandResume(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  if (args.options.auto) {
+    pkg.run.mode = "auto";
+  }
+  setRunStatus(pkg, "running");
+  await executeReadyTasks(loaded, pkg, { createCheckpoint: true });
+  console.log(renderRunStatus(pkg));
+}
+
+async function commandRollback(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const checkpointId = stringOption(args, "checkpoint") ?? args.positionals[0];
+  if (!checkpointId) {
+    throw new Error("rollback requires --checkpoint <checkpoint-id>.");
+  }
+  const message = await rollbackToCheckpoint(loaded, pkg, checkpointId);
+  console.log(message);
+}
+
+async function commandTask(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "run";
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const taskId = stringOption(args, "task") ?? args.positionals[1];
+  if (action !== "run") {
+    throw new Error(`Unknown task action: ${action}`);
+  }
+  if (!taskId) {
+    throw new Error("task run requires --task <task-id>.");
+  }
+  const task = await executeTask(loaded, pkg, taskId, { createCheckpoint: true });
+  console.log(`Task ${task.id}: ${task.status}`);
+  if (task.result) {
+    console.log(task.result);
+  }
+}
+
+async function commandSyncIssues(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const provider = issueProviderOption(args) ?? "local";
+  const outputPath = await syncIssues(loaded, pkg, provider);
+  console.log(`Wrote ${outputPath}`);
+}
+
+async function commandCi(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "verify";
+  if (action !== "verify") {
+    throw new Error(`Unknown ci action: ${action}`);
+  }
+  await commandVerify(args);
+}
+
+async function commandContract(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "capture";
+  const loaded = await loadFromArgs(args);
+
+  if (action === "capture") {
+    const source = stringOption(args, "source");
+    if (!source) {
+      throw new Error("contract capture requires --source <url>.");
+    }
+    const outputPath = await captureContract(loaded, {
+      source,
+      name: stringOption(args, "name"),
+      method: stringOption(args, "method"),
+      body: stringOption(args, "body")
+    });
+    console.log(`Wrote ${outputPath}`);
+    return;
+  }
+
+  if (action === "test") {
+    const target = stringOption(args, "target");
+    const contractPath = stringOption(args, "contract") ?? args.positionals[1];
+    if (!target || !contractPath) {
+      throw new Error("contract test requires --target <url> --contract <path>.");
+    }
+    const outputPath = await testContract(loaded, path.resolve(process.cwd(), contractPath), target);
+    console.log(`Wrote ${outputPath}`);
+    return;
+  }
+
+  throw new Error(`Unknown contract action: ${action}`);
+}
+
+async function commandDualRun(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const source = stringOption(args, "source");
+  const target = stringOption(args, "target");
+  if (!source || !target) {
+    throw new Error("dual-run requires --source <url> --target <url>.");
+  }
+  const outputPath = await runDualRun(loaded, source, target, stringOption(args, "name") ?? "default");
   console.log(`Wrote ${outputPath}`);
 }
 
@@ -232,6 +522,34 @@ function stringOption(args: ParsedArgs, name: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function resolveRunMode(args: ParsedArgs): MigrationAutomationMode {
+  if (args.options.auto) {
+    return "auto";
+  }
+  if (args.options["dry-run"]) {
+    return "dry-run";
+  }
+  if (args.options["init-only"]) {
+    return "init-only";
+  }
+  const execute = stringOption(args, "execute");
+  if (execute === "manual") {
+    return "manual";
+  }
+  return "init-only";
+}
+
+function issueProviderOption(args: ParsedArgs): MigrationRun["issueProvider"] | undefined {
+  const provider = stringOption(args, "provider") ?? stringOption(args, "issue-provider");
+  if (!provider) {
+    return undefined;
+  }
+  if (["local", "github", "gitlab", "jira", "linear"].includes(provider)) {
+    return provider as MigrationRun["issueProvider"];
+  }
+  throw new Error(`Unsupported issue provider: ${provider}`);
+}
+
 function printHelp(): void {
   console.log(`Migration Guard
 
@@ -243,6 +561,20 @@ Usage:
   migration-guard compare [--config <path>] [--baseline <path>] [--current <path>]
   migration-guard plan [--config <path>]
   migration-guard ai-brief [--config <path>] [--baseline <path>] [--current <path>] [--output <path>]
+  migration-guard run [--source <path>] [--target <path>] --goal <text> [--init-only|--dry-run|--auto]
+  migration-guard status [--run <id|latest>]
+  migration-guard issues [--run <id|latest>] [--json]
+  migration-guard tasks [--run <id|latest>] [--json]
+  migration-guard report [--run <id|latest>]
+  migration-guard checkpoint create|list [--run <id|latest>]
+  migration-guard resume [--run <id|latest>] [--auto]
+  migration-guard rollback [--run <id|latest>] --checkpoint <id>
+  migration-guard task run [--run <id|latest>] --task <id>
+  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear]
+  migration-guard ci verify --baseline <path>
+  migration-guard contract capture --source <url>
+  migration-guard contract test --target <url> --contract <path>
+  migration-guard dual-run --source <url> --target <url>
 
 Behavior consistency workflow:
   1. init      Create .migration-guard.json

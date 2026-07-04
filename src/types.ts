@@ -190,3 +190,199 @@ export interface CompareReport {
   createdAt: string;
   differences: Difference[];
 }
+
+export type MigrationRunStatus =
+  | "initialized"
+  | "planned"
+  | "running"
+  | "paused"
+  | "verifying"
+  | "replanning"
+  | "completed"
+  | "failed"
+  | "blocked";
+
+export type MigrationAutomationMode = "init-only" | "dry-run" | "manual" | "auto";
+
+export interface MigrationRun {
+  version: 1;
+  id: string;
+  goal: string;
+  sourceRoot: string;
+  targetRoot: string;
+  artifactsDir: string;
+  status: MigrationRunStatus;
+  mode: MigrationAutomationMode;
+  adapter?: string;
+  issueProvider: "local" | "github" | "gitlab" | "jira" | "linear";
+  createdAt: string;
+  updatedAt: string;
+  estimate: MigrationEstimate;
+  latestCheckpointId?: string;
+  latestBaselineId?: string;
+  latestVerificationId?: string;
+  finalReportPath?: string;
+}
+
+export interface MigrationEstimate {
+  sourceFiles: number;
+  testFiles: number;
+  taskCount: number;
+  riskLevel: "low" | "medium" | "high";
+  confidence: "low" | "medium" | "high";
+  estimatedVerificationRounds: number;
+  notes: string[];
+  updatedAt: string;
+}
+
+export type MigrationTaskStatus =
+  | "discovered"
+  | "planned"
+  | "ready"
+  | "running"
+  | "changed"
+  | "verifying"
+  | "failed"
+  | "replanned"
+  | "blocked"
+  | "rolled-back"
+  | "accepted-diff"
+  | "done";
+
+export type MigrationTaskType =
+  | "analyze"
+  | "baseline"
+  | "plan"
+  | "code-change"
+  | "verify"
+  | "replan"
+  | "report"
+  | "adapter"
+  | "contract";
+
+export interface MigrationTask {
+  id: string;
+  title: string;
+  description: string;
+  type: MigrationTaskType;
+  status: MigrationTaskStatus;
+  priority: number;
+  risk: "low" | "medium" | "high";
+  owner: "engine" | "ai" | "human";
+  dependsOn: string[];
+  affectedFiles: string[];
+  verificationCommands: string[];
+  acceptanceCriteria: string[];
+  executor?: string;
+  issueId?: string;
+  result?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MigrationTaskGraph {
+  version: 1;
+  runId: string;
+  createdAt: string;
+  updatedAt: string;
+  tasks: MigrationTask[];
+}
+
+export type MigrationIssueType = "epic" | "phase" | "task" | "risk" | "diff" | "failure";
+
+export interface MigrationIssue {
+  id: string;
+  runId: string;
+  taskId?: string;
+  type: MigrationIssueType;
+  title: string;
+  body: string;
+  status: MigrationTaskStatus | "open" | "closed";
+  risk: "low" | "medium" | "high";
+  owner: "engine" | "ai" | "human";
+  affectedFiles: string[];
+  externalUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EvidenceEvent {
+  id: string;
+  runId: string;
+  taskId?: string;
+  issueId?: string;
+  type:
+    | "run-created"
+    | "task-created"
+    | "task-updated"
+    | "checkpoint-created"
+    | "verification"
+    | "failure"
+    | "replan"
+    | "rollback"
+    | "sync"
+    | "contract";
+  message: string;
+  data?: unknown;
+  createdAt: string;
+}
+
+export interface MigrationCheckpoint {
+  version: 1;
+  id: string;
+  runId: string;
+  taskId?: string;
+  createdAt: string;
+  root: string;
+  patchPath: string;
+  verificationPath?: string;
+  gitStatus: string;
+  note?: string;
+}
+
+export interface ContractRequest {
+  name: string;
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export interface ContractExchange {
+  request: ContractRequest;
+  status: number | null;
+  headers: Record<string, string>;
+  body: string;
+  normalizedBody: string;
+  bodyHash: string;
+  durationMs: number;
+  error?: string;
+}
+
+export interface ContractCorpus {
+  version: 1;
+  id: string;
+  createdAt: string;
+  source: string;
+  exchanges: ContractExchange[];
+}
+
+export interface DualRunDifference {
+  name: string;
+  severity: "error" | "warn" | "info";
+  message: string;
+  source?: unknown;
+  target?: unknown;
+}
+
+export interface DualRunReport {
+  version: 1;
+  id: string;
+  createdAt: string;
+  source: string;
+  target: string;
+  passed: boolean;
+  sourceExchanges: ContractExchange[];
+  targetExchanges: ContractExchange[];
+  differences: DualRunDifference[];
+}

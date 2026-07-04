@@ -14,6 +14,7 @@ migration-guard/
 
   docs/
     DEVELOPMENT_PHASES.md
+    PHASE_COMPLETION_REPORT.md
     PRODUCT_DESIGN.md
     PROJECT_STRUCTURE.md
     REQUIREMENTS.md
@@ -24,20 +25,27 @@ migration-guard/
 
     core/
       aiBrief.ts
+      checkpoint.ts
       compare.ts
       config.ts
+      contract.ts
       exec.ts
+      executor.ts
       files.ts
       hash.ts
+      issueSync.ts
       markdown.ts
+      migrationRun.ts
       normalize.ts
       plan.ts
       probes.ts
       scan.ts
       snapshot.ts
+      taskGraph.ts
 
       compare.test.ts
       normalize.test.ts
+      taskGraph.test.ts
 
   dist/
     # TypeScript 编译产物
@@ -234,6 +242,71 @@ AI brief 包含：
 - 可复制给 AI 的提示词模板
 
 AI 不直接绕过验证流程。AI 每次迁移动作后必须回到 `verify` 和 `compare`。
+
+### `src/core/migrationRun.ts`
+
+负责自治迁移运行时的状态管理。
+
+主要职责：
+
+- 创建和加载 migration run
+- 保存 `run.json`、`task-graph.json`、`issues.json`
+- 追加 evidence log
+- 渲染 status、issues、report
+- 维护 latest migration run 指针
+
+### `src/core/taskGraph.ts`
+
+负责动态任务图。
+
+主要职责：
+
+- 根据 scan 和 goal 生成初始 task graph
+- 校验 DAG 是否有缺失依赖或环
+- 计算 ready tasks
+- 更新任务状态
+- 在失败时插入 replanning task
+
+### `src/core/executor.ts`
+
+负责执行任务节点。
+
+主要职责：
+
+- 执行 analyze、baseline、plan、verify、report 等 engine task
+- 执行手动/AI 任务的记录路径
+- 执行 JS/Vite adapter 的保守迁移任务
+- 验证失败时创建 failure issue 并触发 replan
+
+### `src/core/checkpoint.ts`
+
+负责 checkpoint、resume 和 rollback 所需的文件证据。
+
+主要职责：
+
+- 捕获 git status 和 git diff patch
+- 保存 checkpoint metadata
+- 显式 rollback 时反向应用 checkpoint patch
+
+### `src/core/issueSync.ts`
+
+负责 issue 管控层导出。
+
+主要职责：
+
+- 导出本地 issue JSON
+- 为 GitHub/GitLab/Jira/Linear 生成 provider-neutral issue export
+- 写入同步 evidence
+
+### `src/core/contract.ts`
+
+负责跨语言行为复刻基础能力。
+
+主要职责：
+
+- 捕获 HTTP contract corpus
+- 双跑 source/target 并对比状态码和响应体
+- 对 target 重放 contract test
 
 ### `src/core/plan.ts`
 
