@@ -7,28 +7,33 @@ import type { MigrationRunPackage } from "./migrationRun.js";
 export async function syncIssues(
   loaded: LoadedConfig,
   pkg: MigrationRunPackage,
-  provider: "local" | "github" | "gitlab" | "jira" | "linear"
+  provider: "local" | "github" | "gitlab" | "jira" | "linear",
+  options: { dryRun?: boolean } = {}
 ): Promise<string> {
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "issue-sync");
   const exported = pkg.issues.map((issue) => serializeIssue(issue, provider));
-  const outputPath = path.join(dir, `${provider}-issues.json`);
+  const outputPath = path.join(dir, `${provider}${options.dryRun ? "-dry-run" : ""}-issues.json`);
   await writeJsonFile(outputPath, exported);
 
   if (provider !== "local") {
-    const markdownPath = path.join(dir, `${provider}-issues.md`);
+    const markdownPath = path.join(dir, `${provider}${options.dryRun ? "-dry-run" : ""}-issues.md`);
     await writeTextFile(markdownPath, renderIssueSyncMarkdown(pkg.issues, provider));
-    for (const issue of pkg.issues) {
-      issue.externalUrl = issue.externalUrl ?? `${provider}:pending:${issue.id}`;
-      issue.updatedAt = new Date().toISOString();
+    if (!options.dryRun) {
+      for (const issue of pkg.issues) {
+        issue.externalUrl = issue.externalUrl ?? `${provider}:pending:${issue.id}`;
+        issue.updatedAt = new Date().toISOString();
+      }
     }
   }
 
-  pkg.run.issueProvider = provider;
-  await saveRunPackage(loaded, pkg);
+  if (!options.dryRun) {
+    pkg.run.issueProvider = provider;
+    await saveRunPackage(loaded, pkg);
+  }
   await appendEvidence(loaded, pkg.run.id, {
     runId: pkg.run.id,
     type: "sync",
-    message: `Exported ${pkg.issues.length} issues for provider ${provider}`,
+    message: `${options.dryRun ? "Dry-run exported" : "Exported"} ${pkg.issues.length} issues for provider ${provider}`,
     data: {
       outputPath
     }

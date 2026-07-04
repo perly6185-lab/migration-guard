@@ -1,7 +1,12 @@
 {
   "schemaVersion": 1,
-  "targetRoot": "../../migration-guard-targets/md",
-  "artifactsDir": "../.migration-guard/external-targets/md-fast",
+  "targetRoot": "${MG_TARGET_ROOT}",
+  "artifactsDir": "${MG_ARTIFACTS_DIR}/md-fast",
+  "variables": {
+    "MG_TARGET_ROOT": "../../migration-guard-targets/md",
+    "MG_ARTIFACTS_DIR": "../.migration-guard/external-targets",
+    "MG_REPO_ROOT": "../../migration-guard"
+  },
   "ignore": [
     ".git",
     "node_modules",
@@ -20,20 +25,34 @@
       "name": "core-test",
       "command": "pnpm --filter @md/core test",
       "timeoutMs": 180000,
-      "critical": true
+      "critical": true,
+      "normalize": {
+        "trimWhitespace": true,
+        "presets": ["vitest", "paths", "timing"]
+      }
     },
     {
       "name": "packages-type-check",
       "command": "pnpm type-check:packages",
       "timeoutMs": 240000,
-      "critical": true
+      "critical": true,
+      "normalize": {
+        "trimWhitespace": true,
+        "presets": ["paths", "timing"],
+        "replace": [
+          {
+            "pattern": "(apps/api|packages/shared|packages/core) type-check(?:\\$ tsc --noEmit|: Done)",
+            "replacement": "<type-check-step>"
+          }
+        ]
+      }
     }
   ],
   "probes": [
     {
       "type": "command",
       "name": "md-renderer-behavior",
-      "command": "pnpm exec tsx D:/learn/migration-guard/scripts/probes/md-behavior-probe.mjs",
+      "command": "pnpm exec tsx ${MG_REPO_ROOT}/scripts/probes/md-behavior-probe.mjs",
       "timeoutMs": 120000,
       "normalize": {
         "stripAnsi": true,

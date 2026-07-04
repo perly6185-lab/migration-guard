@@ -349,6 +349,8 @@ async function createPnpmViteVueRiskIssues(loaded: LoadedConfig, pkg: MigrationR
   }
 
   const reportPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "pnpm-vite-vue-risk-report.json");
+  const actionPlanPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "pnpm-vite-vue-action-plan.json");
+  const actions = createPnpmViteVueActions(scan);
   await writeJsonFile(reportPath, {
     createdAt: now,
     riskIssueCount: issues.length,
@@ -358,8 +360,93 @@ async function createPnpmViteVueRiskIssues(loaded: LoadedConfig, pkg: MigrationR
     stackHints: scan.stackHints,
     riskFiles: scan.riskFiles.slice(0, 10)
   });
+  await writeJsonFile(actionPlanPath, {
+    createdAt: now,
+    goal: pkg.run.goal,
+    actions
+  });
+  for (const action of actions) {
+    const issue: MigrationIssue = {
+      id: createId("issue"),
+      runId: pkg.run.id,
+      type: "task",
+      title: action.title,
+      body: [
+        action.summary,
+        "",
+        `Recommended checks: ${action.recommendedChecks.join(", ")}`,
+        `Patch mode: ${action.patchMode}`
+      ].join("\n"),
+      status: "planned",
+      risk: action.risk,
+      owner: "ai",
+      affectedFiles: action.affectedFiles,
+      createdAt: now,
+      updatedAt: now
+    };
+    if (!existing.has(`${issue.type}:${issue.title}`)) {
+      pkg.issues.push(issue);
+    }
+  }
   await saveRunPackage(loaded, pkg);
-  return `Created ${issues.length} risk issues and wrote ${reportPath}`;
+  return `Created ${issues.length} risk issues and wrote ${reportPath} plus ${actionPlanPath}`;
+}
+
+function createPnpmViteVueActions(scan: ScanSummary): Array<{
+  id: string;
+  title: string;
+  summary: string;
+  risk: "low" | "medium" | "high";
+  affectedFiles: string[];
+  recommendedChecks: string[];
+  patchMode: "dry-run-only" | "manual-approval-required";
+}> {
+  const risks = scan.riskFiles;
+  const renderer = risks.find((file) => file.path.includes("packages/core/src/renderer/renderer-impl.ts"));
+  const apiTypes = risks.find((file) => file.path.includes("apps/api/src/types.ts"));
+  const largeVue = risks.find((file) => file.path.endsWith(".vue"));
+  const actions: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    risk: "low" | "medium" | "high";
+    affectedFiles: string[];
+    recommendedChecks: string[];
+    patchMode: "dry-run-only" | "manual-approval-required";
+  }> = [
+    {
+      id: "action-renderer-probes",
+      title: "Add/expand behavior probes before renderer refactor",
+      summary: "Renderer changes are high leverage. Expand command probes and tests before any source edit.",
+      risk: renderer ? "medium" as const : "low" as const,
+      affectedFiles: renderer ? [renderer.path] : ["packages/core/src/renderer/renderer-impl.ts"],
+      recommendedChecks: ["pnpm --filter @md/core test", "pnpm type-check:packages"],
+      patchMode: "dry-run-only" as const
+    },
+    {
+      id: "action-api-type-contract",
+      title: "Create API type/schema review before shared type changes",
+      summary: "Shared API types have many importers. Treat changes as contract work and require schema review.",
+      risk: apiTypes ? "medium" as const : "low" as const,
+      affectedFiles: apiTypes ? [apiTypes.path] : ["apps/api/src/types.ts"],
+      recommendedChecks: ["pnpm type-check:packages"],
+      patchMode: "dry-run-only" as const
+    }
+  ];
+
+  if (largeVue) {
+    actions.push({
+      id: "action-large-vue-ui-probe",
+      title: `Add UI probe before splitting ${largeVue.path}`,
+      summary: "Large Vue components should get a page or DOM smoke probe before structural refactoring.",
+      risk: "high",
+      affectedFiles: [largeVue.path],
+      recommendedChecks: ["pnpm --filter @md/web test", "pnpm type-check:web"],
+      patchMode: "manual-approval-required"
+    });
+  }
+
+  return actions;
 }
 
 async function updatePackageForVite(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/core/normalize.test.js dist/core/compare.test.js dist/core/taskGraph.test.js",
+    "test": "npm run build && node --test dist/core/normalize.test.js dist/core/checkNormalize.test.js dist/core/config.test.js dist/core/compare.test.js dist/core/taskGraph.test.js",
     "start": "node dist/cli.js"
   },
   "keywords": [

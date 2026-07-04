@@ -9,6 +9,7 @@ export interface MigrationGuardConfig {
   probes: BehaviorProbeConfig[];
   output: OutputConfig;
   compare: ComparePolicy;
+  variables?: Record<string, string>;
 }
 
 export interface OutputConfig {
@@ -27,6 +28,18 @@ export interface CheckConfig {
   timeoutMs?: number;
   critical?: boolean;
   enabled?: boolean;
+  normalize?: CheckNormalizeConfig;
+}
+
+export interface CheckNormalizeConfig {
+  stripAnsi?: boolean;
+  trimWhitespace?: boolean;
+  lineEndings?: "lf";
+  presets?: Array<"vitest" | "vite" | "paths" | "timing">;
+  replace?: Array<{
+    pattern: string;
+    replacement: string;
+  }>;
 }
 
 export type BehaviorProbeConfig = CommandProbeConfig | HttpProbeConfig;
@@ -105,6 +118,10 @@ export interface CheckResult {
   durationMs: number;
   stdoutHash: string;
   stderrHash: string;
+  normalizedStdoutHash?: string;
+  normalizedStderrHash?: string;
+  normalizedStdout?: string;
+  normalizedStderr?: string;
   stdout: string;
   stderr: string;
   stdoutTruncated: boolean;
@@ -385,4 +402,19 @@ export interface DualRunReport {
   sourceExchanges: ContractExchange[];
   targetExchanges: ContractExchange[];
   differences: DualRunDifference[];
+}
+
+export interface ProposedPatch {
+  version: 1;
+  id: string;
+  runId: string;
+  taskId: string;
+  createdAt: string;
+  title: string;
+  summary: string;
+  risk: "low" | "medium" | "high";
+  patchPath: string;
+  affectedFiles: string[];
+  recommendedChecks: string[];
+  applyState: "proposed" | "applied" | "rejected";
 }

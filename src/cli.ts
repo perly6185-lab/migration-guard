@@ -22,6 +22,8 @@ import { captureSnapshot, latestBaselinePath, latestRunPath, loadSnapshot, saveS
 import { compareSnapshots } from "./core/compare.js";
 import { getReadyTasks, validateTaskGraph } from "./core/taskGraph.js";
 import { syncIssues } from "./core/issueSync.js";
+import { applyProposedPatch, proposePatch } from "./core/patch.js";
+import { runPreviewProbe } from "./core/preview.js";
 import type { CompareReport, MigrationAutomationMode, MigrationRun } from "./types.js";
 
 interface ParsedArgs {
@@ -98,6 +100,9 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "dual-run":
       await commandDualRun(args);
+      return;
+    case "preview":
+      await commandPreview(args);
       return;
     default:
       console.error(`Unknown command: ${args.command}`);
@@ -427,25 +432,43 @@ async function commandTask(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
   const taskId = stringOption(args, "task") ?? args.positionals[1];
-  if (action !== "run") {
-    throw new Error(`Unknown task action: ${action}`);
+  if (action === "run") {
+    if (!taskId) {
+      throw new Error("task run requires --task <task-id>.");
+    }
+    const task = await executeTask(loaded, pkg, taskId, { createCheckpoint: true });
+    console.log(`Task ${task.id}: ${task.status}`);
+    if (task.result) {
+      console.log(task.result);
+    }
+    return;
   }
-  if (!taskId) {
-    throw new Error("task run requires --task <task-id>.");
+  if (action === "propose") {
+    if (!taskId) {
+      throw new Error("task propose requires --task <task-id>.");
+    }
+    const patch = await proposePatch(loaded, pkg, taskId);
+    console.log(`Proposed ${patch.id}`);
+    console.log(patch.patchPath);
+    return;
   }
-  const task = await executeTask(loaded, pkg, taskId, { createCheckpoint: true });
-  console.log(`Task ${task.id}: ${task.status}`);
-  if (task.result) {
-    console.log(task.result);
+  if (action === "apply") {
+    const proposalId = stringOption(args, "proposal") ?? args.positionals[1];
+    if (!proposalId) {
+      throw new Error("task apply requires --proposal <proposal-id>.");
+    }
+    console.log(await applyProposedPatch(loaded, pkg, proposalId));
+    return;
   }
+  throw new Error(`Unknown task action: ${action}`);
 }
 
 async function commandSyncIssues(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
   const provider = issueProviderOption(args) ?? "local";
-  const outputPath = await syncIssues(loaded, pkg, provider);
-  console.log(`Wrote ${outputPath}`);
+  const outputPath = await syncIssues(loaded, pkg, provider, { dryRun: Boolean(args.options["dry-run"]) });
+  console.log(args.options["dry-run"] ? `Dry-run export wrote ${outputPath}` : `Wrote ${outputPath}`);
 }
 
 async function commandCi(args: ParsedArgs): Promise<void> {
@@ -498,6 +521,21 @@ async function commandDualRun(args: ParsedArgs): Promise<void> {
   }
   const outputPath = await runDualRun(loaded, source, target, stringOption(args, "name") ?? "default");
   console.log(`Wrote ${outputPath}`);
+}
+
+async function commandPreview(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const command = stringOption(args, "command");
+  const url = stringOption(args, "url") ?? "http://localhost:5173";
+  const timeoutMs = Number(stringOption(args, "timeout-ms") ?? 60000);
+  if (!command) {
+    throw new Error("preview requires --command <command>.");
+  }
+  const result = await runPreviewProbe(loaded, command, url, timeoutMs);
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.ready) {
+    process.exitCode = 1;
+  }
 }
 
 async function loadOptionalSnapshot(filePath: string) {
@@ -570,11 +608,14 @@ Usage:
   migration-guard resume [--run <id|latest>] [--auto]
   migration-guard rollback [--run <id|latest>] --checkpoint <id>
   migration-guard task run [--run <id|latest>] --task <id>
-  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear]
+  migration-guard task propose [--run <id|latest>] --task <id>
+  migration-guard task apply [--run <id|latest>] --proposal <id>
+  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run]
   migration-guard ci verify --baseline <path>
   migration-guard contract capture --source <url>
   migration-guard contract test --target <url> --contract <path>
   migration-guard dual-run --source <url> --target <url>
+  migration-guard preview --command <command> [--url <url>] [--timeout-ms <ms>]
 
 Behavior consistency workflow:
   1. init      Create .migration-guard.json

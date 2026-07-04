@@ -49,7 +49,8 @@ export function createDefaultConfig(targetRoot = "."): MigrationGuardConfig {
     compare: {
       failOnCheckRegression: true,
       failOnProbeDiff: true
-    }
+    },
+    variables: {}
   };
 }
 
@@ -72,7 +73,7 @@ export async function loadConfig(configPath?: string, startDir = process.cwd()):
 
   const raw = await readJsonFile<Partial<MigrationGuardConfig>>(resolvedConfigPath);
   const baseDir = path.dirname(resolvedConfigPath);
-  const config = mergeWithDefaults(raw);
+  const config = interpolateConfig(mergeWithDefaults(raw));
   const targetRoot = resolveMaybeRelative(baseDir, config.targetRoot);
   const artifactsDir = resolveMaybeRelative(baseDir, config.artifactsDir);
 
@@ -119,6 +120,34 @@ function mergeWithDefaults(raw: Partial<MigrationGuardConfig>): MigrationGuardCo
     compare: {
       ...defaults.compare,
       ...raw.compare
-    }
+    },
+    variables: raw.variables ?? defaults.variables
   };
+}
+
+function interpolateConfig(config: MigrationGuardConfig): MigrationGuardConfig {
+  const variables = {
+    ...config.variables,
+    ...process.env
+  };
+
+  function interpolate(value: unknown): unknown {
+    if (typeof value === "string") {
+      return value.replace(/\$\{([A-Z0-9_]+)\}|\$([A-Z0-9_]+)/gi, (match, braced: string | undefined, bare: string | undefined) => {
+        const key = braced ?? bare ?? "";
+        return variables[key] ?? match;
+      });
+    }
+    if (Array.isArray(value)) {
+      return value.map(interpolate);
+    }
+    if (value !== null && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, interpolate(item)])
+      );
+    }
+    return value;
+  }
+
+  return interpolate(config) as MigrationGuardConfig;
 }

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { normalizeCheckOutput } from "./checkNormalize.js";
 import { runShellCommand } from "./exec.js";
 import { sha256 } from "./hash.js";
 import { normalizeText } from "./normalize.js";
@@ -57,6 +58,8 @@ async function runCheck(loaded: LoadedConfig, check: CheckConfig): Promise<Check
     timeoutMs: check.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     maxOutputBytes: loaded.config.output.maxOutputBytes
   });
+  const normalizedStdout = normalizeCheckOutput(result.stdout, check.normalize);
+  const normalizedStderr = normalizeCheckOutput(result.stderr, check.normalize);
 
   return {
     name: check.name,
@@ -67,6 +70,10 @@ async function runCheck(loaded: LoadedConfig, check: CheckConfig): Promise<Check
     durationMs: result.durationMs,
     stdoutHash: sha256(result.stdout),
     stderrHash: sha256(result.stderr),
+    normalizedStdoutHash: sha256(normalizedStdout),
+    normalizedStderrHash: sha256(normalizedStderr),
+    normalizedStdout,
+    normalizedStderr,
     stdout: result.stdout,
     stderr: result.stderr,
     stdoutTruncated: result.stdoutTruncated,

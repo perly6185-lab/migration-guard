@@ -59,25 +59,30 @@ function compareChecks(baseline: CheckResult[], current: CheckResult[], policy: 
       });
     }
 
-    if (before.stdoutHash !== after.stdoutHash && before.status === "passed" && after.status === "passed") {
+    const beforeStdoutHash = before.normalizedStdoutHash ?? before.stdoutHash;
+    const afterStdoutHash = after.normalizedStdoutHash ?? after.stdoutHash;
+    const beforeStderrHash = before.normalizedStderrHash ?? before.stderrHash;
+    const afterStderrHash = after.normalizedStderrHash ?? after.stderrHash;
+
+    if (beforeStdoutHash !== afterStdoutHash && before.status === "passed" && after.status === "passed") {
       differences.push({
         severity: "warn",
         area: "check",
         name: before.name,
         message: "Check stdout changed while still passing.",
-        before: before.stdoutHash,
-        after: after.stdoutHash
+        before: beforeStdoutHash,
+        after: afterStdoutHash
       });
     }
 
-    if (before.stderrHash !== after.stderrHash && before.status === "passed" && after.status === "passed") {
+    if (beforeStderrHash !== afterStderrHash && before.status === "passed" && after.status === "passed") {
       differences.push({
         severity: "warn",
         area: "check",
         name: before.name,
         message: "Check stderr changed while still passing.",
-        before: before.stderrHash,
-        after: after.stderrHash
+        before: beforeStderrHash,
+        after: afterStderrHash
       });
     }
   }
