@@ -6,9 +6,9 @@ import { renderCompareReport } from "./markdown.js";
 import { captureSnapshot, latestBaselinePath, loadSnapshot, saveSnapshot } from "./snapshot.js";
 import { scanProject } from "./scan.js";
 import { updateTaskStatus, insertFailureTask, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
-import { appendEvidence, createFailureIssue, migrationRunDir, saveRunPackage, setRunStatus, syncIssueStatuses, writeRunReport } from "./migrationRun.js";
+import { appendEvidence, createFailureIssue, createId, migrationRunDir, saveRunPackage, setRunStatus, syncIssueStatuses, writeRunReport } from "./migrationRun.js";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
-import type { LoadedConfig, MigrationTask } from "../types.js";
+import type { LoadedConfig, MigrationIssue, MigrationTask, ScanSummary } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
 export interface ExecuteTaskOptions {
@@ -111,6 +111,9 @@ export async function executeTask(
 async function runTaskBody(loaded: LoadedConfig, pkg: MigrationRunPackage, task: MigrationTask): Promise<string> {
   if (task.executor?.startsWith("js-vite:")) {
     return executeJsViteTask(loaded, pkg, task);
+  }
+  if (task.executor?.startsWith("pnpm-vite-vue:")) {
+    return executePnpmViteVueTask(loaded, pkg, task);
   }
 
   switch (task.type) {
@@ -224,6 +227,139 @@ async function executeJsViteTask(loaded: LoadedConfig, pkg: MigrationRunPackage,
     default:
       return `No JS/Vite executor for ${task.executor}.`;
   }
+}
+
+async function executePnpmViteVueTask(loaded: LoadedConfig, pkg: MigrationRunPackage, task: MigrationTask): Promise<string> {
+  switch (task.executor) {
+    case "pnpm-vite-vue:workspace":
+      return inventoryPnpmWorkspace(loaded, pkg);
+    case "pnpm-vite-vue:configs":
+      return inventoryPnpmViteVueConfigs(loaded, pkg);
+    case "pnpm-vite-vue:risks":
+      return createPnpmViteVueRiskIssues(loaded, pkg);
+    default:
+      return `No pnpm-vite-vue executor for ${task.executor}.`;
+  }
+}
+
+async function inventoryPnpmWorkspace(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const root = pkg.run.targetRoot;
+  const packageJsonPaths = await collectFiles(root, (file) => path.basename(file) === "package.json");
+  const packages = [];
+
+  for (const packageJsonPath of packageJsonPaths) {
+    if (packageJsonPath.includes(`${path.sep}node_modules${path.sep}`)) {
+      continue;
+    }
+    const packageJson = await readJsonFile<{
+      name?: string;
+      private?: boolean;
+      scripts?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    }>(packageJsonPath);
+    const relativePath = path.relative(root, path.dirname(packageJsonPath)).replace(/\\/g, "/") || ".";
+    const deps = {
+      ...packageJson.dependencies,
+      ...packageJson.devDependencies,
+      ...packageJson.peerDependencies
+    };
+    packages.push({
+      name: packageJson.name ?? relativePath,
+      path: relativePath,
+      private: Boolean(packageJson.private),
+      scripts: packageJson.scripts ?? {},
+      workspaceDependencies: Object.entries(deps)
+        .filter(([, version]) => version === "workspace:*" || version.startsWith("workspace:"))
+        .map(([name]) => name),
+      stackSignals: detectPackageStackSignals(deps, packageJson.scripts ?? {})
+    });
+  }
+
+  const workspacePath = path.join(root, "pnpm-workspace.yaml");
+  const workspaceText = await pathExists(workspacePath) ? await fs.readFile(workspacePath, "utf8") : "";
+  const outputPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "pnpm-vite-vue-workspace.json");
+  await writeJsonFile(outputPath, {
+    root,
+    packageCount: packages.length,
+    workspaceGlobs: extractWorkspaceGlobs(workspaceText),
+    packages: packages.sort((a, b) => a.path.localeCompare(b.path))
+  });
+  return `Wrote pnpm workspace inventory to ${outputPath}`;
+}
+
+async function inventoryPnpmViteVueConfigs(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const root = pkg.run.targetRoot;
+  const configFiles = await collectFiles(root, (file) => {
+    const name = path.basename(file);
+    return /^vite\.config\.[cm]?[jt]s$/.test(name)
+      || /^vitest\.config\.[cm]?[jt]s$/.test(name)
+      || /^wxt\.config\.[cm]?[jt]s$/.test(name)
+      || /^tsconfig.*\.json$/.test(name)
+      || name === "pnpm-workspace.yaml"
+      || name === "eslint.config.mjs";
+  });
+  const outputPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "pnpm-vite-vue-config-inventory.json");
+  await writeJsonFile(outputPath, {
+    root,
+    configCount: configFiles.length,
+    configs: configFiles
+      .map((file) => ({
+        path: path.relative(root, file).replace(/\\/g, "/"),
+        kind: classifyConfigFile(file)
+      }))
+      .sort((a, b) => a.path.localeCompare(b.path))
+  });
+  return `Wrote pnpm/Vite/Vue config inventory to ${outputPath}`;
+}
+
+async function createPnpmViteVueRiskIssues(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const scan = await scanProject({
+    ...loaded,
+    targetRoot: pkg.run.targetRoot
+  });
+  const existing = new Set(pkg.issues.map((issue) => `${issue.type}:${issue.title}`));
+  const issues: MigrationIssue[] = [];
+  const now = new Date().toISOString();
+
+  for (const riskFile of scan.riskFiles.slice(0, 10)) {
+    const issue: MigrationIssue = {
+      id: createId("issue"),
+      runId: pkg.run.id,
+      type: "risk",
+      title: `Review high-risk file: ${riskFile.path}`,
+      body: [
+        `Score: ${riskFile.score}`,
+        `Lines: ${riskFile.lines}`,
+        `Importers: ${riskFile.importerCount}`,
+        `Reasons: ${riskFile.reasons.join(", ")}`
+      ].join("\n"),
+      status: "open",
+      risk: riskFile.score >= 50 ? "high" : riskFile.score >= 30 ? "medium" : "low",
+      owner: "human",
+      affectedFiles: [riskFile.path],
+      createdAt: now,
+      updatedAt: now
+    };
+    if (!existing.has(`${issue.type}:${issue.title}`)) {
+      pkg.issues.push(issue);
+      issues.push(issue);
+    }
+  }
+
+  const reportPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "pnpm-vite-vue-risk-report.json");
+  await writeJsonFile(reportPath, {
+    createdAt: now,
+    riskIssueCount: issues.length,
+    sourceFiles: scan.sourceFiles,
+    testFiles: scan.testFiles,
+    packageManager: scan.packageManager,
+    stackHints: scan.stackHints,
+    riskFiles: scan.riskFiles.slice(0, 10)
+  });
+  await saveRunPackage(loaded, pkg);
+  return `Created ${issues.length} risk issues and wrote ${reportPath}`;
 }
 
 async function updatePackageForVite(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
@@ -346,4 +482,96 @@ async function inspectWebpackEnvUsage(loaded: LoadedConfig, pkg: MigrationRunPac
       : "No process.env usage found in JS/TS/Vue files."
   });
   return `Wrote environment compatibility report to ${outputPath}`;
+}
+
+async function collectFiles(root: string, predicate: (filePath: string) => boolean): Promise<string[]> {
+  const result: string[] = [];
+  const ignored = new Set([".git", "node_modules", "dist", "build", "coverage", ".wxt", ".output", ".migration-guard"]);
+
+  async function visit(dir: string): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (ignored.has(entry.name)) {
+        continue;
+      }
+      const absolutePath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await visit(absolutePath);
+      } else if (entry.isFile() && predicate(absolutePath)) {
+        result.push(absolutePath);
+      }
+    }
+  }
+
+  await visit(root);
+  return result;
+}
+
+function detectPackageStackSignals(deps: Record<string, string>, scripts: Record<string, string>): string[] {
+  const signals = new Set<string>();
+  for (const name of ["vue", "vite", "vitest", "wxt", "wrangler", "typescript", "vue-tsc", "hono", "tsx"]) {
+    if (deps[name]) {
+      signals.add(name);
+    }
+  }
+  for (const script of Object.values(scripts)) {
+    if (script.includes("vite")) {
+      signals.add("vite-script");
+    }
+    if (script.includes("vitest")) {
+      signals.add("vitest-script");
+    }
+    if (script.includes("vue-tsc")) {
+      signals.add("vue-tsc-script");
+    }
+    if (script.includes("wrangler")) {
+      signals.add("wrangler-script");
+    }
+    if (script.includes("wxt")) {
+      signals.add("wxt-script");
+    }
+  }
+  return [...signals].sort();
+}
+
+function extractWorkspaceGlobs(workspaceText: string): string[] {
+  const globs: string[] = [];
+  let inPackages = false;
+  for (const line of workspaceText.split(/\r?\n/)) {
+    if (/^packages:\s*$/.test(line.trim())) {
+      inPackages = true;
+      continue;
+    }
+    if (inPackages && /^\S/.test(line) && !line.trim().startsWith("-")) {
+      break;
+    }
+    const match = line.match(/^\s*-\s+(.+)$/);
+    if (inPackages && match) {
+      globs.push(match[1].replace(/^['"]|['"]$/g, ""));
+    }
+  }
+  return globs;
+}
+
+function classifyConfigFile(filePath: string): string {
+  const name = path.basename(filePath);
+  if (name.startsWith("vite.config")) {
+    return "vite";
+  }
+  if (name.startsWith("vitest.config")) {
+    return "vitest";
+  }
+  if (name.startsWith("wxt.config")) {
+    return "wxt";
+  }
+  if (name.startsWith("tsconfig")) {
+    return "typescript";
+  }
+  if (name === "pnpm-workspace.yaml") {
+    return "workspace";
+  }
+  if (name.startsWith("eslint.config")) {
+    return "eslint";
+  }
+  return "other";
 }

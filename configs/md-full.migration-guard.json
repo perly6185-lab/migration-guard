@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "targetRoot": "../../migration-guard-targets/md",
+  "artifactsDir": "../.migration-guard/external-targets/md-full",
+  "ignore": [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".next",
+    ".nuxt",
+    ".turbo",
+    ".migration-guard",
+    ".wxt",
+    ".output"
+  ],
+  "checks": [
+    {
+      "name": "core-test",
+      "command": "pnpm --filter @md/core test",
+      "timeoutMs": 180000,
+      "critical": true
+    },
+    {
+      "name": "web-test",
+      "command": "pnpm --filter @md/web test",
+      "timeoutMs": 240000,
+      "critical": true
+    },
+    {
+      "name": "packages-type-check",
+      "command": "pnpm type-check:packages",
+      "timeoutMs": 240000,
+      "critical": true
+    },
+    {
+      "name": "web-type-check",
+      "command": "pnpm type-check:web",
+      "timeoutMs": 300000,
+      "critical": true
+    },
+    {
+      "name": "web-build",
+      "command": "pnpm web build",
+      "timeoutMs": 600000,
+      "critical": false
+    }
+  ],
+  "probes": [
+    {
+      "type": "command",
+      "name": "md-renderer-behavior",
+      "command": "pnpm exec tsx D:/learn/migration-guard/scripts/probes/md-behavior-probe.mjs",
+      "timeoutMs": 120000,
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "json": {
+          "sortKeys": true
+        }
+      }
+    }
+  ],
+  "output": {
+    "maxOutputBytes": 524288
+  },
+  "compare": {
+    "failOnCheckRegression": true,
+    "failOnProbeDiff": true
+  }
+}

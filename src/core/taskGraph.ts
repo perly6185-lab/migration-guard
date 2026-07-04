@@ -17,7 +17,19 @@ export function createTaskGraph(runId: string, scan: ScanSummary, goal: string, 
   ];
 
   const goalText = `${goal} ${adapter ?? ""}`.toLowerCase();
-  if (goalText.includes("webpack") || goalText.includes("vite") || adapter === "js-vite") {
+  if (adapter === "pnpm-vite-vue") {
+    tasks.splice(
+      3,
+      0,
+      createTask("task-pnpm-vite-vue-workspace", "Inventory pnpm workspace", "Build a workspace package graph with scripts, dependencies, and stack signals.", "adapter", ["task-plan"], "engine", "low", 40, ["pnpm-workspace.yaml", "package.json"], ["workspace graph artifact exists"], createdAt, "pnpm-vite-vue:workspace"),
+      createTask("task-pnpm-vite-vue-configs", "Inventory Vite/Vue configs", "Collect Vite, Vitest, WXT, TypeScript, and package configuration files across the monorepo.", "adapter", ["task-pnpm-vite-vue-workspace"], "engine", "low", 50, [], ["config inventory artifact exists"], createdAt, "pnpm-vite-vue:configs"),
+      createTask("task-pnpm-vite-vue-risks", "Create monorepo risk issues", "Create local issues from high-risk files and adapter inventory findings without modifying target source.", "adapter", ["task-pnpm-vite-vue-configs"], "engine", "medium", 60, [], ["risk issues and adapter report exist"], createdAt, "pnpm-vite-vue:risks")
+    );
+    const verify = tasks.find((task) => task.id === "task-verify");
+    if (verify) {
+      verify.dependsOn = ["task-pnpm-vite-vue-risks"];
+    }
+  } else if (adapter === "js-vite" || goalText.includes("webpack")) {
     tasks.splice(
       3,
       0,

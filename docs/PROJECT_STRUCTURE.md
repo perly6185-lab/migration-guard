@@ -15,10 +15,19 @@ migration-guard/
   docs/
     DEVELOPMENT_PHASES.md
     MD_REAL_WORLD_VALIDATION_PLAN.md
+    MD_REAL_WORLD_VALIDATION_REPORT.md
     PHASE_COMPLETION_REPORT.md
     PRODUCT_DESIGN.md
     PROJECT_STRUCTURE.md
     REQUIREMENTS.md
+
+  configs/
+    md-fast.migration-guard.json
+    md-full.migration-guard.json
+
+  scripts/
+    probes/
+      md-behavior-probe.mjs
 
   src/
     cli.ts

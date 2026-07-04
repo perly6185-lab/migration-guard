@@ -11,6 +11,16 @@ test("createTaskGraph builds a valid JS/Vite migration graph", () => {
   assert.deepEqual(getReadyTasks(graph).map((task) => task.id), ["task-analyze"]);
 });
 
+test("createTaskGraph builds a non-mutating pnpm/Vite/Vue inventory graph", () => {
+  const graph = createTaskGraph("run-1", makeScan(), "Vite/Vue monorepo safety validation", "pnpm-vite-vue");
+
+  assert.deepEqual(validateTaskGraph(graph), []);
+  assert.ok(graph.tasks.some((task) => task.executor === "pnpm-vite-vue:workspace"));
+  assert.ok(graph.tasks.some((task) => task.executor === "pnpm-vite-vue:configs"));
+  assert.ok(graph.tasks.some((task) => task.executor === "pnpm-vite-vue:risks"));
+  assert.equal(graph.tasks.some((task) => task.executor === "js-vite:config"), false);
+});
+
 function makeScan(): ScanSummary {
   return {
     root: "/repo",
