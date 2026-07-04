@@ -1,0 +1,29 @@
+{
+  "name": "migration-guard",
+  "version": "0.1.0",
+  "description": "A behavior-consistency guardrail CLI for refactoring and migration work.",
+  "type": "module",
+  "bin": {
+    "migration-guard": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/core/normalize.test.js dist/core/compare.test.js",
+    "start": "node dist/cli.js"
+  },
+  "keywords": [
+    "migration",
+    "refactoring",
+    "verification",
+    "baseline",
+    "cli"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

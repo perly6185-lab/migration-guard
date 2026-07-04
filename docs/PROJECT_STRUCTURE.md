@@ -1,0 +1,364 @@
+# Migration Guard 项目骨架
+
+Migration Guard 是一个面向重构和迁移场景的行为一致性验证工具。第一阶段采用 Node.js + TypeScript 实现，定位为 CLI 工具，不直接自动大规模改写源码，而是为人类和 AI 的迁移动作提供基线、验证、对比和审计护栏。
+
+## 推荐目录结构
+
+```text
+migration-guard/
+  package.json
+  tsconfig.json
+  README.md
+  .gitignore
+  .migration-guard.json
+
+  docs/
+    PRODUCT_DESIGN.md
+    PROJECT_STRUCTURE.md
+    REQUIREMENTS.md
+
+  src/
+    cli.ts
+    types.ts
+
+    core/
+      aiBrief.ts
+      compare.ts
+      config.ts
+      exec.ts
+      files.ts
+      hash.ts
+      markdown.ts
+      normalize.ts
+      plan.ts
+      probes.ts
+      scan.ts
+      snapshot.ts
+
+      compare.test.ts
+      normalize.test.ts
+
+  dist/
+    # TypeScript 编译产物
+
+  .migration-guard/
+    latest-baseline.json
+    latest-run.json
+    migration-plan.md
+
+    baselines/
+      baseline-*.json
+
+    runs/
+      run-*.json
+
+    compare/
+      *.json
+      *.md
+
+    scan/
+      *.json
+
+    ai/
+      brief-*.md
+      latest-brief.md
+
+    migration-runs/
+      run-*/
+        run.json
+        estimate.json
+        task-graph.json
+        issues.json
+        evidence.jsonl
+        checkpoints/
+```
+
+## 核心模块职责
+
+### `docs/PRODUCT_DESIGN.md`
+
+长期产品设计文档，描述 Migration Guard 如何从当前行为一致性护栏演进为大仓库 AI 自治迁移执行系统。
+
+重点包括：
+
+- source project / target project
+- migration run
+- dynamic task graph
+- checkpoint / rollback
+- issue 管控层
+- evidence log
+- planner / replanner
+- full-auto large-repo migration roadmap
+
+### `src/cli.ts`
+
+CLI 入口，负责命令分发和用户交互。
+
+计划支持命令：
+
+```bash
+migration-guard init
+migration-guard scan
+migration-guard baseline
+migration-guard verify
+migration-guard compare
+migration-guard plan
+migration-guard ai-brief
+```
+
+### `src/types.ts`
+
+集中定义配置、扫描结果、检查结果、行为探针、快照、差异报告等核心类型。
+
+核心类型包括：
+
+- `MigrationGuardConfig`
+- `CheckConfig`
+- `BehaviorProbeConfig`
+- `Snapshot`
+- `ScanSummary`
+- `CompareReport`
+- `Difference`
+
+### `src/core/config.ts`
+
+负责读取、初始化和合并 `.migration-guard.json`。
+
+主要职责：
+
+- 创建默认配置
+- 查找配置文件
+- 解析目标项目根目录
+- 解析 artifacts 输出目录
+
+### `src/core/scan.ts`
+
+负责只读扫描目标项目。
+
+主要产出：
+
+- 文件数量
+- 源码文件数量
+- 测试文件数量
+- 代码行数
+- 包管理器识别
+- 技术栈线索
+- import 依赖边
+- 高风险文件列表
+
+高风险文件判断维度：
+
+- 文件体积较大
+- 被多个模块引用
+- 缺少邻近测试
+- 位于共享模块或核心链路
+
+### `src/core/probes.ts`
+
+负责执行行为验证项。
+
+支持两类探针：
+
+- command probe：执行脚本或命令，采集标准输出
+- HTTP probe：请求接口，采集响应状态码和响应体
+
+探针输出会经过 normalize 后计算 hash，用于迁移前后对比。
+
+### `src/core/normalize.ts`
+
+负责消除无意义差异。
+
+支持能力：
+
+- 去除 ANSI 颜色码
+- 统一换行
+- trim 空白
+- JSON key 排序
+- 忽略时间戳、随机 ID 等不稳定字段
+
+### `src/core/snapshot.ts`
+
+负责采集和保存快照。
+
+快照分为两类：
+
+- baseline：迁移前的行为基线
+- run：迁移后的验证结果
+
+每个快照包含：
+
+- 扫描摘要
+- checks 结果
+- probes 结果
+- 配置 hash
+- 创建时间
+
+### `src/core/compare.ts`
+
+负责比较 baseline 和 run。
+
+比较维度：
+
+- check 是否从 passed 变为 failed
+- probe 状态是否变化
+- probe normalize 后的输出 hash 是否变化
+- 配置是否变化
+- 源码文件数量是否变化
+
+差异级别：
+
+- `error`：会阻断迁移继续推进
+- `warn`：需要 review，但不一定阻断
+- `info`：上下文变化提示
+
+### `src/core/aiBrief.ts`
+
+负责生成 AI 迁移上下文包。
+
+AI brief 包含：
+
+- 项目扫描摘要
+- 高风险文件
+- 当前 checks
+- 当前 behavior probes
+- 最新 baseline/run/compare 结果
+- AI 操作规则
+- 推荐下一步迁移任务
+- 可复制给 AI 的提示词模板
+
+AI 不直接绕过验证流程。AI 每次迁移动作后必须回到 `verify` 和 `compare`。
+
+### `src/core/plan.ts`
+
+根据扫描结果生成迁移计划。
+
+计划阶段：
+
+1. 锁定当前行为
+2. 强化验证体系
+3. 先迁移低风险叶子模块
+4. 再迁移共享模块
+5. 清理兼容层
+
+### `src/core/markdown.ts`
+
+负责把扫描结果、对比结果和快照摘要渲染成 Markdown。
+
+### `src/core/exec.ts`
+
+负责安全执行 shell 命令。
+
+能力包括：
+
+- 超时控制
+- stdout/stderr 捕获
+- 输出截断
+- 退出码记录
+- Windows 隐藏子进程窗口
+
+### `src/core/files.ts`
+
+文件系统工具函数。
+
+主要能力：
+
+- 读写 JSON
+- 读写文本
+- 创建目录
+- 判断路径是否存在
+- 路径标准化
+
+## 配置文件结构
+
+`.migration-guard.json` 示例：
+
+```json
+{
+  "schemaVersion": 1,
+  "targetRoot": ".",
+  "artifactsDir": ".migration-guard",
+  "ignore": [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".migration-guard"
+  ],
+  "checks": [
+    {
+      "name": "typecheck",
+      "command": "npm run typecheck --if-present",
+      "timeoutMs": 120000,
+      "critical": true
+    },
+    {
+      "name": "test",
+      "command": "npm test --if-present",
+      "timeoutMs": 120000,
+      "critical": true
+    },
+    {
+      "name": "build",
+      "command": "npm run build --if-present",
+      "timeoutMs": 180000,
+      "critical": true
+    }
+  ],
+  "probes": [],
+  "output": {
+    "maxOutputBytes": 262144
+  },
+  "compare": {
+    "failOnCheckRegression": true,
+    "failOnProbeDiff": true
+  }
+}
+```
+
+## 行为一致性主流程
+
+```text
+初始化配置
+  -> 扫描项目
+  -> 配置 checks 和 probes
+  -> 采集 baseline
+  -> 人类或 AI 做一个小迁移动作
+  -> verify 采集 run
+  -> compare 对比 baseline 和 run
+  -> 处理差异
+  -> 进入下一步迁移
+```
+
+## AI 协作流程
+
+```text
+migration-guard baseline
+  -> migration-guard ai-brief
+  -> AI 阅读 brief 并声明本次迁移范围
+  -> AI 做一个小改动
+  -> migration-guard verify
+  -> compare report 决定是否继续
+```
+
+AI 的职责：
+
+- 读懂代码和迁移目标
+- 提出小步改造方案
+- 执行局部重构
+- 解释差异
+
+Migration Guard 的职责：
+
+- 固定迁移前行为
+- 执行验证命令
+- 采集行为输出
+- 对比迁移前后差异
+- 输出可审计证据
+
+人类的职责：
+
+- 决定迁移目标
+- 审核高风险改动
+- 批准 intentional behavior change
+- 补充业务语义和关键样本

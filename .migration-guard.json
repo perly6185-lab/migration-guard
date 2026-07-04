@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "targetRoot": ".",
+  "artifactsDir": ".migration-guard",
+  "ignore": [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".next",
+    ".nuxt",
+    ".turbo",
+    ".migration-guard"
+  ],
+  "checks": [
+    {
+      "name": "typecheck",
+      "command": "npm run typecheck --if-present",
+      "timeoutMs": 120000,
+      "critical": true
+    },
+    {
+      "name": "test",
+      "command": "npm test --if-present",
+      "timeoutMs": 120000,
+      "critical": true
+    },
+    {
+      "name": "build",
+      "command": "npm run build --if-present",
+      "timeoutMs": 180000,
+      "critical": true
+    }
+  ],
+  "probes": [
+    {
+      "type": "command",
+      "name": "cli-help-output",
+      "command": "node dist/cli.js --help",
+      "timeoutMs": 30000,
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf"
+      }
+    }
+  ],
+  "output": {
+    "maxOutputBytes": 262144
+  },
+  "compare": {
+    "failOnCheckRegression": true,
+    "failOnProbeDiff": true
+  }
+}
