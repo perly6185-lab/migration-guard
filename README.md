@@ -136,3 +136,6 @@ independently runnable implementation phases.
 
 See [docs/PHASE_COMPLETION_REPORT.md](docs/PHASE_COMPLETION_REPORT.md) for the
 current phase completion report.
+
+See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
+for the next real-world validation plan using `perly6185-lab/md`.
