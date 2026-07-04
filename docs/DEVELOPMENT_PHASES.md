@@ -26,6 +26,9 @@
 | Phase 8 | Full Auto Large-Repo Orchestrator | 能长时间自治迁移大仓库 |
 | Phase 9 | Team + CI + External Issues | 能接入团队协作和 CI 门禁 |
 | Phase 10 | Cross-Language Behavior Replay | 能支持跨语言行为复刻迁移 |
+| Phase 11 | Real-World Target Validation | 能在真实外部仓库上打穿 baseline/verify/report |
+| Phase 12 | Assisted Migration Workflow | 能把真实仓库风险转成 action plan、issue dry-run 和 preview probe |
+| Phase 13 | Executable Action Proposals | 能把 action plan 转成真实可应用的小步 probe patch |
 
 ## Phase 0: CLI Bootstrap
 
@@ -405,6 +408,102 @@ migration-guard contract test --target <target-service-url>
 - 不依赖语法翻译，也能验证目标系统是否复刻关键行为。
 - 同一请求能打到 source 和 target 并生成差异报告。
 - 预期差异必须进入 allowlist，否则保持风险状态。
+
+## Phase 11: Real-World Target Validation
+
+目标：在真实外部仓库上证明工具可运行，而不是只在 fixture 上通过。
+
+新增能力：
+
+- 外部 target 配置
+- 真实项目 checks/probes
+- 真实项目基线和验证报告
+- 大仓库风险扫描报告
+
+建议命令：
+
+```bash
+migration-guard baseline --config configs/md-fast.migration-guard.json
+migration-guard verify --config configs/md-fast.migration-guard.json
+```
+
+产物：
+
+- 外部 target baseline/run/compare artifacts
+- 真实项目验证计划和报告
+
+完成标准：
+
+- 至少一个真实仓库 baseline/verify 通过。
+- compare report 能解释行为是否变化。
+- 目标仓库工作树保持干净。
+
+## Phase 12: Assisted Migration Workflow
+
+目标：从只验证行为，推进到能提出可审计的迁移动作。
+
+新增能力：
+
+- portable target harness
+- check output normalization
+- `pnpm-vite-vue` action planner
+- issue sync dry-run
+- dry-run patch proposal
+- preview/HTTP smoke probe
+
+建议命令：
+
+```bash
+migration-guard run --config configs/md-full.migration-guard.json --adapter pnpm-vite-vue --dry-run
+migration-guard resume --config configs/md-full.migration-guard.json --run latest --auto
+migration-guard sync-issues --config configs/md-full.migration-guard.json --run latest --provider github --dry-run
+```
+
+产物：
+
+- action plan JSON
+- provider-neutral issue export
+- proposal artifacts
+- preview probe JSON
+
+完成标准：
+
+- 真实仓库 run 能完成。
+- action plan 能转成 issue。
+- preview URL 能被探测为 ready。
+
+## Phase 13: Executable Action Proposals
+
+目标：把 Phase 12 产生的 action plan 转为真实、可检查、可应用的小步 patch proposal。
+
+新增能力：
+
+- `actions` CLI 查看 action plan
+- `action propose` CLI 从 action 生成 proposal
+- action proposal 生成真实 git patch
+- probe patch 新增可运行脚本，而不是只记录占位文本
+- patch 生成器单元测试使用 `git apply --check` 验证
+
+建议命令：
+
+```bash
+migration-guard actions --run latest
+migration-guard action propose --run latest --action action-renderer-probes
+git apply --check <proposal.patch>
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/proposals/patch-*/proposal.json`
+- `.migration-guard/migration-runs/run-*/proposals/patch-*/patch.diff`
+- 目标仓库内可新增的 `scripts/migration-guard/*.mjs` probe 脚本
+
+完成标准：
+
+- action plan 可以被 CLI 列出。
+- action proposal patch 是合法 git patch。
+- patch check 不修改目标仓库。
+- 后续阶段可以在同一机制上扩展真实测试、Playwright 和 codemod patch。
 
 ## 阶段交付规则
 

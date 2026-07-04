@@ -18,6 +18,7 @@ migration-guard/
     MD_REAL_WORLD_VALIDATION_REPORT.md
     PHASE_COMPLETION_REPORT.md
     PHASE_12_REPORT.md
+    PHASE_13_REPORT.md
     PRODUCT_DESIGN.md
     PROJECT_STRUCTURE.md
     REQUIREMENTS.md
@@ -36,6 +37,7 @@ migration-guard/
 
     core/
       aiBrief.ts
+      actionPlan.ts
       checkNormalize.ts
       checkpoint.ts
       compare.ts
@@ -61,6 +63,7 @@ migration-guard/
       checkNormalize.test.ts
       config.test.ts
       normalize.test.ts
+      patch.test.ts
       taskGraph.test.ts
 
   dist/
@@ -269,6 +272,16 @@ AI brief 包含：
 - 可复制给 AI 的提示词模板
 
 AI 不直接绕过验证流程。AI 每次迁移动作后必须回到 `verify` 和 `compare`。
+
+### `src/core/actionPlan.ts`
+
+负责读取和渲染 adapter 生成的 action plan。
+
+主要职责：
+
+- 定位 run 内的 action plan artifact
+- 加载 `MigrationActionPlan`
+- 为 CLI 输出可读 action 摘要
 
 ### `src/core/migrationRun.ts`
 

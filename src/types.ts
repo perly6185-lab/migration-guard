@@ -404,17 +404,42 @@ export interface DualRunReport {
   differences: DualRunDifference[];
 }
 
+export type MigrationActionPatchMode = "dry-run-only" | "manual-approval-required";
+export type MigrationActionPatchTemplate = "renderer-probe" | "api-contract-probe" | "ui-smoke-probe";
+
+export interface MigrationAction {
+  id: string;
+  title: string;
+  summary: string;
+  risk: "low" | "medium" | "high";
+  affectedFiles: string[];
+  recommendedChecks: string[];
+  patchMode: MigrationActionPatchMode;
+  patchTemplate?: MigrationActionPatchTemplate;
+}
+
+export interface MigrationActionPlan {
+  version: 1;
+  runId: string;
+  createdAt: string;
+  goal: string;
+  actions: MigrationAction[];
+}
+
 export interface ProposedPatch {
   version: 1;
   id: string;
   runId: string;
-  taskId: string;
+  taskId?: string;
+  actionId?: string;
   createdAt: string;
   title: string;
   summary: string;
   risk: "low" | "medium" | "high";
   patchPath: string;
   affectedFiles: string[];
+  generatedFiles?: string[];
   recommendedChecks: string[];
+  patchKind?: "task-placeholder" | "action-probe";
   applyState: "proposed" | "applied" | "rejected";
 }

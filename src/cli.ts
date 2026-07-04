@@ -22,7 +22,8 @@ import { captureSnapshot, latestBaselinePath, latestRunPath, loadSnapshot, saveS
 import { compareSnapshots } from "./core/compare.js";
 import { getReadyTasks, validateTaskGraph } from "./core/taskGraph.js";
 import { syncIssues } from "./core/issueSync.js";
-import { applyProposedPatch, proposePatch } from "./core/patch.js";
+import { loadActionPlan, renderActionPlan } from "./core/actionPlan.js";
+import { applyProposedPatch, proposeActionPatch, proposePatch } from "./core/patch.js";
 import { runPreviewProbe } from "./core/preview.js";
 import type { CompareReport, MigrationAutomationMode, MigrationRun } from "./types.js";
 
@@ -74,6 +75,9 @@ async function main(argv: string[]): Promise<void> {
     case "tasks":
       await commandTasks(args);
       return;
+    case "actions":
+      await commandActions(args);
+      return;
     case "report":
       await commandReport(args);
       return;
@@ -88,6 +92,9 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "task":
       await commandTask(args);
+      return;
+    case "action":
+      await commandAction(args);
       return;
     case "sync-issues":
       await commandSyncIssues(args);
@@ -368,6 +375,17 @@ async function commandTasks(args: ParsedArgs): Promise<void> {
   }
 }
 
+async function commandActions(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const plan = await loadActionPlan(loaded, pkg);
+  if (args.options.json) {
+    console.log(JSON.stringify(plan, null, 2));
+    return;
+  }
+  console.log(renderActionPlan(plan));
+}
+
 async function commandReport(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
@@ -461,6 +479,28 @@ async function commandTask(args: ParsedArgs): Promise<void> {
     return;
   }
   throw new Error(`Unknown task action: ${action}`);
+}
+
+async function commandAction(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "propose";
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const actionId = stringOption(args, "action") ?? args.positionals[1];
+
+  if (action === "propose") {
+    if (!actionId) {
+      throw new Error("action propose requires --action <action-id>.");
+    }
+    const patch = await proposeActionPatch(loaded, pkg, actionId);
+    console.log(`Proposed ${patch.id}`);
+    console.log(patch.patchPath);
+    if (patch.generatedFiles && patch.generatedFiles.length > 0) {
+      console.log(`Generated files: ${patch.generatedFiles.join(", ")}`);
+    }
+    return;
+  }
+
+  throw new Error(`Unknown action command: ${action}`);
 }
 
 async function commandSyncIssues(args: ParsedArgs): Promise<void> {
@@ -603,6 +643,7 @@ Usage:
   migration-guard status [--run <id|latest>]
   migration-guard issues [--run <id|latest>] [--json]
   migration-guard tasks [--run <id|latest>] [--json]
+  migration-guard actions [--run <id|latest>] [--json]
   migration-guard report [--run <id|latest>]
   migration-guard checkpoint create|list [--run <id|latest>]
   migration-guard resume [--run <id|latest>] [--auto]
@@ -610,6 +651,7 @@ Usage:
   migration-guard task run [--run <id|latest>] --task <id>
   migration-guard task propose [--run <id|latest>] --task <id>
   migration-guard task apply [--run <id|latest>] --proposal <id>
+  migration-guard action propose [--run <id|latest>] --action <id>
   migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run]
   migration-guard ci verify --baseline <path>
   migration-guard contract capture --source <url>

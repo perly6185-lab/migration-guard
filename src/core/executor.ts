@@ -8,7 +8,7 @@ import { scanProject } from "./scan.js";
 import { updateTaskStatus, insertFailureTask, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
 import { appendEvidence, createFailureIssue, createId, migrationRunDir, saveRunPackage, setRunStatus, syncIssueStatuses, writeRunReport } from "./migrationRun.js";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
-import type { LoadedConfig, MigrationIssue, MigrationTask, ScanSummary } from "../types.js";
+import type { LoadedConfig, MigrationAction, MigrationIssue, MigrationTask, ScanSummary } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
 export interface ExecuteTaskOptions {
@@ -361,6 +361,8 @@ async function createPnpmViteVueRiskIssues(loaded: LoadedConfig, pkg: MigrationR
     riskFiles: scan.riskFiles.slice(0, 10)
   });
   await writeJsonFile(actionPlanPath, {
+    version: 1,
+    runId: pkg.run.id,
     createdAt: now,
     goal: pkg.run.goal,
     actions
@@ -392,28 +394,12 @@ async function createPnpmViteVueRiskIssues(loaded: LoadedConfig, pkg: MigrationR
   return `Created ${issues.length} risk issues and wrote ${reportPath} plus ${actionPlanPath}`;
 }
 
-function createPnpmViteVueActions(scan: ScanSummary): Array<{
-  id: string;
-  title: string;
-  summary: string;
-  risk: "low" | "medium" | "high";
-  affectedFiles: string[];
-  recommendedChecks: string[];
-  patchMode: "dry-run-only" | "manual-approval-required";
-}> {
+function createPnpmViteVueActions(scan: ScanSummary): MigrationAction[] {
   const risks = scan.riskFiles;
   const renderer = risks.find((file) => file.path.includes("packages/core/src/renderer/renderer-impl.ts"));
   const apiTypes = risks.find((file) => file.path.includes("apps/api/src/types.ts"));
   const largeVue = risks.find((file) => file.path.endsWith(".vue"));
-  const actions: Array<{
-    id: string;
-    title: string;
-    summary: string;
-    risk: "low" | "medium" | "high";
-    affectedFiles: string[];
-    recommendedChecks: string[];
-    patchMode: "dry-run-only" | "manual-approval-required";
-  }> = [
+  const actions: MigrationAction[] = [
     {
       id: "action-renderer-probes",
       title: "Add/expand behavior probes before renderer refactor",
@@ -421,7 +407,8 @@ function createPnpmViteVueActions(scan: ScanSummary): Array<{
       risk: renderer ? "medium" as const : "low" as const,
       affectedFiles: renderer ? [renderer.path] : ["packages/core/src/renderer/renderer-impl.ts"],
       recommendedChecks: ["pnpm --filter @md/core test", "pnpm type-check:packages"],
-      patchMode: "dry-run-only" as const
+      patchMode: "dry-run-only" as const,
+      patchTemplate: "renderer-probe"
     },
     {
       id: "action-api-type-contract",
@@ -430,7 +417,8 @@ function createPnpmViteVueActions(scan: ScanSummary): Array<{
       risk: apiTypes ? "medium" as const : "low" as const,
       affectedFiles: apiTypes ? [apiTypes.path] : ["apps/api/src/types.ts"],
       recommendedChecks: ["pnpm type-check:packages"],
-      patchMode: "dry-run-only" as const
+      patchMode: "dry-run-only" as const,
+      patchTemplate: "api-contract-probe"
     }
   ];
 
@@ -442,7 +430,8 @@ function createPnpmViteVueActions(scan: ScanSummary): Array<{
       risk: "high",
       affectedFiles: [largeVue.path],
       recommendedChecks: ["pnpm --filter @md/web test", "pnpm type-check:web"],
-      patchMode: "manual-approval-required"
+      patchMode: "manual-approval-required",
+      patchTemplate: "ui-smoke-probe"
     });
   }
 
