@@ -116,3 +116,6 @@ See [docs/PRODUCT_DESIGN.md](docs/PRODUCT_DESIGN.md) for the planned evolution
 from the current verification CLI into a full autonomous migration system with
 dynamic task graphs, checkpoints, issue-based control, evidence logs and
 continuous replanning.
+
+See [docs/DEVELOPMENT_PHASES.md](docs/DEVELOPMENT_PHASES.md) for the
+independently runnable implementation phases.

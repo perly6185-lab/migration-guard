@@ -1,0 +1,426 @@
+# Migration Guard 独立可运行开发阶段
+
+本文档定义工程实施路线。它不替代 `PRODUCT_DESIGN.md` 的产品路线，而是把长期路线拆成可以逐步交付、逐步运行、逐步验证的开发阶段。
+
+核心原则：
+
+- 每个阶段都必须能 `npm run build`。
+- 每个阶段都必须有至少一条可复制的 CLI happy path。
+- 每个阶段都必须产出可检查 artifact。
+- 每个阶段结束时，工具都应是一个可独立使用的产品切片。
+- 不合入只有内部重构、没有用户可运行入口的阶段。
+- 每个阶段发布时必须保留所有前置阶段的可运行能力；阶段命令是新增能力的 smoke path，而不是替代前置命令。
+
+## 阶段总览
+
+| 阶段 | 可运行形态 | 独立价值 |
+| --- | --- | --- |
+| Phase 0 | CLI bootstrap | 工具可安装、可构建、可显示帮助 |
+| Phase 1 | Safety Core | 能采集基线、验证迁移后行为、对比差异 |
+| Phase 2 | Planning + AI Brief | 能生成迁移计划和 AI 上下文包 |
+| Phase 3 | Migration Run + Local Issues | 能把一次迁移作为长任务跟踪 |
+| Phase 4 | Dynamic Task Graph Dry Run | 能生成结构化任务图并模拟调度 |
+| Phase 5 | Checkpoint + Resume + Rollback | 能暂停、恢复、回退迁移运行 |
+| Phase 6 | Verified Execution Loop | 能执行任务、验证、失败后重规划 |
+| Phase 7 | First Same-Ecosystem Auto Adapter | 能自动完成一个高确定性迁移场景 |
+| Phase 8 | Full Auto Large-Repo Orchestrator | 能长时间自治迁移大仓库 |
+| Phase 9 | Team + CI + External Issues | 能接入团队协作和 CI 门禁 |
+| Phase 10 | Cross-Language Behavior Replay | 能支持跨语言行为复刻迁移 |
+
+## Phase 0: CLI Bootstrap
+
+目标：建立最小可运行 CLI。
+
+新增能力：
+
+- TypeScript 项目骨架
+- CLI 入口
+- help 输出
+- 默认配置生成
+- 基础测试框架
+
+可运行命令：
+
+```bash
+npm install
+npm run build
+node dist/cli.js --help
+node dist/cli.js init --target .
+```
+
+产物：
+
+- `dist/`
+- `.migration-guard.json`
+
+完成标准：
+
+- CLI 能在 Windows/macOS/Linux 上启动。
+- `init` 不依赖目标项目技术栈。
+- 没有目标项目时也能输出明确错误。
+
+## Phase 1: Safety Core
+
+目标：形成行为一致性验证闭环。
+
+新增能力：
+
+- scan
+- baseline
+- verify
+- compare
+- command probe
+- HTTP probe
+- normalize
+- Markdown/JSON compare report
+
+可运行命令：
+
+```bash
+node dist/cli.js scan
+node dist/cli.js baseline
+node dist/cli.js verify
+node dist/cli.js compare
+```
+
+产物：
+
+- `.migration-guard/scan/*.json`
+- `.migration-guard/baselines/*.json`
+- `.migration-guard/runs/*.json`
+- `.migration-guard/compare/*.json`
+- `.migration-guard/compare/*.md`
+
+完成标准：
+
+- critical check 从 passed 变为 failed 时，`verify` 返回非 0。
+- probe normalized output 变化时，compare report 标记 error。
+- 没有 AI、没有自动改写时，工具已经能独立保护迁移行为。
+
+## Phase 2: Planning + AI Brief
+
+目标：让工具能辅助人类或 AI 安全规划下一步。
+
+新增能力：
+
+- 风险文件摘要
+- 迁移阶段建议
+- 验证优先级建议
+- AI 上下文包
+- latest baseline/run/compare 摘要
+
+可运行命令：
+
+```bash
+node dist/cli.js plan
+node dist/cli.js ai-brief
+```
+
+产物：
+
+- `.migration-guard/migration-plan.md`
+- `.migration-guard/ai/brief-*.md`
+
+完成标准：
+
+- AI brief 能独立说明当前项目、风险、检查项、探针和下一步建议。
+- plan 输出能指导一个小步迁移动作。
+- 这一阶段仍不自动改源码。
+
+## Phase 3: Migration Run + Local Issues
+
+目标：把一次迁移升级为可跟踪的长任务。
+
+新增能力：
+
+- `MigrationRun`
+- 本地 issue store
+- run status
+- evidence log
+- estimate report
+- status/report 命令
+
+建议命令：
+
+```bash
+migration-guard run --source . --target . --goal "Webpack to Vite" --init-only
+migration-guard status --run latest
+migration-guard issues --run latest
+migration-guard report --run latest
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/run.json`
+- `.migration-guard/migration-runs/run-*/estimate.json`
+- `.migration-guard/migration-runs/run-*/issues.json`
+- `.migration-guard/migration-runs/run-*/evidence.jsonl`
+- `.migration-guard/migration-runs/run-*/reports/*.md`
+
+完成标准：
+
+- 不执行代码改写，也能创建完整迁移运行。
+- 每个 issue 有状态、类型、风险、关联 run id。
+- report 能汇总当前迁移目标、进度、风险和下一步。
+
+## Phase 4: Dynamic Task Graph Dry Run
+
+目标：引入动态任务图，但先以 dry run 方式交付。
+
+新增能力：
+
+- 结构化 task graph
+- task dependency
+- ready/running/done/blocked 状态
+- replanning trigger 记录
+- task-scoped AI brief
+- graph validation
+
+建议命令：
+
+```bash
+migration-guard run --source . --target . --goal "Webpack to Vite" --dry-run
+migration-guard tasks --run latest
+migration-guard ai-brief --run latest --task <task-id>
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/task-graph.json`
+- `.migration-guard/migration-runs/run-*/ai/task-*.md`
+
+完成标准：
+
+- task graph 可以被校验为无环。
+- dry run 能选出下一批 ready tasks。
+- 发现缺失验证时，可以插入新任务，但不改源码。
+
+## Phase 5: Checkpoint + Resume + Rollback
+
+目标：让长任务具备恢复能力。
+
+新增能力：
+
+- checkpoint create/list
+- patch capture
+- resume
+- rollback
+- interrupted run recovery
+- checkpoint evidence
+
+建议命令：
+
+```bash
+migration-guard checkpoint create --run latest
+migration-guard checkpoint list --run latest
+migration-guard resume --run latest
+migration-guard rollback --run latest --checkpoint <checkpoint-id>
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/checkpoints/*/metadata.json`
+- `.migration-guard/migration-runs/run-*/checkpoints/*/patch.diff`
+- `.migration-guard/migration-runs/run-*/checkpoints/*/verification.json`
+
+完成标准：
+
+- 中断后能从 latest run state 恢复。
+- rollback 不影响 run 之外的 unrelated workspace changes。
+- 每次 checkpoint 都能追溯对应 task 和验证结果。
+
+## Phase 6: Verified Execution Loop
+
+目标：形成执行、验证、失败处理、重规划的闭环。
+
+新增能力：
+
+- task executor interface
+- manual executor
+- shell/codemod executor
+- post-task verification
+- failure issue
+- diff issue
+- replan decision
+
+建议命令：
+
+```bash
+migration-guard run --source . --target . --goal "Webpack to Vite" --execute manual
+migration-guard task run --run latest --task <task-id>
+migration-guard verify --run latest
+```
+
+产物：
+
+- task execution records
+- verification records
+- failure issues
+- diff issues
+- updated task graph
+
+完成标准：
+
+- 每个 task 执行后必须进入 verification。
+- 验证失败会自动生成 issue，并触发重规划。
+- 即使没有 AI provider，也可以通过 manual/shell executor 独立运行。
+
+## Phase 7: First Same-Ecosystem Auto Adapter
+
+目标：先让一个高确定性迁移场景能端到端自动完成。
+
+建议首选场景：
+
+- Webpack -> Vite
+
+新增能力：
+
+- JS/TS 项目 adapter
+- Vite migration rules
+- package/script/config migration
+- alias/env/plugin compatibility checks
+- focused verification
+- adapter-specific replanning
+
+建议命令：
+
+```bash
+migration-guard run --source . --target . --goal "Webpack to Vite" --auto --adapter js-vite
+```
+
+产物：
+
+- migrated target workspace
+- adapter task graph
+- checkpoint history
+- final compare report
+- final migration report
+
+完成标准：
+
+- 在样例 Webpack 项目上能自动迁移到 Vite。
+- 迁移后 build/test/verify 通过。
+- 失败时能定位到 adapter task，而不是只返回一段构建日志。
+
+## Phase 8: Full Auto Large-Repo Orchestrator
+
+目标：把单场景自动迁移扩展到大仓库长时间自治运行。
+
+新增能力：
+
+- long-running scheduler
+- budget tracking
+- dynamic estimate
+- task batching
+- automatic retry
+- partial rollback
+- large output summarization
+- final quality gate
+
+建议命令：
+
+```bash
+migration-guard run --source . --target . --goal "Webpack to Vite" --auto --resume
+```
+
+产物：
+
+- complete migration run
+- full evidence log
+- final quality report
+- unresolved risk list
+- accepted diff list
+
+完成标准：
+
+- 工具可以长时间运行并持续更新状态。
+- 新发现的问题能插入新任务，而不是停止在固定计划上。
+- 最终完成条件基于验证和风险收敛，不只是 task list 为空。
+
+## Phase 9: Team + CI + External Issues
+
+目标：让迁移过程进入团队协作和 CI 门禁。
+
+新增能力：
+
+- GitHub/GitLab/Jira/Linear issue sync
+- PR comment
+- CI verify command
+- baseline artifact upload/download
+- intentional diff approval record
+- reviewer handoff report
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github
+migration-guard ci verify --baseline <baseline-artifact>
+```
+
+产物：
+
+- external issue mapping
+- PR compare comment
+- CI verification report
+- approval records
+
+完成标准：
+
+- 本地 issue 和外部 issue 可双向同步。
+- CI 能阻断关键行为漂移。
+- 团队成员不运行本地长任务，也能看懂迁移状态。
+
+## Phase 10: Cross-Language Behavior Replay
+
+目标：支持跨语言迁移，重点从代码改写转为行为复刻。
+
+新增能力：
+
+- behavior baseline extraction
+- API contract capture
+- data model mapping
+- dual-run comparison
+- contract test generation
+- difference allowlist
+- staged traffic cutover record
+
+建议命令：
+
+```bash
+migration-guard contract capture --source <source-service-url>
+migration-guard dual-run --source <source-service-url> --target <target-service-url>
+migration-guard contract test --target <target-service-url>
+```
+
+产物：
+
+- behavior baseline corpus
+- contract tests
+- dual-run diff report
+- data mapping report
+- accepted differences
+
+完成标准：
+
+- 不依赖语法翻译，也能验证目标系统是否复刻关键行为。
+- 同一请求能打到 source 和 target 并生成差异报告。
+- 预期差异必须进入 allowlist，否则保持风险状态。
+
+## 阶段交付规则
+
+每个阶段合入前都必须回答：
+
+1. 用户如何运行这个阶段？
+2. 这个阶段会生成什么 artifact？
+3. 如果停止在这个阶段，工具能解决什么真实问题？
+4. 失败时用户能看到什么证据？
+5. 下一阶段是否只是在这个阶段之上增强，而不是推倒重来？
+
+建议每个阶段至少保留：
+
+- CLI happy path
+- JSON artifact
+- Markdown report
+- Windows 验证
+- 单元测试或 fixture 测试
+- README 或 docs 入口

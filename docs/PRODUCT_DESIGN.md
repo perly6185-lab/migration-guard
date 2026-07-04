@@ -559,6 +559,8 @@ run
 
 ## 9. 阶段路线图
 
+可独立运行的工程实施阶段见 `docs/DEVELOPMENT_PHASES.md`。本节描述产品能力演进方向。
+
 ### Phase 1: Safety Core
 
 当前仓库已经在做这一层：

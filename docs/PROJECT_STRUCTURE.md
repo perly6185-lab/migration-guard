@@ -13,6 +13,7 @@ migration-guard/
   .migration-guard.json
 
   docs/
+    DEVELOPMENT_PHASES.md
     PRODUCT_DESIGN.md
     PROJECT_STRUCTURE.md
     REQUIREMENTS.md
