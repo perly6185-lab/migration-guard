@@ -23,7 +23,13 @@ import { compareSnapshots } from "./core/compare.js";
 import { getReadyTasks, validateTaskGraph } from "./core/taskGraph.js";
 import { syncIssues } from "./core/issueSync.js";
 import { loadActionPlan, renderActionPlan } from "./core/actionPlan.js";
-import { applyProposedPatch, proposeActionPatch, proposePatch } from "./core/patch.js";
+import {
+  applyProposedPatch,
+  proposeActionPatch,
+  proposePatch,
+  renderProposalVerificationReport,
+  verifyProposedPatch
+} from "./core/patch.js";
 import { runPreviewProbe } from "./core/preview.js";
 import type { CompareReport, MigrationAutomationMode, MigrationRun } from "./types.js";
 
@@ -95,6 +101,9 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "action":
       await commandAction(args);
+      return;
+    case "proposal":
+      await commandProposal(args);
       return;
     case "sync-issues":
       await commandSyncIssues(args);
@@ -475,7 +484,11 @@ async function commandTask(args: ParsedArgs): Promise<void> {
     if (!proposalId) {
       throw new Error("task apply requires --proposal <proposal-id>.");
     }
-    console.log(await applyProposedPatch(loaded, pkg, proposalId));
+    const result = await applyProposedPatch(loaded, pkg, proposalId);
+    console.log(result.message);
+    if (result.report) {
+      console.log(renderProposalVerificationReport(result.report));
+    }
     return;
   }
   throw new Error(`Unknown task action: ${action}`);
@@ -500,7 +513,45 @@ async function commandAction(args: ParsedArgs): Promise<void> {
     return;
   }
 
+  if (action === "apply") {
+    const proposalId = stringOption(args, "proposal") ?? args.positionals[1];
+    if (!proposalId) {
+      throw new Error("action apply requires --proposal <proposal-id>.");
+    }
+    const result = await applyProposedPatch(loaded, pkg, proposalId, { runChecks: !args.options["skip-checks"] });
+    console.log(result.message);
+    if (result.report) {
+      console.log(renderProposalVerificationReport(result.report));
+    }
+    return;
+  }
+
   throw new Error(`Unknown action command: ${action}`);
+}
+
+async function commandProposal(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "verify";
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const proposalId = stringOption(args, "proposal") ?? args.positionals[1];
+
+  if (action === "verify") {
+    if (!proposalId) {
+      throw new Error("proposal verify requires --proposal <proposal-id>.");
+    }
+    const report = await verifyProposedPatch(loaded, pkg, proposalId, { runChecks: Boolean(args.options.checks) });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderProposalVerificationReport(report));
+    }
+    if (!report.passed) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  throw new Error(`Unknown proposal command: ${action}`);
 }
 
 async function commandSyncIssues(args: ParsedArgs): Promise<void> {
@@ -652,6 +703,8 @@ Usage:
   migration-guard task propose [--run <id|latest>] --task <id>
   migration-guard task apply [--run <id|latest>] --proposal <id>
   migration-guard action propose [--run <id|latest>] --action <id>
+  migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks]
+  migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--json]
   migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run]
   migration-guard ci verify --baseline <path>
   migration-guard contract capture --source <url>

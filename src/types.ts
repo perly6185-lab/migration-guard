@@ -338,7 +338,8 @@ export interface EvidenceEvent {
     | "replan"
     | "rollback"
     | "sync"
-    | "contract";
+    | "contract"
+    | "proposal";
   message: string;
   data?: unknown;
   createdAt: string;
@@ -442,4 +443,45 @@ export interface ProposedPatch {
   recommendedChecks: string[];
   patchKind?: "task-placeholder" | "action-probe";
   applyState: "proposed" | "applied" | "rejected";
+}
+
+export interface ProposalPatchCheck {
+  command: string;
+  cwd: string;
+  skipped: boolean;
+  passed: boolean;
+  exitCode: number | null;
+  durationMs: number;
+  stdout: string;
+  stderr: string;
+  error?: string;
+}
+
+export interface ProposalCommandCheck {
+  command: string;
+  cwd: string;
+  passed: boolean;
+  exitCode: number | null;
+  durationMs: number;
+  stdout: string;
+  stderr: string;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+  timedOut: boolean;
+  error?: string;
+}
+
+export interface ProposalVerificationReport {
+  version: 1;
+  id: string;
+  runId: string;
+  proposalId: string;
+  mode: "verify" | "apply";
+  createdAt: string;
+  patchPath: string;
+  applied: boolean;
+  passed: boolean;
+  patchCheck: ProposalPatchCheck;
+  checks: ProposalCommandCheck[];
+  outputPath: string;
 }

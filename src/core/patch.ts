@@ -3,9 +3,27 @@ import path from "node:path";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
 import { loadActionPlan } from "./actionPlan.js";
 import { appendEvidence, createId, migrationRunDir, saveRunPackage } from "./migrationRun.js";
-import type { LoadedConfig, MigrationAction, MigrationActionPatchTemplate, ProposedPatch } from "../types.js";
+import type {
+  LoadedConfig,
+  MigrationAction,
+  MigrationActionPatchTemplate,
+  ProposalCommandCheck,
+  ProposalPatchCheck,
+  ProposalVerificationReport,
+  ProposedPatch
+} from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 import { runShellCommand } from "./exec.js";
+
+export interface ApplyProposedPatchOptions {
+  runChecks?: boolean;
+}
+
+export interface ApplyProposedPatchResult {
+  message: string;
+  proposal: ProposedPatch;
+  report?: ProposalVerificationReport;
+}
 
 export async function proposePatch(loaded: LoadedConfig, pkg: MigrationRunPackage, taskId: string): Promise<ProposedPatch> {
   const task = pkg.graph.tasks.find((candidate) => candidate.id === taskId);
@@ -96,37 +114,71 @@ export async function proposeActionPatch(loaded: LoadedConfig, pkg: MigrationRun
   return proposed;
 }
 
-export async function applyProposedPatch(loaded: LoadedConfig, pkg: MigrationRunPackage, proposalId: string): Promise<string> {
-  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "proposals", proposalId);
-  const proposalPath = path.join(dir, "proposal.json");
+export async function verifyProposedPatch(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposalId: string,
+  options: { runChecks?: boolean } = {}
+): Promise<ProposalVerificationReport> {
+  const proposal = await loadProposal(loaded, pkg, proposalId);
+  const patchContent = await fs.readFile(proposal.patchPath, "utf8");
+  const patchCheck = await checkPatchApplicability(loaded, pkg, proposal, patchContent);
+  const checks = options.runChecks && patchCheck.passed ? await runProposalChecks(loaded, pkg, proposal) : [];
+  const report = await writeProposalVerificationReport(loaded, pkg, proposal, "verify", false, patchCheck, checks);
+
+  await appendEvidence(loaded, pkg.run.id, {
+    runId: pkg.run.id,
+    taskId: proposal.taskId,
+    type: "proposal",
+    message: `Verified proposal ${proposal.id}: ${report.passed ? "passed" : "failed"}`,
+    data: {
+      proposalId: proposal.id,
+      actionId: proposal.actionId,
+      outputPath: report.outputPath,
+      runChecks: Boolean(options.runChecks)
+    }
+  });
+  return report;
+}
+
+export async function applyProposedPatch(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposalId: string,
+  options: ApplyProposedPatchOptions = {}
+): Promise<ApplyProposedPatchResult> {
+  const proposalPath = proposalJsonPath(loaded, pkg, proposalId);
   const proposal = await readJsonFile<ProposedPatch>(proposalPath);
   const patchContent = await fs.readFile(proposal.patchPath, "utf8");
+  const patchCheck = await checkPatchApplicability(loaded, pkg, proposal, patchContent);
 
   if (!isGitPatchContent(patchContent)) {
     proposal.applyState = "applied";
     await writeJsonFile(proposalPath, proposal);
+    const checks = options.runChecks ? await runProposalChecks(loaded, pkg, proposal) : [];
+    const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checks);
     await appendEvidence(loaded, pkg.run.id, {
       runId: pkg.run.id,
       taskId: proposal.taskId,
-      type: "task-updated",
+      type: "proposal",
       message: `Marked non-mutating patch proposal ${proposal.id} as applied`,
       data: {
         patchPath: proposal.patchPath,
-        noOp: true
+        noOp: true,
+        outputPath: report.outputPath
       }
     });
     await saveRunPackage(loaded, pkg);
-    return `Proposal ${proposal.id} is non-mutating; marked applied.`;
+    return {
+      message: `Proposal ${proposal.id} is non-mutating; marked applied.`,
+      proposal,
+      report
+    };
   }
 
-  const check = await runShellCommand(`git apply --check "${proposal.patchPath}"`, {
-    cwd: pkg.run.targetRoot,
-    timeoutMs: 30000,
-    maxOutputBytes: loaded.config.output.maxOutputBytes
-  });
-
-  if (check.exitCode !== 0) {
-    throw new Error(`Patch check failed:\n${check.stderr || check.stdout || check.error || "unknown error"}`);
+  if (!patchCheck.passed) {
+    const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", false, patchCheck, []);
+    throw new Error(`Patch check failed. See ${report.outputPath}\n${patchCheck.stderr || patchCheck.stdout || patchCheck.error || "unknown error"}`);
   }
 
   const apply = await runShellCommand(`git apply "${proposal.patchPath}"`, {
@@ -141,17 +193,48 @@ export async function applyProposedPatch(loaded: LoadedConfig, pkg: MigrationRun
 
   proposal.applyState = "applied";
   await writeJsonFile(proposalPath, proposal);
+  const checks = options.runChecks ? await runProposalChecks(loaded, pkg, proposal) : [];
+  const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checks);
   await appendEvidence(loaded, pkg.run.id, {
     runId: pkg.run.id,
     taskId: proposal.taskId,
-    type: "task-updated",
-    message: `Applied patch proposal ${proposal.id}`,
+    type: "proposal",
+    message: `Applied patch proposal ${proposal.id}: ${report.passed ? "checks passed" : "checks failed"}`,
     data: {
-      patchPath: proposal.patchPath
+      patchPath: proposal.patchPath,
+      outputPath: report.outputPath,
+      runChecks: Boolean(options.runChecks)
     }
   });
   await saveRunPackage(loaded, pkg);
-  return `Applied proposal ${proposal.id}.`;
+
+  if (!report.passed) {
+    throw new Error(`Proposal ${proposal.id} applied, but verification failed. See ${report.outputPath}`);
+  }
+
+  return {
+    message: `Applied proposal ${proposal.id}.`,
+    proposal,
+    report
+  };
+}
+
+export function renderProposalVerificationReport(report: ProposalVerificationReport): string {
+  const lines = [
+    `Proposal: ${report.proposalId}`,
+    `Mode: ${report.mode}`,
+    `Applied: ${report.applied ? "yes" : "no"}`,
+    `Passed: ${report.passed ? "yes" : "no"}`,
+    `Patch check: ${report.patchCheck.skipped ? "skipped" : report.patchCheck.passed ? "passed" : "failed"}`,
+    `Checks: ${report.checks.length}`
+  ];
+
+  for (const check of report.checks) {
+    lines.push(`- ${check.passed ? "passed" : "failed"} ${check.command}`);
+  }
+
+  lines.push(`Wrote ${report.outputPath}`);
+  return lines.join("\n");
 }
 
 function createPatchSummary(title: string, affectedFiles: string[]): string {
@@ -159,6 +242,116 @@ function createPatchSummary(title: string, affectedFiles: string[]): string {
     return `${title}. This first proposal is intentionally empty and records the checks that should run before any source edit.`;
   }
   return `${title}. Review affected files before applying: ${affectedFiles.join(", ")}.`;
+}
+
+function proposalDir(loaded: LoadedConfig, pkg: MigrationRunPackage, proposalId: string): string {
+  return path.join(migrationRunDir(loaded, pkg.run.id), "proposals", proposalId);
+}
+
+function proposalJsonPath(loaded: LoadedConfig, pkg: MigrationRunPackage, proposalId: string): string {
+  return path.join(proposalDir(loaded, pkg, proposalId), "proposal.json");
+}
+
+async function loadProposal(loaded: LoadedConfig, pkg: MigrationRunPackage, proposalId: string): Promise<ProposedPatch> {
+  return readJsonFile<ProposedPatch>(proposalJsonPath(loaded, pkg, proposalId));
+}
+
+async function checkPatchApplicability(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch,
+  patchContent: string
+): Promise<ProposalPatchCheck> {
+  const command = `git apply --check "${proposal.patchPath}"`;
+  if (!isGitPatchContent(patchContent)) {
+    return {
+      command,
+      cwd: pkg.run.targetRoot,
+      skipped: true,
+      passed: true,
+      exitCode: 0,
+      durationMs: 0,
+      stdout: "",
+      stderr: ""
+    };
+  }
+
+  const result = await runShellCommand(command, {
+    cwd: pkg.run.targetRoot,
+    timeoutMs: 30000,
+    maxOutputBytes: loaded.config.output.maxOutputBytes
+  });
+  return {
+    command,
+    cwd: result.cwd,
+    skipped: false,
+    passed: result.exitCode === 0 && !result.timedOut && !result.error,
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    error: result.error
+  };
+}
+
+async function runProposalChecks(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch
+): Promise<ProposalCommandCheck[]> {
+  const checks: ProposalCommandCheck[] = [];
+
+  for (const command of proposal.recommendedChecks) {
+    const result = await runShellCommand(command, {
+      cwd: pkg.run.targetRoot,
+      timeoutMs: 120000,
+      maxOutputBytes: loaded.config.output.maxOutputBytes
+    });
+    checks.push({
+      command,
+      cwd: result.cwd,
+      passed: result.exitCode === 0 && !result.timedOut && !result.error,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      stdoutTruncated: result.stdoutTruncated,
+      stderrTruncated: result.stderrTruncated,
+      timedOut: result.timedOut,
+      error: result.error
+    });
+  }
+
+  return checks;
+}
+
+async function writeProposalVerificationReport(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch,
+  mode: ProposalVerificationReport["mode"],
+  applied: boolean,
+  patchCheck: ProposalPatchCheck,
+  checks: ProposalCommandCheck[]
+): Promise<ProposalVerificationReport> {
+  const outputPath = path.join(proposalDir(loaded, pkg, proposal.id), `verification-${Date.now()}.json`);
+  const report: ProposalVerificationReport = {
+    version: 1,
+    id: createId("proposal-verification"),
+    runId: pkg.run.id,
+    proposalId: proposal.id,
+    mode,
+    createdAt: new Date().toISOString(),
+    patchPath: proposal.patchPath,
+    applied,
+    passed: patchCheck.passed && checks.every((check) => check.passed),
+    patchCheck,
+    checks,
+    outputPath
+  };
+
+  await writeJsonFile(outputPath, report);
+  return report;
 }
 
 function createPatchContent(goal: string, title: string, affectedFiles: string[]): string {

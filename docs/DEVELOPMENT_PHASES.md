@@ -29,6 +29,7 @@
 | Phase 11 | Real-World Target Validation | 能在真实外部仓库上打穿 baseline/verify/report |
 | Phase 12 | Assisted Migration Workflow | 能把真实仓库风险转成 action plan、issue dry-run 和 preview probe |
 | Phase 13 | Executable Action Proposals | 能把 action plan 转成真实可应用的小步 probe patch |
+| Phase 14 | Probe Patch Apply + Verification Gate | 能 apply proposal 并自动执行推荐检查、写入 evidence |
 
 ## Phase 0: CLI Bootstrap
 
@@ -504,6 +505,40 @@ git apply --check <proposal.patch>
 - action proposal patch 是合法 git patch。
 - patch check 不修改目标仓库。
 - 后续阶段可以在同一机制上扩展真实测试、Playwright 和 codemod patch。
+
+## Phase 14: Probe Patch Apply + Verification Gate
+
+目标：把 Phase 13 的可应用 proposal 接入验证门禁，形成“先检查、再应用、再跑推荐命令、最后写 evidence”的闭环。
+
+新增能力：
+
+- `proposal verify`
+- `action apply`
+- proposal verification report JSON
+- apply 后自动执行 `recommendedChecks`
+- proposal evidence event
+- apply/check 失败时返回明确 artifact 路径
+
+建议命令：
+
+```bash
+migration-guard proposal verify --run latest --proposal <proposal-id>
+migration-guard action apply --run latest --proposal <proposal-id>
+migration-guard action apply --run latest --proposal <proposal-id> --skip-checks
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/proposals/patch-*/verification-*.json`
+- `evidence.jsonl` 中的 `proposal` 事件
+- proposal `applyState`
+
+完成标准：
+
+- `proposal verify` 能在不修改目标仓库时执行 `git apply --check`。
+- `action apply` 能应用 patch，并默认执行 proposal 的推荐命令。
+- recommended check 失败时，命令返回非 0，并保留 verification artifact。
+- 真实外部仓库 smoke path 能证明 apply/check 通过，且收尾后目标仓库可恢复 clean。
 
 ## 阶段交付规则
 
