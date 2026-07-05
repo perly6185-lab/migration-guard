@@ -33,6 +33,7 @@ export async function startManagedPreview(
   options: StartManagedPreviewOptions = {}
 ): Promise<ManagedPreviewSession> {
   const startedAt = Date.now();
+  const startedAtIso = new Date(startedAt).toISOString();
   const cwd = resolvePreviewCwd(loaded.targetRoot, preview.cwd);
   const maxOutputBytes = options.maxOutputBytes ?? loaded.config.output.maxOutputBytes;
   const outputPath = options.outputPath ?? path.join(loaded.artifactsDir, "preview", `${Date.now()}.json`);
@@ -95,6 +96,8 @@ export async function startManagedPreview(
     ready: readiness.ready,
     status: readiness.status,
     durationMs: Date.now() - startedAt,
+    startedAt: startedAtIso,
+    readyAt: readiness.ready ? new Date().toISOString() : undefined,
     stdout: "",
     stderr: "",
     stdoutTruncated,
@@ -116,6 +119,7 @@ export async function startManagedPreview(
     result = {
       ...result,
       durationMs: Date.now() - startedAt,
+      endedAt: new Date().toISOString(),
       stdout: Buffer.concat(stdoutChunks).toString("utf8"),
       stderr: Buffer.concat(stderrChunks).toString("utf8"),
       stdoutTruncated,

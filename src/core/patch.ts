@@ -2,12 +2,16 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
 import { loadActionPlan } from "./actionPlan.js";
-import { appendEvidence, createId, migrationRunDir, saveRunPackage } from "./migrationRun.js";
+import { appendEvidence, createId, createProposalFailureIssue, migrationRunDir, saveRunPackage } from "./migrationRun.js";
 import type {
   LoadedConfig,
   MigrationAction,
   MigrationActionPatchTemplate,
+  ProposalCheckKind,
+  ProposalCheckPhase,
+  ProposalCheckPlanItem,
   ProposalCommandCheck,
+  ProposalGateEvent,
   ProposalPatchCheck,
   ProposalPreviewConfig,
   ProposalPreviewResult,
@@ -46,6 +50,7 @@ export async function proposePatch(loaded: LoadedConfig, pkg: MigrationRunPackag
   const id = createId("patch");
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "proposals", id);
   const patchPath = path.join(dir, "patch.diff");
+  const checkPlan = createProposalCheckPlan(task.verificationCommands);
   const proposed: ProposedPatch = {
     version: 1,
     id,
@@ -58,6 +63,7 @@ export async function proposePatch(loaded: LoadedConfig, pkg: MigrationRunPackag
     patchPath,
     affectedFiles: task.affectedFiles,
     recommendedChecks: task.verificationCommands,
+    checkPlan,
     patchKind: "task-placeholder",
     applyState: "proposed"
   };
@@ -95,6 +101,7 @@ export async function proposeActionPatch(loaded: LoadedConfig, pkg: MigrationRun
   const probeContent = createActionProbeScript(pkg.run.goal, action);
   const patchContent = createAddFilePatch(generatedFile, probeContent);
   const recommendedChecks = [...new Set([...action.recommendedChecks, `node ${generatedFile}`])];
+  const checkPlan = action.checkPlan ?? createProposalCheckPlan(recommendedChecks, preview ? [generatedFile] : []);
   const proposed: ProposedPatch = {
     version: 1,
     id,
@@ -108,6 +115,7 @@ export async function proposeActionPatch(loaded: LoadedConfig, pkg: MigrationRun
     affectedFiles: action.affectedFiles,
     generatedFiles: [generatedFile],
     recommendedChecks,
+    checkPlan,
     preview,
     patchKind: "action-probe",
     applyState: "proposed"
@@ -124,6 +132,7 @@ export async function proposeActionPatch(loaded: LoadedConfig, pkg: MigrationRun
       patchPath,
       generatedFiles: proposed.generatedFiles,
       recommendedChecks,
+      checkPlan: proposed.checkPlan,
       preview
     }
   });
@@ -180,6 +189,9 @@ export async function applyProposedPatch(
     const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checkRun.checks, checkRun.preview);
     proposal.applyState = report.passed ? "applied" : "applied-with-failed-checks";
     proposal.lastVerificationPath = report.outputPath;
+    if (!report.passed) {
+      await recordProposalGateFailure(loaded, pkg, proposal, report);
+    }
     await writeJsonFile(proposalPath, proposal);
     await appendEvidence(loaded, pkg.run.id, {
       runId: pkg.run.id,
@@ -205,6 +217,11 @@ export async function applyProposedPatch(
 
   if (!patchCheck.passed) {
     const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", false, patchCheck, []);
+    proposal.applyState = "verification-failed";
+    proposal.lastVerificationPath = report.outputPath;
+    await recordProposalGateFailure(loaded, pkg, proposal, report);
+    await writeJsonFile(proposalPath, proposal);
+    await saveRunPackage(loaded, pkg);
     throw new Error(`Patch check failed. See ${report.outputPath}\n${patchCheck.stderr || patchCheck.stdout || patchCheck.error || "unknown error"}`);
   }
 
@@ -224,6 +241,9 @@ export async function applyProposedPatch(
   const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checkRun.checks, checkRun.preview);
   proposal.applyState = report.passed ? "applied" : "applied-with-failed-checks";
   proposal.lastVerificationPath = report.outputPath;
+  if (!report.passed) {
+    await recordProposalGateFailure(loaded, pkg, proposal, report);
+  }
   await writeJsonFile(proposalPath, proposal);
   await appendEvidence(loaded, pkg.run.id, {
     runId: pkg.run.id,
@@ -310,11 +330,14 @@ export function renderProposalVerificationReport(report: ProposalVerificationRep
     `Passed: ${report.passed ? "yes" : "no"}`,
     `Patch check: ${report.patchCheck.skipped ? "skipped" : report.patchCheck.passed ? "passed" : "failed"}`,
     `Preview: ${report.preview ? report.preview.ready ? `ready ${report.preview.url}` : `failed ${report.preview.url}` : "not managed"}`,
+    `Check plan: ${report.checkPlan?.length ?? 0}`,
+    `Timeline: ${report.timeline.length}`,
     `Checks: ${report.checks.length}`
   ];
 
   for (const check of report.checks) {
-    lines.push(`- ${check.passed ? "passed" : "failed"} ${check.command}`);
+    const meta = check.kind || check.phase ? ` [${check.kind ?? "other"}/${check.phase ?? "pre-preview"}]` : "";
+    lines.push(`- ${check.passed ? "passed" : "failed"}${meta} ${check.command}`);
   }
 
   lines.push(`Wrote ${report.outputPath}`);
@@ -344,6 +367,7 @@ export function renderProposalStatus(status: ProposalStatus): string {
     `Task: ${proposal.taskId ?? "none"}`,
     `Generated files: ${proposal.generatedFiles?.join(", ") || "none"}`,
     `Recommended checks: ${proposal.recommendedChecks.join(", ") || "none"}`,
+    `Check plan: ${ensureProposalCheckPlan(proposal).map((check) => `${check.kind}/${check.phase}`).join(", ") || "none"}`,
     `Preview: ${proposal.preview ? `${proposal.preview.command} -> ${proposal.preview.url}` : "none"}`,
     `Last verification: ${proposal.lastVerificationPath ?? "none"}`,
     `Last rollback: ${proposal.lastRollbackPath ?? "none"}`,
@@ -379,6 +403,7 @@ async function checkPatchApplicability(
 ): Promise<ProposalPatchCheck> {
   const command = `git apply --check "${proposal.patchPath}"`;
   if (!isGitPatchContent(patchContent)) {
+    const now = new Date().toISOString();
     return {
       command,
       cwd: pkg.run.targetRoot,
@@ -386,11 +411,14 @@ async function checkPatchApplicability(
       passed: true,
       exitCode: 0,
       durationMs: 0,
+      startedAt: now,
+      endedAt: now,
       stdout: "",
       stderr: ""
     };
   }
 
+  const startedAt = new Date().toISOString();
   const result = await runShellCommand(command, {
     cwd: pkg.run.targetRoot,
     timeoutMs: 30000,
@@ -403,6 +431,8 @@ async function checkPatchApplicability(
     passed: result.exitCode === 0 && !result.timedOut && !result.error,
     exitCode: result.exitCode,
     durationMs: result.durationMs,
+    startedAt,
+    endedAt: new Date().toISOString(),
     stdout: result.stdout,
     stderr: result.stderr,
     error: result.error
@@ -415,25 +445,26 @@ async function runProposalChecks(
   proposal: ProposedPatch,
   env?: Record<string, string>
 ): Promise<ProposalCommandCheck[]> {
-  return runProposalCheckCommands(loaded, pkg, proposal.recommendedChecks, env);
+  return runProposalCheckCommands(loaded, pkg, ensureProposalCheckPlan(proposal), env);
 }
 
 async function runProposalCheckCommands(
   loaded: LoadedConfig,
   pkg: MigrationRunPackage,
-  commands: string[],
+  plan: ProposalCheckPlanItem[],
   env?: Record<string, string>
 ): Promise<ProposalCommandCheck[]> {
   const checks: ProposalCommandCheck[] = [];
 
-  for (const command of commands) {
-    const result = await runShellCommand(command, {
+  for (const item of plan) {
+    const startedAt = new Date().toISOString();
+    const result = await runShellCommand(item.command, {
       cwd: pkg.run.targetRoot,
-      timeoutMs: 120000,
+      timeoutMs: item.timeoutMs ?? 120000,
       maxOutputBytes: loaded.config.output.maxOutputBytes,
       env
     });
-    checks.push(commandResultToProposalCheck(result));
+    checks.push(commandResultToProposalCheck(result, item, startedAt, new Date().toISOString()));
   }
 
   return checks;
@@ -450,7 +481,7 @@ async function runProposalChecksForApply(
     };
   }
 
-  const split = splitPreviewChecks(proposal);
+  const split = splitPreviewChecks(ensureProposalCheckPlan(proposal));
   const regularChecks = await runProposalCheckCommands(loaded, pkg, split.regularChecks);
   if (split.previewChecks.length === 0) {
     return { checks: regularChecks };
@@ -483,15 +514,75 @@ async function runProposalChecksForApply(
   };
 }
 
-function splitPreviewChecks(proposal: ProposedPatch): { regularChecks: string[]; previewChecks: string[] } {
-  const generatedFiles = proposal.generatedFiles ?? [];
-  const previewChecks = proposal.recommendedChecks.filter((command) => {
-    return command.includes("MG_PREVIEW_URL") || generatedFiles.some((file) => command.includes(file));
-  });
-  const previewCheckSet = new Set(previewChecks);
+function splitPreviewChecks(plan: ProposalCheckPlanItem[]): { regularChecks: ProposalCheckPlanItem[]; previewChecks: ProposalCheckPlanItem[] } {
+  const previewChecks = plan.filter((check) => check.phase === "preview");
+  const previewCheckSet = new Set(previewChecks.map((check) => check.command));
   return {
-    regularChecks: proposal.recommendedChecks.filter((command) => !previewCheckSet.has(command)),
+    regularChecks: plan.filter((check) => !previewCheckSet.has(check.command)),
     previewChecks
+  };
+}
+
+function createProposalGateTimeline(
+  patchCheck: ProposalPatchCheck,
+  checks: ProposalCommandCheck[],
+  preview?: ProposalPreviewResult
+): ProposalGateEvent[] {
+  const events: ProposalGateEvent[] = [
+    {
+      type: "patch-check",
+      status: patchCheck.skipped ? "skipped" : patchCheck.passed ? "passed" : "failed",
+      label: "Patch applicability",
+      command: patchCheck.command,
+      startedAt: patchCheck.startedAt,
+      endedAt: patchCheck.endedAt,
+      durationMs: patchCheck.durationMs,
+      message: patchCheck.error
+    }
+  ];
+  let previewInserted = false;
+
+  for (const check of checks) {
+    if (check.phase === "preview" && preview && !previewInserted) {
+      events.push(createPreviewGateEvent(preview));
+      previewInserted = true;
+    }
+
+    events.push({
+      type: "check",
+      status: check.passed ? "passed" : "failed",
+      label: check.kind ? `${check.kind}: ${check.command}` : check.command,
+      command: check.command,
+      kind: check.kind,
+      phase: check.phase,
+      startedAt: check.startedAt,
+      endedAt: check.endedAt,
+      durationMs: check.durationMs,
+      message: check.error
+    });
+  }
+
+  if (preview && !previewInserted) {
+    events.push(createPreviewGateEvent(preview));
+  }
+
+  return events;
+}
+
+function createPreviewGateEvent(preview: ProposalPreviewResult): ProposalGateEvent {
+  return {
+    type: "preview",
+    status: preview.ready ? "passed" : "failed",
+    label: `Preview ${preview.ready ? "ready" : "failed"}`,
+    phase: "preview",
+    kind: "ui-probe",
+    command: preview.command,
+    url: preview.url,
+    outputPath: preview.outputPath,
+    startedAt: preview.startedAt,
+    endedAt: preview.endedAt,
+    durationMs: preview.durationMs,
+    message: preview.error
   };
 }
 
@@ -506,6 +597,8 @@ async function writeProposalVerificationReport(
   preview?: ProposalPreviewResult
 ): Promise<ProposalVerificationReport> {
   const outputPath = path.join(proposalDir(loaded, pkg, proposal.id), `verification-${Date.now()}.json`);
+  const checkPlan = ensureProposalCheckPlan(proposal);
+  const timeline = createProposalGateTimeline(patchCheck, checks, preview);
   const report: ProposalVerificationReport = {
     version: 1,
     id: createId("proposal-verification"),
@@ -517,13 +610,45 @@ async function writeProposalVerificationReport(
     applied,
     passed: patchCheck.passed && (preview?.ready ?? true) && checks.every((check) => check.passed),
     patchCheck,
+    checkPlan,
     preview,
     checks,
+    timeline,
     outputPath
   };
 
   await writeJsonFile(outputPath, report);
   return report;
+}
+
+async function recordProposalGateFailure(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch,
+  report: ProposalVerificationReport
+): Promise<void> {
+  const issue = createProposalFailureIssue(pkg, proposal, report);
+  report.replanIssueId = issue.id;
+  await writeJsonFile(report.outputPath, report);
+  await appendEvidence(loaded, pkg.run.id, {
+    runId: pkg.run.id,
+    taskId: proposal.taskId,
+    issueId: issue.id,
+    type: "replan",
+    message: `Created replan issue ${issue.id} for failed proposal ${proposal.id}`,
+    data: {
+      proposalId: proposal.id,
+      actionId: proposal.actionId,
+      outputPath: report.outputPath,
+      failedChecks: report.checks.filter((check) => !check.passed).map((check) => ({
+        command: check.command,
+        kind: check.kind,
+        phase: check.phase,
+        exitCode: check.exitCode,
+        timedOut: check.timedOut
+      }))
+    }
+  });
 }
 
 async function rollbackPatch(
@@ -569,6 +694,7 @@ async function checkReversePatchApplicability(
 ): Promise<ProposalPatchCheck> {
   const command = `git apply -R --check "${proposal.patchPath}"`;
   if (!isGitPatchContent(patchContent)) {
+    const now = new Date().toISOString();
     return {
       command,
       cwd: pkg.run.targetRoot,
@@ -576,11 +702,14 @@ async function checkReversePatchApplicability(
       passed: true,
       exitCode: 0,
       durationMs: 0,
+      startedAt: now,
+      endedAt: now,
       stdout: "",
       stderr: ""
     };
   }
 
+  const startedAt = new Date().toISOString();
   const result = await runShellCommand(command, {
     cwd: pkg.run.targetRoot,
     timeoutMs: 30000,
@@ -593,19 +722,31 @@ async function checkReversePatchApplicability(
     passed: result.exitCode === 0 && !result.timedOut && !result.error,
     exitCode: result.exitCode,
     durationMs: result.durationMs,
+    startedAt,
+    endedAt: new Date().toISOString(),
     stdout: result.stdout,
     stderr: result.stderr,
     error: result.error
   };
 }
 
-function commandResultToProposalCheck(result: Awaited<ReturnType<typeof runShellCommand>>): ProposalCommandCheck {
+function commandResultToProposalCheck(
+  result: Awaited<ReturnType<typeof runShellCommand>>,
+  plan?: ProposalCheckPlanItem,
+  startedAt?: string,
+  endedAt?: string
+): ProposalCommandCheck {
   return {
     command: result.command,
     cwd: result.cwd,
+    kind: plan?.kind,
+    phase: plan?.phase,
+    critical: plan?.critical,
     passed: result.exitCode === 0 && !result.timedOut && !result.error,
     exitCode: result.exitCode,
     durationMs: result.durationMs,
+    startedAt,
+    endedAt,
     stdout: result.stdout,
     stderr: result.stderr,
     stdoutTruncated: result.stdoutTruncated,
@@ -648,6 +789,82 @@ function isGitPatchContent(input: string): boolean {
   return input
     .split(/\r?\n/)
     .some((line) => line.startsWith("diff --git ") || line.startsWith("--- ") || line.startsWith("+++ "));
+}
+
+function ensureProposalCheckPlan(proposal: ProposedPatch): ProposalCheckPlanItem[] {
+  if (proposal.checkPlan && proposal.checkPlan.length > 0) {
+    return proposal.checkPlan;
+  }
+
+  proposal.checkPlan = createProposalCheckPlan(proposal.recommendedChecks, proposal.preview ? proposal.generatedFiles ?? [] : []);
+  return proposal.checkPlan;
+}
+
+function createProposalCheckPlan(commands: string[], generatedFiles: string[] = []): ProposalCheckPlanItem[] {
+  return [...new Set(commands)].map((command) => classifyProposalCheck(command, generatedFiles));
+}
+
+function classifyProposalCheck(command: string, generatedFiles: string[]): ProposalCheckPlanItem {
+  const normalized = command.toLowerCase();
+  const usesGeneratedProbe = generatedFiles.some((file) => command.includes(file));
+  if (command.includes("MG_PREVIEW_URL") || usesGeneratedProbe) {
+    return {
+      command,
+      kind: "ui-probe",
+      phase: "preview",
+      timeoutMs: 120000,
+      critical: true,
+      reason: usesGeneratedProbe ? "generated probe depends on preview URL" : "command references MG_PREVIEW_URL"
+    };
+  }
+
+  const kind = inferProposalCheckKind(normalized);
+  return {
+    command,
+    kind,
+    phase: "pre-preview",
+    timeoutMs: defaultTimeoutForCheckKind(kind),
+    critical: true,
+    reason: `classified from command: ${kind}`
+  };
+}
+
+function inferProposalCheckKind(command: string): ProposalCheckKind {
+  if (/\b(vitest|jest|mocha|ava|test)\b/.test(command)) {
+    return "unit-test";
+  }
+  if (/\b(type-check|typecheck|vue-tsc|tsc\s+--noemit)\b/.test(command)) {
+    return "type-check";
+  }
+  if (/\b(build|vite build|webpack|rollup)\b/.test(command)) {
+    return "build";
+  }
+  if (/\b(lint|eslint|biome)\b/.test(command)) {
+    return "lint";
+  }
+  if (/\b(contract|dual-run)\b/.test(command)) {
+    return "contract-probe";
+  }
+  return "other";
+}
+
+function defaultTimeoutForCheckKind(kind: ProposalCheckKind): number {
+  switch (kind) {
+    case "unit-test":
+      return 180000;
+    case "type-check":
+      return 180000;
+    case "build":
+      return 300000;
+    case "ui-probe":
+      return 120000;
+    case "contract-probe":
+      return 120000;
+    case "lint":
+    case "other":
+    default:
+      return 120000;
+  }
 }
 
 async function resolveActionPreview(loaded: LoadedConfig, action: MigrationAction): Promise<ProposalPreviewConfig | undefined> {

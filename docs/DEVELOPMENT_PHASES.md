@@ -33,6 +33,9 @@
 | Phase 15 | Proposal Lifecycle + Rollback | 能跟踪 proposal 状态、手动/自动回滚并汇总到 run report |
 | Phase 16 | Playwright UI Probe Adapter | 能为 UI action 生成浏览器优先、HTTP fallback 的 smoke probe |
 | Phase 17 | Managed Preview Server for UI Gates | 能在 apply 时自动启动、等待、使用并停止 UI preview server |
+| Phase 18 | Proposal Check Classification | 能把 recommended checks 结构化为 kind/phase/timeout 的 check plan |
+| Phase 19 | Proposal Gate Timeline | 能在 verification report 和 run report 中展示 gate 执行时间线 |
+| Phase 20 | Failed Gate Replan Issues | 能把失败的 proposal gate 自动转成 replan/failure issue |
 
 ## Phase 0: CLI Bootstrap
 
@@ -654,6 +657,100 @@ migration-guard proposal rollback --run latest --proposal <proposal-id>
 - preview server 在 checks 完成后被停止。
 - preview failure 会进入 verification report，而不是只表现为 probe 超时。
 - 真实外部仓库 smoke path 能完成 propose、apply、rollback，并保持目标仓库 clean。
+
+## Phase 18: Proposal Check Classification
+
+目标：把字符串形式的 `recommendedChecks` 升级为结构化、可排序、可扩展的 proposal `checkPlan`。
+
+新增能力：
+
+- proposal 保留 legacy `recommendedChecks`
+- proposal 新增 `checkPlan`
+- check 分类：`unit-test`、`type-check`、`ui-probe`、`contract-probe`、`build`、`lint`、`other`
+- check phase：`pre-preview`、`preview`、`post-preview`
+- check-level timeout 和 critical 标记
+- UI probe 自动归入 `ui-probe/preview`
+- 普通 test/type-check 自动归入 `pre-preview`
+
+建议命令：
+
+```bash
+migration-guard action propose --run latest --action action-large-vue-ui-probe
+migration-guard proposal status --run latest --proposal <proposal-id>
+```
+
+产物：
+
+- proposal `checkPlan`
+- proposal status 中的 check plan 摘要
+
+完成标准：
+
+- 老 proposal 没有 `checkPlan` 时仍能运行。
+- 新 action proposal 能自动生成结构化 `checkPlan`。
+- UI probe check 能被识别为 preview phase。
+
+## Phase 19: Proposal Gate Timeline
+
+目标：让 proposal verification gate 的执行顺序、耗时和结果可审计。
+
+新增能力：
+
+- verification report 新增 `timeline`
+- timeline 记录 patch check
+- timeline 记录 regular checks
+- timeline 记录 managed preview
+- timeline 记录 preview checks
+- run report 新增 Recent Proposal Gates 汇总
+
+建议命令：
+
+```bash
+migration-guard action apply --run latest --proposal <proposal-id>
+migration-guard report --run latest
+```
+
+产物：
+
+- proposal `verification-*.json` 中的 `timeline`
+- run report `Recent Proposal Gates`
+
+完成标准：
+
+- 用户无需阅读 stdout，也能知道 gate 先后顺序。
+- timeline 能显示每个步骤 passed/failed/skipped。
+- run report 能汇总最近 proposal gate 结果。
+
+## Phase 20: Failed Gate Replan Issues
+
+目标：让失败的 proposal gate 自动进入动态规划和 issue 管控层。
+
+新增能力：
+
+- apply gate 失败时创建 failure issue
+- verification report 写入 `replanIssueId`
+- evidence log 写入 `replan` 事件
+- failure issue 记录 first failed check、check kind、check phase 和 report path
+
+建议命令：
+
+```bash
+migration-guard action apply --run latest --proposal <proposal-id>
+migration-guard issues --run latest
+migration-guard report --run latest
+```
+
+产物：
+
+- `issues.json` 中的 proposal failure issue
+- `evidence.jsonl` 中的 `replan` 事件
+- proposal `verification-*.json` 中的 `replanIssueId`
+
+完成标准：
+
+- gate 失败不是单次命令错误，而是可追踪 issue。
+- 后续 replanner 能读取失败 check 的 kind/phase 决定插入什么补救任务。
+- 成功 proposal 不创建额外 failure issue。
 
 ## 阶段交付规则
 

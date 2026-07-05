@@ -12,6 +12,7 @@ import type {
   MigrationRun,
   MigrationTaskGraph,
   MigrationTaskStatus,
+  ProposalVerificationReport,
   ProposedPatch
 } from "../types.js";
 
@@ -184,6 +185,7 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
   const openIssues = pkg.issues.filter((issue) => issue.status !== "closed" && issue.status !== "done");
   const graphErrors = validateTaskGraph(pkg.graph);
   const proposals = await readProposalSummaries(loaded, pkg.run.id);
+  const proposalGates = await readRecentProposalGateSummaries(loaded, pkg.run.id);
 
   return [
     `# Migration Run Report: ${pkg.run.id}`,
@@ -230,6 +232,12 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
     proposals.length > 0
       ? proposals.map((proposal) => `- ${proposal.id} [${proposal.applyState}/${proposal.risk}] ${proposal.title}`).join("\n")
       : "No proposals.",
+    "",
+    "## Recent Proposal Gates",
+    "",
+    proposalGates.length > 0
+      ? proposalGates.map((gate) => `- ${gate.createdAt} ${gate.proposalId} ${gate.passed ? "passed" : "failed"} checks:${gate.checks} timeline:${gate.timeline}${gate.replanIssueId ? ` replan:${gate.replanIssueId}` : ""}`).join("\n")
+      : "No proposal gate reports.",
     "",
     "## Evidence",
     "",
@@ -278,6 +286,40 @@ export function createFailureIssue(pkg: MigrationRunPackage, taskId: string, tit
     risk: "high",
     owner: "engine",
     affectedFiles: pkg.graph.tasks.find((task) => task.id === taskId)?.affectedFiles ?? [],
+    createdAt: now,
+    updatedAt: now
+  };
+  pkg.issues.push(issue);
+  return issue;
+}
+
+export function createProposalFailureIssue(
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch,
+  report: ProposalVerificationReport
+): MigrationIssue {
+  const failedChecks = report.checks.filter((check) => !check.passed);
+  const firstFailedCheck = failedChecks[0];
+  const now = new Date().toISOString();
+  const issue: MigrationIssue = {
+    id: createId("issue"),
+    runId: pkg.run.id,
+    taskId: proposal.taskId,
+    type: "failure",
+    title: `Proposal gate failed: ${proposal.title}`,
+    body: [
+      `Proposal: ${proposal.id}`,
+      `Report: ${report.outputPath}`,
+      `Patch check: ${report.patchCheck.passed ? "passed" : "failed"}`,
+      report.preview ? `Preview: ${report.preview.ready ? "ready" : "failed"} ${report.preview.url}` : "Preview: not managed",
+      firstFailedCheck ? `First failed check: ${firstFailedCheck.command}` : undefined,
+      firstFailedCheck?.kind ? `Check kind: ${firstFailedCheck.kind}` : undefined,
+      firstFailedCheck?.phase ? `Check phase: ${firstFailedCheck.phase}` : undefined
+    ].filter(Boolean).join("\n"),
+    status: "failed",
+    risk: proposal.risk === "low" ? "medium" : proposal.risk,
+    owner: "engine",
+    affectedFiles: proposal.affectedFiles,
     createdAt: now,
     updatedAt: now
   };
@@ -385,4 +427,42 @@ async function readProposalSummaries(loaded: LoadedConfig, runId: string): Promi
   }
 
   return proposals.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+async function readRecentProposalGateSummaries(
+  loaded: LoadedConfig,
+  runId: string
+): Promise<Array<{ proposalId: string; createdAt: string; passed: boolean; checks: number; timeline: number; replanIssueId?: string }>> {
+  const proposalsDir = path.join(migrationRunDir(loaded, runId), "proposals");
+  if (!await pathExists(proposalsDir)) {
+    return [];
+  }
+
+  const entries = await fs.readdir(proposalsDir, { withFileTypes: true });
+  const reports: ProposalVerificationReport[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const proposalDir = path.join(proposalsDir, entry.name);
+    const files = await fs.readdir(proposalDir, { withFileTypes: true });
+    for (const file of files) {
+      if (!file.isFile() || !file.name.startsWith("verification-") || !file.name.endsWith(".json")) {
+        continue;
+      }
+      reports.push(await readJsonFile<ProposalVerificationReport>(path.join(proposalDir, file.name)));
+    }
+  }
+
+  return reports
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .slice(-10)
+    .map((report) => ({
+      proposalId: report.proposalId,
+      createdAt: report.createdAt,
+      passed: report.passed,
+      checks: report.checks.length,
+      timeline: report.timeline?.length ?? 0,
+      replanIssueId: report.replanIssueId
+    }));
 }

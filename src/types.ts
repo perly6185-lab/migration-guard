@@ -407,6 +407,10 @@ export interface DualRunReport {
 
 export type MigrationActionPatchMode = "dry-run-only" | "manual-approval-required";
 export type MigrationActionPatchTemplate = "renderer-probe" | "api-contract-probe" | "ui-smoke-probe";
+export type ProposalCheckKind = "unit-test" | "type-check" | "ui-probe" | "contract-probe" | "build" | "lint" | "other";
+export type ProposalCheckPhase = "pre-preview" | "preview" | "post-preview";
+export type ProposalGateEventType = "patch-check" | "check" | "preview";
+export type ProposalGateEventStatus = "passed" | "failed" | "skipped";
 
 export interface MigrationAction {
   id: string;
@@ -418,6 +422,7 @@ export interface MigrationAction {
   patchMode: MigrationActionPatchMode;
   patchTemplate?: MigrationActionPatchTemplate;
   preview?: ProposalPreviewConfig;
+  checkPlan?: ProposalCheckPlanItem[];
 }
 
 export interface MigrationActionPlan {
@@ -442,6 +447,7 @@ export interface ProposedPatch {
   affectedFiles: string[];
   generatedFiles?: string[];
   recommendedChecks: string[];
+  checkPlan?: ProposalCheckPlanItem[];
   preview?: ProposalPreviewConfig;
   patchKind?: "task-placeholder" | "action-probe";
   applyState:
@@ -464,17 +470,33 @@ export interface ProposalPatchCheck {
   passed: boolean;
   exitCode: number | null;
   durationMs: number;
+  startedAt?: string;
+  endedAt?: string;
   stdout: string;
   stderr: string;
   error?: string;
 }
 
+export interface ProposalCheckPlanItem {
+  command: string;
+  kind: ProposalCheckKind;
+  phase: ProposalCheckPhase;
+  timeoutMs?: number;
+  critical?: boolean;
+  reason?: string;
+}
+
 export interface ProposalCommandCheck {
   command: string;
   cwd: string;
+  kind?: ProposalCheckKind;
+  phase?: ProposalCheckPhase;
+  critical?: boolean;
   passed: boolean;
   exitCode: number | null;
   durationMs: number;
+  startedAt?: string;
+  endedAt?: string;
   stdout: string;
   stderr: string;
   stdoutTruncated: boolean;
@@ -498,6 +520,9 @@ export interface ProposalPreviewResult {
   ready: boolean;
   status: number | null;
   durationMs: number;
+  startedAt?: string;
+  readyAt?: string;
+  endedAt?: string;
   stdout: string;
   stderr: string;
   stdoutTruncated: boolean;
@@ -507,6 +532,21 @@ export interface ProposalPreviewResult {
   signal: NodeJS.Signals | null;
   error?: string;
   outputPath?: string;
+}
+
+export interface ProposalGateEvent {
+  type: ProposalGateEventType;
+  status: ProposalGateEventStatus;
+  label: string;
+  phase?: ProposalCheckPhase;
+  kind?: ProposalCheckKind;
+  command?: string;
+  url?: string;
+  outputPath?: string;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs: number;
+  message?: string;
 }
 
 export interface ProposalVerificationReport {
@@ -520,8 +560,11 @@ export interface ProposalVerificationReport {
   applied: boolean;
   passed: boolean;
   patchCheck: ProposalPatchCheck;
+  checkPlan?: ProposalCheckPlanItem[];
   preview?: ProposalPreviewResult;
   checks: ProposalCommandCheck[];
+  timeline: ProposalGateEvent[];
+  replanIssueId?: string;
   outputPath: string;
 }
 

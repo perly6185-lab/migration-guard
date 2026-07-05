@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { applyProposedPatch, createAddFilePatch, proposeActionPatch, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
-import type { LoadedConfig, MigrationRun, MigrationTaskGraph, ProposedPatch } from "../types.js";
+import type { LoadedConfig, MigrationRun, MigrationTaskGraph, ProposalVerificationReport, ProposedPatch } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
 const execFileAsync = promisify(execFile);
@@ -74,6 +74,8 @@ test("proposal verify and apply write verification reports", async () => {
     const apply = await applyProposedPatch(loaded, pkg, proposal.id, { runChecks: true });
     assert.equal(apply.report?.passed, true);
     assert.equal(apply.report?.checks.length, 1);
+    assert.equal(apply.report?.checkPlan?.[0]?.kind, "other");
+    assert.equal(apply.report?.timeline.length, 2);
     assert.match(apply.report?.checks[0]?.stdout ?? "", /probe-ok/);
     assert.equal((await readProposal(proposalPath)).applyState, "applied");
 
@@ -121,6 +123,11 @@ test("applyProposedPatch can rollback automatically when checks fail", async () 
       /verification failed/
     );
     assert.equal((await readProposal(proposalPath)).applyState, "rolled-back");
+    const failedReportPath = (await readProposal(proposalPath)).lastVerificationPath;
+    assert.ok(failedReportPath);
+    const failedReport = await readVerificationReport(failedReportPath);
+    assert.ok(failedReport.replanIssueId);
+    assert.equal(pkg.issues.some((issue) => issue.id === failedReport.replanIssueId), true);
     await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "failing-probe.mjs")));
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -195,7 +202,12 @@ test("applyProposedPatch manages preview server for proposal checks", async () =
     assert.equal(report.preview?.stopped, true);
     assert.ok(report.preview?.outputPath);
     await access(report.preview.outputPath);
+    assert.equal(report.checkPlan?.[0]?.kind, "ui-probe");
+    assert.equal(report.checkPlan?.[0]?.phase, "preview");
+    assert.equal(report.timeline.some((event) => event.type === "preview" && event.status === "passed"), true);
     assert.equal(report.checks.length, 1);
+    assert.equal(report.checks[0]?.kind, "ui-probe");
+    assert.equal(report.checks[0]?.phase, "preview");
     assert.match(report.checks[0]?.stdout ?? "", /preview-ok/);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -244,6 +256,10 @@ test("proposeActionPatch generates an optional Playwright UI smoke probe", async
 
     assert.equal(proposal.generatedFiles?.[0], "scripts/migration-guard/action-large-vue-ui-probe.mjs");
     assert.ok(proposal.recommendedChecks.includes("node scripts/migration-guard/action-large-vue-ui-probe.mjs"));
+    assert.deepEqual(proposal.checkPlan?.map((check) => `${check.kind}/${check.phase}`), [
+      "type-check/pre-preview",
+      "ui-probe/preview"
+    ]);
     assert.equal(proposal.preview?.command, "pnpm web dev --host 127.0.0.1");
     assert.equal(proposal.preview?.url, "http://127.0.0.1:5173/docs/");
     assert.match(patch, /await import\("playwright"\)/);
@@ -257,6 +273,10 @@ test("proposeActionPatch generates an optional Playwright UI smoke probe", async
 
 async function readProposal(proposalPath: string): Promise<ProposedPatch> {
   return JSON.parse(await readFile(proposalPath, "utf8")) as ProposedPatch;
+}
+
+async function readVerificationReport(reportPath: string): Promise<ProposalVerificationReport> {
+  return JSON.parse(await readFile(reportPath, "utf8")) as ProposalVerificationReport;
 }
 
 function makeLoadedConfig(root: string): LoadedConfig {
