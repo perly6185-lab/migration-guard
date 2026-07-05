@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyProposedPatch, createAddFilePatch, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
+import { applyProposedPatch, createAddFilePatch, proposeActionPatch, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
 import type { LoadedConfig, MigrationRun, MigrationTaskGraph, ProposedPatch } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
@@ -122,6 +122,50 @@ test("applyProposedPatch can rollback automatically when checks fail", async () 
     );
     assert.equal((await readProposal(proposalPath)).applyState, "rolled-back");
     await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "failing-probe.mjs")));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("proposeActionPatch generates an optional Playwright UI smoke probe", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-ui-probe-"));
+
+  try {
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    const actionPlanDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "adapter");
+    const componentPath = path.join(dir, "apps", "web", "src", "App.vue");
+    await mkdir(path.dirname(componentPath), { recursive: true });
+    await mkdir(actionPlanDir, { recursive: true });
+    await writeFile(componentPath, "<template><main /></template>\n<script setup></script>\n", "utf8");
+    await writeFile(path.join(actionPlanDir, "pnpm-vite-vue-action-plan.json"), `${JSON.stringify({
+      version: 1,
+      runId: pkg.run.id,
+      createdAt: "2026-07-05T00:00:00.000Z",
+      goal: pkg.run.goal,
+      actions: [
+        {
+          id: "action-large-vue-ui-probe",
+          title: "Add UI probe",
+          summary: "Add UI smoke coverage.",
+          risk: "high",
+          affectedFiles: ["apps/web/src/App.vue"],
+          recommendedChecks: ["pnpm type-check:web"],
+          patchMode: "manual-approval-required",
+          patchTemplate: "ui-smoke-probe"
+        }
+      ]
+    }, null, 2)}\n`, "utf8");
+
+    const proposal = await proposeActionPatch(loaded, pkg, "action-large-vue-ui-probe");
+    const patch = await readFile(proposal.patchPath, "utf8");
+
+    assert.equal(proposal.generatedFiles?.[0], "scripts/migration-guard/action-large-vue-ui-probe.mjs");
+    assert.ok(proposal.recommendedChecks.includes("node scripts/migration-guard/action-large-vue-ui-probe.mjs"));
+    assert.match(patch, /await import\("playwright"\)/);
+    assert.match(patch, /MG_PREVIEW_URL/);
+    assert.match(patch, /tmpdir\(\), "migration-guard-ui-probes"/);
+    assert.match(patch, /runFetchProbe/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

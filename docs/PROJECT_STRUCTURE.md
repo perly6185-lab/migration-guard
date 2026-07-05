@@ -21,6 +21,7 @@ migration-guard/
     PHASE_13_REPORT.md
     PHASE_14_REPORT.md
     PHASE_15_REPORT.md
+    PHASE_16_REPORT.md
     PRODUCT_DESIGN.md
     PROJECT_STRUCTURE.md
     REQUIREMENTS.md
@@ -355,6 +356,7 @@ AI 不直接绕过验证流程。AI 每次迁移动作后必须回到 `verify` �
 - 写出 proposal verification report
 - 跟踪 proposal lifecycle status
 - 执行 proposal rollback 并写出 rollback report
+- 为 UI action 生成 Playwright-first/fetch-fallback probe patch
 
 ### `src/core/preview.ts`
 

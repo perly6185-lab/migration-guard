@@ -31,6 +31,7 @@
 | Phase 13 | Executable Action Proposals | 能把 action plan 转成真实可应用的小步 probe patch |
 | Phase 14 | Probe Patch Apply + Verification Gate | 能 apply proposal 并自动执行推荐检查、写入 evidence |
 | Phase 15 | Proposal Lifecycle + Rollback | 能跟踪 proposal 状态、手动/自动回滚并汇总到 run report |
+| Phase 16 | Playwright UI Probe Adapter | 能为 UI action 生成浏览器优先、HTTP fallback 的 smoke probe |
 
 ## Phase 0: CLI Bootstrap
 
@@ -577,6 +578,43 @@ migration-guard action apply --run latest --proposal <proposal-id> --rollback-on
 - `--rollback-on-fail` 能在 recommended checks 失败时自动反向应用 patch。
 - `proposal rollback` 能手动恢复目标仓库。
 - 真实外部仓库 smoke path 能跑通 propose、verify、apply、rollback、report，并保持目标仓库 clean。
+
+## Phase 16: Playwright UI Probe Adapter
+
+目标：把 `ui-smoke-probe` 从静态文件结构检查升级为可运行的 UI smoke probe。
+
+新增能力：
+
+- `ui-smoke-probe` 生成 Playwright-first probe script
+- 未安装 Playwright 时自动 fallback 到 HTTP fetch smoke
+- 支持 `MG_PREVIEW_URL`
+- 支持 `MG_UI_PROBE_OUTPUT_DIR`
+- UI probe report 默认写入系统临时目录，避免污染目标仓库
+- proposal verification report 捕获 UI probe stdout/report path
+
+建议命令：
+
+```bash
+migration-guard action propose --run latest --action action-large-vue-ui-probe
+migration-guard proposal verify --run latest --proposal <proposal-id>
+MG_PREVIEW_URL=http://127.0.0.1:5173/md/ migration-guard action apply --run latest --proposal <proposal-id>
+migration-guard proposal rollback --run latest --proposal <proposal-id>
+```
+
+产物：
+
+- `scripts/migration-guard/action-large-vue-ui-probe.mjs`
+- proposal `verification-*.json`
+- UI probe JSON report
+- Playwright screenshot artifact when Playwright is installed
+
+完成标准：
+
+- UI action proposal 能生成可应用 patch。
+- apply 后能执行 web test、web type-check 和 UI probe。
+- 目标项目未安装 Playwright 时，fetch fallback 能验证 preview URL。
+- rollback 后目标仓库保持 clean。
+- UI probe 输出不默认写入目标仓库。
 
 ## 阶段交付规则
 
