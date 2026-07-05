@@ -11,7 +11,8 @@ import type {
   MigrationIssue,
   MigrationRun,
   MigrationTaskGraph,
-  MigrationTaskStatus
+  MigrationTaskStatus,
+  ProposedPatch
 } from "../types.js";
 
 export interface CreateRunOptions {
@@ -182,6 +183,7 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
   const counts = countTasks(pkg.graph);
   const openIssues = pkg.issues.filter((issue) => issue.status !== "closed" && issue.status !== "done");
   const graphErrors = validateTaskGraph(pkg.graph);
+  const proposals = await readProposalSummaries(loaded, pkg.run.id);
 
   return [
     `# Migration Run Report: ${pkg.run.id}`,
@@ -222,6 +224,12 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
     "## Graph Validation",
     "",
     graphErrors.length > 0 ? graphErrors.map((error) => `- ${error}`).join("\n") : "No graph errors.",
+    "",
+    "## Proposals",
+    "",
+    proposals.length > 0
+      ? proposals.map((proposal) => `- ${proposal.id} [${proposal.applyState}/${proposal.risk}] ${proposal.title}`).join("\n")
+      : "No proposals.",
     "",
     "## Evidence",
     "",
@@ -356,4 +364,25 @@ function formatTaskCounts(counts: Record<MigrationTaskStatus, number>): string {
     .filter(([, count]) => count > 0)
     .map(([status, count]) => `${status}:${count}`)
     .join(", ") || "none";
+}
+
+async function readProposalSummaries(loaded: LoadedConfig, runId: string): Promise<ProposedPatch[]> {
+  const proposalsDir = path.join(migrationRunDir(loaded, runId), "proposals");
+  if (!await pathExists(proposalsDir)) {
+    return [];
+  }
+
+  const entries = await fs.readdir(proposalsDir, { withFileTypes: true });
+  const proposals: ProposedPatch[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const proposalPath = path.join(proposalsDir, entry.name, "proposal.json");
+    if (await pathExists(proposalPath)) {
+      proposals.push(await readJsonFile<ProposedPatch>(proposalPath));
+    }
+  }
+
+  return proposals.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }

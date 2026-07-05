@@ -30,6 +30,7 @@
 | Phase 12 | Assisted Migration Workflow | 能把真实仓库风险转成 action plan、issue dry-run 和 preview probe |
 | Phase 13 | Executable Action Proposals | 能把 action plan 转成真实可应用的小步 probe patch |
 | Phase 14 | Probe Patch Apply + Verification Gate | 能 apply proposal 并自动执行推荐检查、写入 evidence |
+| Phase 15 | Proposal Lifecycle + Rollback | 能跟踪 proposal 状态、手动/自动回滚并汇总到 run report |
 
 ## Phase 0: CLI Bootstrap
 
@@ -539,6 +540,43 @@ migration-guard action apply --run latest --proposal <proposal-id> --skip-checks
 - `action apply` 能应用 patch，并默认执行 proposal 的推荐命令。
 - recommended check 失败时，命令返回非 0，并保留 verification artifact。
 - 真实外部仓库 smoke path 能证明 apply/check 通过，且收尾后目标仓库可恢复 clean。
+
+## Phase 15: Proposal Lifecycle + Rollback
+
+目标：让 proposal 具备完整生命周期和失败恢复能力，作为后续更大规模自动改写的安全兜底。
+
+新增能力：
+
+- proposal 状态扩展
+- `proposal status`
+- `proposal rollback`
+- `action apply --rollback-on-fail`
+- rollback report JSON
+- run report proposal 汇总
+
+建议命令：
+
+```bash
+migration-guard proposal status --run latest --proposal <proposal-id>
+migration-guard proposal rollback --run latest --proposal <proposal-id>
+migration-guard action apply --run latest --proposal <proposal-id> --rollback-on-fail
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/proposals/patch-*/proposal.json`
+- `.migration-guard/migration-runs/run-*/proposals/patch-*/verification-*.json`
+- `.migration-guard/migration-runs/run-*/proposals/patch-*/rollback-*.json`
+- run report 中的 proposal 状态汇总
+
+完成标准：
+
+- proposal 状态能从 `proposed` 流转到 `verified`、`applied`、`rolled-back`。
+- verify 失败时能标记为 `verification-failed`。
+- apply 后 checks 失败时能标记为 `applied-with-failed-checks`。
+- `--rollback-on-fail` 能在 recommended checks 失败时自动反向应用 patch。
+- `proposal rollback` 能手动恢复目标仓库。
+- 真实外部仓库 smoke path 能跑通 propose、verify、apply、rollback、report，并保持目标仓库 clean。
 
 ## 阶段交付规则
 

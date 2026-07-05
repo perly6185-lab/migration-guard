@@ -1,11 +1,11 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyProposedPatch, createAddFilePatch, verifyProposedPatch } from "./patch.js";
+import { applyProposedPatch, createAddFilePatch, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
 import type { LoadedConfig, MigrationRun, MigrationTaskGraph, ProposedPatch } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
@@ -69,15 +69,67 @@ test("proposal verify and apply write verification reports", async () => {
     assert.equal(verify.passed, true);
     assert.equal(verify.applied, false);
     assert.equal(verify.checks.length, 0);
+    assert.equal((await readProposal(proposalPath)).applyState, "verified");
 
     const apply = await applyProposedPatch(loaded, pkg, proposal.id, { runChecks: true });
     assert.equal(apply.report?.passed, true);
     assert.equal(apply.report?.checks.length, 1);
     assert.match(apply.report?.checks[0]?.stdout ?? "", /probe-ok/);
+    assert.equal((await readProposal(proposalPath)).applyState, "applied");
+
+    const rollback = await rollbackProposedPatch(loaded, pkg, proposal.id);
+    assert.equal(rollback.passed, true);
+    assert.equal((await readProposal(proposalPath)).applyState, "rolled-back");
+    await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "probe.mjs")));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("applyProposedPatch can rollback automatically when checks fail", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-rollback-on-fail-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: dir });
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    const proposalDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "proposals", "patch-rollback");
+    const patchPath = path.join(proposalDir, "patch.diff");
+    const proposalPath = path.join(proposalDir, "proposal.json");
+    const proposal: ProposedPatch = {
+      version: 1,
+      id: "patch-rollback",
+      runId: pkg.run.id,
+      createdAt: "2026-07-05T00:00:00.000Z",
+      title: "Add failing probe",
+      summary: "Adds a probe script with a failing recommended check.",
+      risk: "low",
+      patchPath,
+      affectedFiles: [],
+      generatedFiles: ["scripts/migration-guard/failing-probe.mjs"],
+      recommendedChecks: ["node scripts/migration-guard/not-created.mjs"],
+      patchKind: "action-probe",
+      applyState: "proposed"
+    };
+
+    await mkdir(proposalDir, { recursive: true });
+    await writeFile(patchPath, createAddFilePatch("scripts/migration-guard/failing-probe.mjs", "console.log(\"created\");\n"), "utf8");
+    await writeFile(proposalPath, `${JSON.stringify(proposal, null, 2)}\n`, "utf8");
+
+    await assert.rejects(
+      applyProposedPatch(loaded, pkg, proposal.id, { runChecks: true, rollbackOnFail: true }),
+      /verification failed/
+    );
+    assert.equal((await readProposal(proposalPath)).applyState, "rolled-back");
+    await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "failing-probe.mjs")));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+async function readProposal(proposalPath: string): Promise<ProposedPatch> {
+  return JSON.parse(await readFile(proposalPath, "utf8")) as ProposedPatch;
+}
 
 function makeLoadedConfig(root: string): LoadedConfig {
   return {

@@ -9,6 +9,7 @@ import type {
   MigrationActionPatchTemplate,
   ProposalCommandCheck,
   ProposalPatchCheck,
+  ProposalRollbackReport,
   ProposalVerificationReport,
   ProposedPatch
 } from "../types.js";
@@ -17,12 +18,20 @@ import { runShellCommand } from "./exec.js";
 
 export interface ApplyProposedPatchOptions {
   runChecks?: boolean;
+  rollbackOnFail?: boolean;
 }
 
 export interface ApplyProposedPatchResult {
   message: string;
   proposal: ProposedPatch;
   report?: ProposalVerificationReport;
+  rollbackReport?: ProposalRollbackReport;
+}
+
+export interface ProposalStatus {
+  proposal: ProposedPatch;
+  verificationReports: string[];
+  rollbackReports: string[];
 }
 
 export async function proposePatch(loaded: LoadedConfig, pkg: MigrationRunPackage, taskId: string): Promise<ProposedPatch> {
@@ -125,6 +134,11 @@ export async function verifyProposedPatch(
   const patchCheck = await checkPatchApplicability(loaded, pkg, proposal, patchContent);
   const checks = options.runChecks && patchCheck.passed ? await runProposalChecks(loaded, pkg, proposal) : [];
   const report = await writeProposalVerificationReport(loaded, pkg, proposal, "verify", false, patchCheck, checks);
+  if (isPreApplyState(proposal.applyState)) {
+    proposal.applyState = report.passed ? "verified" : "verification-failed";
+    proposal.lastVerificationPath = report.outputPath;
+    await writeJsonFile(proposalJsonPath(loaded, pkg, proposal.id), proposal);
+  }
 
   await appendEvidence(loaded, pkg.run.id, {
     runId: pkg.run.id,
@@ -157,6 +171,9 @@ export async function applyProposedPatch(
     await writeJsonFile(proposalPath, proposal);
     const checks = options.runChecks ? await runProposalChecks(loaded, pkg, proposal) : [];
     const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checks);
+    proposal.applyState = report.passed ? "applied" : "applied-with-failed-checks";
+    proposal.lastVerificationPath = report.outputPath;
+    await writeJsonFile(proposalPath, proposal);
     await appendEvidence(loaded, pkg.run.id, {
       runId: pkg.run.id,
       taskId: proposal.taskId,
@@ -169,6 +186,9 @@ export async function applyProposedPatch(
       }
     });
     await saveRunPackage(loaded, pkg);
+    if (!report.passed) {
+      throw new Error(`Proposal ${proposal.id} marked applied, but verification failed. See ${report.outputPath}`);
+    }
     return {
       message: `Proposal ${proposal.id} is non-mutating; marked applied.`,
       proposal,
@@ -195,6 +215,9 @@ export async function applyProposedPatch(
   await writeJsonFile(proposalPath, proposal);
   const checks = options.runChecks ? await runProposalChecks(loaded, pkg, proposal) : [];
   const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checks);
+  proposal.applyState = report.passed ? "applied" : "applied-with-failed-checks";
+  proposal.lastVerificationPath = report.outputPath;
+  await writeJsonFile(proposalPath, proposal);
   await appendEvidence(loaded, pkg.run.id, {
     runId: pkg.run.id,
     taskId: proposal.taskId,
@@ -209,6 +232,10 @@ export async function applyProposedPatch(
   await saveRunPackage(loaded, pkg);
 
   if (!report.passed) {
+    if (options.rollbackOnFail) {
+      const rollbackReport = await rollbackProposedPatch(loaded, pkg, proposal.id);
+      throw new Error(`Proposal ${proposal.id} applied, verification failed, and rollback ${rollbackReport.passed ? "passed" : "failed"}. See ${report.outputPath}`);
+    }
     throw new Error(`Proposal ${proposal.id} applied, but verification failed. See ${report.outputPath}`);
   }
 
@@ -216,6 +243,55 @@ export async function applyProposedPatch(
     message: `Applied proposal ${proposal.id}.`,
     proposal,
     report
+  };
+}
+
+export async function rollbackProposedPatch(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposalId: string
+): Promise<ProposalRollbackReport> {
+  const proposal = await loadProposal(loaded, pkg, proposalId);
+  const patchContent = await fs.readFile(proposal.patchPath, "utf8");
+  const report = await rollbackPatch(loaded, pkg, proposal, patchContent);
+  proposal.applyState = report.passed ? "rolled-back" : "rollback-failed";
+  proposal.lastRollbackPath = report.outputPath;
+  await writeJsonFile(proposalJsonPath(loaded, pkg, proposal.id), proposal);
+  await appendEvidence(loaded, pkg.run.id, {
+    runId: pkg.run.id,
+    taskId: proposal.taskId,
+    type: "proposal",
+    message: `Rolled back proposal ${proposal.id}: ${report.passed ? "passed" : "failed"}`,
+    data: {
+      proposalId: proposal.id,
+      actionId: proposal.actionId,
+      outputPath: report.outputPath
+    }
+  });
+  await saveRunPackage(loaded, pkg);
+
+  if (!report.passed) {
+    throw new Error(`Proposal rollback failed. See ${report.outputPath}`);
+  }
+
+  return report;
+}
+
+export async function getProposalStatus(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposalId: string
+): Promise<ProposalStatus> {
+  const dir = proposalDir(loaded, pkg, proposalId);
+  const proposal = await loadProposal(loaded, pkg, proposalId);
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const reports = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.join(dir, entry.name));
+  return {
+    proposal,
+    verificationReports: reports.filter((file) => path.basename(file).startsWith("verification-")).sort(),
+    rollbackReports: reports.filter((file) => path.basename(file).startsWith("rollback-")).sort()
   };
 }
 
@@ -235,6 +311,36 @@ export function renderProposalVerificationReport(report: ProposalVerificationRep
 
   lines.push(`Wrote ${report.outputPath}`);
   return lines.join("\n");
+}
+
+export function renderProposalRollbackReport(report: ProposalRollbackReport): string {
+  return [
+    `Proposal: ${report.proposalId}`,
+    "Mode: rollback",
+    `Passed: ${report.passed ? "yes" : "no"}`,
+    `Reverse check: ${report.reverseCheck.skipped ? "skipped" : report.reverseCheck.passed ? "passed" : "failed"}`,
+    report.reverseApply ? `Reverse apply: ${report.reverseApply.passed ? "passed" : "failed"}` : "Reverse apply: not run",
+    `Wrote ${report.outputPath}`
+  ].join("\n");
+}
+
+export function renderProposalStatus(status: ProposalStatus): string {
+  const proposal = status.proposal;
+  return [
+    `Proposal: ${proposal.id}`,
+    `State: ${proposal.applyState}`,
+    `Title: ${proposal.title}`,
+    `Risk: ${proposal.risk}`,
+    `Patch kind: ${proposal.patchKind ?? "unknown"}`,
+    `Action: ${proposal.actionId ?? "none"}`,
+    `Task: ${proposal.taskId ?? "none"}`,
+    `Generated files: ${proposal.generatedFiles?.join(", ") || "none"}`,
+    `Recommended checks: ${proposal.recommendedChecks.join(", ") || "none"}`,
+    `Last verification: ${proposal.lastVerificationPath ?? "none"}`,
+    `Last rollback: ${proposal.lastRollbackPath ?? "none"}`,
+    `Verification reports: ${status.verificationReports.length}`,
+    `Rollback reports: ${status.rollbackReports.length}`
+  ].join("\n");
 }
 
 function createPatchSummary(title: string, affectedFiles: string[]): string {
@@ -307,19 +413,7 @@ async function runProposalChecks(
       timeoutMs: 120000,
       maxOutputBytes: loaded.config.output.maxOutputBytes
     });
-    checks.push({
-      command,
-      cwd: result.cwd,
-      passed: result.exitCode === 0 && !result.timedOut && !result.error,
-      exitCode: result.exitCode,
-      durationMs: result.durationMs,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      stdoutTruncated: result.stdoutTruncated,
-      stderrTruncated: result.stderrTruncated,
-      timedOut: result.timedOut,
-      error: result.error
-    });
+    checks.push(commandResultToProposalCheck(result));
   }
 
   return checks;
@@ -352,6 +446,95 @@ async function writeProposalVerificationReport(
 
   await writeJsonFile(outputPath, report);
   return report;
+}
+
+async function rollbackPatch(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch,
+  patchContent: string
+): Promise<ProposalRollbackReport> {
+  const reverseCheck = await checkReversePatchApplicability(loaded, pkg, proposal, patchContent);
+  let reverseApply: ProposalCommandCheck | undefined;
+
+  if (reverseCheck.passed && !reverseCheck.skipped) {
+    const result = await runShellCommand(`git apply -R "${proposal.patchPath}"`, {
+      cwd: pkg.run.targetRoot,
+      timeoutMs: 30000,
+      maxOutputBytes: loaded.config.output.maxOutputBytes
+    });
+    reverseApply = commandResultToProposalCheck(result);
+  }
+
+  const outputPath = path.join(proposalDir(loaded, pkg, proposal.id), `rollback-${Date.now()}.json`);
+  const report: ProposalRollbackReport = {
+    version: 1,
+    id: createId("proposal-rollback"),
+    runId: pkg.run.id,
+    proposalId: proposal.id,
+    createdAt: new Date().toISOString(),
+    patchPath: proposal.patchPath,
+    passed: reverseCheck.passed && (reverseCheck.skipped || reverseApply?.passed === true),
+    reverseCheck,
+    reverseApply,
+    outputPath
+  };
+  await writeJsonFile(outputPath, report);
+  return report;
+}
+
+async function checkReversePatchApplicability(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch,
+  patchContent: string
+): Promise<ProposalPatchCheck> {
+  const command = `git apply -R --check "${proposal.patchPath}"`;
+  if (!isGitPatchContent(patchContent)) {
+    return {
+      command,
+      cwd: pkg.run.targetRoot,
+      skipped: true,
+      passed: true,
+      exitCode: 0,
+      durationMs: 0,
+      stdout: "",
+      stderr: ""
+    };
+  }
+
+  const result = await runShellCommand(command, {
+    cwd: pkg.run.targetRoot,
+    timeoutMs: 30000,
+    maxOutputBytes: loaded.config.output.maxOutputBytes
+  });
+  return {
+    command,
+    cwd: result.cwd,
+    skipped: false,
+    passed: result.exitCode === 0 && !result.timedOut && !result.error,
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    error: result.error
+  };
+}
+
+function commandResultToProposalCheck(result: Awaited<ReturnType<typeof runShellCommand>>): ProposalCommandCheck {
+  return {
+    command: result.command,
+    cwd: result.cwd,
+    passed: result.exitCode === 0 && !result.timedOut && !result.error,
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    stdoutTruncated: result.stdoutTruncated,
+    stderrTruncated: result.stderrTruncated,
+    timedOut: result.timedOut,
+    error: result.error
+  };
 }
 
 function createPatchContent(goal: string, title: string, affectedFiles: string[]): string {
@@ -493,4 +676,8 @@ function normalizePatchPath(filePath: string): string {
 
 function sanitizeFileName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "migration-action";
+}
+
+function isPreApplyState(state: ProposedPatch["applyState"]): boolean {
+  return state === "proposed" || state === "verified" || state === "verification-failed";
 }

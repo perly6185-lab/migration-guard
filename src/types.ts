@@ -442,7 +442,17 @@ export interface ProposedPatch {
   generatedFiles?: string[];
   recommendedChecks: string[];
   patchKind?: "task-placeholder" | "action-probe";
-  applyState: "proposed" | "applied" | "rejected";
+  applyState:
+    | "proposed"
+    | "verified"
+    | "verification-failed"
+    | "applied"
+    | "applied-with-failed-checks"
+    | "rolled-back"
+    | "rollback-failed"
+    | "rejected";
+  lastVerificationPath?: string;
+  lastRollbackPath?: string;
 }
 
 export interface ProposalPatchCheck {
@@ -483,5 +493,18 @@ export interface ProposalVerificationReport {
   passed: boolean;
   patchCheck: ProposalPatchCheck;
   checks: ProposalCommandCheck[];
+  outputPath: string;
+}
+
+export interface ProposalRollbackReport {
+  version: 1;
+  id: string;
+  runId: string;
+  proposalId: string;
+  createdAt: string;
+  patchPath: string;
+  passed: boolean;
+  reverseCheck: ProposalPatchCheck;
+  reverseApply?: ProposalCommandCheck;
   outputPath: string;
 }

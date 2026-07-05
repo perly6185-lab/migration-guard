@@ -25,9 +25,13 @@ import { syncIssues } from "./core/issueSync.js";
 import { loadActionPlan, renderActionPlan } from "./core/actionPlan.js";
 import {
   applyProposedPatch,
+  getProposalStatus,
   proposeActionPatch,
   proposePatch,
+  renderProposalRollbackReport,
+  renderProposalStatus,
   renderProposalVerificationReport,
+  rollbackProposedPatch,
   verifyProposedPatch
 } from "./core/patch.js";
 import { runPreviewProbe } from "./core/preview.js";
@@ -518,10 +522,16 @@ async function commandAction(args: ParsedArgs): Promise<void> {
     if (!proposalId) {
       throw new Error("action apply requires --proposal <proposal-id>.");
     }
-    const result = await applyProposedPatch(loaded, pkg, proposalId, { runChecks: !args.options["skip-checks"] });
+    const result = await applyProposedPatch(loaded, pkg, proposalId, {
+      runChecks: !args.options["skip-checks"],
+      rollbackOnFail: Boolean(args.options["rollback-on-fail"])
+    });
     console.log(result.message);
     if (result.report) {
       console.log(renderProposalVerificationReport(result.report));
+    }
+    if (result.rollbackReport) {
+      console.log(renderProposalRollbackReport(result.rollbackReport));
     }
     return;
   }
@@ -544,6 +554,35 @@ async function commandProposal(args: ParsedArgs): Promise<void> {
       console.log(JSON.stringify(report, null, 2));
     } else {
       console.log(renderProposalVerificationReport(report));
+    }
+    if (!report.passed) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (action === "status") {
+    if (!proposalId) {
+      throw new Error("proposal status requires --proposal <proposal-id>.");
+    }
+    const status = await getProposalStatus(loaded, pkg, proposalId);
+    if (args.options.json) {
+      console.log(JSON.stringify(status, null, 2));
+    } else {
+      console.log(renderProposalStatus(status));
+    }
+    return;
+  }
+
+  if (action === "rollback") {
+    if (!proposalId) {
+      throw new Error("proposal rollback requires --proposal <proposal-id>.");
+    }
+    const report = await rollbackProposedPatch(loaded, pkg, proposalId);
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderProposalRollbackReport(report));
     }
     if (!report.passed) {
       process.exitCode = 1;
@@ -703,8 +742,10 @@ Usage:
   migration-guard task propose [--run <id|latest>] --task <id>
   migration-guard task apply [--run <id|latest>] --proposal <id>
   migration-guard action propose [--run <id|latest>] --action <id>
-  migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks]
+  migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks] [--rollback-on-fail]
   migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--json]
+  migration-guard proposal status [--run <id|latest>] --proposal <id> [--json]
+  migration-guard proposal rollback [--run <id|latest>] --proposal <id> [--json]
   migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run]
   migration-guard ci verify --baseline <path>
   migration-guard contract capture --source <url>
