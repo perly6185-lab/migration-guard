@@ -417,6 +417,7 @@ export interface MigrationAction {
   recommendedChecks: string[];
   patchMode: MigrationActionPatchMode;
   patchTemplate?: MigrationActionPatchTemplate;
+  preview?: ProposalPreviewConfig;
 }
 
 export interface MigrationActionPlan {
@@ -441,6 +442,7 @@ export interface ProposedPatch {
   affectedFiles: string[];
   generatedFiles?: string[];
   recommendedChecks: string[];
+  preview?: ProposalPreviewConfig;
   patchKind?: "task-placeholder" | "action-probe";
   applyState:
     | "proposed"
@@ -481,6 +483,32 @@ export interface ProposalCommandCheck {
   error?: string;
 }
 
+export interface ProposalPreviewConfig {
+  command: string;
+  url: string;
+  cwd?: string;
+  timeoutMs?: number;
+  env?: Record<string, string>;
+}
+
+export interface ProposalPreviewResult {
+  command: string;
+  cwd: string;
+  url: string;
+  ready: boolean;
+  status: number | null;
+  durationMs: number;
+  stdout: string;
+  stderr: string;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+  stopped: boolean;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  error?: string;
+  outputPath?: string;
+}
+
 export interface ProposalVerificationReport {
   version: 1;
   id: string;
@@ -492,6 +520,7 @@ export interface ProposalVerificationReport {
   applied: boolean;
   passed: boolean;
   patchCheck: ProposalPatchCheck;
+  preview?: ProposalPreviewResult;
   checks: ProposalCommandCheck[];
   outputPath: string;
 }

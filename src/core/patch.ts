@@ -9,12 +9,15 @@ import type {
   MigrationActionPatchTemplate,
   ProposalCommandCheck,
   ProposalPatchCheck,
+  ProposalPreviewConfig,
+  ProposalPreviewResult,
   ProposalRollbackReport,
   ProposalVerificationReport,
   ProposedPatch
 } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 import { runShellCommand } from "./exec.js";
+import { startManagedPreview } from "./preview.js";
 
 export interface ApplyProposedPatchOptions {
   runChecks?: boolean;
@@ -83,6 +86,8 @@ export async function proposeActionPatch(loaded: LoadedConfig, pkg: MigrationRun
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "proposals", id);
   const patchPath = path.join(dir, "patch.diff");
   const generatedFile = createActionProbePath(action);
+  const template = inferPatchTemplate(action);
+  const preview = template === "ui-smoke-probe" ? await resolveActionPreview(loaded, action) : undefined;
   if (await pathExists(path.join(pkg.run.targetRoot, generatedFile))) {
     throw new Error(`Generated probe already exists in target: ${generatedFile}`);
   }
@@ -103,6 +108,7 @@ export async function proposeActionPatch(loaded: LoadedConfig, pkg: MigrationRun
     affectedFiles: action.affectedFiles,
     generatedFiles: [generatedFile],
     recommendedChecks,
+    preview,
     patchKind: "action-probe",
     applyState: "proposed"
   };
@@ -117,7 +123,8 @@ export async function proposeActionPatch(loaded: LoadedConfig, pkg: MigrationRun
       actionId: action.id,
       patchPath,
       generatedFiles: proposed.generatedFiles,
-      recommendedChecks
+      recommendedChecks,
+      preview
     }
   });
   return proposed;
@@ -169,8 +176,8 @@ export async function applyProposedPatch(
   if (!isGitPatchContent(patchContent)) {
     proposal.applyState = "applied";
     await writeJsonFile(proposalPath, proposal);
-    const checks = options.runChecks ? await runProposalChecks(loaded, pkg, proposal) : [];
-    const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checks);
+    const checkRun = options.runChecks ? await runProposalChecksForApply(loaded, pkg, proposal) : { checks: [] };
+    const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checkRun.checks, checkRun.preview);
     proposal.applyState = report.passed ? "applied" : "applied-with-failed-checks";
     proposal.lastVerificationPath = report.outputPath;
     await writeJsonFile(proposalPath, proposal);
@@ -213,8 +220,8 @@ export async function applyProposedPatch(
 
   proposal.applyState = "applied";
   await writeJsonFile(proposalPath, proposal);
-  const checks = options.runChecks ? await runProposalChecks(loaded, pkg, proposal) : [];
-  const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checks);
+  const checkRun = options.runChecks ? await runProposalChecksForApply(loaded, pkg, proposal) : { checks: [] };
+  const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checkRun.checks, checkRun.preview);
   proposal.applyState = report.passed ? "applied" : "applied-with-failed-checks";
   proposal.lastVerificationPath = report.outputPath;
   await writeJsonFile(proposalPath, proposal);
@@ -302,6 +309,7 @@ export function renderProposalVerificationReport(report: ProposalVerificationRep
     `Applied: ${report.applied ? "yes" : "no"}`,
     `Passed: ${report.passed ? "yes" : "no"}`,
     `Patch check: ${report.patchCheck.skipped ? "skipped" : report.patchCheck.passed ? "passed" : "failed"}`,
+    `Preview: ${report.preview ? report.preview.ready ? `ready ${report.preview.url}` : `failed ${report.preview.url}` : "not managed"}`,
     `Checks: ${report.checks.length}`
   ];
 
@@ -336,6 +344,7 @@ export function renderProposalStatus(status: ProposalStatus): string {
     `Task: ${proposal.taskId ?? "none"}`,
     `Generated files: ${proposal.generatedFiles?.join(", ") || "none"}`,
     `Recommended checks: ${proposal.recommendedChecks.join(", ") || "none"}`,
+    `Preview: ${proposal.preview ? `${proposal.preview.command} -> ${proposal.preview.url}` : "none"}`,
     `Last verification: ${proposal.lastVerificationPath ?? "none"}`,
     `Last rollback: ${proposal.lastRollbackPath ?? "none"}`,
     `Verification reports: ${status.verificationReports.length}`,
@@ -403,20 +412,87 @@ async function checkPatchApplicability(
 async function runProposalChecks(
   loaded: LoadedConfig,
   pkg: MigrationRunPackage,
-  proposal: ProposedPatch
+  proposal: ProposedPatch,
+  env?: Record<string, string>
+): Promise<ProposalCommandCheck[]> {
+  return runProposalCheckCommands(loaded, pkg, proposal.recommendedChecks, env);
+}
+
+async function runProposalCheckCommands(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  commands: string[],
+  env?: Record<string, string>
 ): Promise<ProposalCommandCheck[]> {
   const checks: ProposalCommandCheck[] = [];
 
-  for (const command of proposal.recommendedChecks) {
+  for (const command of commands) {
     const result = await runShellCommand(command, {
       cwd: pkg.run.targetRoot,
       timeoutMs: 120000,
-      maxOutputBytes: loaded.config.output.maxOutputBytes
+      maxOutputBytes: loaded.config.output.maxOutputBytes,
+      env
     });
     checks.push(commandResultToProposalCheck(result));
   }
 
   return checks;
+}
+
+async function runProposalChecksForApply(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch
+): Promise<{ checks: ProposalCommandCheck[]; preview?: ProposalPreviewResult }> {
+  if (!proposal.preview) {
+    return {
+      checks: await runProposalChecks(loaded, pkg, proposal)
+    };
+  }
+
+  const split = splitPreviewChecks(proposal);
+  const regularChecks = await runProposalCheckCommands(loaded, pkg, split.regularChecks);
+  if (split.previewChecks.length === 0) {
+    return { checks: regularChecks };
+  }
+
+  const outputPath = path.join(proposalDir(loaded, pkg, proposal.id), `preview-${Date.now()}.json`);
+  const session = await startManagedPreview(loaded, proposal.preview, {
+    outputPath,
+    maxOutputBytes: loaded.config.output.maxOutputBytes
+  });
+  let preview = session.result;
+  if (!preview.ready) {
+    preview = await session.stop();
+    return {
+      checks: regularChecks,
+      preview
+    };
+  }
+
+  let previewChecks: ProposalCommandCheck[] = [];
+  try {
+    previewChecks = await runProposalCheckCommands(loaded, pkg, split.previewChecks, session.env);
+  } finally {
+    preview = await session.stop();
+  }
+
+  return {
+    checks: [...regularChecks, ...previewChecks],
+    preview
+  };
+}
+
+function splitPreviewChecks(proposal: ProposedPatch): { regularChecks: string[]; previewChecks: string[] } {
+  const generatedFiles = proposal.generatedFiles ?? [];
+  const previewChecks = proposal.recommendedChecks.filter((command) => {
+    return command.includes("MG_PREVIEW_URL") || generatedFiles.some((file) => command.includes(file));
+  });
+  const previewCheckSet = new Set(previewChecks);
+  return {
+    regularChecks: proposal.recommendedChecks.filter((command) => !previewCheckSet.has(command)),
+    previewChecks
+  };
 }
 
 async function writeProposalVerificationReport(
@@ -426,7 +502,8 @@ async function writeProposalVerificationReport(
   mode: ProposalVerificationReport["mode"],
   applied: boolean,
   patchCheck: ProposalPatchCheck,
-  checks: ProposalCommandCheck[]
+  checks: ProposalCommandCheck[],
+  preview?: ProposalPreviewResult
 ): Promise<ProposalVerificationReport> {
   const outputPath = path.join(proposalDir(loaded, pkg, proposal.id), `verification-${Date.now()}.json`);
   const report: ProposalVerificationReport = {
@@ -438,8 +515,9 @@ async function writeProposalVerificationReport(
     createdAt: new Date().toISOString(),
     patchPath: proposal.patchPath,
     applied,
-    passed: patchCheck.passed && checks.every((check) => check.passed),
+    passed: patchCheck.passed && (preview?.ready ?? true) && checks.every((check) => check.passed),
     patchCheck,
+    preview,
     checks,
     outputPath
   };
@@ -570,6 +648,166 @@ function isGitPatchContent(input: string): boolean {
   return input
     .split(/\r?\n/)
     .some((line) => line.startsWith("diff --git ") || line.startsWith("--- ") || line.startsWith("+++ "));
+}
+
+async function resolveActionPreview(loaded: LoadedConfig, action: MigrationAction): Promise<ProposalPreviewConfig | undefined> {
+  if (action.preview) {
+    return {
+      timeoutMs: 180000,
+      ...action.preview
+    };
+  }
+
+  const rootPackage = await readPackageJson(path.join(loaded.targetRoot, "package.json"));
+  const scripts = readScripts(rootPackage);
+  const packageManager = await detectPackageManager(loaded.targetRoot);
+  const appDir = inferUiAppDir(action.affectedFiles);
+  const command = await inferPreviewCommand(loaded.targetRoot, packageManager, scripts, appDir);
+  if (!command) {
+    return undefined;
+  }
+
+  const base = await inferViteBase(loaded.targetRoot, appDir);
+  return {
+    command,
+    url: createLocalPreviewUrl(base),
+    timeoutMs: 180000
+  };
+}
+
+async function inferPreviewCommand(
+  targetRoot: string,
+  packageManager: "npm" | "pnpm" | "yarn" | "bun",
+  rootScripts: Record<string, string>,
+  appDir?: string
+): Promise<string | undefined> {
+  if (packageManager === "pnpm" && appDir?.endsWith("/web") && rootScripts.web) {
+    return "pnpm web dev --host 127.0.0.1";
+  }
+
+  if (rootScripts.dev) {
+    return packageScriptCommand(packageManager, "dev");
+  }
+
+  if (appDir) {
+    const appPackage = await readPackageJson(path.join(targetRoot, appDir, "package.json"));
+    const appScripts = readScripts(appPackage);
+    const appName = typeof appPackage?.name === "string" ? appPackage.name : undefined;
+    if (appScripts.dev && packageManager === "pnpm" && appName) {
+      return `pnpm --filter ${appName} dev --host 127.0.0.1`;
+    }
+  }
+
+  if (rootScripts.start && /\b(vite|dev)\b/.test(rootScripts.start)) {
+    return packageScriptCommand(packageManager, "start");
+  }
+
+  return undefined;
+}
+
+function packageScriptCommand(packageManager: "npm" | "pnpm" | "yarn" | "bun", script: string): string {
+  switch (packageManager) {
+    case "pnpm":
+      return `pnpm ${script} --host 127.0.0.1`;
+    case "yarn":
+      return `yarn ${script} --host 127.0.0.1`;
+    case "bun":
+      return `bun run ${script} --host 127.0.0.1`;
+    case "npm":
+    default:
+      return `npm run ${script} -- --host 127.0.0.1`;
+  }
+}
+
+async function inferViteBase(targetRoot: string, appDir?: string): Promise<string> {
+  const searchDirs: Array<string | undefined> = appDir ? [appDir, undefined] : [undefined];
+  const configNames = ["vite.config.ts", "vite.config.mts", "vite.config.js", "vite.config.mjs", "vite.config.cjs"];
+
+  for (const searchDir of searchDirs) {
+    for (const configName of configNames) {
+      const configPath = path.join(targetRoot, searchDir ?? "", configName);
+      if (!await pathExists(configPath)) {
+        continue;
+      }
+      const base = inferBaseFromViteConfig(await fs.readFile(configPath, "utf8"));
+      if (base) {
+        return base;
+      }
+    }
+  }
+
+  return "/";
+}
+
+function inferBaseFromViteConfig(text: string): string | undefined {
+  for (const line of text.split(/\r?\n/)) {
+    if (!/\bbase\b/.test(line) || (!line.includes("=") && !line.includes(":"))) {
+      continue;
+    }
+    const quotedValues = [...line.matchAll(/[`'"]([^`'"]+)[`'"]/g)].map((match) => match[1]);
+    const absoluteBases = quotedValues.filter((value) => value.startsWith("/") && !value.startsWith("//"));
+    const nonRootBase = absoluteBases.filter((value) => value !== "/").at(-1);
+    const base = nonRootBase ?? absoluteBases.at(-1);
+    if (base) {
+      return normalizeViteBase(base);
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeViteBase(base: string): string {
+  if (!base.startsWith("/") || base === "/") {
+    return "/";
+  }
+  return base.endsWith("/") ? base : `${base}/`;
+}
+
+function createLocalPreviewUrl(base: string): string {
+  const normalizedBase = normalizeViteBase(base);
+  return `http://127.0.0.1:5173${normalizedBase}`;
+}
+
+function inferUiAppDir(affectedFiles: string[]): string | undefined {
+  for (const file of affectedFiles) {
+    const normalized = file.replace(/\\/g, "/");
+    const match = normalized.match(/^(apps\/[^/]+)\//);
+    if (match) {
+      return match[1];
+    }
+  }
+  return undefined;
+}
+
+async function detectPackageManager(targetRoot: string): Promise<"npm" | "pnpm" | "yarn" | "bun"> {
+  if (await pathExists(path.join(targetRoot, "pnpm-lock.yaml"))) {
+    return "pnpm";
+  }
+  if (await pathExists(path.join(targetRoot, "yarn.lock"))) {
+    return "yarn";
+  }
+  if (await pathExists(path.join(targetRoot, "bun.lockb")) || await pathExists(path.join(targetRoot, "bun.lock"))) {
+    return "bun";
+  }
+  return "npm";
+}
+
+async function readPackageJson(filePath: string): Promise<Record<string, unknown> | undefined> {
+  if (!await pathExists(filePath)) {
+    return undefined;
+  }
+  return readJsonFile<Record<string, unknown>>(filePath);
+}
+
+function readScripts(packageJson: Record<string, unknown> | undefined): Record<string, string> {
+  if (!packageJson || typeof packageJson.scripts !== "object" || packageJson.scripts === null) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(packageJson.scripts as Record<string, unknown>)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
 }
 
 function createActionProbePath(action: MigrationAction): string {

@@ -32,6 +32,7 @@
 | Phase 14 | Probe Patch Apply + Verification Gate | 能 apply proposal 并自动执行推荐检查、写入 evidence |
 | Phase 15 | Proposal Lifecycle + Rollback | 能跟踪 proposal 状态、手动/自动回滚并汇总到 run report |
 | Phase 16 | Playwright UI Probe Adapter | 能为 UI action 生成浏览器优先、HTTP fallback 的 smoke probe |
+| Phase 17 | Managed Preview Server for UI Gates | 能在 apply 时自动启动、等待、使用并停止 UI preview server |
 
 ## Phase 0: CLI Bootstrap
 
@@ -615,6 +616,44 @@ migration-guard proposal rollback --run latest --proposal <proposal-id>
 - 目标项目未安装 Playwright 时，fetch fallback 能验证 preview URL。
 - rollback 后目标仓库保持 clean。
 - UI probe 输出不默认写入目标仓库。
+
+## Phase 17: Managed Preview Server for UI Gates
+
+目标：把 UI action apply 里的 preview server 生命周期纳入工具托管，避免人工先启动 dev server。
+
+新增能力：
+
+- action/proposal 支持 `preview` 元数据
+- UI action 自动推断常见 Vite preview command 和 preview URL
+- `action apply` 在执行 recommended checks 前自动启动 preview server
+- 普通 checks 先执行，preview server 只包裹依赖 UI preview 的 probe check
+- 等待 preview URL ready 后给 UI probe 注入 `MG_PREVIEW_URL`
+- preview ready 失败时写入 verification artifact 并阻断 gate
+- checks 完成后自动停止 preview server
+- preview stdout/stderr、ready URL、HTTP status、stop 状态写入 `preview-*.json` 和 verification report
+
+建议命令：
+
+```bash
+migration-guard action propose --run latest --action action-large-vue-ui-probe
+migration-guard action apply --run latest --proposal <proposal-id>
+migration-guard proposal rollback --run latest --proposal <proposal-id>
+```
+
+产物：
+
+- proposal `preview` 元数据
+- `.migration-guard/migration-runs/run-*/proposals/patch-*/preview-*.json`
+- proposal `verification-*.json` 中的 `preview`
+- UI probe JSON report
+
+完成标准：
+
+- UI proposal 能声明或自动推断 preview command 和 URL。
+- `action apply` 不需要人工启动 dev server，也能完成 UI probe。
+- preview server 在 checks 完成后被停止。
+- preview failure 会进入 verification report，而不是只表现为 probe 超时。
+- 真实外部仓库 smoke path 能完成 propose、apply、rollback，并保持目标仓库 clean。
 
 ## 阶段交付规则
 

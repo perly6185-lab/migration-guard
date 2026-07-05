@@ -5,6 +5,7 @@ export interface RunShellCommandOptions {
   cwd: string;
   timeoutMs: number;
   maxOutputBytes: number;
+  env?: Record<string, string>;
 }
 
 export function runShellCommand(command: string, options: RunShellCommandOptions): Promise<CommandExecutionResult> {
@@ -23,7 +24,8 @@ export function runShellCommand(command: string, options: RunShellCommandOptions
     const child = spawn(command, {
       cwd: options.cwd,
       shell: true,
-      windowsHide: true
+      windowsHide: true,
+      env: options.env ? { ...process.env, ...options.env } : process.env
     });
 
     const append = (chunks: Buffer[], chunk: Buffer, currentBytes: number): [number, boolean] => {
