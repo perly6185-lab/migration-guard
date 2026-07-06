@@ -981,11 +981,13 @@ migration-guard ci verify --baseline .migration-guard/latest-baseline.json --run
 
 新增能力：
 
-- `sync-issues --provider github --live --repo owner/name`
+- `sync-issues --provider github --live --repo owner/name --live-confirm <run-id>`
 - GitHub repo 格式校验
 - `GITHUB_TOKEN` 必填校验
 - `--dry-run` 和 `--live` 互斥
 - mockable GitHub issue adapter
+- GitHub open issue lookup by `mg_issue_id`
+- matching issue update via PATCH
 - GitHub live sync summary artifact
 - token 不写入 artifact
 
@@ -993,7 +995,7 @@ migration-guard ci verify --baseline .migration-guard/latest-baseline.json --run
 
 ```bash
 migration-guard sync-issues --run latest --provider github --dry-run
-migration-guard sync-issues --run latest --provider github --live --repo owner/name
+migration-guard sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id>
 ```
 
 产物：
@@ -1004,9 +1006,75 @@ migration-guard sync-issues --run latest --provider github --live --repo owner/n
 
 - 不带 `--dry-run` 或 `--live` 时外部 provider 拒绝执行。
 - `--live` 缺 repo/token 时拒绝执行。
-- mock GitHub API 测试能验证 URL、Authorization header、payload 和返回 URL。
+- `--live` 缺 live-confirm 或 confirm 不匹配当前 run id 时拒绝执行。
+- mock GitHub API 测试能验证 lookup/create/update URL、Authorization header、payload 和返回 URL。
+- live summary 能区分 created/updated/failed。
 - live summary 不包含 token。
 - 安全 smoke 验证拒绝路径，不触发真实外部 API。
+
+## Phase 27: GitHub Live Confirmation + Update Path
+
+目标：把 GitHub live adapter 从 create-only 边界推进到可控的 lookup/update/create 流程，并增加 run id 二次确认。
+
+新增能力：
+
+- `sync-issues --provider github --live --repo owner/name --live-confirm <run-id>`
+- GitHub open issue lookup by `mg_issue_id`
+- matching issue update via PATCH
+- missing/mismatched live confirmation 拒绝执行
+- live summary 区分 created/updated/failed
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github --dry-run
+migration-guard sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id>
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-sync.json`
+
+完成标准：
+
+- 缺 live-confirm 或 confirm 不匹配当前 run id 时拒绝执行。
+- mock GitHub API 测试能验证 lookup/update/create 顺序。
+- token 不写入 summary artifact。
+
+## Phase 28: GitHub Live Plan + Unchanged Skip Smoke
+
+目标：在真实 live 变更前写出可审计 plan，并避免重复更新正文未变化的 GitHub issue，同时补齐可复用失败 batch smoke。
+
+新增能力：
+
+- GitHub live plan artifact
+- issue body SHA-256 hash
+- unchanged body skip
+- live summary 区分 created/updated/skipped/failed
+- mock create/update/skip 覆盖
+- reusable failing proposal batch smoke helper
+
+建议命令：
+
+```bash
+node scripts/smoke/create-failing-proposal-batch.mjs --config configs/md-fast.migration-guard.json --run latest
+migration-guard proposal batch apply --config configs/md-fast.migration-guard.json --run latest --limit 2 --gate-policy fail-fast
+migration-guard sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --dry-run
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-sync.json`
+- `.migration-guard/migration-runs/run-*/proposal-batches/*/proposal-batch-report-*.json`
+- `scripts/smoke/create-failing-proposal-batch.mjs`
+
+完成标准：
+
+- live plan 包含 repo、matching strategy、willCreate/willUpdate/willSkip、issue id、existing number 和 body hash。
+- 正文 hash 相同的 existing issue 不触发 PATCH。
+- live summary 不包含 token，并记录 skippedCount。
+- safe smoke 不调用真实 GitHub API，目标仓库保持 clean。
 
 ## 阶段交付规则
 

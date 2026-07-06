@@ -10,9 +10,10 @@ Phase 26 将 GitHub provider 从 dry-run preview 推进到可测试的 live adap
 
 - live 模式必须显式 `--live`。
 - GitHub live 模式必须提供 `--repo owner/name`。
+- GitHub live 模式必须提供 `--live-confirm <run-id>`。
 - GitHub live 模式必须有 `GITHUB_TOKEN`。
 - `--dry-run` 和 `--live` 互斥。
-- GitHub API 调用被封装到 mockable adapter。
+- GitHub API 查询/创建/更新被封装到 mockable adapter。
 - live summary artifact 不包含 token。
 
 ## 2. CLI
@@ -26,13 +27,15 @@ node dist/cli.js sync-issues --run latest --provider github --dry-run
 Live 边界：
 
 ```bash
-node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name
+node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id>
 ```
 
 安全校验：
 
 - 缺 `--repo owner/name`：拒绝。
 - repo 格式不是 `owner/name`：拒绝。
+- 缺 `--live-confirm <run-id>`：拒绝。
+- confirm 不匹配当前 run id：拒绝。
 - 缺 `GITHUB_TOKEN`：拒绝。
 - 同时传 `--dry-run` 和 `--live`：拒绝。
 - GitLab/Jira/Linear live 仍未实现，继续拒绝并提示使用 dry-run。
@@ -53,10 +56,19 @@ src/core/githubIssueAdapter.ts
 请求目标：
 
 ```text
+GET https://api.github.com/repos/{owner}/{repo}/issues?state=open&per_page=100
 POST https://api.github.com/repos/{owner}/{repo}/issues
+PATCH https://api.github.com/repos/{owner}/{repo}/issues/{number}
 ```
 
-payload：
+策略：
+
+- 先读取 open issues。
+- 从 issue body front matter 提取 `mg_issue_id`。
+- 命中相同 `mg_issue_id` 时 PATCH 更新。
+- 未命中时 POST 创建。
+
+create/update payload：
 
 - title
 - body
@@ -81,6 +93,7 @@ issue-sync/github-live-sync.json
 - provider
 - repo
 - createdCount
+- updatedCount
 - failedCount
 - issue titles
 - issue URLs
@@ -109,13 +122,16 @@ npm test
 新增/扩展覆盖：
 
 - `--dry-run` 和 `--live` 互斥
+- GitHub live 缺 live-confirm 被拒绝
+- GitHub live confirm 不匹配 run id 被拒绝
 - GitHub live 缺 repo 被拒绝
 - GitHub live repo 格式错误被拒绝
 - GitHub live 缺 token 被拒绝
-- mock fetch 验证 GitHub API URL
+- mock fetch 验证 GitHub lookup/create/update URL
 - mock fetch 验证 Authorization header
 - mock fetch 验证 title/body/labels payload
 - live summary 写出 issue URL
+- live summary 区分 created/updated
 - live summary 不包含 token
 
 ## 6. 安全 Smoke
@@ -126,19 +142,22 @@ npm test
 
 ```bash
 node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live
+node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live --live-confirm run-unknown
 node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live --repo bad-repo
 ```
 
 预期：
 
-- 第一条提示缺 `--repo owner/name`
-- 第二条提示 repo 格式错误
+- 第一条提示缺 `--live-confirm <run-id>`
+- 第二条提示 confirm 不匹配当前 run id
+- 第三条提示 repo 格式错误
 - 目标仓库保持 clean
 
 实际结果：
 
-- `sync-issues --provider github --live` 返回 `GitHub live issue sync requires --repo owner/name.`
-- `sync-issues --provider github --live --repo bad-repo` 返回 `Invalid GitHub repo "bad-repo". Expected owner/name.`
+- `sync-issues --provider github --live` 返回 `GitHub live issue sync requires --live-confirm <run-id>.`
+- `sync-issues --provider github --live --live-confirm run-unknown` 返回 `GitHub live confirmation mismatch. Expected --live-confirm run-2026-07-06T02-23-11-039Z-j5ue3e.`
+- `sync-issues --provider github --live --live-confirm run-2026-07-06T02-23-11-039Z-j5ue3e --repo bad-repo` 返回 `Invalid GitHub repo "bad-repo". Expected owner/name.`
 - target repository stayed clean:
 
 ```text

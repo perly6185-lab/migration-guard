@@ -10,10 +10,10 @@ export async function syncIssues(
   loaded: LoadedConfig,
   pkg: MigrationRunPackage,
   provider: "local" | "github" | "gitlab" | "jira" | "linear",
-  options: { dryRun?: boolean; live?: boolean; repo?: string; token?: string; fetchImpl?: typeof fetch } = {}
+  options: { dryRun?: boolean; live?: boolean; repo?: string; token?: string; liveConfirm?: string; fetchImpl?: typeof fetch } = {}
 ): Promise<string> {
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "issue-sync");
-  enforceProviderSafety(provider, options);
+  enforceProviderSafety(provider, options, pkg.run.id);
   const context = await readIssueSyncContext(loaded, pkg);
   const mapping = providerMapping(provider);
   const exported = pkg.issues.map((issue) => serializeIssue(issue, provider, context, mapping));
@@ -28,6 +28,7 @@ export async function syncIssues(
       await writeTextFile(path.join(dir, "github-pr-comment.md"), renderGitHubPrComment(pkg, context));
     }
     if (provider === "github" && options.live) {
+      const livePlanPath = path.join(dir, "github-live-plan.json");
       const result = await createGitHubIssues({
         repo: options.repo ?? "",
         token: options.token ?? process.env.GITHUB_TOKEN ?? "",
@@ -36,14 +37,20 @@ export async function syncIssues(
           body: String(issue.body),
           labels: Array.isArray(issue.labels) ? issue.labels.map(String) : []
         })),
-        fetchImpl: options.fetchImpl
+        fetchImpl: options.fetchImpl,
+        onPlan: async (plan) => {
+          await writeJsonFile(livePlanPath, plan);
+        }
       });
       const liveSummaryPath = path.join(dir, "github-live-sync.json");
       await writeJsonFile(liveSummaryPath, {
         provider: "github",
         repo: result.repo,
         createdCount: result.createdCount,
+        updatedCount: result.updatedCount,
+        skippedCount: result.skippedCount,
         failedCount: result.failedCount,
+        planPath: livePlanPath,
         issues: result.issues
       });
       for (let index = 0; index < pkg.issues.length; index += 1) {
@@ -282,7 +289,7 @@ function providerTokenEnv(provider: string): string | undefined {
   }
 }
 
-function enforceProviderSafety(provider: string, options: { dryRun?: boolean; live?: boolean; repo?: string; token?: string }): void {
+function enforceProviderSafety(provider: string, options: { dryRun?: boolean; live?: boolean; repo?: string; token?: string; liveConfirm?: string }, runId?: string): void {
   if (provider === "local") {
     return;
   }
@@ -293,6 +300,12 @@ function enforceProviderSafety(provider: string, options: { dryRun?: boolean; li
     return;
   }
   if (provider === "github" && options.live) {
+    if (!options.liveConfirm) {
+      throw new Error("GitHub live issue sync requires --live-confirm <run-id>.");
+    }
+    if (runId && options.liveConfirm !== runId) {
+      throw new Error(`GitHub live confirmation mismatch. Expected --live-confirm ${runId}.`);
+    }
     if (!options.repo) {
       throw new Error("GitHub live issue sync requires --repo owner/name.");
     }

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { applyProposalBatch, applyProposedPatch, createAddFilePatch, createProposalBatchPlan, proposeActionPatch, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
 import { syncIssues } from "./issueSync.js";
 import { writeCiHandoffReport } from "./migrationRun.js";
-import type { LoadedConfig, MigrationRun, MigrationTaskGraph, ProposalVerificationReport, ProposedPatch } from "../types.js";
+import type { LoadedConfig, MigrationIssue, MigrationRun, MigrationTaskGraph, ProposalVerificationReport, ProposedPatch } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
 const execFileAsync = promisify(execFile);
@@ -330,6 +330,20 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.match(report.stopReason ?? "", /patch-a-fail/);
     assert.match(report.nextCommand ?? "", /proposal replan/);
     assert.ok(report.recommendedNextActions?.some((action) => action.includes("proposal replan")));
+    const manualIssue: MigrationIssue = {
+      id: "issue-manual-live-create",
+      runId: pkg.run.id,
+      type: "task",
+      title: "Manual live create coverage",
+      body: "Covers the GitHub create branch in live sync tests.",
+      status: "ready",
+      risk: "low",
+      owner: "engine",
+      affectedFiles: [],
+      createdAt: "2026-07-06T00:00:00.000Z",
+      updatedAt: "2026-07-06T00:00:00.000Z"
+    };
+    pkg.issues.push(manualIssue);
     const issueSyncPath = await syncIssues(loaded, pkg, "local");
     const exportedIssues = JSON.parse(await readFile(issueSyncPath, "utf8")) as Array<{
       body: string;
@@ -358,13 +372,31 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.match(prComment, /patch-a-fail/);
     assert.match(prComment, /Next command/);
     await assert.rejects(syncIssues(loaded, pkg, "github"), /Live github issue sync is not implemented|--dry-run/);
-    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true }), /--repo owner\/name/);
-    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, repo: "bad-repo" }), /Invalid GitHub repo/);
-    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, repo: "owner/repo", token: "" }), /GITHUB_TOKEN/);
-    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, dryRun: true, repo: "owner/repo", token: "token" }), /cannot be used together/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true }), /--live-confirm/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, liveConfirm: pkg.run.id }), /--repo owner\/name/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, repo: "owner/repo", token: "secret-token" }), /--live-confirm/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, repo: "owner/repo", token: "secret-token", liveConfirm: "wrong-run" }), /confirmation mismatch/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, repo: "bad-repo", liveConfirm: pkg.run.id }), /Invalid GitHub repo/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, repo: "owner/repo", token: "", liveConfirm: pkg.run.id }), /GITHUB_TOKEN/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, dryRun: true, repo: "owner/repo", token: "token", liveConfirm: pkg.run.id }), /cannot be used together/);
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     const mockFetch: typeof fetch = async (input, init) => {
       requests.push({ url: String(input), init });
+      if (String(input).includes("?state=open")) {
+        const liveExport = JSON.parse(await readFile(path.join(issueSyncDir, "github-issues.json"), "utf8")) as Array<{ body: string }>;
+        return new Response(JSON.stringify([{
+          number: 98,
+          html_url: "https://github.com/owner/repo/issues/98",
+          body: liveExport[0]?.body
+        }, {
+          number: 99,
+          html_url: "https://github.com/owner/repo/issues/99",
+          body: `${liveExport[1]?.body ?? ""}\nchanged on GitHub\n`
+        }]), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
       return new Response(JSON.stringify({
         html_url: `https://github.com/owner/repo/issues/${requests.length}`,
         number: requests.length
@@ -377,21 +409,42 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
       live: true,
       repo: "owner/repo",
       token: "secret-token",
+      liveConfirm: pkg.run.id,
       fetchImpl: mockFetch
     });
     assert.match(livePath, /github-issues\.json$/);
-    assert.equal(requests.length, pkg.issues.length);
-    assert.equal(requests[0]?.url, "https://api.github.com/repos/owner/repo/issues");
+    assert.equal(requests.length, 3);
+    assert.equal(requests[0]?.url, "https://api.github.com/repos/owner/repo/issues?state=open&per_page=100");
     assert.equal((requests[0]?.init?.headers as Record<string, string>)?.authorization, "Bearer secret-token");
-    const firstPayload = JSON.parse(String(requests[0]?.init?.body)) as { title: string; body: string; labels: string[] };
+    assert.equal(requests[1]?.url, "https://api.github.com/repos/owner/repo/issues/99");
+    assert.equal(requests[1]?.init?.method, "PATCH");
+    assert.equal(requests[2]?.init?.method, "POST");
+    const firstPayload = JSON.parse(String(requests[1]?.init?.body)) as { title: string; body: string; labels: string[] };
     assert.ok(firstPayload.title);
     assert.ok(Array.isArray(firstPayload.labels));
     assert.doesNotMatch(await readFile(path.join(issueSyncDir, "github-live-sync.json"), "utf8"), /secret-token/);
-    const liveSummary = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-sync.json"), "utf8")) as { repo: string; createdCount: number; failedCount: number; issues: Array<{ url?: string }> };
+    assert.doesNotMatch(await readFile(path.join(issueSyncDir, "github-live-plan.json"), "utf8"), /secret-token/);
+    const livePlan = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-plan.json"), "utf8")) as { repo: string; willCreate: number; willUpdate: number; willSkip: number; issues: Array<{ action?: string; bodyHash?: string; existingNumber?: number }> };
+    assert.equal(livePlan.repo, "owner/repo");
+    assert.equal(livePlan.willCreate, 1);
+    assert.equal(livePlan.willUpdate, 1);
+    assert.equal(livePlan.willSkip, 1);
+    assert.equal(livePlan.issues[0]?.action, "skip");
+    assert.equal(livePlan.issues[0]?.existingNumber, 98);
+    assert.equal(livePlan.issues[1]?.action, "update");
+    assert.equal(livePlan.issues[2]?.action, "create");
+    assert.ok(livePlan.issues.every((issue) => typeof issue.bodyHash === "string" && issue.bodyHash.length === 64));
+    const liveSummary = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-sync.json"), "utf8")) as { repo: string; createdCount: number; updatedCount: number; skippedCount: number; failedCount: number; planPath?: string; issues: Array<{ url?: string; action?: string }> };
     assert.equal(liveSummary.repo, "owner/repo");
-    assert.equal(liveSummary.createdCount, pkg.issues.length);
+    assert.equal(liveSummary.createdCount, 1);
+    assert.equal(liveSummary.updatedCount, 1);
+    assert.equal(liveSummary.skippedCount, 1);
     assert.equal(liveSummary.failedCount, 0);
-    assert.match(liveSummary.issues[0]?.url ?? "", /https:\/\/github\.com\/owner\/repo\/issues\//);
+    assert.match(liveSummary.planPath ?? "", /github-live-plan\.json$/);
+    assert.equal(liveSummary.issues[0]?.action, "skipped");
+    assert.equal(liveSummary.issues[1]?.action, "updated");
+    assert.equal(liveSummary.issues[2]?.action, "created");
+    assert.match(liveSummary.issues[1]?.url ?? "", /https:\/\/github\.com\/owner\/repo\/issues\//);
     const ciHandoffPath = await writeCiHandoffReport(loaded, pkg);
     const ciHandoff = await readFile(ciHandoffPath, "utf8");
     assert.match(ciHandoff, /Latest failed batch/);
