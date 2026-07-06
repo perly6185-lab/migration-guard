@@ -347,10 +347,24 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.match(failureIssue.migrationGuard?.batch?.stopReason ?? "", /patch-a-fail/);
     assert.equal(failureIssue.migrationGuard?.batch?.skippedProposals?.[0], "patch-b-skip");
     assert.match(failureIssue.migrationGuard?.batch?.nextCommand ?? "", /proposal replan/);
+    const githubDryRunPath = await syncIssues(loaded, pkg, "github", { dryRun: true });
+    assert.match(githubDryRunPath, /github-dry-run-issues\.json$/);
+    const issueSyncDir = path.dirname(githubDryRunPath);
+    const mapping = JSON.parse(await readFile(path.join(issueSyncDir, "github-dry-run-mapping.json"), "utf8")) as { tokenEnv?: string; fields?: { title?: string } };
+    assert.equal(mapping.tokenEnv, "GITHUB_TOKEN");
+    assert.equal(mapping.fields?.title, "title");
+    const prComment = await readFile(path.join(issueSyncDir, "github-pr-comment.md"), "utf8");
+    assert.match(prComment, /Migration Guard/);
+    assert.match(prComment, /patch-a-fail/);
+    assert.match(prComment, /Next command/);
+    await assert.rejects(syncIssues(loaded, pkg, "github"), /Live github issue sync is not implemented/);
     const ciHandoffPath = await writeCiHandoffReport(loaded, pkg);
     const ciHandoff = await readFile(ciHandoffPath, "utf8");
     assert.match(ciHandoff, /Latest failed batch/);
     assert.match(ciHandoff, /Next command: migration-guard proposal replan/);
+    const stepSummary = await readFile(path.join(path.dirname(ciHandoffPath), "github-step-summary.md"), "utf8");
+    assert.match(stepSummary, /Migration Guard CI Summary/);
+    assert.match(stepSummary, /Skipped proposals: patch-b-skip/);
     await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "a-fail.mjs")));
     await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "b-skip.mjs")));
   } finally {

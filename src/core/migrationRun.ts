@@ -280,8 +280,24 @@ export async function writeCiHandoffReport(loaded: LoadedConfig, pkg: MigrationR
   const batches = await readRecentProposalBatchSummaries(loaded, pkg.run.id);
   const failedGate = [...gates].reverse().find((gate) => !gate.passed);
   const failedBatch = [...batches].reverse().find((batch) => !batch.passed);
-  const report = [
-    `# CI Handoff: ${pkg.run.id}`,
+  const report = renderCiHandoffMarkdown(pkg, failedGate, failedBatch, "CI Handoff");
+  const reportPath = path.join(migrationRunDir(loaded, pkg.run.id), "reports", name);
+  await writeTextFile(reportPath, report);
+  await writeTextFile(
+    path.join(migrationRunDir(loaded, pkg.run.id), "reports", "github-step-summary.md"),
+    renderCiHandoffMarkdown(pkg, failedGate, failedBatch, "Migration Guard CI Summary")
+  );
+  return reportPath;
+}
+
+function renderCiHandoffMarkdown(
+  pkg: MigrationRunPackage,
+  failedGate: Awaited<ReturnType<typeof readRecentProposalGateSummaries>>[number] | undefined,
+  failedBatch: Awaited<ReturnType<typeof readRecentProposalBatchSummaries>>[number] | undefined,
+  title: string
+): string {
+  return [
+    `# ${title}: ${pkg.run.id}`,
     "",
     `- Goal: ${pkg.run.goal}`,
     `- Status: ${pkg.run.status}`,
@@ -296,9 +312,6 @@ export async function writeCiHandoffReport(loaded: LoadedConfig, pkg: MigrationR
     failedBatch && failedBatch.skippedProposals.length > 0 ? `- Skipped proposals: ${failedBatch.skippedProposals.join(", ")}` : undefined,
     ...(failedBatch?.recommendedNextActions ?? []).map((action) => `- Recommended: ${action}`)
   ].filter(Boolean).join("\n");
-  const reportPath = path.join(migrationRunDir(loaded, pkg.run.id), "reports", name);
-  await writeTextFile(reportPath, report);
-  return reportPath;
 }
 
 export function syncIssueStatuses(pkg: MigrationRunPackage): void {

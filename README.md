@@ -65,6 +65,7 @@ node dist/cli.js proposal replan --run latest --proposal <proposal-id>
 node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
 node dist/cli.js sync-issues --run latest --provider local
+node dist/cli.js sync-issues --run latest --provider github --dry-run
 node dist/cli.js ci verify --baseline .migration-guard/latest-baseline.json --run latest
 ```
 
@@ -83,6 +84,8 @@ hints. Batch reports also explain why the batch stopped, which proposals were
 skipped, and the next `proposal replan` command to run.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
+GitHub dry-run exports also write a PR comment preview at
+`issue-sync/github-pr-comment.md`.
 
 Proposal gate defaults can be configured:
 
@@ -204,6 +207,9 @@ policy, retry defaults and batch summary reporting.
 
 See [docs/PHASE_24_REPORT.md](docs/PHASE_24_REPORT.md) for external issue gate
 context and CI handoff reporting.
+
+See [docs/PHASE_25_REPORT.md](docs/PHASE_25_REPORT.md) for GitHub PR comment
+preview, provider mapping and CI summary artifacts.
 
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
 for the next real-world validation plan using `perly6185-lab/md`.

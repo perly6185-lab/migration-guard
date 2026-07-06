@@ -12,14 +12,20 @@ export async function syncIssues(
   options: { dryRun?: boolean } = {}
 ): Promise<string> {
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "issue-sync");
+  enforceProviderSafety(provider, options);
   const context = await readIssueSyncContext(loaded, pkg);
-  const exported = pkg.issues.map((issue) => serializeIssue(issue, provider, context));
+  const mapping = providerMapping(provider);
+  const exported = pkg.issues.map((issue) => serializeIssue(issue, provider, context, mapping));
   const outputPath = path.join(dir, `${provider}${options.dryRun ? "-dry-run" : ""}-issues.json`);
   await writeJsonFile(outputPath, exported);
 
   if (provider !== "local") {
     const markdownPath = path.join(dir, `${provider}${options.dryRun ? "-dry-run" : ""}-issues.md`);
     await writeTextFile(markdownPath, renderIssueSyncMarkdown(pkg.issues, provider, context));
+    await writeJsonFile(path.join(dir, `${provider}${options.dryRun ? "-dry-run" : ""}-mapping.json`), mapping);
+    if (provider === "github" && options.dryRun) {
+      await writeTextFile(path.join(dir, "github-pr-comment.md"), renderGitHubPrComment(pkg, context));
+    }
     if (!options.dryRun) {
       for (const issue of pkg.issues) {
         issue.externalUrl = issue.externalUrl ?? `${provider}:pending:${issue.id}`;
@@ -79,11 +85,31 @@ interface ProposalBatchContext {
   recommendedNextActions?: string[];
 }
 
-function serializeIssue(issue: MigrationIssue, provider: string, context: IssueSyncContext): Record<string, unknown> {
+interface ProviderMapping {
+  provider: string;
+  tokenEnv?: string;
+  dryRunDefault: boolean;
+  fields: {
+    title: string;
+    body: string;
+    labels: string;
+    status: string;
+  };
+  labels: string[];
+  bodySections: string[];
+}
+
+function serializeIssue(issue: MigrationIssue, provider: string, context: IssueSyncContext, mapping: ProviderMapping): Record<string, unknown> {
   const gate = contextForIssue(issue, context);
   const batch = gate ? context.latestFailedBatch : undefined;
   return {
     provider,
+    providerMapping: {
+      title: mapping.fields.title,
+      body: mapping.fields.body,
+      labels: mapping.fields.labels,
+      status: mapping.fields.status
+    },
     title: issue.title,
     body: renderIssueBody(issue, gate, batch),
     migrationGuard: {
@@ -150,6 +176,91 @@ function renderIssueSyncMarkdown(issues: MigrationIssue[], provider: string, con
     ].filter(Boolean).join("\n");
     })
   ].join("\n");
+}
+
+function renderGitHubPrComment(pkg: MigrationRunPackage, context: IssueSyncContext): string {
+  const failedGate = context.failedGates[0];
+  const batch = context.latestFailedBatch;
+  return [
+    "## Migration Guard",
+    "",
+    `Run: \`${pkg.run.id}\``,
+    `Goal: ${pkg.run.goal}`,
+    "",
+    "### Latest Failed Gate",
+    "",
+    failedGate ? [
+      `- Proposal: \`${failedGate.proposalId}\``,
+      `- Verification: \`${failedGate.reportPath}\``,
+      failedGate.replanIssueId ? `- Replan issue: \`${failedGate.replanIssueId}\`` : undefined,
+      failedGate.replanTaskId ? `- Replan task: \`${failedGate.replanTaskId}\`` : undefined,
+      failedGate.firstFailedCheck ? `- First failed check: \`${failedGate.firstFailedCheck.command}\`` : undefined,
+      failedGate.firstFailedCheck?.failureCategory ? `- Failure category: \`${failedGate.firstFailedCheck.failureCategory}\`` : undefined,
+      ...(failedGate.firstFailedCheck?.remediationHints?.length ? [
+        "",
+        "Remediation hints:",
+        ...failedGate.firstFailedCheck.remediationHints.map((hint) => `- ${hint}`)
+      ] : [])
+    ].filter(Boolean).join("\n") : "No failed proposal gate.",
+    "",
+    "### Latest Failed Batch",
+    "",
+    batch ? [
+      `- Batch: \`${batch.batchId}\``,
+      `- Report: \`${batch.reportPath}\``,
+      batch.stopReason ? `- Stop reason: ${batch.stopReason}` : undefined,
+      batch.nextCommand ? `- Next command: \`${batch.nextCommand}\`` : undefined,
+      batch.skippedProposals.length > 0 ? `- Skipped proposals: ${batch.skippedProposals.map((proposal) => `\`${proposal}\``).join(", ")}` : undefined,
+      ...(batch.recommendedNextActions?.length ? [
+        "",
+        "Recommended next actions:",
+        ...batch.recommendedNextActions.map((action) => `- ${action}`)
+      ] : [])
+    ].filter(Boolean).join("\n") : "No failed proposal batch."
+  ].join("\n");
+}
+
+function providerMapping(provider: string): ProviderMapping {
+  return {
+    provider,
+    tokenEnv: providerTokenEnv(provider),
+    dryRunDefault: provider !== "local",
+    fields: provider === "jira"
+      ? { title: "summary", body: "description", labels: "labels", status: "status" }
+      : { title: "title", body: "body", labels: "labels", status: "state/status" },
+    labels: ["migration-guard", "mg-type:*", "mg-risk:*"],
+    bodySections: [
+      "machine-readable front matter",
+      "issue body",
+      "affected files",
+      "proposal gate context",
+      "proposal batch context"
+    ]
+  };
+}
+
+function providerTokenEnv(provider: string): string | undefined {
+  switch (provider) {
+    case "github":
+      return "GITHUB_TOKEN";
+    case "gitlab":
+      return "GITLAB_TOKEN";
+    case "jira":
+      return "JIRA_TOKEN";
+    case "linear":
+      return "LINEAR_API_KEY";
+    default:
+      return undefined;
+  }
+}
+
+function enforceProviderSafety(provider: string, options: { dryRun?: boolean }): void {
+  if (provider === "local" || options.dryRun) {
+    return;
+  }
+  const tokenEnv = providerTokenEnv(provider);
+  const tokenHint = tokenEnv ? ` Set ${tokenEnv} when a live ${provider} adapter is implemented.` : "";
+  throw new Error(`Live ${provider} issue sync is not implemented yet. Re-run with --dry-run to write provider-neutral artifacts.${tokenHint}`);
 }
 
 function contextForIssue(issue: MigrationIssue, context: IssueSyncContext): ProposalGateContext | undefined {

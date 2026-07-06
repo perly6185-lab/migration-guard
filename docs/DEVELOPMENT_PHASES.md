@@ -40,6 +40,7 @@
 | Phase 22 | Gate Remediation Hints + Batch Stop Reporting | 能把 gate 失败转成修复建议，并解释 batch 为什么停止和跳过 |
 | Phase 23 | Configurable Gate Policy + Batch Summary | 能用项目配置控制 gate policy/retry，并在 run report 汇总 batch |
 | Phase 24 | External Issue Gate Context + CI Handoff | 能把 gate/batch 失败上下文导出给 issue sync 和 CI |
+| Phase 25 | Provider Adapter + PR Comment Preview | 能生成 GitHub PR comment preview、provider mapping 和 CI summary |
 
 ## Phase 0: CLI Bootstrap
 
@@ -937,6 +938,41 @@ migration-guard ci verify --baseline .migration-guard/latest-baseline.json --run
 - batch context 包含 stopReason、skipped proposals、nextCommand 和 recommended next actions。
 - CI handoff report 能展示最近 failed gate/batch 和下一步命令。
 - 真实 local sync smoke 通过，目标仓库保持 clean。
+
+## Phase 25: Provider Adapter + PR Comment Preview
+
+目标：在不调用真实外部 API 的前提下，把 provider-neutral issue context 转换成接近真实协作平台可用的预览 artifact。
+
+新增能力：
+
+- provider mapping artifact
+- GitHub dry-run PR comment preview
+- external provider non-dry-run safety guard
+- CI GitHub step summary artifact
+- issue export 记录 provider field mapping
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github --dry-run
+migration-guard ci verify --baseline .migration-guard/latest-baseline.json --run latest
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-dry-run-issues.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-dry-run-issues.md`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-dry-run-mapping.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-pr-comment.md`
+- `.migration-guard/migration-runs/run-*/reports/github-step-summary.md`
+
+完成标准：
+
+- GitHub dry-run export 包含 PR comment preview。
+- Provider mapping 明确 title/body/labels/status 字段映射。
+- 非 local provider 不带 `--dry-run` 时不会尝试外部 API，并输出明确错误。
+- CI handoff 同时写出普通 report 和 GitHub Actions summary style artifact。
+- 真实 GitHub dry-run smoke 通过，目标仓库保持 clean。
 
 ## 阶段交付规则
 
