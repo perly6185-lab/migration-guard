@@ -41,6 +41,7 @@
 | Phase 23 | Configurable Gate Policy + Batch Summary | 能用项目配置控制 gate policy/retry，并在 run report 汇总 batch |
 | Phase 24 | External Issue Gate Context + CI Handoff | 能把 gate/batch 失败上下文导出给 issue sync 和 CI |
 | Phase 25 | Provider Adapter + PR Comment Preview | 能生成 GitHub PR comment preview、provider mapping 和 CI summary |
+| Phase 26 | GitHub Live Adapter Boundary + API Mock | 能用显式 live 开关和 mock API 验证 GitHub issue 创建边界 |
 
 ## Phase 0: CLI Bootstrap
 
@@ -973,6 +974,39 @@ migration-guard ci verify --baseline .migration-guard/latest-baseline.json --run
 - 非 local provider 不带 `--dry-run` 时不会尝试外部 API，并输出明确错误。
 - CI handoff 同时写出普通 report 和 GitHub Actions summary style artifact。
 - 真实 GitHub dry-run smoke 通过，目标仓库保持 clean。
+
+## Phase 26: GitHub Live Adapter Boundary + API Mock
+
+目标：把 GitHub provider 从 dry-run preview 推进到可测试的 live adapter 边界，但仍要求显式 live 开关和严格安全校验。
+
+新增能力：
+
+- `sync-issues --provider github --live --repo owner/name`
+- GitHub repo 格式校验
+- `GITHUB_TOKEN` 必填校验
+- `--dry-run` 和 `--live` 互斥
+- mockable GitHub issue adapter
+- GitHub live sync summary artifact
+- token 不写入 artifact
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github --dry-run
+migration-guard sync-issues --run latest --provider github --live --repo owner/name
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-sync.json`
+
+完成标准：
+
+- 不带 `--dry-run` 或 `--live` 时外部 provider 拒绝执行。
+- `--live` 缺 repo/token 时拒绝执行。
+- mock GitHub API 测试能验证 URL、Authorization header、payload 和返回 URL。
+- live summary 不包含 token。
+- 安全 smoke 验证拒绝路径，不触发真实外部 API。
 
 ## 阶段交付规则
 

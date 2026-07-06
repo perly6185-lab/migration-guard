@@ -357,7 +357,41 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.match(prComment, /Migration Guard/);
     assert.match(prComment, /patch-a-fail/);
     assert.match(prComment, /Next command/);
-    await assert.rejects(syncIssues(loaded, pkg, "github"), /Live github issue sync is not implemented/);
+    await assert.rejects(syncIssues(loaded, pkg, "github"), /Live github issue sync is not implemented|--dry-run/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true }), /--repo owner\/name/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, repo: "bad-repo" }), /Invalid GitHub repo/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, repo: "owner/repo", token: "" }), /GITHUB_TOKEN/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, dryRun: true, repo: "owner/repo", token: "token" }), /cannot be used together/);
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const mockFetch: typeof fetch = async (input, init) => {
+      requests.push({ url: String(input), init });
+      return new Response(JSON.stringify({
+        html_url: `https://github.com/owner/repo/issues/${requests.length}`,
+        number: requests.length
+      }), {
+        status: 201,
+        headers: { "content-type": "application/json" }
+      });
+    };
+    const livePath = await syncIssues(loaded, pkg, "github", {
+      live: true,
+      repo: "owner/repo",
+      token: "secret-token",
+      fetchImpl: mockFetch
+    });
+    assert.match(livePath, /github-issues\.json$/);
+    assert.equal(requests.length, pkg.issues.length);
+    assert.equal(requests[0]?.url, "https://api.github.com/repos/owner/repo/issues");
+    assert.equal((requests[0]?.init?.headers as Record<string, string>)?.authorization, "Bearer secret-token");
+    const firstPayload = JSON.parse(String(requests[0]?.init?.body)) as { title: string; body: string; labels: string[] };
+    assert.ok(firstPayload.title);
+    assert.ok(Array.isArray(firstPayload.labels));
+    assert.doesNotMatch(await readFile(path.join(issueSyncDir, "github-live-sync.json"), "utf8"), /secret-token/);
+    const liveSummary = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-sync.json"), "utf8")) as { repo: string; createdCount: number; failedCount: number; issues: Array<{ url?: string }> };
+    assert.equal(liveSummary.repo, "owner/repo");
+    assert.equal(liveSummary.createdCount, pkg.issues.length);
+    assert.equal(liveSummary.failedCount, 0);
+    assert.match(liveSummary.issues[0]?.url ?? "", /https:\/\/github\.com\/owner\/repo\/issues\//);
     const ciHandoffPath = await writeCiHandoffReport(loaded, pkg);
     const ciHandoff = await readFile(ciHandoffPath, "utf8");
     assert.match(ciHandoff, /Latest failed batch/);

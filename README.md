@@ -66,6 +66,7 @@ node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
 node dist/cli.js sync-issues --run latest --provider local
 node dist/cli.js sync-issues --run latest --provider github --dry-run
+node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name
 node dist/cli.js ci verify --baseline .migration-guard/latest-baseline.json --run latest
 ```
 
@@ -86,6 +87,8 @@ Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at
 `issue-sync/github-pr-comment.md`.
+GitHub live issue sync requires explicit `--live`, `--repo owner/name`, and
+`GITHUB_TOKEN`; tokens are never written to artifacts.
 
 Proposal gate defaults can be configured:
 
@@ -210,6 +213,9 @@ context and CI handoff reporting.
 
 See [docs/PHASE_25_REPORT.md](docs/PHASE_25_REPORT.md) for GitHub PR comment
 preview, provider mapping and CI summary artifacts.
+
+See [docs/PHASE_26_REPORT.md](docs/PHASE_26_REPORT.md) for the GitHub live
+adapter boundary and mock API coverage.
 
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
 for the next real-world validation plan using `perly6185-lab/md`.

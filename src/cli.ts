@@ -654,7 +654,11 @@ async function commandSyncIssues(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
   const provider = issueProviderOption(args) ?? "local";
-  const outputPath = await syncIssues(loaded, pkg, provider, { dryRun: Boolean(args.options["dry-run"]) });
+  const outputPath = await syncIssues(loaded, pkg, provider, {
+    dryRun: Boolean(args.options["dry-run"]),
+    live: Boolean(args.options.live),
+    repo: stringOption(args, "repo")
+  });
   console.log(args.options["dry-run"] ? `Dry-run export wrote ${outputPath}` : `Wrote ${outputPath}`);
 }
 
@@ -835,7 +839,7 @@ Usage:
   migration-guard proposal rollback [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal replan [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal batch plan|apply [--run <id|latest>] [--limit <n>] [--skip-checks] [--gate-policy fail-fast|collect-all] [--json]
-  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run]
+  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run|--live] [--repo owner/name]
   migration-guard ci verify --baseline <path> [--run <id|latest>]
   migration-guard contract capture --source <url>
   migration-guard contract test --target <url> --contract <path>
