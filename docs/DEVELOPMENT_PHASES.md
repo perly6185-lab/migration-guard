@@ -1116,6 +1116,41 @@ migration-guard sync-issues --run latest --provider github --live --repo owner/n
 - mock API 覆盖 429/5xx retry。
 - safe smoke 不调用真实 GitHub API，目标仓库保持 clean。
 
+## Phase 30: GitHub Live Plan Hash Confirmation
+
+目标：把真实 GitHub live mutation 绑定到用户已审阅的 plan artifact，避免 read-only plan 和 live 执行之间出现未确认 drift。
+
+新增能力：
+
+- `github-live-plan.json` 写出稳定 `planHash`
+- `github-live-plan-summary.json` 写出 `planHash`
+- `github-live-sync.json` 写出 `planHash` 和 `livePlanConfirm`
+- `sync-issues --provider github --live --live-plan-confirm <plan-hash>`
+- live mutation 前校验当前计划 hash 与确认 hash 一致
+- hash mismatch 时只执行 GET lookup，不执行 POST/PATCH
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github --live-plan --repo owner/name
+migration-guard sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --live-plan-confirm <plan-hash> --max-live-mutations 1
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan-summary.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-sync.json`
+
+完成标准：
+
+- read-only live plan 和 live sync 对相同 create/update/skip 决策生成相同 `planHash`。
+- 缺 `--live-plan-confirm` 时 GitHub live 拒绝执行。
+- hash mismatch 时拒绝 live mutation，并保留最新 plan artifact。
+- live summary 记录 `planHash` 和用户确认的 hash。
+- mock API 验证 hash mismatch 不触发 POST/PATCH。
+- safe smoke 不调用真实 GitHub API，目标仓库保持 clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

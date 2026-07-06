@@ -10,7 +10,7 @@ export async function syncIssues(
   loaded: LoadedConfig,
   pkg: MigrationRunPackage,
   provider: "local" | "github" | "gitlab" | "jira" | "linear",
-  options: { dryRun?: boolean; live?: boolean; livePlan?: boolean; repo?: string; token?: string; liveConfirm?: string; labels?: string[]; maxLiveMutations?: number; retry?: { maxAttempts?: number; delayMs?: number }; fetchImpl?: typeof fetch } = {}
+  options: { dryRun?: boolean; live?: boolean; livePlan?: boolean; repo?: string; token?: string; liveConfirm?: string; livePlanConfirm?: string; labels?: string[]; maxLiveMutations?: number; retry?: { maxAttempts?: number; delayMs?: number }; fetchImpl?: typeof fetch } = {}
 ): Promise<string> {
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "issue-sync");
   enforceProviderSafety(provider, options, pkg.run.id);
@@ -46,6 +46,7 @@ export async function syncIssues(
         provider: "github",
         repo: result.repo,
         planPath: livePlanPath,
+        planHash: result.plan.planHash,
         mutationCount: result.plan.mutationCount,
         willCreate: result.plan.willCreate,
         willUpdate: result.plan.willUpdate,
@@ -65,6 +66,7 @@ export async function syncIssues(
         })),
         fetchImpl: options.fetchImpl,
         maxLiveMutations: options.maxLiveMutations,
+        livePlanConfirm: options.livePlanConfirm,
         retry: options.retry,
         onPlan: async (plan) => {
           await writeJsonFile(livePlanPath, plan);
@@ -79,6 +81,8 @@ export async function syncIssues(
         skippedCount: result.skippedCount,
         failedCount: result.failedCount,
         planPath: livePlanPath,
+        planHash: result.plan.planHash,
+        livePlanConfirm: options.livePlanConfirm,
         rateLimit: result.rateLimit,
         issues: result.issues
       });
@@ -318,7 +322,7 @@ function providerTokenEnv(provider: string): string | undefined {
   }
 }
 
-function enforceProviderSafety(provider: string, options: { dryRun?: boolean; live?: boolean; livePlan?: boolean; repo?: string; token?: string; liveConfirm?: string }, runId?: string): void {
+function enforceProviderSafety(provider: string, options: { dryRun?: boolean; live?: boolean; livePlan?: boolean; repo?: string; token?: string; liveConfirm?: string; livePlanConfirm?: string }, runId?: string): void {
   if (provider === "local") {
     return;
   }
@@ -357,6 +361,9 @@ function enforceProviderSafety(provider: string, options: { dryRun?: boolean; li
     validateGitHubRepo(options.repo);
     if (!(options.token ?? process.env.GITHUB_TOKEN)) {
       throw new Error("GitHub live issue sync requires GITHUB_TOKEN.");
+    }
+    if (!options.livePlanConfirm) {
+      throw new Error("GitHub live issue sync requires --live-plan-confirm <plan-hash>.");
     }
     return;
   }

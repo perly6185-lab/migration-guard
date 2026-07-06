@@ -67,7 +67,7 @@ node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-
 node dist/cli.js sync-issues --run latest --provider local
 node dist/cli.js sync-issues --run latest --provider github --dry-run
 node dist/cli.js sync-issues --run latest --provider github --live-plan --repo owner/name
-node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --max-live-mutations 3 --labels team:migration
+node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --live-plan-confirm <plan-hash> --max-live-mutations 3 --labels team:migration
 node dist/cli.js ci verify --baseline .migration-guard/latest-baseline.json --run latest
 ```
 
@@ -97,7 +97,9 @@ otherwise a new issue is created. Live runs also write
 `--live-plan` for a read-only GitHub lookup that writes the same plan without
 mutating issues. Live mutations are capped by `--max-live-mutations` and GitHub
 429/5xx responses are retried conservatively; non-sensitive rate-limit headers
-are written to summary artifacts.
+are written to summary artifacts. Each live plan includes a stable `planHash`;
+real live sync requires `--live-plan-confirm <plan-hash>` so mutations are bound
+to a reviewed plan.
 
 Proposal gate defaults can be configured:
 
@@ -231,6 +233,9 @@ artifacts, unchanged issue skipping and failing batch smoke helpers.
 
 See [docs/PHASE_29_REPORT.md](docs/PHASE_29_REPORT.md) for GitHub live
 guardrails, read-only planning, labels, retry and rate-limit observability.
+
+See [docs/PHASE_30_REPORT.md](docs/PHASE_30_REPORT.md) for plan-hash
+confirmation before GitHub live mutation.
 
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
 for the next real-world validation plan using `perly6185-lab/md`.

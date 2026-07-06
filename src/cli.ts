@@ -660,6 +660,7 @@ async function commandSyncIssues(args: ParsedArgs): Promise<void> {
     livePlan: Boolean(args.options["live-plan"]),
     repo: stringOption(args, "repo"),
     liveConfirm: stringOption(args, "live-confirm"),
+    livePlanConfirm: stringOption(args, "live-plan-confirm"),
     labels: labelsOption(args),
     maxLiveMutations: nonNegativeIntegerOption(args, "max-live-mutations")
   });
@@ -862,7 +863,7 @@ Usage:
   migration-guard proposal rollback [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal replan [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal batch plan|apply [--run <id|latest>] [--limit <n>] [--skip-checks] [--gate-policy fail-fast|collect-all] [--json]
-  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run|--live|--live-plan] [--repo owner/name] [--live-confirm <run-id>] [--labels a,b] [--max-live-mutations <n>]
+  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run|--live|--live-plan] [--repo owner/name] [--live-confirm <run-id>] [--live-plan-confirm <hash>] [--labels a,b] [--max-live-mutations <n>]
   migration-guard ci verify --baseline <path> [--run <id|latest>]
   migration-guard contract capture --source <url>
   migration-guard contract test --target <url> --contract <path>

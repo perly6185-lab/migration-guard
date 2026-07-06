@@ -1,4 +1,5 @@
 import { sha256 } from "./hash.js";
+import { stableStringify } from "./normalize.js";
 
 export interface GitHubIssueInput {
   title: string;
@@ -13,6 +14,7 @@ export interface GitHubIssueAdapterOptions {
   fetchImpl?: typeof fetch;
   onPlan?: (plan: GitHubIssueLivePlan) => void | Promise<void>;
   maxLiveMutations?: number;
+  livePlanConfirm?: string;
   retry?: GitHubRetryOptions;
 }
 
@@ -58,6 +60,7 @@ export interface GitHubIssueLivePlan {
   willUpdate: number;
   willSkip: number;
   mutationCount: number;
+  planHash: string;
   maxLiveMutations?: number;
   rateLimit?: GitHubRateLimitSnapshot[];
   issues: GitHubIssueLivePlanItem[];
@@ -131,6 +134,9 @@ export async function createGitHubIssues(options: GitHubIssueAdapterOptions): Pr
   const maxLiveMutations = options.maxLiveMutations ?? DEFAULT_MAX_LIVE_MUTATIONS;
   const plan = createGitHubIssueLivePlan(options.repo, options.issues, lookup.issues, maxLiveMutations, rateLimit);
   await options.onPlan?.(plan);
+  if (options.livePlanConfirm !== undefined && options.livePlanConfirm !== plan.planHash) {
+    throw new Error(`GitHub live plan confirmation mismatch. Expected --live-plan-confirm ${plan.planHash}.`);
+  }
   if (plan.mutationCount > maxLiveMutations) {
     throw new Error(`GitHub live mutation limit exceeded: plan has ${plan.mutationCount} create/update mutation(s), max is ${maxLiveMutations}. Review issue-sync/github-live-plan.json or pass --max-live-mutations <n>.`);
   }
@@ -280,6 +286,16 @@ function createGitHubIssueLivePlan(
   const willCreate = planned.filter((issue) => issue.action === "create").length;
   const willUpdate = planned.filter((issue) => issue.action === "update").length;
   const willSkip = planned.filter((issue) => issue.action === "skip").length;
+  const planHash = hashGitHubIssueLivePlan({
+    provider: "github",
+    repo,
+    matchingStrategy: "open-issue-body-mg_issue_id",
+    willCreate,
+    willUpdate,
+    willSkip,
+    mutationCount: willCreate + willUpdate,
+    issues: planned
+  });
 
   return {
     provider: "github",
@@ -290,10 +306,15 @@ function createGitHubIssueLivePlan(
     willUpdate,
     willSkip,
     mutationCount: willCreate + willUpdate,
+    planHash,
     maxLiveMutations,
     rateLimit,
     issues: planned
   };
+}
+
+function hashGitHubIssueLivePlan(plan: Omit<GitHubIssueLivePlan, "createdAt" | "planHash" | "maxLiveMutations" | "rateLimit">): string {
+  return sha256(stableStringify(plan));
 }
 
 async function fetchGitHubWithRetry(
