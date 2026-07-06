@@ -34,6 +34,7 @@ migration-guard/
     PHASE_28_REPORT.md
     PHASE_29_REPORT.md
     PHASE_30_REPORT.md
+    PHASE_32_REPORT.md
     PRODUCT_DESIGN.md
     PROJECT_STRUCTURE.md
     REQUIREMENTS.md

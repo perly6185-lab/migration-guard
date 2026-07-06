@@ -241,6 +241,9 @@ See [docs/GITHUB_READ_ONLY_SMOKE_RUNBOOK.md](docs/GITHUB_READ_ONLY_SMOKE_RUNBOOK
 for the opt-in real GitHub read-only smoke procedure and the local no-network
 planHash stability check.
 
+See [docs/PHASE_32_REPORT.md](docs/PHASE_32_REPORT.md) for the completed real
+GitHub read-only smoke result.
+
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
 for the next real-world validation plan using `perly6185-lab/md`.
 
