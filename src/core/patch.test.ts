@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { applyProposalBatch, applyProposedPatch, createAddFilePatch, createProposalBatchPlan, proposeActionPatch, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
 import { syncIssues } from "./issueSync.js";
 import { writeCiHandoffReport } from "./migrationRun.js";
+import { createGitHubIssues } from "./githubIssueAdapter.js";
 import type { LoadedConfig, MigrationIssue, MigrationRun, MigrationTaskGraph, ProposalVerificationReport, ProposedPatch } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
@@ -379,6 +380,10 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, repo: "bad-repo", liveConfirm: pkg.run.id }), /Invalid GitHub repo/);
     await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, repo: "owner/repo", token: "", liveConfirm: pkg.run.id }), /GITHUB_TOKEN/);
     await assert.rejects(syncIssues(loaded, pkg, "github", { live: true, dryRun: true, repo: "owner/repo", token: "token", liveConfirm: pkg.run.id }), /cannot be used together/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { livePlan: true }), /--repo owner\/name/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { livePlan: true, repo: "owner/repo", token: "" }), /GITHUB_TOKEN/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { livePlan: true, dryRun: true, repo: "owner/repo", token: "token" }), /cannot be used together/);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { livePlan: true, live: true, repo: "owner/repo", token: "token", liveConfirm: pkg.run.id }), /cannot be used together/);
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     const mockFetch: typeof fetch = async (input, init) => {
       requests.push({ url: String(input), init });
@@ -394,7 +399,14 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
           body: `${liveExport[1]?.body ?? ""}\nchanged on GitHub\n`
         }]), {
           status: 200,
-          headers: { "content-type": "application/json" }
+          headers: {
+            "content-type": "application/json",
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "4999",
+            "x-ratelimit-reset": "1783312000",
+            "x-ratelimit-used": "1",
+            "x-ratelimit-resource": "core"
+          }
         });
       }
       return new Response(JSON.stringify({
@@ -402,7 +414,14 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
         number: requests.length
       }), {
         status: 201,
-        headers: { "content-type": "application/json" }
+        headers: {
+          "content-type": "application/json",
+          "x-ratelimit-limit": "5000",
+          "x-ratelimit-remaining": "4998",
+          "x-ratelimit-reset": "1783312000",
+          "x-ratelimit-used": "2",
+          "x-ratelimit-resource": "core"
+        }
       });
     };
     const livePath = await syncIssues(loaded, pkg, "github", {
@@ -410,6 +429,7 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
       repo: "owner/repo",
       token: "secret-token",
       liveConfirm: pkg.run.id,
+      labels: ["team:migration", "migration-guard"],
       fetchImpl: mockFetch
     });
     assert.match(livePath, /github-issues\.json$/);
@@ -422,19 +442,23 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     const firstPayload = JSON.parse(String(requests[1]?.init?.body)) as { title: string; body: string; labels: string[] };
     assert.ok(firstPayload.title);
     assert.ok(Array.isArray(firstPayload.labels));
+    assert.ok(firstPayload.labels.includes("team:migration"));
+    assert.equal(firstPayload.labels.filter((label) => label === "migration-guard").length, 1);
     assert.doesNotMatch(await readFile(path.join(issueSyncDir, "github-live-sync.json"), "utf8"), /secret-token/);
     assert.doesNotMatch(await readFile(path.join(issueSyncDir, "github-live-plan.json"), "utf8"), /secret-token/);
-    const livePlan = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-plan.json"), "utf8")) as { repo: string; willCreate: number; willUpdate: number; willSkip: number; issues: Array<{ action?: string; bodyHash?: string; existingNumber?: number }> };
+    const livePlan = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-plan.json"), "utf8")) as { repo: string; willCreate: number; willUpdate: number; willSkip: number; mutationCount: number; maxLiveMutations?: number; issues: Array<{ action?: string; bodyHash?: string; existingNumber?: number }> };
     assert.equal(livePlan.repo, "owner/repo");
     assert.equal(livePlan.willCreate, 1);
     assert.equal(livePlan.willUpdate, 1);
     assert.equal(livePlan.willSkip, 1);
+    assert.equal(livePlan.mutationCount, 2);
+    assert.equal(livePlan.maxLiveMutations, 3);
     assert.equal(livePlan.issues[0]?.action, "skip");
     assert.equal(livePlan.issues[0]?.existingNumber, 98);
     assert.equal(livePlan.issues[1]?.action, "update");
     assert.equal(livePlan.issues[2]?.action, "create");
     assert.ok(livePlan.issues.every((issue) => typeof issue.bodyHash === "string" && issue.bodyHash.length === 64));
-    const liveSummary = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-sync.json"), "utf8")) as { repo: string; createdCount: number; updatedCount: number; skippedCount: number; failedCount: number; planPath?: string; issues: Array<{ url?: string; action?: string }> };
+    const liveSummary = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-sync.json"), "utf8")) as { repo: string; createdCount: number; updatedCount: number; skippedCount: number; failedCount: number; planPath?: string; rateLimit?: Array<{ request?: string; remaining?: number }>; issues: Array<{ url?: string; action?: string }> };
     assert.equal(liveSummary.repo, "owner/repo");
     assert.equal(liveSummary.createdCount, 1);
     assert.equal(liveSummary.updatedCount, 1);
@@ -445,6 +469,73 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.equal(liveSummary.issues[1]?.action, "updated");
     assert.equal(liveSummary.issues[2]?.action, "created");
     assert.match(liveSummary.issues[1]?.url ?? "", /https:\/\/github\.com\/owner\/repo\/issues\//);
+    assert.equal(liveSummary.rateLimit?.[0]?.request, "GET open issues");
+    assert.equal(liveSummary.rateLimit?.[0]?.remaining, 4999);
+    const limitRequests: Array<{ url: string; init?: RequestInit }> = [];
+    const limitMockFetch: typeof fetch = async (input, init) => {
+      limitRequests.push({ url: String(input), init });
+      if (!String(input).includes("?state=open")) {
+        throw new Error("mutation should not run when max-live-mutations is exceeded");
+      }
+      const liveExport = JSON.parse(await readFile(path.join(issueSyncDir, "github-issues.json"), "utf8")) as Array<{ body: string }>;
+      return new Response(JSON.stringify([{
+        number: 98,
+        html_url: "https://github.com/owner/repo/issues/98",
+        body: liveExport[0]?.body
+      }, {
+        number: 99,
+        html_url: "https://github.com/owner/repo/issues/99",
+        body: `${liveExport[1]?.body ?? ""}\nchanged on GitHub\n`
+      }]), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    };
+    await assert.rejects(syncIssues(loaded, pkg, "github", {
+      live: true,
+      repo: "owner/repo",
+      token: "secret-token",
+      liveConfirm: pkg.run.id,
+      maxLiveMutations: 0,
+      fetchImpl: limitMockFetch
+    }), /mutation limit exceeded/);
+    assert.equal(limitRequests.length, 1);
+    const limitedPlan = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-plan.json"), "utf8")) as { maxLiveMutations?: number; mutationCount: number };
+    assert.equal(limitedPlan.maxLiveMutations, 0);
+    assert.equal(limitedPlan.mutationCount, 2);
+    const livePlanRequests: Array<{ url: string; init?: RequestInit }> = [];
+    const livePlanMockFetch: typeof fetch = async (input, init) => {
+      livePlanRequests.push({ url: String(input), init });
+      if (!String(input).includes("?state=open")) {
+        throw new Error("live-plan must not create or update issues");
+      }
+      const planExport = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-plan-issues.json"), "utf8")) as Array<{ body: string }>;
+      return new Response(JSON.stringify([{
+        number: 98,
+        html_url: "https://github.com/owner/repo/issues/98",
+        body: planExport[0]?.body
+      }]), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "x-ratelimit-remaining": "4997"
+        }
+      });
+    };
+    const livePlanOutput = await syncIssues(loaded, pkg, "github", {
+      livePlan: true,
+      repo: "owner/repo",
+      token: "secret-token",
+      labels: ["team:plan"],
+      fetchImpl: livePlanMockFetch
+    });
+    assert.match(livePlanOutput, /github-live-plan-issues\.json$/);
+    assert.equal(livePlanRequests.length, 1);
+    const livePlanExport = JSON.parse(await readFile(livePlanOutput, "utf8")) as Array<{ labels?: string[] }>;
+    assert.ok(livePlanExport[0]?.labels?.includes("team:plan"));
+    const livePlanSummary = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-plan-summary.json"), "utf8")) as { mutationCount: number; rateLimit?: Array<{ remaining?: number }> };
+    assert.equal(livePlanSummary.mutationCount, pkg.issues.length - 1);
+    assert.equal(livePlanSummary.rateLimit?.[0]?.remaining, 4997);
     const ciHandoffPath = await writeCiHandoffReport(loaded, pkg);
     const ciHandoff = await readFile(ciHandoffPath, "utf8");
     assert.match(ciHandoff, /Latest failed batch/);
@@ -457,6 +548,63 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("GitHub issue adapter retries transient mutation failures", async () => {
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const mockFetch: typeof fetch = async (input, init) => {
+    requests.push({ url: String(input), init });
+    if (String(input).includes("?state=open")) {
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "x-ratelimit-remaining": "4999"
+        }
+      });
+    }
+    if (requests.length === 2) {
+      return new Response(JSON.stringify({ message: "temporary failure" }), {
+        status: 502,
+        headers: {
+          "content-type": "application/json",
+          "x-ratelimit-remaining": "4998"
+        }
+      });
+    }
+    return new Response(JSON.stringify({
+      html_url: "https://github.com/owner/repo/issues/1",
+      number: 1
+    }), {
+      status: 201,
+      headers: {
+        "content-type": "application/json",
+        "x-ratelimit-remaining": "4997"
+      }
+    });
+  };
+
+  const result = await createGitHubIssues({
+    repo: "owner/repo",
+    token: "secret-token",
+    issues: [{
+      title: "Retry me",
+      body: "---\nmg_issue_id: issue-retry\n---\n\nbody\n",
+      labels: ["migration-guard"]
+    }],
+    retry: {
+      maxAttempts: 2,
+      delayMs: 1
+    },
+    fetchImpl: mockFetch
+  });
+
+  assert.equal(requests.length, 3);
+  assert.equal(result.createdCount, 1);
+  assert.equal(result.issues[0]?.action, "created");
+  assert.equal(result.issues[0]?.attemptCount, 2);
+  assert.deepEqual(result.rateLimit.map((item) => item.status), [200, 502, 201]);
+  assert.equal(result.rateLimit.at(-1)?.remaining, 4997);
 });
 
 test("configured proposal gate policy and retry defaults are used when CLI options are absent", async () => {

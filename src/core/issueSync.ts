@@ -1,7 +1,7 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
-import { createGitHubIssues, validateGitHubRepo } from "./githubIssueAdapter.js";
+import { createGitHubIssues, planGitHubIssues, validateGitHubRepo } from "./githubIssueAdapter.js";
 import { appendEvidence, migrationRunDir, saveRunPackage } from "./migrationRun.js";
 import type { LoadedConfig, MigrationIssue, ProposalBatchReport, ProposalCommandCheck, ProposalVerificationReport } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
@@ -10,22 +10,48 @@ export async function syncIssues(
   loaded: LoadedConfig,
   pkg: MigrationRunPackage,
   provider: "local" | "github" | "gitlab" | "jira" | "linear",
-  options: { dryRun?: boolean; live?: boolean; repo?: string; token?: string; liveConfirm?: string; fetchImpl?: typeof fetch } = {}
+  options: { dryRun?: boolean; live?: boolean; livePlan?: boolean; repo?: string; token?: string; liveConfirm?: string; labels?: string[]; maxLiveMutations?: number; retry?: { maxAttempts?: number; delayMs?: number }; fetchImpl?: typeof fetch } = {}
 ): Promise<string> {
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "issue-sync");
   enforceProviderSafety(provider, options, pkg.run.id);
   const context = await readIssueSyncContext(loaded, pkg);
   const mapping = providerMapping(provider);
-  const exported = pkg.issues.map((issue) => serializeIssue(issue, provider, context, mapping));
-  const outputPath = path.join(dir, `${provider}${options.dryRun ? "-dry-run" : ""}-issues.json`);
+  const exported = pkg.issues.map((issue) => serializeIssue(issue, provider, context, mapping, normalizeExtraLabels(options.labels)));
+  const suffix = issueSyncSuffix(options);
+  const outputPath = path.join(dir, `${provider}${suffix}-issues.json`);
   await writeJsonFile(outputPath, exported);
 
   if (provider !== "local") {
-    const markdownPath = path.join(dir, `${provider}${options.dryRun ? "-dry-run" : ""}-issues.md`);
+    const markdownPath = path.join(dir, `${provider}${suffix}-issues.md`);
     await writeTextFile(markdownPath, renderIssueSyncMarkdown(pkg.issues, provider, context));
-    await writeJsonFile(path.join(dir, `${provider}${options.dryRun ? "-dry-run" : ""}-mapping.json`), mapping);
+    await writeJsonFile(path.join(dir, `${provider}${suffix}-mapping.json`), mapping);
     if (provider === "github" && options.dryRun) {
       await writeTextFile(path.join(dir, "github-pr-comment.md"), renderGitHubPrComment(pkg, context));
+    }
+    if (provider === "github" && options.livePlan) {
+      const livePlanPath = path.join(dir, "github-live-plan.json");
+      const result = await planGitHubIssues({
+        repo: options.repo ?? "",
+        token: options.token ?? process.env.GITHUB_TOKEN ?? "",
+        issues: exported.map((issue) => ({
+          title: String(issue.title),
+          body: String(issue.body),
+          labels: Array.isArray(issue.labels) ? issue.labels.map(String) : []
+        })),
+        fetchImpl: options.fetchImpl,
+        retry: options.retry
+      });
+      await writeJsonFile(livePlanPath, result.plan);
+      await writeJsonFile(path.join(dir, "github-live-plan-summary.json"), {
+        provider: "github",
+        repo: result.repo,
+        planPath: livePlanPath,
+        mutationCount: result.plan.mutationCount,
+        willCreate: result.plan.willCreate,
+        willUpdate: result.plan.willUpdate,
+        willSkip: result.plan.willSkip,
+        rateLimit: result.rateLimit
+      });
     }
     if (provider === "github" && options.live) {
       const livePlanPath = path.join(dir, "github-live-plan.json");
@@ -38,6 +64,8 @@ export async function syncIssues(
           labels: Array.isArray(issue.labels) ? issue.labels.map(String) : []
         })),
         fetchImpl: options.fetchImpl,
+        maxLiveMutations: options.maxLiveMutations,
+        retry: options.retry,
         onPlan: async (plan) => {
           await writeJsonFile(livePlanPath, plan);
         }
@@ -51,6 +79,7 @@ export async function syncIssues(
         skippedCount: result.skippedCount,
         failedCount: result.failedCount,
         planPath: livePlanPath,
+        rateLimit: result.rateLimit,
         issues: result.issues
       });
       for (let index = 0; index < pkg.issues.length; index += 1) {
@@ -61,7 +90,7 @@ export async function syncIssues(
         }
       }
     }
-    if (!options.dryRun) {
+    if (!options.dryRun && !options.livePlan) {
       for (const issue of pkg.issues) {
         issue.externalUrl = issue.externalUrl ?? (options.live ? undefined : `${provider}:pending:${issue.id}`);
         issue.updatedAt = new Date().toISOString();
@@ -69,7 +98,7 @@ export async function syncIssues(
     }
   }
 
-  if (!options.dryRun) {
+  if (!options.dryRun && !options.livePlan) {
     pkg.run.issueProvider = provider;
     await saveRunPackage(loaded, pkg);
   }
@@ -134,7 +163,7 @@ interface ProviderMapping {
   bodySections: string[];
 }
 
-function serializeIssue(issue: MigrationIssue, provider: string, context: IssueSyncContext, mapping: ProviderMapping): Record<string, unknown> {
+function serializeIssue(issue: MigrationIssue, provider: string, context: IssueSyncContext, mapping: ProviderMapping, extraLabels: string[] = []): Record<string, unknown> {
   const gate = contextForIssue(issue, context);
   const batch = gate ? context.latestFailedBatch : undefined;
   return {
@@ -155,7 +184,7 @@ function serializeIssue(issue: MigrationIssue, provider: string, context: IssueS
       gate,
       batch
     },
-    labels: ["migration-guard", `mg-type:${issue.type}`, `mg-risk:${issue.risk}`],
+    labels: uniqueLabels(["migration-guard", `mg-type:${issue.type}`, `mg-risk:${issue.risk}`, ...extraLabels]),
     status: issue.status
   };
 }
@@ -289,14 +318,30 @@ function providerTokenEnv(provider: string): string | undefined {
   }
 }
 
-function enforceProviderSafety(provider: string, options: { dryRun?: boolean; live?: boolean; repo?: string; token?: string; liveConfirm?: string }, runId?: string): void {
+function enforceProviderSafety(provider: string, options: { dryRun?: boolean; live?: boolean; livePlan?: boolean; repo?: string; token?: string; liveConfirm?: string }, runId?: string): void {
   if (provider === "local") {
     return;
   }
   if (options.dryRun && options.live) {
     throw new Error("--dry-run and --live cannot be used together.");
   }
+  if (options.dryRun && options.livePlan) {
+    throw new Error("--dry-run and --live-plan cannot be used together.");
+  }
+  if (options.live && options.livePlan) {
+    throw new Error("--live and --live-plan cannot be used together.");
+  }
   if (options.dryRun) {
+    return;
+  }
+  if (provider === "github" && options.livePlan) {
+    if (!options.repo) {
+      throw new Error("GitHub live plan requires --repo owner/name.");
+    }
+    validateGitHubRepo(options.repo);
+    if (!(options.token ?? process.env.GITHUB_TOKEN)) {
+      throw new Error("GitHub live plan requires GITHUB_TOKEN.");
+    }
     return;
   }
   if (provider === "github" && options.live) {
@@ -318,6 +363,24 @@ function enforceProviderSafety(provider: string, options: { dryRun?: boolean; li
   const tokenEnv = providerTokenEnv(provider);
   const tokenHint = tokenEnv ? ` Set ${tokenEnv} when a live ${provider} adapter is implemented.` : "";
   throw new Error(`Live ${provider} issue sync is not implemented yet. Re-run with --dry-run to write provider-neutral artifacts, or use --live only for implemented providers.${tokenHint}`);
+}
+
+function issueSyncSuffix(options: { dryRun?: boolean; livePlan?: boolean }): string {
+  if (options.dryRun) {
+    return "-dry-run";
+  }
+  if (options.livePlan) {
+    return "-live-plan";
+  }
+  return "";
+}
+
+function normalizeExtraLabels(labels: string[] | undefined): string[] {
+  return uniqueLabels((labels ?? []).map((label) => label.trim()).filter(Boolean));
+}
+
+function uniqueLabels(labels: string[]): string[] {
+  return [...new Set(labels)];
 }
 
 function contextForIssue(issue: MigrationIssue, context: IssueSyncContext): ProposalGateContext | undefined {

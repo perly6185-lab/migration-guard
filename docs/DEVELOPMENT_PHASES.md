@@ -1076,6 +1076,46 @@ migration-guard sync-issues --config configs/md-fast.migration-guard.json --run 
 - live summary 不包含 token，并记录 skippedCount。
 - safe smoke 不调用真实 GitHub API，目标仓库保持 clean。
 
+## Phase 29: GitHub Live Guardrails + Observability
+
+目标：把 GitHub live sync 从“可执行”推进到“可控执行”，在真实 mutation 前提供更强护栏和排障信息。
+
+新增能力：
+
+- `sync-issues --provider github --live-plan --repo owner/name`
+- `sync-issues --provider github --live --max-live-mutations <n>`
+- `sync-issues --provider github --labels team:migration,phase-1`
+- GitHub live 默认 mutation cap
+- GitHub read-only live plan summary
+- GitHub rate-limit 非敏感 header summary
+- GitHub 429/5xx retry backoff
+- mutation limit 超限时先写 plan 再拒绝 mutation
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github --dry-run --labels team:migration
+migration-guard sync-issues --run latest --provider github --live-plan --repo owner/name
+migration-guard sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --max-live-mutations 3
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan-summary.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-sync.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan-issues.json`
+
+完成标准：
+
+- `--live-plan` 只查询 GitHub open issues，不触发 POST/PATCH。
+- `--max-live-mutations` 超限时拒绝 live mutation，并保留 plan artifact。
+- `--labels` 追加团队标签且不重复默认标签。
+- live/live-plan summary 不包含 token。
+- summary 写入 rate-limit remaining/reset 等非敏感信息。
+- mock API 覆盖 429/5xx retry。
+- safe smoke 不调用真实 GitHub API，目标仓库保持 clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

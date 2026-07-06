@@ -66,7 +66,8 @@ node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
 node dist/cli.js sync-issues --run latest --provider local
 node dist/cli.js sync-issues --run latest --provider github --dry-run
-node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id>
+node dist/cli.js sync-issues --run latest --provider github --live-plan --repo owner/name
+node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --max-live-mutations 3 --labels team:migration
 node dist/cli.js ci verify --baseline .migration-guard/latest-baseline.json --run latest
 ```
 
@@ -92,7 +93,11 @@ GitHub live issue sync requires explicit `--live`, `--repo owner/name`,
 artifacts. Existing open GitHub issues are updated when their body contains the
 same `mg_issue_id`; unchanged issue bodies are skipped by SHA-256 body hash;
 otherwise a new issue is created. Live runs also write
-`issue-sync/github-live-plan.json` before any create/update mutation.
+`issue-sync/github-live-plan.json` before any create/update mutation. Use
+`--live-plan` for a read-only GitHub lookup that writes the same plan without
+mutating issues. Live mutations are capped by `--max-live-mutations` and GitHub
+429/5xx responses are retried conservatively; non-sensitive rate-limit headers
+are written to summary artifacts.
 
 Proposal gate defaults can be configured:
 
@@ -223,6 +228,9 @@ adapter boundary and mock API coverage.
 
 See [docs/PHASE_28_REPORT.md](docs/PHASE_28_REPORT.md) for GitHub live plan
 artifacts, unchanged issue skipping and failing batch smoke helpers.
+
+See [docs/PHASE_29_REPORT.md](docs/PHASE_29_REPORT.md) for GitHub live
+guardrails, read-only planning, labels, retry and rate-limit observability.
 
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
 for the next real-world validation plan using `perly6185-lab/md`.

@@ -657,8 +657,11 @@ async function commandSyncIssues(args: ParsedArgs): Promise<void> {
   const outputPath = await syncIssues(loaded, pkg, provider, {
     dryRun: Boolean(args.options["dry-run"]),
     live: Boolean(args.options.live),
+    livePlan: Boolean(args.options["live-plan"]),
     repo: stringOption(args, "repo"),
-    liveConfirm: stringOption(args, "live-confirm")
+    liveConfirm: stringOption(args, "live-confirm"),
+    labels: labelsOption(args),
+    maxLiveMutations: nonNegativeIntegerOption(args, "max-live-mutations")
   });
   console.log(args.options["dry-run"] ? `Dry-run export wrote ${outputPath}` : `Wrote ${outputPath}`);
 }
@@ -771,6 +774,25 @@ function numberOption(args: ParsedArgs, name: string): number | undefined {
   return parsed;
 }
 
+function nonNegativeIntegerOption(args: ParsedArgs, name: string): number | undefined {
+  const value = numberOption(args, name);
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid --${name}: ${value}. Expected a non-negative integer.`);
+  }
+  return value;
+}
+
+function labelsOption(args: ParsedArgs): string[] | undefined {
+  const value = stringOption(args, "labels") ?? stringOption(args, "label");
+  if (!value) {
+    return undefined;
+  }
+  return [...new Set(value.split(",").map((label) => label.trim()).filter(Boolean))];
+}
+
 function gatePolicyOption(args: ParsedArgs): ProposalGatePolicy | undefined {
   const value = stringOption(args, "gate-policy");
   if (!value) {
@@ -840,7 +862,7 @@ Usage:
   migration-guard proposal rollback [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal replan [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal batch plan|apply [--run <id|latest>] [--limit <n>] [--skip-checks] [--gate-policy fail-fast|collect-all] [--json]
-  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run|--live] [--repo owner/name] [--live-confirm <run-id>]
+  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run|--live|--live-plan] [--repo owner/name] [--live-confirm <run-id>] [--labels a,b] [--max-live-mutations <n>]
   migration-guard ci verify --baseline <path> [--run <id|latest>]
   migration-guard contract capture --source <url>
   migration-guard contract test --target <url> --contract <path>
