@@ -37,6 +37,7 @@
 | Phase 19 | Proposal Gate Timeline | 能在 verification report 和 run report 中展示 gate 执行时间线 |
 | Phase 20 | Failed Gate Replan Issues | 能把失败的 proposal gate 自动转成 replan/failure issue |
 | Phase 21 | Adaptive Gate Policy + Flake Handling | 能对疑似环境抖动重试、按策略执行 gate，并批量推进低风险 proposal |
+| Phase 22 | Gate Remediation Hints + Batch Stop Reporting | 能把 gate 失败转成修复建议，并解释 batch 为什么停止和跳过 |
 
 ## Phase 0: CLI Bootstrap
 
@@ -793,6 +794,46 @@ migration-guard proposal batch apply --run latest --limit 3 --gate-policy fail-f
 - `collect-all` 能继续收集完整失败面。
 - 失败 proposal 能生成可追踪 replan issue 和 replan task。
 - batch apply 能按低风险优先顺序执行 proposal，并在失败时停止后续 proposal。
+
+## Phase 22: Gate Remediation Hints + Batch Stop Reporting
+
+目标：让失败的 proposal gate 不只记录“失败了”，还要说明“下一步该怎么处理”，并让 batch report 能解释停止和跳过原因。
+
+新增能力：
+
+- check failure 生成 remediation hints
+- failure issue body 写入 hints
+- replan task description 写入 hints
+- run report Recent Proposal Gates 展示首个失败分类和第一条 hint
+- batch report 记录 first failed check
+- batch report 记录 skipped proposals
+- batch report 记录 stop reason
+- batch report 给出下一步 replan 命令
+
+建议命令：
+
+```bash
+migration-guard proposal batch apply --run latest --limit 3 --gate-policy fail-fast
+migration-guard proposal replan --run latest --proposal <failed-proposal-id>
+migration-guard report --run latest
+```
+
+产物：
+
+- proposal `verification-*.json` 中的 `checks[].remediationHints`
+- `issues.json` 中 failure issue 的 hints
+- `task-graph.json` 中 replan task 的 hints
+- proposal batch report 中的 `stopReason`
+- proposal batch report 中的 `skipped`
+- proposal batch report 中的 `nextCommand`
+
+完成标准：
+
+- `command-failed`、`timeout`、`error`、`flake-suspected` 都能生成面向用户的下一步建议。
+- proposal gate 失败创建的 issue/replan task 能展示 remediation hints。
+- batch apply 失败后能记录首个失败 check、停止原因和跳过的 proposal。
+- batch report 能给出下一条建议命令。
+- 单元测试覆盖成功 batch 和失败 batch 两条路径。
 
 ## 阶段交付规则
 

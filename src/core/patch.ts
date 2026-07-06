@@ -428,6 +428,7 @@ export async function applyProposalBatch(
 ): Promise<ProposalBatchReport> {
   const plan = await createProposalBatchPlan(loaded, pkg, { limit: options.limit });
   const results: ProposalBatchResult[] = [];
+  let stopReason: string | undefined;
 
   for (const item of plan.proposals) {
     try {
@@ -441,25 +442,41 @@ export async function applyProposalBatch(
         passed: result.report?.passed ?? true,
         state: result.proposal.applyState,
         verificationPath: result.report?.outputPath,
-        rollbackPath: result.rollbackReport?.outputPath
+        rollbackPath: result.rollbackReport?.outputPath,
+        firstFailedCheck: result.report ? firstFailedCheckSummary(result.report) : undefined
       });
       if (result.report && !result.report.passed) {
+        stopReason = createBatchStopReason(item.proposalId, result.report);
         break;
       }
     } catch (error) {
       const status = await getProposalStatus(loaded, pkg, item.proposalId).catch(() => undefined);
+      const report = status?.proposal.lastVerificationPath
+        ? await readJsonFile<ProposalVerificationReport>(status.proposal.lastVerificationPath).catch(() => undefined)
+        : undefined;
       results.push({
         proposalId: item.proposalId,
         passed: false,
         state: status?.proposal.applyState ?? item.applyState,
         verificationPath: status?.proposal.lastVerificationPath,
         rollbackPath: status?.proposal.lastRollbackPath,
+        firstFailedCheck: report ? firstFailedCheckSummary(report) : undefined,
         error: error instanceof Error ? error.message : String(error)
       });
+      stopReason = report
+        ? createBatchStopReason(item.proposalId, report)
+        : `Stopped after proposal ${item.proposalId} failed: ${error instanceof Error ? error.message : String(error)}`;
       break;
     }
   }
 
+  const completedIds = new Set(results.map((result) => result.proposalId));
+  const skipped = plan.proposals
+    .filter((proposal) => !completedIds.has(proposal.proposalId))
+    .map((proposal) => ({
+      proposalId: proposal.proposalId,
+      reason: stopReason ?? "Skipped because an earlier proposal stopped the batch."
+    }));
   const id = createId("proposal-batch-report");
   const outputPath = path.join(migrationRunDir(loaded, pkg.run.id), "proposal-batches", plan.id, `${id}.json`);
   const report: ProposalBatchReport = {
@@ -470,6 +487,9 @@ export async function applyProposalBatch(
     planId: plan.id,
     passed: results.length === plan.proposals.length && results.every((result) => result.passed),
     results,
+    skipped,
+    stopReason,
+    nextCommand: stopReason ? firstFailedProposalReplanCommand(results) : undefined,
     outputPath
   };
   await writeJsonFile(outputPath, report);
@@ -523,6 +543,9 @@ export function renderProposalVerificationReport(report: ProposalVerificationRep
     const attempts = check.attemptCount && check.attemptCount > 1 ? ` attempts:${check.attemptCount}` : "";
     const flake = check.flakeSuspected ? " flake-suspected" : "";
     lines.push(`- ${check.passed ? "passed" : "failed"}${meta}${attempts}${flake} ${check.command}`);
+    for (const hint of check.remediationHints ?? []) {
+      lines.push(`  hint: ${hint}`);
+    }
   }
 
   lines.push(`Wrote ${report.outputPath}`);
@@ -579,10 +602,23 @@ export function renderProposalBatchReport(report: ProposalBatchReport): string {
     `Proposal batch report: ${report.id}`,
     `Plan: ${report.planId}`,
     `Passed: ${report.passed ? "yes" : "no"}`,
-    `Results: ${report.results.length}`
+    `Results: ${report.results.length}`,
+    `Skipped: ${report.skipped.length}`
   ];
+  if (report.stopReason) {
+    lines.push(`Stop reason: ${report.stopReason}`);
+  }
+  if (report.nextCommand) {
+    lines.push(`Next: ${report.nextCommand}`);
+  }
   for (const result of report.results) {
     lines.push(`- ${result.passed ? "passed" : "failed"} ${result.proposalId} [${result.state}]${result.error ? ` ${result.error}` : ""}`);
+    for (const hint of result.firstFailedCheck?.remediationHints ?? []) {
+      lines.push(`  hint: ${hint}`);
+    }
+  }
+  for (const item of report.skipped) {
+    lines.push(`- skipped ${item.proposalId}: ${item.reason}`);
   }
   lines.push(`Wrote ${report.outputPath}`);
   return lines.join("\n");
@@ -770,7 +806,8 @@ async function runProposalCheckCommand(
     stdoutTruncated: finalAttempt.stdoutTruncated,
     stderrTruncated: finalAttempt.stderrTruncated,
     timedOut: finalAttempt.timedOut,
-    error: finalAttempt.error
+    error: finalAttempt.error,
+    remediationHints: finalAttempt.passed ? undefined : createRemediationHints(item, finalAttempt.failureCategory)
   };
 }
 
@@ -1158,6 +1195,34 @@ function shouldStopForGatePolicy(policy: ProposalGatePolicy, check: ProposalComm
   return policy.mode === "fail-fast" && check.critical !== false && !check.passed;
 }
 
+function firstFailedCheckSummary(report: ProposalVerificationReport): ProposalBatchResult["firstFailedCheck"] {
+  const failed = report.checks.find((check) => !check.passed);
+  if (!failed) {
+    return undefined;
+  }
+  return {
+    command: failed.command,
+    kind: failed.kind,
+    phase: failed.phase,
+    failureCategory: failed.failureCategory,
+    remediationHints: failed.remediationHints
+  };
+}
+
+function createBatchStopReason(proposalId: string, report: ProposalVerificationReport): string {
+  const failed = firstFailedCheckSummary(report);
+  if (!failed) {
+    return `Stopped after proposal ${proposalId} failed.`;
+  }
+  const category = failed.failureCategory ? ` (${failed.failureCategory})` : "";
+  return `Stopped after proposal ${proposalId} failed at ${failed.command}${category}.`;
+}
+
+function firstFailedProposalReplanCommand(results: ProposalBatchResult[]): string | undefined {
+  const failed = results.find((result) => !result.passed);
+  return failed ? `migration-guard proposal replan --run latest --proposal ${failed.proposalId}` : undefined;
+}
+
 function resolveGatePolicy(policy?: ProposalGatePolicy, fallback: ProposalGatePolicy = DEFAULT_GATE_POLICY): ProposalGatePolicy {
   if (!policy) {
     return fallback;
@@ -1172,6 +1237,37 @@ function validateGatePolicyMode(mode: ProposalGatePolicyMode): ProposalGatePolic
     return mode;
   }
   throw new Error(`Unknown proposal gate policy: ${mode}`);
+}
+
+function createRemediationHints(
+  item: ProposalCheckPlanItem,
+  failureCategory?: ProposalCheckFailureCategory
+): string[] | undefined {
+  if (!failureCategory) {
+    return undefined;
+  }
+  const hints: string[] = [];
+  if (failureCategory === "flake-suspected") {
+    hints.push("Retry the check once in isolation before changing source code.");
+    if (item.resourceProfile === "cpu-bound") {
+      hints.push("Lower test worker concurrency or run the affected test package alone.");
+    }
+    if (item.resourceProfile === "browser" || item.phase === "preview") {
+      hints.push("Check preview port availability and rerun the UI probe with a fresh preview server.");
+    }
+  } else if (failureCategory === "timeout") {
+    hints.push("Confirm the command is not waiting for interactive input or a stuck server.");
+    hints.push("Increase timeout only after the same command passes manually.");
+    if (item.phase === "preview") {
+      hints.push("Inspect the preview report and verify the preview URL becomes ready before the probe starts.");
+    }
+  } else if (failureCategory === "command-failed") {
+    hints.push("Inspect stdout/stderr in the verification report and rerun the command from the target root.");
+    hints.push("Keep the proposal rolled back until the failing command has a focused remediation plan.");
+  } else if (failureCategory === "error") {
+    hints.push("Check the command path, cwd, shell availability and required environment variables.");
+  }
+  return hints;
 }
 
 function delay(ms: number): Promise<void> {

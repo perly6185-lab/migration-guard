@@ -76,6 +76,10 @@ Check plans can also include retry metadata. Unit-test and UI-probe checks get
 conservative default retries for suspected environment flakes such as worker
 startup failures, transient socket resets and timeouts.
 
+When a proposal gate fails, verification and batch reports include remediation
+hints. Batch reports also explain why the batch stopped, which proposals were
+skipped, and the next `proposal replan` command to run.
+
 ## Probe types
 
 Command probe:
@@ -162,6 +166,9 @@ current phase completion report.
 
 See [docs/PHASE_21_REPORT.md](docs/PHASE_21_REPORT.md) for the adaptive gate
 policy, flaky check retry and proposal batch report.
+
+See [docs/PHASE_22_REPORT.md](docs/PHASE_22_REPORT.md) for remediation hints
+and batch stop reporting.
 
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
 for the next real-world validation plan using `perly6185-lab/md`.

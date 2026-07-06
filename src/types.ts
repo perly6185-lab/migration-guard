@@ -530,6 +530,7 @@ export interface ProposalCommandCheck {
   attempts?: ProposalCheckAttempt[];
   failureCategory?: ProposalCheckFailureCategory;
   flakeSuspected?: boolean;
+  remediationHints?: string[];
   passed: boolean;
   exitCode: number | null;
   durationMs: number;
@@ -635,7 +636,19 @@ export interface ProposalBatchResult {
   state: ProposedPatch["applyState"];
   verificationPath?: string;
   rollbackPath?: string;
+  firstFailedCheck?: {
+    command: string;
+    kind?: ProposalCheckKind;
+    phase?: ProposalCheckPhase;
+    failureCategory?: ProposalCheckFailureCategory;
+    remediationHints?: string[];
+  };
   error?: string;
+}
+
+export interface ProposalBatchSkippedItem {
+  proposalId: string;
+  reason: string;
 }
 
 export interface ProposalBatchReport {
@@ -646,6 +659,9 @@ export interface ProposalBatchReport {
   planId: string;
   passed: boolean;
   results: ProposalBatchResult[];
+  skipped: ProposalBatchSkippedItem[];
+  stopReason?: string;
+  nextCommand?: string;
   outputPath: string;
 }
 

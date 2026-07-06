@@ -237,7 +237,11 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
     "## Recent Proposal Gates",
     "",
     proposalGates.length > 0
-      ? proposalGates.map((gate) => `- ${gate.createdAt} ${gate.proposalId} ${gate.passed ? "passed" : "failed"} checks:${gate.checks} timeline:${gate.timeline}${gate.replanIssueId ? ` replan:${gate.replanIssueId}` : ""}`).join("\n")
+      ? proposalGates.map((gate) => [
+        `- ${gate.createdAt} ${gate.proposalId} ${gate.passed ? "passed" : "failed"} checks:${gate.checks} timeline:${gate.timeline}${gate.replanIssueId ? ` replan:${gate.replanIssueId}` : ""}`,
+        gate.failureCategory ? `  failure:${gate.failureCategory}` : undefined,
+        gate.remediationHint ? `  hint:${gate.remediationHint}` : undefined
+      ].filter(Boolean).join("\n")).join("\n")
       : "No proposal gate reports.",
     "",
     "## Evidence",
@@ -315,7 +319,13 @@ export function createProposalFailureIssue(
       report.preview ? `Preview: ${report.preview.ready ? "ready" : "failed"} ${report.preview.url}` : "Preview: not managed",
       firstFailedCheck ? `First failed check: ${firstFailedCheck.command}` : undefined,
       firstFailedCheck?.kind ? `Check kind: ${firstFailedCheck.kind}` : undefined,
-      firstFailedCheck?.phase ? `Check phase: ${firstFailedCheck.phase}` : undefined
+      firstFailedCheck?.phase ? `Check phase: ${firstFailedCheck.phase}` : undefined,
+      firstFailedCheck?.failureCategory ? `Failure category: ${firstFailedCheck.failureCategory}` : undefined,
+      ...(firstFailedCheck?.remediationHints?.length ? [
+        "",
+        "Remediation hints:",
+        ...firstFailedCheck.remediationHints.map((hint) => `- ${hint}`)
+      ] : [])
     ].filter(Boolean).join("\n"),
     status: "failed",
     risk: proposal.risk === "low" ? "medium" : proposal.risk,
@@ -351,6 +361,12 @@ export function createProposalReplanTask(
       firstFailedCheck ? `First failed check: ${firstFailedCheck.command}` : undefined,
       firstFailedCheck?.kind ? `Kind: ${firstFailedCheck.kind}` : undefined,
       firstFailedCheck?.phase ? `Phase: ${firstFailedCheck.phase}` : undefined,
+      firstFailedCheck?.failureCategory ? `Failure category: ${firstFailedCheck.failureCategory}` : undefined,
+      ...(firstFailedCheck?.remediationHints?.length ? [
+        "",
+        "Remediation hints:",
+        ...firstFailedCheck.remediationHints.map((hint) => `- ${hint}`)
+      ] : []),
       failureIssueId ? `Failure issue: ${failureIssueId}` : undefined
     ].filter(Boolean).join("\n"),
     type: "replan",
@@ -496,7 +512,7 @@ async function readProposalSummaries(loaded: LoadedConfig, runId: string): Promi
 async function readRecentProposalGateSummaries(
   loaded: LoadedConfig,
   runId: string
-): Promise<Array<{ proposalId: string; createdAt: string; passed: boolean; checks: number; timeline: number; replanIssueId?: string }>> {
+): Promise<Array<{ proposalId: string; createdAt: string; passed: boolean; checks: number; timeline: number; replanIssueId?: string; failureCategory?: string; remediationHint?: string }>> {
   const proposalsDir = path.join(migrationRunDir(loaded, runId), "proposals");
   if (!await pathExists(proposalsDir)) {
     return [];
@@ -521,12 +537,17 @@ async function readRecentProposalGateSummaries(
   return reports
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     .slice(-10)
-    .map((report) => ({
-      proposalId: report.proposalId,
-      createdAt: report.createdAt,
-      passed: report.passed,
-      checks: report.checks.length,
-      timeline: report.timeline?.length ?? 0,
-      replanIssueId: report.replanIssueId
-    }));
+    .map((report) => {
+      const failed = report.checks.find((check) => !check.passed);
+      return {
+        proposalId: report.proposalId,
+        createdAt: report.createdAt,
+        passed: report.passed,
+        checks: report.checks.length,
+        timeline: report.timeline?.length ?? 0,
+        replanIssueId: report.replanIssueId,
+        failureCategory: failed?.failureCategory,
+        remediationHint: failed?.remediationHints?.[0]
+      };
+    });
 }

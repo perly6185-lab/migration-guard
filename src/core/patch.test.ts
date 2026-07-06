@@ -130,6 +130,10 @@ test("applyProposedPatch can rollback automatically when checks fail", async () 
     assert.ok(failedReport.replanTaskId);
     assert.equal(pkg.issues.some((issue) => issue.id === failedReport.replanIssueId), true);
     assert.equal(pkg.graph.tasks.some((task) => task.id === failedReport.replanTaskId), true);
+    assert.equal(failedReport.checks[0]?.failureCategory, "command-failed");
+    assert.ok(failedReport.checks[0]?.remediationHints?.some((hint) => hint.includes("stdout/stderr")));
+    assert.match(pkg.issues.find((issue) => issue.id === failedReport.replanIssueId)?.body ?? "", /Remediation hints/);
+    assert.match(pkg.graph.tasks.find((task) => task.id === failedReport.replanTaskId)?.description ?? "", /Remediation hints/);
     await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "failing-probe.mjs")));
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -293,6 +297,33 @@ test("proposal batch plan and apply execute ready proposals in order", async () 
     assert.equal(report.passed, true);
     assert.deepEqual(report.results.map((result) => result.proposalId), ["patch-a", "patch-b"]);
     assert.equal(report.results.every((result) => result.passed), true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("proposal batch apply reports stop reason and skipped proposals after failure", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-batch-failure-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: dir });
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    await writeBatchProposal(loaded, pkg, "patch-a-fail", "low", "scripts/migration-guard/a-fail.mjs", "console.error(\"a-fail\");\nprocess.exit(1);\n");
+    await writeBatchProposal(loaded, pkg, "patch-b-skip", "low", "scripts/migration-guard/b-skip.mjs", "console.log(\"b-ok\");\n");
+
+    const report = await applyProposalBatch(loaded, pkg, { limit: 2, runChecks: true });
+    assert.equal(report.passed, false);
+    assert.equal(report.results.length, 1);
+    assert.equal(report.results[0]?.proposalId, "patch-a-fail");
+    assert.equal(report.results[0]?.firstFailedCheck?.failureCategory, "command-failed");
+    assert.ok(report.results[0]?.firstFailedCheck?.remediationHints?.some((hint) => hint.includes("stdout/stderr")));
+    assert.equal(report.skipped.length, 1);
+    assert.equal(report.skipped[0]?.proposalId, "patch-b-skip");
+    assert.match(report.stopReason ?? "", /patch-a-fail/);
+    assert.match(report.nextCommand ?? "", /proposal replan/);
+    await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "a-fail.mjs")));
+    await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "b-skip.mjs")));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
