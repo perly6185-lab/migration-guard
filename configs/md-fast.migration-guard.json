@@ -70,5 +70,21 @@
   "compare": {
     "failOnCheckRegression": true,
     "failOnProbeDiff": true
+  },
+  "proposalGate": {
+    "defaultPolicy": "collect-all",
+    "batchPolicy": "fail-fast",
+    "retry": {
+      "unit-test": {
+        "maxAttempts": 2,
+        "delayMs": 1000,
+        "retryOn": ["flake-suspected"]
+      },
+      "ui-probe": {
+        "maxAttempts": 2,
+        "delayMs": 1000,
+        "retryOn": ["flake-suspected", "timeout"]
+      }
+    }
   }
 }

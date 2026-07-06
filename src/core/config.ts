@@ -50,6 +50,22 @@ export function createDefaultConfig(targetRoot = "."): MigrationGuardConfig {
       failOnCheckRegression: true,
       failOnProbeDiff: true
     },
+    proposalGate: {
+      defaultPolicy: "collect-all",
+      batchPolicy: "fail-fast",
+      retry: {
+        "unit-test": {
+          maxAttempts: 2,
+          delayMs: 1000,
+          retryOn: ["flake-suspected"]
+        },
+        "ui-probe": {
+          maxAttempts: 2,
+          delayMs: 1000,
+          retryOn: ["flake-suspected", "timeout"]
+        }
+      }
+    },
     variables: {}
   };
 }
@@ -120,6 +136,14 @@ function mergeWithDefaults(raw: Partial<MigrationGuardConfig>): MigrationGuardCo
     compare: {
       ...defaults.compare,
       ...raw.compare
+    },
+    proposalGate: {
+      ...defaults.proposalGate,
+      ...raw.proposalGate,
+      retry: {
+        ...defaults.proposalGate.retry,
+        ...raw.proposalGate?.retry
+      }
     },
     variables: raw.variables ?? defaults.variables
   };

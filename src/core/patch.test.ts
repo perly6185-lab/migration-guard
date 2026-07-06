@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { applyProposalBatch, applyProposedPatch, createAddFilePatch, createProposalBatchPlan, proposeActionPatch, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
+import { syncIssues } from "./issueSync.js";
+import { writeCiHandoffReport } from "./migrationRun.js";
 import type { LoadedConfig, MigrationRun, MigrationTaskGraph, ProposalVerificationReport, ProposedPatch } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
@@ -315,15 +317,125 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     const report = await applyProposalBatch(loaded, pkg, { limit: 2, runChecks: true });
     assert.equal(report.passed, false);
     assert.equal(report.results.length, 1);
+    assert.equal(report.gatePolicy?.mode, "fail-fast");
+    assert.equal(report.executedCount, 1);
+    assert.equal(report.skippedCount, 1);
     assert.equal(report.results[0]?.proposalId, "patch-a-fail");
     assert.equal(report.results[0]?.firstFailedCheck?.failureCategory, "command-failed");
     assert.ok(report.results[0]?.firstFailedCheck?.remediationHints?.some((hint) => hint.includes("stdout/stderr")));
     assert.equal(report.skipped.length, 1);
     assert.equal(report.skipped[0]?.proposalId, "patch-b-skip");
+    assert.equal(report.firstFailedProposalId, "patch-a-fail");
+    assert.equal(report.firstFailedVerificationPath, report.results[0]?.verificationPath);
     assert.match(report.stopReason ?? "", /patch-a-fail/);
     assert.match(report.nextCommand ?? "", /proposal replan/);
+    assert.ok(report.recommendedNextActions?.some((action) => action.includes("proposal replan")));
+    const issueSyncPath = await syncIssues(loaded, pkg, "local");
+    const exportedIssues = JSON.parse(await readFile(issueSyncPath, "utf8")) as Array<{
+      body: string;
+      migrationGuard?: {
+        gate?: { proposalId: string; firstFailedCheck?: { failureCategory?: string; remediationHints?: string[] } };
+        batch?: { stopReason?: string; nextCommand?: string; skippedProposals?: string[] };
+      };
+    }>;
+    const failureIssue = exportedIssues.find((issue) => issue.migrationGuard?.gate?.proposalId === "patch-a-fail");
+    assert.ok(failureIssue);
+    assert.match(failureIssue.body, /Proposal gate context/);
+    assert.match(failureIssue.body, /Proposal batch context/);
+    assert.equal(failureIssue.migrationGuard?.gate?.firstFailedCheck?.failureCategory, "command-failed");
+    assert.ok(failureIssue.migrationGuard?.gate?.firstFailedCheck?.remediationHints?.some((hint) => hint.includes("stdout/stderr")));
+    assert.match(failureIssue.migrationGuard?.batch?.stopReason ?? "", /patch-a-fail/);
+    assert.equal(failureIssue.migrationGuard?.batch?.skippedProposals?.[0], "patch-b-skip");
+    assert.match(failureIssue.migrationGuard?.batch?.nextCommand ?? "", /proposal replan/);
+    const ciHandoffPath = await writeCiHandoffReport(loaded, pkg);
+    const ciHandoff = await readFile(ciHandoffPath, "utf8");
+    assert.match(ciHandoff, /Latest failed batch/);
+    assert.match(ciHandoff, /Next command: migration-guard proposal replan/);
     await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "a-fail.mjs")));
     await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "b-skip.mjs")));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("configured proposal gate policy and retry defaults are used when CLI options are absent", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-configured-gate-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: dir });
+    const loaded = makeLoadedConfig(dir);
+    loaded.config.proposalGate.defaultPolicy = "fail-fast";
+    loaded.config.proposalGate.retry = {
+      "unit-test": {
+        maxAttempts: 3,
+        delayMs: 1,
+        retryOn: ["flake-suspected"]
+      }
+    };
+    const pkg = makeRunPackage(dir);
+    const proposalDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "proposals", "patch-configured");
+    const patchPath = path.join(proposalDir, "patch.diff");
+    const proposalPath = path.join(proposalDir, "proposal.json");
+    const generatedFile = "scripts/migration-guard/configured-probe.mjs";
+    const proposal: ProposedPatch = {
+      version: 1,
+      id: "patch-configured",
+      runId: pkg.run.id,
+      createdAt: "2026-07-06T00:00:00.000Z",
+      title: "Add configured probe",
+      summary: "Asserts config-driven gate defaults.",
+      risk: "low",
+      patchPath,
+      affectedFiles: [],
+      generatedFiles: [generatedFile],
+      recommendedChecks: [
+        `node ${generatedFile} fail`,
+        `node ${generatedFile} marker`
+      ],
+      checkPlan: [
+        {
+          command: `node ${generatedFile} fail`,
+          kind: "unit-test",
+          phase: "pre-preview",
+          critical: true
+        },
+        {
+          command: `node ${generatedFile} marker`,
+          kind: "unit-test",
+          phase: "pre-preview",
+          critical: true
+        }
+      ],
+      patchKind: "action-probe",
+      applyState: "proposed"
+    };
+
+    await mkdir(proposalDir, { recursive: true });
+    await writeFile(patchPath, createAddFilePatch(generatedFile, [
+      "import { writeFileSync } from \"node:fs\";",
+      "if (process.argv[2] === \"marker\") {",
+      "  writeFileSync(\"configured-second-check-ran.txt\", \"1\", \"utf8\");",
+      "  process.exit(0);",
+      "}",
+      "console.error(\"Error: [vitest-pool]: Failed to start forks worker\");",
+      "process.exit(1);",
+      ""
+    ].join("\n")), "utf8");
+    await writeFile(proposalPath, `${JSON.stringify(proposal, null, 2)}\n`, "utf8");
+
+    await assert.rejects(
+      applyProposedPatch(loaded, pkg, proposal.id, { runChecks: true }),
+      /verification failed/
+    );
+    const failedReportPath = (await readProposal(proposalPath)).lastVerificationPath;
+    assert.ok(failedReportPath);
+    const report = await readVerificationReport(failedReportPath);
+    assert.equal(report.gatePolicy?.mode, "fail-fast");
+    assert.equal(report.checks.length, 1);
+    assert.equal(report.checks[0]?.retry?.maxAttempts, 3);
+    assert.equal(report.checks[0]?.attemptCount, 3);
+    assert.equal(report.checks[0]?.failureCategory, "flake-suspected");
+    await assert.rejects(access(path.join(dir, "configured-second-check-ran.txt")));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -523,6 +635,22 @@ function makeLoadedConfig(root: string): LoadedConfig {
       compare: {
         failOnCheckRegression: true,
         failOnProbeDiff: true
+      },
+      proposalGate: {
+        defaultPolicy: "collect-all",
+        batchPolicy: "fail-fast",
+        retry: {
+          "unit-test": {
+            maxAttempts: 2,
+            delayMs: 1000,
+            retryOn: ["flake-suspected"]
+          },
+          "ui-probe": {
+            maxAttempts: 2,
+            delayMs: 1000,
+            retryOn: ["flake-suspected", "timeout"]
+          }
+        }
       },
       variables: {}
     }

@@ -9,6 +9,7 @@ export interface MigrationGuardConfig {
   probes: BehaviorProbeConfig[];
   output: OutputConfig;
   compare: ComparePolicy;
+  proposalGate: ProposalGateConfig;
   variables?: Record<string, string>;
 }
 
@@ -19,6 +20,12 @@ export interface OutputConfig {
 export interface ComparePolicy {
   failOnCheckRegression: boolean;
   failOnProbeDiff: boolean;
+}
+
+export interface ProposalGateConfig {
+  defaultPolicy: ProposalGatePolicyMode;
+  batchPolicy: ProposalGatePolicyMode;
+  retry?: Partial<Record<ProposalCheckKind, ProposalCheckRetryPolicy>>;
 }
 
 export interface CheckConfig {
@@ -657,11 +664,17 @@ export interface ProposalBatchReport {
   runId: string;
   createdAt: string;
   planId: string;
+  gatePolicy?: ProposalGatePolicy;
   passed: boolean;
+  executedCount: number;
+  skippedCount: number;
+  firstFailedProposalId?: string;
+  firstFailedVerificationPath?: string;
   results: ProposalBatchResult[];
   skipped: ProposalBatchSkippedItem[];
   stopReason?: string;
   nextCommand?: string;
+  recommendedNextActions?: string[];
   outputPath: string;
 }
 

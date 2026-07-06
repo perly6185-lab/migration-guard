@@ -38,6 +38,8 @@
 | Phase 20 | Failed Gate Replan Issues | 能把失败的 proposal gate 自动转成 replan/failure issue |
 | Phase 21 | Adaptive Gate Policy + Flake Handling | 能对疑似环境抖动重试、按策略执行 gate，并批量推进低风险 proposal |
 | Phase 22 | Gate Remediation Hints + Batch Stop Reporting | 能把 gate 失败转成修复建议，并解释 batch 为什么停止和跳过 |
+| Phase 23 | Configurable Gate Policy + Batch Summary | 能用项目配置控制 gate policy/retry，并在 run report 汇总 batch |
+| Phase 24 | External Issue Gate Context + CI Handoff | 能把 gate/batch 失败上下文导出给 issue sync 和 CI |
 
 ## Phase 0: CLI Bootstrap
 
@@ -834,6 +836,107 @@ migration-guard report --run latest
 - batch apply 失败后能记录首个失败 check、停止原因和跳过的 proposal。
 - batch report 能给出下一条建议命令。
 - 单元测试覆盖成功 batch 和失败 batch 两条路径。
+
+## Phase 23: Configurable Gate Policy + Batch Summary
+
+目标：把 proposal gate 的默认策略从代码常量升级为项目配置，并让 batch report/run report 对批量执行结果有完整摘要。
+
+新增能力：
+
+- `.migration-guard.json` 支持 `proposalGate.defaultPolicy`
+- `.migration-guard.json` 支持 `proposalGate.batchPolicy`
+- `.migration-guard.json` 支持按 check kind 配置 retry policy
+- CLI `--gate-policy` 仍可覆盖配置默认值
+- proposal checkPlan 未声明 retry 时使用配置默认 retry
+- batch report 记录 `gatePolicy`
+- batch report 记录 executed/skipped count
+- batch report 记录 first failed proposal 和 verification path
+- batch report 记录 recommended next actions
+- run report 新增 `Recent Proposal Batches`
+
+建议配置：
+
+```json
+{
+  "proposalGate": {
+    "defaultPolicy": "collect-all",
+    "batchPolicy": "fail-fast",
+    "retry": {
+      "unit-test": {
+        "maxAttempts": 2,
+        "delayMs": 1000,
+        "retryOn": ["flake-suspected"]
+      },
+      "ui-probe": {
+        "maxAttempts": 2,
+        "delayMs": 1000,
+        "retryOn": ["flake-suspected", "timeout"]
+      }
+    }
+  }
+}
+```
+
+建议命令：
+
+```bash
+migration-guard proposal batch apply --run latest --limit 3
+migration-guard proposal batch apply --run latest --limit 3 --gate-policy collect-all
+migration-guard report --run latest
+```
+
+产物：
+
+- proposal verification report 中的 config-resolved `gatePolicy`
+- proposal check result 中的 config-resolved `retry`
+- proposal batch report 中的 batch summary fields
+- run report 中的 `Recent Proposal Batches`
+
+完成标准：
+
+- 配置默认 gate policy 能控制 proposal verify/apply。
+- 配置 batch policy 能控制 batch apply。
+- CLI gate policy 能覆盖配置。
+- 配置 retry 能被没有显式 retry 的 checkPlan 使用。
+- run report 能展示最近 batch 的通过状态、策略、执行数、跳过数和下一步命令。
+- 单元测试覆盖配置 policy/retry 和 batch summary。
+
+## Phase 24: External Issue Gate Context + CI Handoff
+
+目标：把 proposal gate/batch 的失败上下文从本地 artifact 推送到团队协作和 CI handoff 层。
+
+新增能力：
+
+- issue sync export 读取 proposal verification reports
+- issue sync export 读取 proposal batch reports
+- provider-neutral issue JSON 写入 `migrationGuard.gate`
+- provider-neutral issue JSON 写入 `migrationGuard.batch`
+- issue body/Markdown export 展示 proposal gate context
+- issue body/Markdown export 展示 proposal batch context
+- run report batch section 展示 batch report path、first failed verification、skipped proposals 和 recommended actions
+- `ci verify --run <id|latest>` 额外写出 CI handoff report
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider local
+migration-guard sync-issues --run latest --provider github --dry-run
+migration-guard ci verify --baseline .migration-guard/latest-baseline.json --run latest
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/local-issues.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/<provider>-dry-run-issues.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/<provider>-dry-run-issues.md`
+- `.migration-guard/migration-runs/run-*/reports/ci-handoff.md`
+
+完成标准：
+
+- failure issue export 包含 failed proposal id、verification path、failure category 和 remediation hints。
+- batch context 包含 stopReason、skipped proposals、nextCommand 和 recommended next actions。
+- CI handoff report 能展示最近 failed gate/batch 和下一步命令。
+- 真实 local sync smoke 通过，目标仓库保持 clean。
 
 ## 阶段交付规则
 

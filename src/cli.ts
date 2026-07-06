@@ -14,6 +14,7 @@ import {
   renderRunReport,
   renderRunStatus,
   setRunStatus,
+  writeCiHandoffReport,
   writeRunReport
 } from "./core/migrationRun.js";
 import { renderMigrationPlan } from "./core/plan.js";
@@ -663,6 +664,13 @@ async function commandCi(args: ParsedArgs): Promise<void> {
     throw new Error(`Unknown ci action: ${action}`);
   }
   await commandVerify(args);
+  const runId = stringOption(args, "run");
+  if (runId) {
+    const loaded = await loadFromArgs(args);
+    const pkg = await loadRunPackage(loaded, runId);
+    const outputPath = await writeCiHandoffReport(loaded, pkg);
+    console.log(`CI handoff wrote ${outputPath}`);
+  }
 }
 
 async function commandContract(args: ParsedArgs): Promise<void> {
@@ -828,7 +836,7 @@ Usage:
   migration-guard proposal replan [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal batch plan|apply [--run <id|latest>] [--limit <n>] [--skip-checks] [--gate-policy fail-fast|collect-all] [--json]
   migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run]
-  migration-guard ci verify --baseline <path>
+  migration-guard ci verify --baseline <path> [--run <id|latest>]
   migration-guard contract capture --source <url>
   migration-guard contract test --target <url> --contract <path>
   migration-guard dual-run --source <url> --target <url>

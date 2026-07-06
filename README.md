@@ -64,6 +64,8 @@ node dist/cli.js proposal rollback --run latest --proposal <proposal-id>
 node dist/cli.js proposal replan --run latest --proposal <proposal-id>
 node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
+node dist/cli.js sync-issues --run latest --provider local
+node dist/cli.js ci verify --baseline .migration-guard/latest-baseline.json --run latest
 ```
 
 Proposal gates support two execution policies:
@@ -79,6 +81,33 @@ startup failures, transient socket resets and timeouts.
 When a proposal gate fails, verification and batch reports include remediation
 hints. Batch reports also explain why the batch stopped, which proposals were
 skipped, and the next `proposal replan` command to run.
+Issue sync exports include the same gate and batch context so local/provider
+neutral issue exports can be handed to a team or external tracker.
+
+Proposal gate defaults can be configured:
+
+```json
+{
+  "proposalGate": {
+    "defaultPolicy": "collect-all",
+    "batchPolicy": "fail-fast",
+    "retry": {
+      "unit-test": {
+        "maxAttempts": 2,
+        "delayMs": 1000,
+        "retryOn": ["flake-suspected"]
+      },
+      "ui-probe": {
+        "maxAttempts": 2,
+        "delayMs": 1000,
+        "retryOn": ["flake-suspected", "timeout"]
+      }
+    }
+  }
+}
+```
+
+CLI `--gate-policy` options override config defaults for that command.
 
 ## Probe types
 
@@ -169,6 +198,12 @@ policy, flaky check retry and proposal batch report.
 
 See [docs/PHASE_22_REPORT.md](docs/PHASE_22_REPORT.md) for remediation hints
 and batch stop reporting.
+
+See [docs/PHASE_23_REPORT.md](docs/PHASE_23_REPORT.md) for configurable gate
+policy, retry defaults and batch summary reporting.
+
+See [docs/PHASE_24_REPORT.md](docs/PHASE_24_REPORT.md) for external issue gate
+context and CI handoff reporting.
 
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
 for the next real-world validation plan using `perly6185-lab/md`.

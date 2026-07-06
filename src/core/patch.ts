@@ -65,7 +65,6 @@ export interface ProposalBatchOptions {
 }
 
 const DEFAULT_GATE_POLICY: ProposalGatePolicy = { mode: "collect-all" };
-const BATCH_GATE_POLICY: ProposalGatePolicy = { mode: "fail-fast" };
 
 export async function proposePatch(loaded: LoadedConfig, pkg: MigrationRunPackage, taskId: string): Promise<ProposedPatch> {
   const task = pkg.graph.tasks.find((candidate) => candidate.id === taskId);
@@ -76,7 +75,7 @@ export async function proposePatch(loaded: LoadedConfig, pkg: MigrationRunPackag
   const id = createId("patch");
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "proposals", id);
   const patchPath = path.join(dir, "patch.diff");
-  const checkPlan = createProposalCheckPlan(task.verificationCommands);
+  const checkPlan = createProposalCheckPlan(loaded, task.verificationCommands);
   const proposed: ProposedPatch = {
     version: 1,
     id,
@@ -127,7 +126,7 @@ export async function proposeActionPatch(loaded: LoadedConfig, pkg: MigrationRun
   const probeContent = createActionProbeScript(pkg.run.goal, action);
   const patchContent = createAddFilePatch(generatedFile, probeContent);
   const recommendedChecks = [...new Set([...action.recommendedChecks, `node ${generatedFile}`])];
-  const checkPlan = action.checkPlan ?? createProposalCheckPlan(recommendedChecks, preview ? [generatedFile] : []);
+  const checkPlan = action.checkPlan ?? createProposalCheckPlan(loaded, recommendedChecks, preview ? [generatedFile] : []);
   const proposed: ProposedPatch = {
     version: 1,
     id,
@@ -174,7 +173,7 @@ export async function verifyProposedPatch(
   const proposal = await loadProposal(loaded, pkg, proposalId);
   const patchContent = await fs.readFile(proposal.patchPath, "utf8");
   const patchCheck = await checkPatchApplicability(loaded, pkg, proposal, patchContent);
-  const gatePolicy = resolveGatePolicy(options.gatePolicy);
+  const gatePolicy = resolveGatePolicy(loaded, options.gatePolicy);
   const checks = options.runChecks && patchCheck.passed ? await runProposalChecks(loaded, pkg, proposal, undefined, gatePolicy) : [];
   const report = await writeProposalVerificationReport(loaded, pkg, proposal, "verify", false, patchCheck, checks, undefined, gatePolicy);
   if (isPreApplyState(proposal.applyState)) {
@@ -208,7 +207,7 @@ export async function applyProposedPatch(
   const proposal = await readJsonFile<ProposedPatch>(proposalPath);
   const patchContent = await fs.readFile(proposal.patchPath, "utf8");
   const patchCheck = await checkPatchApplicability(loaded, pkg, proposal, patchContent);
-  const gatePolicy = resolveGatePolicy(options.gatePolicy);
+  const gatePolicy = resolveGatePolicy(loaded, options.gatePolicy);
 
   if (!isGitPatchContent(patchContent)) {
     proposal.applyState = "applied";
@@ -400,7 +399,7 @@ export async function createProposalBatchPlan(
       title: proposal.title,
       risk: proposal.risk,
       applyState: proposal.applyState,
-      checkPlan: ensureProposalCheckPlan(proposal).map((check) => ({
+    checkPlan: ensureProposalCheckPlan(loaded, proposal).map((check) => ({
         kind: check.kind,
         phase: check.phase,
         command: check.command
@@ -429,13 +428,14 @@ export async function applyProposalBatch(
   const plan = await createProposalBatchPlan(loaded, pkg, { limit: options.limit });
   const results: ProposalBatchResult[] = [];
   let stopReason: string | undefined;
+  const gatePolicy = resolveGatePolicy(loaded, options.gatePolicy, "batchPolicy");
 
   for (const item of plan.proposals) {
     try {
       const result = await applyProposedPatch(loaded, pkg, item.proposalId, {
         runChecks: options.runChecks ?? true,
         rollbackOnFail: options.rollbackOnFail ?? true,
-        gatePolicy: resolveGatePolicy(options.gatePolicy, BATCH_GATE_POLICY)
+        gatePolicy
       });
       results.push({
         proposalId: item.proposalId,
@@ -479,17 +479,24 @@ export async function applyProposalBatch(
     }));
   const id = createId("proposal-batch-report");
   const outputPath = path.join(migrationRunDir(loaded, pkg.run.id), "proposal-batches", plan.id, `${id}.json`);
+  const failedResult = results.find((result) => !result.passed);
   const report: ProposalBatchReport = {
     version: 1,
     id,
     runId: pkg.run.id,
     createdAt: new Date().toISOString(),
     planId: plan.id,
+    gatePolicy,
     passed: results.length === plan.proposals.length && results.every((result) => result.passed),
+    executedCount: results.length,
+    skippedCount: skipped.length,
+    firstFailedProposalId: failedResult?.proposalId,
+    firstFailedVerificationPath: failedResult?.verificationPath,
     results,
     skipped,
     stopReason,
     nextCommand: stopReason ? firstFailedProposalReplanCommand(results) : undefined,
+    recommendedNextActions: createBatchRecommendedNextActions(failedResult),
     outputPath
   };
   await writeJsonFile(outputPath, report);
@@ -575,7 +582,7 @@ export function renderProposalStatus(status: ProposalStatus): string {
     `Task: ${proposal.taskId ?? "none"}`,
     `Generated files: ${proposal.generatedFiles?.join(", ") || "none"}`,
     `Recommended checks: ${proposal.recommendedChecks.join(", ") || "none"}`,
-    `Check plan: ${ensureProposalCheckPlan(proposal).map((check) => `${check.kind}/${check.phase}`).join(", ") || "none"}`,
+    `Check plan: ${(proposal.checkPlan ?? []).map((check) => `${check.kind}/${check.phase}`).join(", ") || "none"}`,
     `Preview: ${proposal.preview ? `${proposal.preview.command} -> ${proposal.preview.url}` : "none"}`,
     `Last verification: ${proposal.lastVerificationPath ?? "none"}`,
     `Last rollback: ${proposal.lastRollbackPath ?? "none"}`,
@@ -602,14 +609,20 @@ export function renderProposalBatchReport(report: ProposalBatchReport): string {
     `Proposal batch report: ${report.id}`,
     `Plan: ${report.planId}`,
     `Passed: ${report.passed ? "yes" : "no"}`,
+    `Gate policy: ${report.gatePolicy?.mode ?? "unknown"}`,
     `Results: ${report.results.length}`,
-    `Skipped: ${report.skipped.length}`
+    `Skipped: ${report.skipped.length}`,
+    `Executed: ${report.executedCount}`,
+    `First failed: ${report.firstFailedProposalId ?? "none"}`
   ];
   if (report.stopReason) {
     lines.push(`Stop reason: ${report.stopReason}`);
   }
   if (report.nextCommand) {
     lines.push(`Next: ${report.nextCommand}`);
+  }
+  for (const action of report.recommendedNextActions ?? []) {
+    lines.push(`Recommended: ${action}`);
   }
   for (const result of report.results) {
     lines.push(`- ${result.passed ? "passed" : "failed"} ${result.proposalId} [${result.state}]${result.error ? ` ${result.error}` : ""}`);
@@ -728,7 +741,7 @@ async function runProposalChecks(
   env?: Record<string, string>,
   gatePolicy: ProposalGatePolicy = DEFAULT_GATE_POLICY
 ): Promise<ProposalCommandCheck[]> {
-  return runProposalCheckCommands(loaded, pkg, ensureProposalCheckPlan(proposal), env, gatePolicy);
+  return runProposalCheckCommands(loaded, pkg, ensureProposalCheckPlan(loaded, proposal), env, gatePolicy);
 }
 
 async function runProposalCheckCommands(
@@ -757,7 +770,7 @@ async function runProposalCheckCommand(
   item: ProposalCheckPlanItem,
   env?: Record<string, string>
 ): Promise<ProposalCommandCheck> {
-  const retry = item.retry ?? defaultRetryForCheckKind(item.kind);
+  const retry = item.retry ?? configuredRetryForCheckKind(loaded, item.kind);
   const maxAttempts = Math.max(1, retry?.maxAttempts ?? 1);
   const attempts: ProposalCheckAttempt[] = [];
 
@@ -823,7 +836,7 @@ async function runProposalChecksForApply(
     };
   }
 
-  const split = splitPreviewChecks(ensureProposalCheckPlan(proposal));
+  const split = splitPreviewChecks(ensureProposalCheckPlan(loaded, proposal));
   const regularChecks = await runProposalCheckCommands(loaded, pkg, split.regularChecks, undefined, gatePolicy);
   if (regularChecks.some((check) => shouldStopForGatePolicy(gatePolicy, check))) {
     return { checks: regularChecks };
@@ -945,7 +958,7 @@ async function writeProposalVerificationReport(
   gatePolicy: ProposalGatePolicy = DEFAULT_GATE_POLICY
 ): Promise<ProposalVerificationReport> {
   const outputPath = path.join(proposalDir(loaded, pkg, proposal.id), `verification-${Date.now()}.json`);
-  const checkPlan = ensureProposalCheckPlan(proposal);
+  const checkPlan = ensureProposalCheckPlan(loaded, proposal);
   const timeline = createProposalGateTimeline(patchCheck, checks, preview);
   const report: ProposalVerificationReport = {
     version: 1,
@@ -1160,22 +1173,8 @@ function isFlakeSuspectedOutput(output: string): boolean {
   ].some((pattern) => output.includes(pattern));
 }
 
-function defaultRetryForCheckKind(kind: ProposalCheckKind) {
-  if (kind === "unit-test") {
-    return {
-      maxAttempts: 2,
-      delayMs: 1000,
-      retryOn: ["flake-suspected"] as ProposalCheckFailureCategory[]
-    };
-  }
-  if (kind === "ui-probe") {
-    return {
-      maxAttempts: 2,
-      delayMs: 1000,
-      retryOn: ["flake-suspected", "timeout"] as ProposalCheckFailureCategory[]
-    };
-  }
-  return undefined;
+function configuredRetryForCheckKind(loaded: LoadedConfig, kind: ProposalCheckKind) {
+  return loaded.config.proposalGate.retry?.[kind];
 }
 
 function shouldRetryCheck(
@@ -1223,9 +1222,26 @@ function firstFailedProposalReplanCommand(results: ProposalBatchResult[]): strin
   return failed ? `migration-guard proposal replan --run latest --proposal ${failed.proposalId}` : undefined;
 }
 
-function resolveGatePolicy(policy?: ProposalGatePolicy, fallback: ProposalGatePolicy = DEFAULT_GATE_POLICY): ProposalGatePolicy {
+function createBatchRecommendedNextActions(failedResult?: ProposalBatchResult): string[] | undefined {
+  if (!failedResult) {
+    return undefined;
+  }
+  return [
+    `Run proposal replan for ${failedResult.proposalId}.`,
+    "Inspect the first failed check remediation hints before retrying the batch.",
+    "Keep skipped proposals unapplied until the failed proposal is replanned or rolled back."
+  ];
+}
+
+function resolveGatePolicy(
+  loaded: LoadedConfig,
+  policy?: ProposalGatePolicy,
+  configKey: "defaultPolicy" | "batchPolicy" = "defaultPolicy"
+): ProposalGatePolicy {
   if (!policy) {
-    return fallback;
+    return {
+      mode: validateGatePolicyMode(loaded.config.proposalGate[configKey])
+    };
   }
   return {
     mode: validateGatePolicyMode(policy.mode)
@@ -1309,20 +1325,20 @@ function isGitPatchContent(input: string): boolean {
     .some((line) => line.startsWith("diff --git ") || line.startsWith("--- ") || line.startsWith("+++ "));
 }
 
-function ensureProposalCheckPlan(proposal: ProposedPatch): ProposalCheckPlanItem[] {
+function ensureProposalCheckPlan(loaded: LoadedConfig, proposal: ProposedPatch): ProposalCheckPlanItem[] {
   if (proposal.checkPlan && proposal.checkPlan.length > 0) {
     return proposal.checkPlan;
   }
 
-  proposal.checkPlan = createProposalCheckPlan(proposal.recommendedChecks, proposal.preview ? proposal.generatedFiles ?? [] : []);
+  proposal.checkPlan = createProposalCheckPlan(loaded, proposal.recommendedChecks, proposal.preview ? proposal.generatedFiles ?? [] : []);
   return proposal.checkPlan;
 }
 
-function createProposalCheckPlan(commands: string[], generatedFiles: string[] = []): ProposalCheckPlanItem[] {
-  return [...new Set(commands)].map((command) => classifyProposalCheck(command, generatedFiles));
+function createProposalCheckPlan(loaded: LoadedConfig, commands: string[], generatedFiles: string[] = []): ProposalCheckPlanItem[] {
+  return [...new Set(commands)].map((command) => classifyProposalCheck(loaded, command, generatedFiles));
 }
 
-function classifyProposalCheck(command: string, generatedFiles: string[]): ProposalCheckPlanItem {
+function classifyProposalCheck(loaded: LoadedConfig, command: string, generatedFiles: string[]): ProposalCheckPlanItem {
   const normalized = command.toLowerCase();
   const usesGeneratedProbe = generatedFiles.some((file) => command.includes(file));
   if (command.includes("MG_PREVIEW_URL") || usesGeneratedProbe) {
@@ -1332,7 +1348,7 @@ function classifyProposalCheck(command: string, generatedFiles: string[]): Propo
       phase: "preview",
       timeoutMs: 120000,
       critical: true,
-      retry: defaultRetryForCheckKind("ui-probe"),
+      retry: configuredRetryForCheckKind(loaded, "ui-probe"),
       resourceProfile: "browser",
       reason: usesGeneratedProbe ? "generated probe depends on preview URL" : "command references MG_PREVIEW_URL"
     };
@@ -1345,7 +1361,7 @@ function classifyProposalCheck(command: string, generatedFiles: string[]): Propo
     phase: "pre-preview",
     timeoutMs: defaultTimeoutForCheckKind(kind),
     critical: true,
-    retry: defaultRetryForCheckKind(kind),
+    retry: configuredRetryForCheckKind(loaded, kind),
     resourceProfile: defaultResourceProfileForCheckKind(kind),
     reason: `classified from command: ${kind}`
   };

@@ -13,6 +13,7 @@ import type {
   MigrationTask,
   MigrationTaskGraph,
   MigrationTaskStatus,
+  ProposalBatchReport,
   ProposalVerificationReport,
   ProposedPatch
 } from "../types.js";
@@ -187,6 +188,7 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
   const graphErrors = validateTaskGraph(pkg.graph);
   const proposals = await readProposalSummaries(loaded, pkg.run.id);
   const proposalGates = await readRecentProposalGateSummaries(loaded, pkg.run.id);
+  const proposalBatches = await readRecentProposalBatchSummaries(loaded, pkg.run.id);
 
   return [
     `# Migration Run Report: ${pkg.run.id}`,
@@ -244,6 +246,20 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
       ].filter(Boolean).join("\n")).join("\n")
       : "No proposal gate reports.",
     "",
+    "## Recent Proposal Batches",
+    "",
+    proposalBatches.length > 0
+      ? proposalBatches.map((batch) => [
+        `- ${batch.createdAt} ${batch.id} ${batch.passed ? "passed" : "failed"} policy:${batch.gatePolicy ?? "unknown"} executed:${batch.executedCount} skipped:${batch.skippedCount}`,
+        `  report:${batch.reportPath}`,
+        batch.firstFailedVerificationPath ? `  first-failed-verification:${batch.firstFailedVerificationPath}` : undefined,
+        batch.stopReason ? `  stop:${batch.stopReason}` : undefined,
+        batch.nextCommand ? `  next:${batch.nextCommand}` : undefined,
+        batch.skippedProposals.length > 0 ? `  skipped:${batch.skippedProposals.join(", ")}` : undefined,
+        ...(batch.recommendedNextActions ?? []).map((action) => `  recommended:${action}`)
+      ].filter(Boolean).join("\n")).join("\n")
+      : "No proposal batch reports.",
+    "",
     "## Evidence",
     "",
     ...evidence.slice(-20).map((event) => `- ${event.createdAt} [${event.type}] ${event.message}`)
@@ -256,6 +272,32 @@ export async function writeRunReport(loaded: LoadedConfig, pkg: MigrationRunPack
   await writeTextFile(reportPath, report);
   pkg.run.finalReportPath = reportPath;
   await saveRunPackage(loaded, pkg);
+  return reportPath;
+}
+
+export async function writeCiHandoffReport(loaded: LoadedConfig, pkg: MigrationRunPackage, name = "ci-handoff.md"): Promise<string> {
+  const gates = await readRecentProposalGateSummaries(loaded, pkg.run.id);
+  const batches = await readRecentProposalBatchSummaries(loaded, pkg.run.id);
+  const failedGate = [...gates].reverse().find((gate) => !gate.passed);
+  const failedBatch = [...batches].reverse().find((batch) => !batch.passed);
+  const report = [
+    `# CI Handoff: ${pkg.run.id}`,
+    "",
+    `- Goal: ${pkg.run.goal}`,
+    `- Status: ${pkg.run.status}`,
+    `- Latest failed gate: ${failedGate ? failedGate.proposalId : "none"}`,
+    failedGate?.failureCategory ? `- Gate failure category: ${failedGate.failureCategory}` : undefined,
+    failedGate?.remediationHint ? `- Gate hint: ${failedGate.remediationHint}` : undefined,
+    `- Latest failed batch: ${failedBatch ? failedBatch.id : "none"}`,
+    failedBatch?.reportPath ? `- Batch report: ${failedBatch.reportPath}` : undefined,
+    failedBatch?.firstFailedVerificationPath ? `- First failed verification: ${failedBatch.firstFailedVerificationPath}` : undefined,
+    failedBatch?.stopReason ? `- Batch stop reason: ${failedBatch.stopReason}` : undefined,
+    failedBatch?.nextCommand ? `- Next command: ${failedBatch.nextCommand}` : undefined,
+    failedBatch && failedBatch.skippedProposals.length > 0 ? `- Skipped proposals: ${failedBatch.skippedProposals.join(", ")}` : undefined,
+    ...(failedBatch?.recommendedNextActions ?? []).map((action) => `- Recommended: ${action}`)
+  ].filter(Boolean).join("\n");
+  const reportPath = path.join(migrationRunDir(loaded, pkg.run.id), "reports", name);
+  await writeTextFile(reportPath, report);
   return reportPath;
 }
 
@@ -550,4 +592,48 @@ async function readRecentProposalGateSummaries(
         remediationHint: failed?.remediationHints?.[0]
       };
     });
+}
+
+async function readRecentProposalBatchSummaries(
+  loaded: LoadedConfig,
+  runId: string
+): Promise<Array<{ id: string; createdAt: string; passed: boolean; gatePolicy?: string; executedCount: number; skippedCount: number; reportPath: string; firstFailedVerificationPath?: string; stopReason?: string; nextCommand?: string; skippedProposals: string[]; recommendedNextActions?: string[] }>> {
+  const batchesDir = path.join(migrationRunDir(loaded, runId), "proposal-batches");
+  if (!await pathExists(batchesDir)) {
+    return [];
+  }
+
+  const entries = await fs.readdir(batchesDir, { withFileTypes: true });
+  const reports: ProposalBatchReport[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const batchDir = path.join(batchesDir, entry.name);
+    const files = await fs.readdir(batchDir, { withFileTypes: true });
+    for (const file of files) {
+      if (!file.isFile() || !file.name.startsWith("proposal-batch-report-") || !file.name.endsWith(".json")) {
+        continue;
+      }
+      reports.push(await readJsonFile<ProposalBatchReport>(path.join(batchDir, file.name)));
+    }
+  }
+
+  return reports
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .slice(-10)
+    .map((report) => ({
+      id: report.id,
+      createdAt: report.createdAt,
+      passed: report.passed,
+      gatePolicy: report.gatePolicy?.mode,
+      executedCount: report.executedCount,
+      skippedCount: report.skippedCount,
+      reportPath: report.outputPath,
+      firstFailedVerificationPath: report.firstFailedVerificationPath,
+      stopReason: report.stopReason,
+      nextCommand: report.nextCommand,
+      skippedProposals: report.skipped.map((item) => item.proposalId),
+      recommendedNextActions: report.recommendedNextActions
+    }));
 }
