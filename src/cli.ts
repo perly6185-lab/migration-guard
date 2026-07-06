@@ -664,7 +664,16 @@ async function commandSyncIssues(args: ParsedArgs): Promise<void> {
     labels: labelsOption(args),
     maxLiveMutations: nonNegativeIntegerOption(args, "max-live-mutations")
   });
-  console.log(args.options["dry-run"] ? `Dry-run export wrote ${outputPath}` : `Wrote ${outputPath}`);
+  if (args.options["dry-run"]) {
+    console.log(`Dry-run export wrote ${outputPath}`);
+    return;
+  }
+  if (args.options["live-plan"]) {
+    console.log(`GitHub live-plan read-only lookup wrote ${outputPath}`);
+    console.log("Read-only: fetched open issues with GET only; no POST/PATCH mutations were sent.");
+    return;
+  }
+  console.log(`Wrote ${outputPath}`);
 }
 
 async function commandCi(args: ParsedArgs): Promise<void> {

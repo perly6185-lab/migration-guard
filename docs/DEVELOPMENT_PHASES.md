@@ -1151,6 +1151,39 @@ migration-guard sync-issues --run latest --provider github --live --repo owner/n
 - mock API 验证 hash mismatch 不触发 POST/PATCH。
 - safe smoke 不调用真实 GitHub API，目标仓库保持 clean。
 
+## Phase 31: Real GitHub Read-Only Smoke Prep
+
+目标：准备真实 GitHub read-only smoke，但本阶段不需要真实 token，也不触发外部 API。
+
+新增能力：
+
+- GitHub read-only smoke runbook
+- `--live-plan` 成功输出明确提示 read-only GET、无 POST/PATCH
+- 本地 no-network planHash stability smoke helper
+- 本地 no-network read-only smoke preflight helper
+
+建议命令：
+
+```bash
+npm run build
+node scripts/smoke/prepare-github-read-only-smoke.mjs --config configs/md-fast.migration-guard.json --run latest --repo owner/name
+node scripts/smoke/check-live-plan-hash-stability.mjs
+```
+
+产物：
+
+- `docs/GITHUB_READ_ONLY_SMOKE_RUNBOOK.md`
+- `scripts/smoke/prepare-github-read-only-smoke.mjs`
+- `scripts/smoke/check-live-plan-hash-stability.mjs`
+
+完成标准：
+
+- runbook 明确真实 read-only smoke 的前置授权、命令和禁止事项。
+- CLI `--live-plan` 成功时明确声明不会 POST/PATCH。
+- 预检脚本只读取本地 run/config 并打印真实 read-only 命令，不触发 GitHub API。
+- 本地稳定性脚本连续生成两个 mocked live plan，确认 `planHash` 一致。
+- 本阶段不需要 `GITHUB_TOKEN`，不触发真实 GitHub API。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

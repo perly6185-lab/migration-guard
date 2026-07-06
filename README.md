@@ -237,6 +237,10 @@ guardrails, read-only planning, labels, retry and rate-limit observability.
 See [docs/PHASE_30_REPORT.md](docs/PHASE_30_REPORT.md) for plan-hash
 confirmation before GitHub live mutation.
 
+See [docs/GITHUB_READ_ONLY_SMOKE_RUNBOOK.md](docs/GITHUB_READ_ONLY_SMOKE_RUNBOOK.md)
+for the opt-in real GitHub read-only smoke procedure and the local no-network
+planHash stability check.
+
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
 for the next real-world validation plan using `perly6185-lab/md`.
 

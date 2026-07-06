@@ -14,6 +14,7 @@ migration-guard/
 
   docs/
     DEVELOPMENT_PHASES.md
+    GITHUB_READ_ONLY_SMOKE_RUNBOOK.md
     MD_REAL_WORLD_VALIDATION_PLAN.md
     MD_REAL_WORLD_VALIDATION_REPORT.md
     PHASE_COMPLETION_REPORT.md
@@ -45,7 +46,9 @@ migration-guard/
     probes/
       md-behavior-probe.mjs
     smoke/
+      check-live-plan-hash-stability.mjs
       create-failing-proposal-batch.mjs
+      prepare-github-read-only-smoke.mjs
 
   src/
     cli.ts
