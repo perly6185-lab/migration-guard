@@ -53,6 +53,29 @@ node dist/cli.js contract capture --source http://localhost:3000/health
 node dist/cli.js dual-run --source http://localhost:3000/health --target http://localhost:4000/health
 ```
 
+Proposal gate commands:
+
+```bash
+node dist/cli.js actions --run latest
+node dist/cli.js action propose --run latest --action action-renderer-probes
+node dist/cli.js proposal verify --run latest --proposal <proposal-id> --checks
+node dist/cli.js action apply --run latest --proposal <proposal-id> --rollback-on-fail
+node dist/cli.js proposal rollback --run latest --proposal <proposal-id>
+node dist/cli.js proposal replan --run latest --proposal <proposal-id>
+node dist/cli.js proposal batch plan --run latest --limit 3
+node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
+```
+
+Proposal gates support two execution policies:
+
+- `collect-all` runs all planned checks and records the full failure surface.
+- `fail-fast` stops after the first failed critical check and is the default for
+  batch apply.
+
+Check plans can also include retry metadata. Unit-test and UI-probe checks get
+conservative default retries for suspected environment flakes such as worker
+startup failures, transient socket resets and timeouts.
+
 ## Probe types
 
 Command probe:
@@ -136,6 +159,9 @@ independently runnable implementation phases.
 
 See [docs/PHASE_COMPLETION_REPORT.md](docs/PHASE_COMPLETION_REPORT.md) for the
 current phase completion report.
+
+See [docs/PHASE_21_REPORT.md](docs/PHASE_21_REPORT.md) for the adaptive gate
+policy, flaky check retry and proposal batch report.
 
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
 for the next real-world validation plan using `perly6185-lab/md`.

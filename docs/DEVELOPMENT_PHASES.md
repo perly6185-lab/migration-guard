@@ -36,6 +36,7 @@
 | Phase 18 | Proposal Check Classification | 能把 recommended checks 结构化为 kind/phase/timeout 的 check plan |
 | Phase 19 | Proposal Gate Timeline | 能在 verification report 和 run report 中展示 gate 执行时间线 |
 | Phase 20 | Failed Gate Replan Issues | 能把失败的 proposal gate 自动转成 replan/failure issue |
+| Phase 21 | Adaptive Gate Policy + Flake Handling | 能对疑似环境抖动重试、按策略执行 gate，并批量推进低风险 proposal |
 
 ## Phase 0: CLI Bootstrap
 
@@ -751,6 +752,47 @@ migration-guard report --run latest
 - gate 失败不是单次命令错误，而是可追踪 issue。
 - 后续 replanner 能读取失败 check 的 kind/phase 决定插入什么补救任务。
 - 成功 proposal 不创建额外 failure issue。
+
+## Phase 21: Adaptive Gate Policy + Flake Handling
+
+目标：让 proposal gate 能区分真实失败和疑似环境抖动，并支持更适合批量执行的 gate 策略。
+
+新增能力：
+
+- proposal `checkPlan` 支持 retry policy
+- check result 记录 attempts、failure category 和 flake-suspected 标记
+- check result 记录 resource profile
+- gate policy 支持 `collect-all` 和 `fail-fast`
+- `proposal replan` 可为已有失败 verification report 显式生成 replan task
+- `proposal batch plan`
+- `proposal batch apply`
+- batch apply 默认使用 fail-fast 并在失败 proposal 后停止
+
+建议命令：
+
+```bash
+migration-guard proposal verify --run latest --proposal <proposal-id> --checks --gate-policy collect-all
+migration-guard proposal replan --run latest --proposal <proposal-id>
+migration-guard proposal batch plan --run latest --limit 3
+migration-guard proposal batch apply --run latest --limit 3 --gate-policy fail-fast
+```
+
+产物：
+
+- proposal `verification-*.json` 中的 `gatePolicy`
+- proposal check attempts
+- proposal check failure category
+- proposal `replanTaskId`
+- `.migration-guard/migration-runs/run-*/proposal-batches/*/batch-plan.json`
+- `.migration-guard/migration-runs/run-*/proposal-batches/*/proposal-batch-report-*.json`
+
+完成标准：
+
+- 疑似 flaky 的 unit/UI check 至少能按默认策略重试一次。
+- `fail-fast` 能在第一个 critical check 失败后停止后续 checks。
+- `collect-all` 能继续收集完整失败面。
+- 失败 proposal 能生成可追踪 replan issue 和 replan task。
+- batch apply 能按低风险优先顺序执行 proposal，并在失败时停止后续 proposal。
 
 ## 阶段交付规则
 

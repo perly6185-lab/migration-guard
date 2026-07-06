@@ -10,6 +10,7 @@ import type {
   MigrationAutomationMode,
   MigrationIssue,
   MigrationRun,
+  MigrationTask,
   MigrationTaskGraph,
   MigrationTaskStatus,
   ProposalVerificationReport,
@@ -325,6 +326,69 @@ export function createProposalFailureIssue(
   };
   pkg.issues.push(issue);
   return issue;
+}
+
+export function createProposalReplanTask(
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch,
+  report: ProposalVerificationReport,
+  failureIssueId?: string
+): MigrationTask {
+  const taskId = `task-replan-${proposal.id.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+  const existing = pkg.graph.tasks.find((task) => task.id === taskId);
+  if (existing) {
+    return existing;
+  }
+
+  const firstFailedCheck = report.checks.find((check) => !check.passed);
+  const now = new Date().toISOString();
+  const task: MigrationTask = {
+    id: taskId,
+    title: `Replan failed proposal ${proposal.id}`,
+    description: [
+      `Proposal gate failed for ${proposal.title}.`,
+      `Report: ${report.outputPath}`,
+      firstFailedCheck ? `First failed check: ${firstFailedCheck.command}` : undefined,
+      firstFailedCheck?.kind ? `Kind: ${firstFailedCheck.kind}` : undefined,
+      firstFailedCheck?.phase ? `Phase: ${firstFailedCheck.phase}` : undefined,
+      failureIssueId ? `Failure issue: ${failureIssueId}` : undefined
+    ].filter(Boolean).join("\n"),
+    type: "replan",
+    status: "ready",
+    priority: 85,
+    risk: proposal.risk,
+    owner: "engine",
+    dependsOn: [],
+    affectedFiles: proposal.affectedFiles,
+    verificationCommands: proposal.recommendedChecks,
+    acceptanceCriteria: [
+      "failed gate has a remediation plan",
+      "proposal can be retried or explicitly accepted as blocked"
+    ],
+    executor: "manual",
+    result: `Created from proposal ${proposal.id}`,
+    createdAt: now,
+    updatedAt: now
+  };
+  pkg.graph.tasks.push(task);
+
+  const issue: MigrationIssue = {
+    id: createId("issue"),
+    runId: pkg.run.id,
+    taskId: task.id,
+    type: "task",
+    title: task.title,
+    body: task.description,
+    status: task.status,
+    risk: task.risk,
+    owner: task.owner,
+    affectedFiles: task.affectedFiles,
+    createdAt: now,
+    updatedAt: now
+  };
+  pkg.issues.push(issue);
+  task.issueId = issue.id;
+  return task;
 }
 
 export function createId(prefix: string): string {

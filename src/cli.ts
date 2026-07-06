@@ -24,18 +24,23 @@ import { getReadyTasks, validateTaskGraph } from "./core/taskGraph.js";
 import { syncIssues } from "./core/issueSync.js";
 import { loadActionPlan, renderActionPlan } from "./core/actionPlan.js";
 import {
+  applyProposalBatch,
   applyProposedPatch,
+  createProposalBatchPlan,
   getProposalStatus,
   proposeActionPatch,
   proposePatch,
+  renderProposalBatchPlan,
+  renderProposalBatchReport,
   renderProposalRollbackReport,
   renderProposalStatus,
   renderProposalVerificationReport,
+  replanProposal,
   rollbackProposedPatch,
   verifyProposedPatch
 } from "./core/patch.js";
 import { runPreviewProbe } from "./core/preview.js";
-import type { CompareReport, MigrationAutomationMode, MigrationRun } from "./types.js";
+import type { CompareReport, MigrationAutomationMode, MigrationRun, ProposalGatePolicy } from "./types.js";
 
 interface ParsedArgs {
   command: string;
@@ -524,7 +529,8 @@ async function commandAction(args: ParsedArgs): Promise<void> {
     }
     const result = await applyProposedPatch(loaded, pkg, proposalId, {
       runChecks: !args.options["skip-checks"],
-      rollbackOnFail: Boolean(args.options["rollback-on-fail"])
+      rollbackOnFail: Boolean(args.options["rollback-on-fail"]),
+      gatePolicy: gatePolicyOption(args)
     });
     console.log(result.message);
     if (result.report) {
@@ -545,11 +551,46 @@ async function commandProposal(args: ParsedArgs): Promise<void> {
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
   const proposalId = stringOption(args, "proposal") ?? args.positionals[1];
 
+  if (action === "batch") {
+    const batchAction = args.positionals[1] ?? "plan";
+    const limit = numberOption(args, "limit");
+    if (batchAction === "plan") {
+      const plan = await createProposalBatchPlan(loaded, pkg, { limit });
+      if (args.options.json) {
+        console.log(JSON.stringify(plan, null, 2));
+      } else {
+        console.log(renderProposalBatchPlan(plan));
+      }
+      return;
+    }
+    if (batchAction === "apply") {
+      const report = await applyProposalBatch(loaded, pkg, {
+        limit,
+        runChecks: !args.options["skip-checks"],
+        rollbackOnFail: !args.options["no-rollback-on-fail"],
+        gatePolicy: gatePolicyOption(args)
+      });
+      if (args.options.json) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        console.log(renderProposalBatchReport(report));
+      }
+      if (!report.passed) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+    throw new Error(`Unknown proposal batch command: ${batchAction}`);
+  }
+
   if (action === "verify") {
     if (!proposalId) {
       throw new Error("proposal verify requires --proposal <proposal-id>.");
     }
-    const report = await verifyProposedPatch(loaded, pkg, proposalId, { runChecks: Boolean(args.options.checks) });
+    const report = await verifyProposedPatch(loaded, pkg, proposalId, {
+      runChecks: Boolean(args.options.checks),
+      gatePolicy: gatePolicyOption(args)
+    });
     if (args.options.json) {
       console.log(JSON.stringify(report, null, 2));
     } else {
@@ -586,6 +627,21 @@ async function commandProposal(args: ParsedArgs): Promise<void> {
     }
     if (!report.passed) {
       process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (action === "replan") {
+    if (!proposalId) {
+      throw new Error("proposal replan requires --proposal <proposal-id>.");
+    }
+    const result = await replanProposal(loaded, pkg, proposalId);
+    if (args.options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(result.message);
+      console.log(`Task: ${result.task.id}`);
+      console.log(`Report: ${result.report.outputPath}`);
     }
     return;
   }
@@ -690,6 +746,29 @@ function stringOption(args: ParsedArgs, name: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function numberOption(args: ParsedArgs, name: string): number | undefined {
+  const value = stringOption(args, name);
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid number for --${name}: ${value}`);
+  }
+  return parsed;
+}
+
+function gatePolicyOption(args: ParsedArgs): ProposalGatePolicy | undefined {
+  const value = stringOption(args, "gate-policy");
+  if (!value) {
+    return undefined;
+  }
+  if (value !== "fail-fast" && value !== "collect-all") {
+    throw new Error(`Invalid --gate-policy: ${value}. Expected fail-fast or collect-all.`);
+  }
+  return { mode: value };
+}
+
 function resolveRunMode(args: ParsedArgs): MigrationAutomationMode {
   if (args.options.auto) {
     return "auto";
@@ -742,10 +821,12 @@ Usage:
   migration-guard task propose [--run <id|latest>] --task <id>
   migration-guard task apply [--run <id|latest>] --proposal <id>
   migration-guard action propose [--run <id|latest>] --action <id>
-  migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks] [--rollback-on-fail]
-  migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--json]
+  migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks] [--rollback-on-fail] [--gate-policy fail-fast|collect-all]
+  migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--gate-policy fail-fast|collect-all] [--json]
   migration-guard proposal status [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal rollback [--run <id|latest>] --proposal <id> [--json]
+  migration-guard proposal replan [--run <id|latest>] --proposal <id> [--json]
+  migration-guard proposal batch plan|apply [--run <id|latest>] [--limit <n>] [--skip-checks] [--gate-policy fail-fast|collect-all] [--json]
   migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run]
   migration-guard ci verify --baseline <path>
   migration-guard contract capture --source <url>

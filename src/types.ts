@@ -409,6 +409,9 @@ export type MigrationActionPatchMode = "dry-run-only" | "manual-approval-require
 export type MigrationActionPatchTemplate = "renderer-probe" | "api-contract-probe" | "ui-smoke-probe";
 export type ProposalCheckKind = "unit-test" | "type-check" | "ui-probe" | "contract-probe" | "build" | "lint" | "other";
 export type ProposalCheckPhase = "pre-preview" | "preview" | "post-preview";
+export type ProposalCheckResourceProfile = "default" | "cpu-bound" | "io-bound" | "browser";
+export type ProposalCheckFailureCategory = "command-failed" | "timeout" | "error" | "flake-suspected";
+export type ProposalGatePolicyMode = "fail-fast" | "collect-all";
 export type ProposalGateEventType = "patch-check" | "check" | "preview";
 export type ProposalGateEventStatus = "passed" | "failed" | "skipped";
 
@@ -483,7 +486,36 @@ export interface ProposalCheckPlanItem {
   phase: ProposalCheckPhase;
   timeoutMs?: number;
   critical?: boolean;
+  retry?: ProposalCheckRetryPolicy;
+  resourceProfile?: ProposalCheckResourceProfile;
   reason?: string;
+}
+
+export interface ProposalCheckRetryPolicy {
+  maxAttempts: number;
+  delayMs?: number;
+  retryOn?: ProposalCheckFailureCategory[];
+}
+
+export interface ProposalCheckAttempt {
+  attempt: number;
+  passed: boolean;
+  exitCode: number | null;
+  durationMs: number;
+  startedAt?: string;
+  endedAt?: string;
+  stdout: string;
+  stderr: string;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+  timedOut: boolean;
+  error?: string;
+  failureCategory?: ProposalCheckFailureCategory;
+  flakeSuspected?: boolean;
+}
+
+export interface ProposalGatePolicy {
+  mode: ProposalGatePolicyMode;
 }
 
 export interface ProposalCommandCheck {
@@ -492,6 +524,12 @@ export interface ProposalCommandCheck {
   kind?: ProposalCheckKind;
   phase?: ProposalCheckPhase;
   critical?: boolean;
+  resourceProfile?: ProposalCheckResourceProfile;
+  retry?: ProposalCheckRetryPolicy;
+  attemptCount?: number;
+  attempts?: ProposalCheckAttempt[];
+  failureCategory?: ProposalCheckFailureCategory;
+  flakeSuspected?: boolean;
   passed: boolean;
   exitCode: number | null;
   durationMs: number;
@@ -561,10 +599,53 @@ export interface ProposalVerificationReport {
   passed: boolean;
   patchCheck: ProposalPatchCheck;
   checkPlan?: ProposalCheckPlanItem[];
+  gatePolicy?: ProposalGatePolicy;
   preview?: ProposalPreviewResult;
   checks: ProposalCommandCheck[];
   timeline: ProposalGateEvent[];
   replanIssueId?: string;
+  replanTaskId?: string;
+  outputPath: string;
+}
+
+export interface ProposalBatchItem {
+  proposalId: string;
+  title: string;
+  risk: "low" | "medium" | "high";
+  applyState: ProposedPatch["applyState"];
+  checkPlan: Array<{
+    kind: ProposalCheckKind;
+    phase: ProposalCheckPhase;
+    command: string;
+  }>;
+}
+
+export interface ProposalBatchPlan {
+  version: 1;
+  id: string;
+  runId: string;
+  createdAt: string;
+  proposals: ProposalBatchItem[];
+  outputPath: string;
+}
+
+export interface ProposalBatchResult {
+  proposalId: string;
+  passed: boolean;
+  state: ProposedPatch["applyState"];
+  verificationPath?: string;
+  rollbackPath?: string;
+  error?: string;
+}
+
+export interface ProposalBatchReport {
+  version: 1;
+  id: string;
+  runId: string;
+  createdAt: string;
+  planId: string;
+  passed: boolean;
+  results: ProposalBatchResult[];
   outputPath: string;
 }
 

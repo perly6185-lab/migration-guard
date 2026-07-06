@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyProposedPatch, createAddFilePatch, proposeActionPatch, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
+import { applyProposalBatch, applyProposedPatch, createAddFilePatch, createProposalBatchPlan, proposeActionPatch, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
 import type { LoadedConfig, MigrationRun, MigrationTaskGraph, ProposalVerificationReport, ProposedPatch } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
@@ -127,8 +127,172 @@ test("applyProposedPatch can rollback automatically when checks fail", async () 
     assert.ok(failedReportPath);
     const failedReport = await readVerificationReport(failedReportPath);
     assert.ok(failedReport.replanIssueId);
+    assert.ok(failedReport.replanTaskId);
     assert.equal(pkg.issues.some((issue) => issue.id === failedReport.replanIssueId), true);
+    assert.equal(pkg.graph.tasks.some((task) => task.id === failedReport.replanTaskId), true);
     await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "failing-probe.mjs")));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("applyProposedPatch retries flake-suspected checks", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-flake-retry-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: dir });
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    const proposalDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "proposals", "patch-flaky");
+    const patchPath = path.join(proposalDir, "patch.diff");
+    const proposalPath = path.join(proposalDir, "proposal.json");
+    const command = "node scripts/migration-guard/flaky-probe.mjs";
+    const proposal: ProposedPatch = {
+      version: 1,
+      id: "patch-flaky",
+      runId: pkg.run.id,
+      createdAt: "2026-07-05T00:00:00.000Z",
+      title: "Add flaky probe",
+      summary: "Adds a probe that passes on retry.",
+      risk: "low",
+      patchPath,
+      affectedFiles: [],
+      generatedFiles: ["scripts/migration-guard/flaky-probe.mjs"],
+      recommendedChecks: [command],
+      checkPlan: [{
+        command,
+        kind: "unit-test",
+        phase: "pre-preview",
+        retry: {
+          maxAttempts: 2,
+          delayMs: 1,
+          retryOn: ["flake-suspected"]
+        },
+        critical: true
+      }],
+      patchKind: "action-probe",
+      applyState: "proposed"
+    };
+
+    await mkdir(proposalDir, { recursive: true });
+    await writeFile(patchPath, createAddFilePatch("scripts/migration-guard/flaky-probe.mjs", [
+      "import { existsSync, writeFileSync } from \"node:fs\";",
+      "const marker = \".flaky-marker\";",
+      "if (!existsSync(marker)) {",
+      "  writeFileSync(marker, \"1\", \"utf8\");",
+      "  console.error(\"Error: [vitest-pool]: Failed to start forks worker\");",
+      "  process.exit(1);",
+      "}",
+      "console.log(\"flaky-ok\");",
+      ""
+    ].join("\n")), "utf8");
+    await writeFile(proposalPath, `${JSON.stringify(proposal, null, 2)}\n`, "utf8");
+
+    const apply = await applyProposedPatch(loaded, pkg, proposal.id, { runChecks: true });
+    const check = apply.report?.checks[0];
+    assert.equal(apply.report?.passed, true);
+    assert.equal(check?.passed, true);
+    assert.equal(check?.attemptCount, 2);
+    assert.equal(check?.flakeSuspected, true);
+    assert.equal(check?.attempts?.[0]?.failureCategory, "flake-suspected");
+    assert.match(check?.stdout ?? "", /flaky-ok/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("applyProposedPatch fail-fast policy stops after the first critical failure", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-fail-fast-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: dir });
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    const proposalDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "proposals", "patch-fail-fast");
+    const patchPath = path.join(proposalDir, "patch.diff");
+    const proposalPath = path.join(proposalDir, "proposal.json");
+    const generatedFile = "scripts/migration-guard/fail-fast-probe.mjs";
+    const proposal: ProposedPatch = {
+      version: 1,
+      id: "patch-fail-fast",
+      runId: pkg.run.id,
+      createdAt: "2026-07-05T00:00:00.000Z",
+      title: "Add fail-fast probe",
+      summary: "Adds a probe script used to assert gate policy behavior.",
+      risk: "low",
+      patchPath,
+      affectedFiles: [],
+      generatedFiles: [generatedFile],
+      recommendedChecks: [
+        `node ${generatedFile} fail`,
+        `node ${generatedFile} marker`
+      ],
+      checkPlan: [
+        {
+          command: `node ${generatedFile} fail`,
+          kind: "unit-test",
+          phase: "pre-preview",
+          critical: true
+        },
+        {
+          command: `node ${generatedFile} marker`,
+          kind: "unit-test",
+          phase: "pre-preview",
+          critical: true
+        }
+      ],
+      patchKind: "action-probe",
+      applyState: "proposed"
+    };
+
+    await mkdir(proposalDir, { recursive: true });
+    await writeFile(patchPath, createAddFilePatch(generatedFile, [
+      "import { writeFileSync } from \"node:fs\";",
+      "if (process.argv[2] === \"marker\") {",
+      "  writeFileSync(\"second-check-ran.txt\", \"1\", \"utf8\");",
+      "  process.exit(0);",
+      "}",
+      "console.error(\"first check failed\");",
+      "process.exit(1);",
+      ""
+    ].join("\n")), "utf8");
+    await writeFile(proposalPath, `${JSON.stringify(proposal, null, 2)}\n`, "utf8");
+
+    await assert.rejects(
+      applyProposedPatch(loaded, pkg, proposal.id, {
+        runChecks: true,
+        gatePolicy: { mode: "fail-fast" }
+      }),
+      /verification failed/
+    );
+    const failedReportPath = (await readProposal(proposalPath)).lastVerificationPath;
+    assert.ok(failedReportPath);
+    const failedReport = await readVerificationReport(failedReportPath);
+    assert.equal(failedReport.gatePolicy?.mode, "fail-fast");
+    assert.equal(failedReport.checks.length, 1);
+    await assert.rejects(access(path.join(dir, "second-check-ran.txt")));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("proposal batch plan and apply execute ready proposals in order", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-batch-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: dir });
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    await writeBatchProposal(loaded, pkg, "patch-b", "medium", "scripts/migration-guard/b.mjs", "console.log(\"b-ok\");\n");
+    await writeBatchProposal(loaded, pkg, "patch-a", "low", "scripts/migration-guard/a.mjs", "console.log(\"a-ok\");\n");
+
+    const plan = await createProposalBatchPlan(loaded, pkg, { limit: 2 });
+    assert.deepEqual(plan.proposals.map((proposal) => proposal.proposalId), ["patch-a", "patch-b"]);
+
+    const report = await applyProposalBatch(loaded, pkg, { limit: 2, runChecks: true });
+    assert.equal(report.passed, true);
+    assert.deepEqual(report.results.map((result) => result.proposalId), ["patch-a", "patch-b"]);
+    assert.equal(report.results.every((result) => result.passed), true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -277,6 +441,36 @@ async function readProposal(proposalPath: string): Promise<ProposedPatch> {
 
 async function readVerificationReport(reportPath: string): Promise<ProposalVerificationReport> {
   return JSON.parse(await readFile(reportPath, "utf8")) as ProposalVerificationReport;
+}
+
+async function writeBatchProposal(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  id: string,
+  risk: ProposedPatch["risk"],
+  generatedFile: string,
+  content: string
+): Promise<void> {
+  const proposalDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "proposals", id);
+  const patchPath = path.join(proposalDir, "patch.diff");
+  const proposal: ProposedPatch = {
+    version: 1,
+    id,
+    runId: pkg.run.id,
+    createdAt: id,
+    title: `Batch proposal ${id}`,
+    summary: `Adds ${generatedFile}.`,
+    risk,
+    patchPath,
+    affectedFiles: [],
+    generatedFiles: [generatedFile],
+    recommendedChecks: [`node ${generatedFile}`],
+    patchKind: "action-probe",
+    applyState: "proposed"
+  };
+  await mkdir(proposalDir, { recursive: true });
+  await writeFile(patchPath, createAddFilePatch(generatedFile, content), "utf8");
+  await writeFile(path.join(proposalDir, "proposal.json"), `${JSON.stringify(proposal, null, 2)}\n`, "utf8");
 }
 
 function makeLoadedConfig(root: string): LoadedConfig {
