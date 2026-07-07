@@ -58,6 +58,7 @@ Proposal gate commands:
 ```bash
 node dist/cli.js actions --run latest
 node dist/cli.js actions handoff --run latest
+node dist/cli.js actions handoff --run latest --create-replans
 node dist/cli.js action propose --run latest --action action-renderer-probes
 node dist/cli.js proposal verify --run latest --proposal <proposal-id> --checks
 node dist/cli.js action apply --run latest --proposal <proposal-id> --rollback-on-fail --behavior-diff
@@ -142,6 +143,8 @@ and `.md`, with attention items for no-op-risk, unknown, or missing readiness
 metadata.
 Use `actions handoff` to generate or refresh the same readiness handoff without
 rendering the full run report.
+Use `actions handoff --create-replans` to turn readiness attention items into
+deduplicated replan tasks and task issues inside the migration run.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at

@@ -62,6 +62,7 @@ migration-guard/
     PHASE_50_REPORT.md
     PHASE_51_REPORT.md
     PHASE_52_REPORT.md
+    PHASE_53_REPORT.md
     PRODUCT_DESIGN.md
     PROJECT_STRUCTURE.md
     REQUIREMENTS.md

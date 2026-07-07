@@ -68,6 +68,7 @@ Progress:
 - Phase 50: run reports emit action check readiness JSON/Markdown handoff artifacts.
 - Phase 51: `actions handoff` generates readiness handoff artifacts on demand.
 - Phase 52: GitHub Actions CI and PR merge readiness checklist close the development loop.
+- Phase 53: `actions handoff --create-replans` turns readiness attention items into issue-linked replan tasks.
 
 候选能力：
 
