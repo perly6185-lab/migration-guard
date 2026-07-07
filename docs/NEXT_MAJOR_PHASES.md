@@ -71,6 +71,7 @@ Progress:
 - Phase 53: `actions handoff --create-replans` turns readiness attention items into issue-linked replan tasks.
 - Phase 54: `actions handoff --repair-briefs` writes AI repair briefs for readiness failures.
 - Phase 55: real `md` multi-domain proposal batch passed for MCP render, API contracts, and core renderer, then rolled back cleanly.
+- Phase 56: PR split and release notes summarize PR #1/#3/#4/#5, CI status, operator commands, and follow-up repair inputs.
 
 候选能力：
 
