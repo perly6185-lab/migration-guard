@@ -1267,6 +1267,32 @@ test("run status and report surface action check readiness risks", async () => {
     assert.ok(handoff.items?.some((item) => item.status === "unknown" && item.recommendedAction?.includes("Inspect the command manually")));
     assert.match(handoffMarkdown, /# Action Check Readiness Handoff/);
     assert.match(handoffMarkdown, /Fix no-op-risk recommended checks/);
+
+    await writeFile(loaded.path, `${JSON.stringify(loaded.config, null, 2)}\n`, "utf8");
+    await rm(handoffJsonPath, { force: true });
+    await rm(handoffMarkdownPath, { force: true });
+    const { stdout } = await execFileAsync(process.execPath, [
+      path.resolve("dist", "cli.js"),
+      "actions",
+      "handoff",
+      "--config",
+      loaded.path,
+      "--run",
+      pkg.run.id,
+      "--json"
+    ]);
+    const cliHandoff = JSON.parse(stdout) as {
+      blockedBeforeProposal?: boolean;
+      jsonPath?: string;
+      markdownPath?: string;
+      summary?: { attentionItemCount?: number };
+    };
+    assert.equal(cliHandoff.blockedBeforeProposal, true);
+    assert.equal(cliHandoff.summary?.attentionItemCount, 2);
+    assert.equal(cliHandoff.jsonPath, handoffJsonPath);
+    assert.equal(cliHandoff.markdownPath, handoffMarkdownPath);
+    await access(handoffJsonPath);
+    await access(handoffMarkdownPath);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

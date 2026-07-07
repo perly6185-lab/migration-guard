@@ -1790,6 +1790,39 @@ node dist/cli.js status --config configs/md-fast.migration-guard.json --run late
 - Markdown artifact 可直接交给人或 AI。
 - `npm test` 覆盖 no-op-risk/unknown handoff 写出。
 
+## Phase 51: On-Demand Readiness Handoff CLI
+
+目标：把 readiness handoff 从 `report` 的副产物变成可按需调用的 CLI。用户可以直接刷新/查看 action check readiness handoff，不需要重新渲染完整 run report。
+
+新增能力：
+
+- `actions handoff` 子命令
+- 默认输出 handoff Markdown
+- `--json` 输出机器可读 handoff JSON
+- 入口会写出/刷新 JSON 和 Markdown artifacts
+- CLI help 增加新命令
+- 单测通过真实 `dist/cli.js actions handoff --json` 覆盖入口
+
+建议命令：
+
+```bash
+node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json --run latest --json
+```
+
+产物：
+
+- `reports/action-check-readiness-handoff.json`
+- `reports/action-check-readiness-handoff.md`
+- CLI stdout 中的 Markdown 或 JSON handoff
+
+完成标准：
+
+- 用户不跑完整 report 也能刷新 readiness handoff。
+- `--json` 输出能被自动化读取。
+- 入口不修改 target repository。
+- `npm test` 覆盖 CLI 入口。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

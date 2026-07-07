@@ -66,6 +66,7 @@ Progress:
 - Phase 48: `action propose` blocks no-op-risk actions unless explicitly overridden.
 - Phase 49: status/report summarize action check readiness and surface no-op-risk as next action.
 - Phase 50: run reports emit action check readiness JSON/Markdown handoff artifacts.
+- Phase 51: `actions handoff` generates readiness handoff artifacts on demand.
 
 候选能力：
 

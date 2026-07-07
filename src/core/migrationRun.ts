@@ -828,7 +828,7 @@ function createActionCheckReadinessNextActions(summary: ActionCheckReadinessSumm
   return actions;
 }
 
-function renderActionCheckReadinessHandoffMarkdown(handoff: ActionCheckReadinessHandoff): string {
+export function renderActionCheckReadinessHandoffMarkdown(handoff: ActionCheckReadinessHandoff): string {
   return [
     `# Action Check Readiness Handoff: ${handoff.runId}`,
     "",

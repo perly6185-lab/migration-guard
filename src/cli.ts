@@ -13,8 +13,10 @@ import {
   renderIssues,
   renderRunReport,
   renderRunStatus,
+  renderActionCheckReadinessHandoffMarkdown,
   resolveRunNextAction,
   setRunStatus,
+  writeActionCheckReadinessHandoff,
   writeCiHandoffReport,
   writeRunReport
 } from "./core/migrationRun.js";
@@ -468,6 +470,24 @@ async function commandTasks(args: ParsedArgs): Promise<void> {
 async function commandActions(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const action = args.positionals[0];
+
+  if (action === "handoff") {
+    const handoff = await writeActionCheckReadinessHandoff(loaded, pkg);
+    if (!handoff) {
+      throw new Error(`No action plan found for run ${pkg.run.id}. Run or resume a supported adapter migration first.`);
+    }
+    if (args.options.json) {
+      console.log(JSON.stringify(handoff, null, 2));
+      return;
+    }
+    console.log(renderActionCheckReadinessHandoffMarkdown(handoff));
+    console.log("");
+    console.log(`Wrote ${handoff.markdownPath}`);
+    console.log(`Wrote ${handoff.jsonPath}`);
+    return;
+  }
+
   const plan = await loadActionPlan(loaded, pkg);
   if (args.options.json) {
     console.log(JSON.stringify(plan, null, 2));
@@ -998,6 +1018,7 @@ Usage:
   migration-guard issues [--run <id|latest>] [--json]
   migration-guard tasks [--run <id|latest>] [--json]
   migration-guard actions [--run <id|latest>] [--json]
+  migration-guard actions handoff [--run <id|latest>] [--json]
   migration-guard report [--run <id|latest>]
   migration-guard checkpoint create|list [--run <id|latest>]
   migration-guard resume [--run <id|latest>] [--auto]
