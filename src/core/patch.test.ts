@@ -1281,14 +1281,15 @@ test("run status and report surface action check readiness risks", async () => {
       "--run",
       pkg.run.id,
       "--create-replans",
+      "--repair-briefs",
       "--json"
     ]);
     const cliHandoff = JSON.parse(stdout) as {
       blockedBeforeProposal?: boolean;
       jsonPath?: string;
       markdownPath?: string;
-      summary?: { attentionItemCount?: number; replanTaskCount?: number };
-      items?: Array<{ status?: string; taskId?: string; issueId?: string; affectedFiles?: string[] }>;
+      summary?: { attentionItemCount?: number; replanTaskCount?: number; repairBriefCount?: number };
+      items?: Array<{ status?: string; taskId?: string; issueId?: string; affectedFiles?: string[]; repairBriefPath?: string; repairContextPath?: string }>;
     };
     const taskGraph = JSON.parse(await readFile(path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "task-graph.json"), "utf8")) as MigrationTaskGraph;
     const issues = JSON.parse(await readFile(path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "issues.json"), "utf8")) as MigrationIssue[];
@@ -1297,14 +1298,32 @@ test("run status and report surface action check readiness risks", async () => {
     assert.equal(cliHandoff.blockedBeforeProposal, true);
     assert.equal(cliHandoff.summary?.attentionItemCount, 2);
     assert.equal(cliHandoff.summary?.replanTaskCount, 2);
+    assert.equal(cliHandoff.summary?.repairBriefCount, 2);
     assert.equal(cliHandoff.jsonPath, handoffJsonPath);
     assert.equal(cliHandoff.markdownPath, handoffMarkdownPath);
     assert.equal(readinessTasks.length, 2);
     assert.equal(readinessIssues.length, 2);
     assert.ok(cliHandoff.items?.every((item) => item.taskId && item.issueId));
     assert.ok(cliHandoff.items?.every((item) => item.affectedFiles?.includes("packages/mcp-server/src")));
+    assert.ok(cliHandoff.items?.every((item) => item.repairBriefPath && item.repairContextPath));
     assert.ok(readinessTasks.every((task) => task.type === "replan" && task.status === "ready"));
     assert.ok(readinessTasks.every((task) => task.issueId && issues.some((issue) => issue.id === task.issueId)));
+    const firstBriefPath = cliHandoff.items?.[0]?.repairBriefPath ?? "";
+    const firstContextPath = cliHandoff.items?.[0]?.repairContextPath ?? "";
+    const firstBrief = await readFile(firstBriefPath, "utf8");
+    const firstContext = JSON.parse(await readFile(firstContextPath, "utf8")) as {
+      item?: { taskId?: string; issueId?: string; status?: string };
+      commands?: { refreshHandoff?: string; proposeAction?: string };
+      paths?: { brief?: string; context?: string };
+    };
+    assert.match(firstBrief, /# Readiness Repair Brief:/);
+    assert.match(firstBrief, /Do not use `--allow-no-op-risk` as the default repair/);
+    assert.match(firstBrief, /migration-guard actions handoff --run latest --create-replans --repair-briefs --json/);
+    assert.equal(firstContext.item?.taskId, cliHandoff.items?.[0]?.taskId);
+    assert.equal(firstContext.item?.issueId, cliHandoff.items?.[0]?.issueId);
+    assert.match(firstContext.commands?.proposeAction ?? "", /migration-guard action propose/);
+    assert.equal(firstContext.paths?.brief, firstBriefPath);
+    assert.equal(firstContext.paths?.context, firstContextPath);
     await access(handoffJsonPath);
     await access(handoffMarkdownPath);
 
@@ -1317,11 +1336,13 @@ test("run status and report surface action check readiness risks", async () => {
       "--run",
       pkg.run.id,
       "--create-replans",
+      "--repair-briefs",
       "--json"
     ]);
-    const secondHandoff = JSON.parse(secondStdout) as { summary?: { replanTaskCount?: number } };
+    const secondHandoff = JSON.parse(secondStdout) as { summary?: { replanTaskCount?: number; repairBriefCount?: number } };
     const secondTaskGraph = JSON.parse(await readFile(path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "task-graph.json"), "utf8")) as MigrationTaskGraph;
     assert.equal(secondHandoff.summary?.replanTaskCount, 2);
+    assert.equal(secondHandoff.summary?.repairBriefCount, 2);
     assert.equal(secondTaskGraph.tasks.filter((task) => task.id.startsWith("task-readiness-replan-")).length, 2);
   } finally {
     await rm(dir, { recursive: true, force: true });

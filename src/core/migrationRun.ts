@@ -90,6 +90,8 @@ export interface ActionCheckReadinessHandoffItem {
   affectedFiles: string[];
   taskId?: string;
   issueId?: string;
+  repairBriefPath?: string;
+  repairContextPath?: string;
 }
 
 export interface ActionCheckReadinessHandoff {
@@ -110,6 +112,7 @@ export interface ActionCheckReadinessHandoff {
     unknownCount: number;
     attentionItemCount: number;
     replanTaskCount: number;
+    repairBriefCount: number;
   };
   blockedBeforeProposal: boolean;
   items: ActionCheckReadinessHandoffItem[];
@@ -118,6 +121,32 @@ export interface ActionCheckReadinessHandoff {
 
 export interface WriteActionCheckReadinessHandoffOptions {
   createReplans?: boolean;
+  writeRepairBriefs?: boolean;
+}
+
+export interface ActionCheckReadinessRepairContext {
+  version: 1;
+  run: {
+    id: string;
+    goal: string;
+    targetRoot: string;
+    adapter?: string;
+  };
+  item: ActionCheckReadinessHandoffItem;
+  task?: MigrationTask;
+  issue?: MigrationIssue;
+  paths: {
+    handoffJson: string;
+    handoffMarkdown: string;
+    actionPlan: string;
+    brief: string;
+    context: string;
+  };
+  commands: {
+    refreshHandoff: string;
+    inspectActions: string;
+    proposeAction: string;
+  };
 }
 
 interface ProposalGateSummary {
@@ -451,9 +480,12 @@ export async function writeActionCheckReadinessHandoff(
     return undefined;
   }
   const handoff = createActionCheckReadinessHandoff(pkg, summary);
-  if (options.createReplans) {
+  if (options.createReplans || options.writeRepairBriefs) {
     ensureActionCheckReadinessReplanTasks(pkg, handoff);
     await saveRunPackage(loaded, pkg);
+  }
+  if (options.writeRepairBriefs) {
+    await writeActionCheckReadinessRepairBriefs(loaded, pkg, handoff);
   }
   await writeJsonFile(summary.handoffJsonPath, handoff);
   await writeTextFile(summary.handoffMarkdownPath, renderActionCheckReadinessHandoffMarkdown(handoff));
@@ -791,7 +823,8 @@ function createActionCheckReadinessHandoff(
       noOpRiskCount: summary.noOpRiskCount,
       unknownCount: summary.unknownCount,
       attentionItemCount: items.length,
-      replanTaskCount: 0
+      replanTaskCount: 0,
+      repairBriefCount: 0
     },
     blockedBeforeProposal: summary.noOpRiskCount > 0,
     items,
@@ -892,6 +925,53 @@ function ensureActionCheckReadinessReplanTasks(
   handoff.summary.replanTaskCount = handoff.items.filter((item) => item.taskId).length;
 }
 
+async function writeActionCheckReadinessRepairBriefs(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  handoff: ActionCheckReadinessHandoff
+): Promise<void> {
+  for (const item of handoff.items) {
+    const task = item.taskId
+      ? pkg.graph.tasks.find((candidate) => candidate.id === item.taskId)
+      : undefined;
+    const issue = item.issueId
+      ? pkg.issues.find((candidate) => candidate.id === item.issueId)
+      : undefined;
+    const itemDir = path.join(migrationRunDir(loaded, pkg.run.id), "replans", "readiness", item.taskId ?? actionCheckReadinessReplanTaskId(item));
+    const briefPath = path.join(itemDir, "repair-brief.md");
+    const contextPath = path.join(itemDir, "repair-context.json");
+    const context: ActionCheckReadinessRepairContext = {
+      version: 1,
+      run: {
+        id: pkg.run.id,
+        goal: pkg.run.goal,
+        targetRoot: pkg.run.targetRoot,
+        adapter: pkg.run.adapter
+      },
+      item,
+      task,
+      issue,
+      paths: {
+        handoffJson: handoff.jsonPath,
+        handoffMarkdown: handoff.markdownPath,
+        actionPlan: handoff.actionPlanPath,
+        brief: briefPath,
+        context: contextPath
+      },
+      commands: {
+        refreshHandoff: "migration-guard actions handoff --run latest --create-replans --repair-briefs --json",
+        inspectActions: "migration-guard actions --run latest",
+        proposeAction: `migration-guard action propose --run latest --action ${item.actionId}`
+      }
+    };
+    await writeJsonFile(contextPath, context);
+    await writeTextFile(briefPath, renderActionCheckReadinessRepairBrief(context));
+    item.repairBriefPath = briefPath;
+    item.repairContextPath = contextPath;
+  }
+  handoff.summary.repairBriefCount = handoff.items.filter((item) => item.repairBriefPath).length;
+}
+
 function actionCheckReadinessReplanTaskId(item: ActionCheckReadinessHandoffItem): string {
   const actionSlug = item.actionId.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 64);
   const fingerprint = sha256(`${item.status}\n${item.actionId}\n${item.command}`).slice(0, 10);
@@ -915,6 +995,81 @@ function renderActionCheckReadinessReplanDescription(
     `Action plan: ${handoff.actionPlanPath}`,
     item.affectedFiles.length > 0 ? `Affected files: ${item.affectedFiles.join(", ")}` : undefined
   ].filter(Boolean).join("\n");
+}
+
+function renderActionCheckReadinessRepairBrief(context: ActionCheckReadinessRepairContext): string {
+  const { item, task, issue } = context;
+  return [
+    `# Readiness Repair Brief: ${item.actionId}`,
+    "",
+    "This brief gives an AI or human repair agent the smallest context needed to fix an action check readiness failure.",
+    "",
+    "## Mission",
+    "",
+    "- Repair the recommended check readiness problem without weakening proposal gates.",
+    "- Keep the change scoped to the action/check plan or the missing command wiring.",
+    "- Do not use `--allow-no-op-risk` as the default repair.",
+    "- After repair, refresh the readiness handoff and confirm the attention item is gone.",
+    "",
+    "## Attention Item",
+    "",
+    `- Action: ${item.actionId}`,
+    `- Action title: ${item.actionTitle}`,
+    `- Status: ${item.status}`,
+    `- Command: \`${item.command}\``,
+    `- Reason: ${item.reason}`,
+    `- Recommended repair: ${item.recommendedAction}`,
+    `- Affected files: ${item.affectedFiles.join(", ") || "none"}`,
+    task ? `- Replan task: ${task.id}` : undefined,
+    issue ? `- Issue: ${issue.id}` : undefined,
+    "",
+    "## Evidence",
+    "",
+    `- Handoff Markdown: ${context.paths.handoffMarkdown}`,
+    `- Handoff JSON: ${context.paths.handoffJson}`,
+    `- Action plan: ${context.paths.actionPlan}`,
+    `- Context JSON: ${context.paths.context}`,
+    "",
+    "## Repair Guidance",
+    "",
+    renderActionCheckReadinessRepairGuidance(item),
+    "",
+    "## Commands",
+    "",
+    "```bash",
+    context.commands.inspectActions,
+    context.commands.refreshHandoff,
+    context.commands.proposeAction,
+    "```",
+    "",
+    "## Done When",
+    "",
+    "- The refreshed readiness handoff no longer lists this item.",
+    "- The replacement check is `ready`, or the exception is explicitly reviewed and documented.",
+    "- `action propose` can run without relying on a known no-op check."
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function renderActionCheckReadinessRepairGuidance(item: ActionCheckReadinessHandoffItem): string {
+  if (item.status === "no-op-risk") {
+    return [
+      "- Find the package or root script that actually exercises this action's risk.",
+      "- Replace the no-op command with a runtime smoke, package script, or root script that must execute.",
+      "- Prefer adding a specific script/check over broadening the proposal gate."
+    ].join("\n");
+  }
+  if (item.status === "unknown") {
+    return [
+      "- Inspect the command manually and decide whether it truly runs a check.",
+      "- If the command is safe, add static readiness classification support or rewrite it into a known ready pattern.",
+      "- If the command is unsafe or ambiguous, replace it with a clearer recommended check."
+    ].join("\n");
+  }
+  return [
+    "- Regenerate the action plan so every recommended check has readiness metadata.",
+    "- If regeneration is not possible, add a readiness entry for this command before proposal generation.",
+    "- Treat missing metadata as unreviewed, not as accepted."
+  ].join("\n");
 }
 
 function createActionCheckReadinessNextActions(summary: ActionCheckReadinessSummary): string[] {
@@ -942,7 +1097,7 @@ export function renderActionCheckReadinessHandoffMarkdown(handoff: ActionCheckRe
     `- Action plan: ${handoff.actionPlanPath}`,
     `- JSON: ${handoff.jsonPath}`,
     `- Blocked before proposal: ${handoff.blockedBeforeProposal ? "yes" : "no"}`,
-    `- Summary: actions:${handoff.summary.actionCount} checks:${handoff.summary.recommendedCheckCount} tracked:${handoff.summary.trackedCheckCount} ready:${handoff.summary.readyCount} no-op-risk:${handoff.summary.noOpRiskCount} unknown:${handoff.summary.unknownCount} missing:${handoff.summary.checksWithoutReadiness} replan-tasks:${handoff.summary.replanTaskCount}`,
+    `- Summary: actions:${handoff.summary.actionCount} checks:${handoff.summary.recommendedCheckCount} tracked:${handoff.summary.trackedCheckCount} ready:${handoff.summary.readyCount} no-op-risk:${handoff.summary.noOpRiskCount} unknown:${handoff.summary.unknownCount} missing:${handoff.summary.checksWithoutReadiness} replan-tasks:${handoff.summary.replanTaskCount} repair-briefs:${handoff.summary.repairBriefCount}`,
     "",
     "## Recommended Next Actions",
     "",
@@ -957,7 +1112,9 @@ export function renderActionCheckReadinessHandoffMarkdown(handoff: ActionCheckRe
         `  reason: ${item.reason}`,
         `  recommended: ${item.recommendedAction}`,
         item.taskId ? `  task: ${item.taskId}` : undefined,
-        item.issueId ? `  issue: ${item.issueId}` : undefined
+        item.issueId ? `  issue: ${item.issueId}` : undefined,
+        item.repairBriefPath ? `  repair-brief: ${item.repairBriefPath}` : undefined,
+        item.repairContextPath ? `  repair-context: ${item.repairContextPath}` : undefined
       ].filter(Boolean).join("\n")).join("\n")
       : "No attention items."
   ].join("\n");
