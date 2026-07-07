@@ -1173,6 +1173,84 @@ test("proposeActionPatch generated probes can inspect affected directories", asy
   }
 });
 
+test("run status and report surface action check readiness risks", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-readiness-report-"));
+
+  try {
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    const actionPlanDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "adapter");
+    await mkdir(actionPlanDir, { recursive: true });
+    await writeFile(path.join(actionPlanDir, "pnpm-vite-vue-action-plan.json"), `${JSON.stringify({
+      version: 1,
+      runId: pkg.run.id,
+      createdAt: "2026-07-07T00:00:00.000Z",
+      goal: pkg.run.goal,
+      actions: [
+        {
+          id: "action-safe",
+          title: "Safe action",
+          summary: "Has a ready command.",
+          risk: "low",
+          affectedFiles: ["apps/web/src/App.vue"],
+          recommendedChecks: ["pnpm type-check"],
+          checkReadiness: [
+            {
+              command: "pnpm type-check",
+              status: "ready",
+              reason: "root package has script type-check"
+            }
+          ],
+          patchMode: "dry-run-only",
+          patchTemplate: "ui-smoke-probe"
+        },
+        {
+          id: "action-no-op-risk",
+          title: "No-op risk action",
+          summary: "Has a known no-op command.",
+          risk: "medium",
+          affectedFiles: ["packages/mcp-server/src"],
+          recommendedChecks: [
+            "pnpm --filter @md/mcp-server type-check",
+            "node scripts/migration-guard/unknown.mjs"
+          ],
+          checkReadiness: [
+            {
+              command: "pnpm --filter @md/mcp-server type-check",
+              status: "no-op-risk",
+              reason: "package @md/mcp-server has no script type-check"
+            },
+            {
+              command: "node scripts/migration-guard/unknown.mjs",
+              status: "unknown",
+              reason: "static readiness could not classify this command"
+            }
+          ],
+          patchMode: "dry-run-only",
+          patchTemplate: "renderer-probe"
+        }
+      ]
+    }, null, 2)}\n`, "utf8");
+
+    const next = await resolveRunNextAction(loaded, pkg);
+    assert.match(next.action, /Fix no-op-risk action checks/);
+    assert.equal(next.command, "migration-guard actions --run latest");
+    assert.equal(next.actionCheckReadiness?.noOpRiskCount, 1);
+
+    const status = renderRunStatus(pkg, next);
+    assert.match(status, /Action check readiness: actions:2 checks:3 tracked:3 ready:1 no-op-risk:1 unknown:1/);
+    assert.match(status, /Action check risk: action-no-op-risk pnpm --filter @md\/mcp-server type-check/);
+
+    const report = await renderRunReport(loaded, pkg);
+    assert.match(report, /## Action Check Readiness/);
+    assert.match(report, /Status counts: ready:1, no-op-risk:1, unknown:1/);
+    assert.match(report, /package @md\/mcp-server has no script type-check/);
+    assert.match(report, /Unknown checks:/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("proposeActionPatch blocks no-op-risk action checks unless explicitly allowed", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-no-op-action-"));
 

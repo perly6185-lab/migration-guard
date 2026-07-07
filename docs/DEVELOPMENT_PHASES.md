@@ -1725,6 +1725,38 @@ node dist/cli.js action propose --config configs/md-fast.migration-guard.json --
 - override 行为必须显式。
 - `npm test` 覆盖 gate。
 
+## Phase 49: Run Report Check Readiness Rollup
+
+目标：把 action check readiness 从 `actions` 详情页推进到 run status/report，让团队在迁移摘要和 handoff 里直接看到 no-op-risk，而不是必须打开 action plan。
+
+新增能力：
+
+- `status` 输出 action check readiness 汇总
+- `report` 新增 `Action Check Readiness` 章节
+- no-op-risk 在没有更强 proposal/behavior blocker 时成为 next action
+- 汇总 ready / no-op-risk / unknown / missing metadata 计数
+- 单测覆盖 status/report/next-action 风险展示
+
+建议命令：
+
+```bash
+node dist/cli.js status --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js report --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- status 中的 `Action check readiness: ...`
+- report 中的 `## Action Check Readiness`
+- no-op-risk action check 的 command、reason、action plan evidence
+
+完成标准：
+
+- 有 action plan 时 status/report 展示 readiness 计数。
+- no-op-risk action check 优先提示修复，再进入 proposal generation。
+- 没有 action plan 时 report 给出清晰空状态。
+- `npm test` 覆盖 run-level readiness 汇总。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

@@ -8,6 +8,8 @@ import { ensureDir, pathExists, readJsonFile, writeJsonFile, writeTextFile } fro
 import type {
   EvidenceEvent,
   LoadedConfig,
+  MigrationActionCheckReadiness,
+  MigrationActionPlan,
   MigrationAutomationMode,
   MigrationIssue,
   MigrationRun,
@@ -40,6 +42,27 @@ export interface MigrationRunNextAction {
   reason?: string;
   evidence?: string[];
   retryCommand?: string;
+  actionCheckReadiness?: ActionCheckReadinessSummary;
+}
+
+export interface ActionCheckReadinessFinding {
+  actionId: string;
+  actionTitle: string;
+  command: string;
+  status: MigrationActionCheckReadiness["status"];
+  reason: string;
+}
+
+export interface ActionCheckReadinessSummary {
+  actionPlanPath: string;
+  actionCount: number;
+  recommendedCheckCount: number;
+  trackedCheckCount: number;
+  checksWithoutReadiness: number;
+  readyCount: number;
+  noOpRiskCount: number;
+  unknownCount: number;
+  findings: ActionCheckReadinessFinding[];
 }
 
 interface ProposalGateSummary {
@@ -217,6 +240,7 @@ export function renderRunStatus(pkg: MigrationRunPackage, nextAction?: Migration
     `Risk: ${pkg.run.estimate.riskLevel}`,
     `Confidence: ${pkg.run.estimate.confidence}`,
     `Ready tasks: ${ready.map((task) => task.id).join(", ") || "none"}`,
+    ...renderActionCheckReadinessTextLines(nextAction?.actionCheckReadiness),
     "",
     ...renderNextActionTextLines(nextAction)
   ].join("\n");
@@ -240,7 +264,11 @@ export async function resolveRunNextAction(loaded: LoadedConfig, pkg: MigrationR
   const proposals = await readProposalSummaries(loaded, pkg.run.id);
   const proposalGates = await readRecentProposalGateSummaries(loaded, pkg.run.id);
   const proposalBatches = await readRecentProposalBatchSummaries(loaded, pkg.run.id);
-  return selectRunNextAction(pkg, proposals, proposalGates, proposalBatches);
+  const actionCheckReadiness = await readActionCheckReadinessSummary(loaded, pkg);
+  return withActionCheckReadiness(
+    selectRunNextAction(pkg, proposals, proposalGates, proposalBatches, actionCheckReadiness),
+    actionCheckReadiness
+  );
 }
 
 export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
@@ -251,7 +279,11 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
   const proposals = await readProposalSummaries(loaded, pkg.run.id);
   const proposalGates = await readRecentProposalGateSummaries(loaded, pkg.run.id);
   const proposalBatches = await readRecentProposalBatchSummaries(loaded, pkg.run.id);
-  const nextAction = selectRunNextAction(pkg, proposals, proposalGates, proposalBatches);
+  const actionCheckReadiness = await readActionCheckReadinessSummary(loaded, pkg);
+  const nextAction = withActionCheckReadiness(
+    selectRunNextAction(pkg, proposals, proposalGates, proposalBatches, actionCheckReadiness),
+    actionCheckReadiness
+  );
 
   return [
     `# Migration Run Report: ${pkg.run.id}`,
@@ -270,6 +302,10 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
     "## Next Action",
     "",
     ...renderNextActionMarkdownLines(nextAction),
+    "",
+    "## Action Check Readiness",
+    "",
+    ...renderActionCheckReadinessMarkdownLines(actionCheckReadiness),
     "",
     "## Estimate",
     "",
@@ -392,7 +428,8 @@ function selectRunNextAction(
   pkg: MigrationRunPackage,
   proposals: ProposedPatch[],
   gates: ProposalGateSummary[],
-  batches: ProposalBatchSummary[]
+  batches: ProposalBatchSummary[],
+  actionCheckReadiness?: ActionCheckReadinessSummary
 ): MigrationRunNextAction {
   const latestFailedBatch = [...batches].reverse().find((batch) => !batch.passed);
   const latestFailedGate = latestFailedBatch?.firstFailedProposalId
@@ -470,6 +507,11 @@ function selectRunNextAction(
     };
   }
 
+  const actionCheckReadinessAction = nextActionForActionCheckReadiness(actionCheckReadiness);
+  if (actionCheckReadinessAction) {
+    return actionCheckReadinessAction;
+  }
+
   const readyReplanTask = getReadyTasks(pkg.graph)
     .filter((task) => task.type === "replan")
     .sort((a, b) => a.priority - b.priority)[0];
@@ -503,6 +545,34 @@ function selectRunNextAction(
   return {
     action: "No runnable next action.",
     reason: "no failed proposal, replan task, or ready task was found"
+  };
+}
+
+function nextActionForActionCheckReadiness(summary?: ActionCheckReadinessSummary): MigrationRunNextAction | undefined {
+  if (!summary || summary.noOpRiskCount === 0) {
+    return undefined;
+  }
+  const firstRisk = summary.findings.find((finding) => finding.status === "no-op-risk");
+  return {
+    action: "Fix no-op-risk action checks before generating proposals.",
+    command: "migration-guard actions --run latest",
+    reason: firstRisk
+      ? `${summary.noOpRiskCount} recommended check(s) may no-op; first: ${firstRisk.actionId} ${firstRisk.command} (${firstRisk.reason})`
+      : `${summary.noOpRiskCount} recommended check(s) may no-op`,
+    evidence: [summary.actionPlanPath]
+  };
+}
+
+function withActionCheckReadiness(
+  nextAction: MigrationRunNextAction,
+  actionCheckReadiness?: ActionCheckReadinessSummary
+): MigrationRunNextAction {
+  if (!actionCheckReadiness) {
+    return nextAction;
+  }
+  return {
+    ...nextAction,
+    actionCheckReadiness
   };
 }
 
@@ -578,6 +648,41 @@ function renderNextActionMarkdownLines(nextAction: MigrationRunNextAction): stri
     ...(nextAction.evidence?.length ? [
       "- Evidence:",
       ...nextAction.evidence.map((item) => `  - ${item}`)
+    ] : [])
+  ].filter((line): line is string => Boolean(line));
+}
+
+function renderActionCheckReadinessTextLines(summary?: ActionCheckReadinessSummary): string[] {
+  if (!summary) {
+    return [];
+  }
+  const firstRisk = summary.findings.find((finding) => finding.status === "no-op-risk");
+  return [
+    `Action check readiness: actions:${summary.actionCount} checks:${summary.recommendedCheckCount} tracked:${summary.trackedCheckCount} ready:${summary.readyCount} no-op-risk:${summary.noOpRiskCount} unknown:${summary.unknownCount}`,
+    summary.checksWithoutReadiness > 0 ? `Action check readiness missing: ${summary.checksWithoutReadiness}` : undefined,
+    firstRisk ? `Action check risk: ${firstRisk.actionId} ${firstRisk.command} (${firstRisk.reason})` : undefined
+  ].filter((line): line is string => Boolean(line));
+}
+
+function renderActionCheckReadinessMarkdownLines(summary?: ActionCheckReadinessSummary): string[] {
+  if (!summary) {
+    return ["No action plan found."];
+  }
+  const riskFindings = summary.findings.filter((finding) => finding.status === "no-op-risk");
+  const unknownFindings = summary.findings.filter((finding) => finding.status === "unknown");
+  return [
+    `- Action plan: ${summary.actionPlanPath}`,
+    `- Actions: ${summary.actionCount}`,
+    `- Checks: ${summary.recommendedCheckCount} recommended, ${summary.trackedCheckCount} readiness-tracked`,
+    `- Status counts: ready:${summary.readyCount}, no-op-risk:${summary.noOpRiskCount}, unknown:${summary.unknownCount}`,
+    summary.checksWithoutReadiness > 0 ? `- Missing readiness metadata: ${summary.checksWithoutReadiness} check(s)` : undefined,
+    ...(riskFindings.length > 0 ? [
+      "- No-op-risk checks:",
+      ...riskFindings.slice(0, 5).map((finding) => `  - ${finding.actionId}: \`${finding.command}\` (${finding.reason})`)
+    ] : []),
+    ...(unknownFindings.length > 0 ? [
+      "- Unknown checks:",
+      ...unknownFindings.slice(0, 5).map((finding) => `  - ${finding.actionId}: \`${finding.command}\` (${finding.reason})`)
     ] : [])
   ].filter((line): line is string => Boolean(line));
 }
@@ -821,6 +926,72 @@ function formatTaskCounts(counts: Record<MigrationTaskStatus, number>): string {
     .filter(([, count]) => count > 0)
     .map(([status, count]) => `${status}:${count}`)
     .join(", ") || "none";
+}
+
+async function readActionCheckReadinessSummary(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage
+): Promise<ActionCheckReadinessSummary | undefined> {
+  const filePath = actionPlanArtifactPath(loaded, pkg);
+  if (!await pathExists(filePath)) {
+    return undefined;
+  }
+
+  const raw = await readJsonFile<Partial<MigrationActionPlan>>(filePath);
+  const actions = raw.actions ?? [];
+  const findings: ActionCheckReadinessFinding[] = [];
+  let recommendedCheckCount = 0;
+  let trackedCheckCount = 0;
+  let checksWithoutReadiness = 0;
+  let readyCount = 0;
+  let noOpRiskCount = 0;
+  let unknownCount = 0;
+
+  for (const action of actions) {
+    const recommendedChecks = action.recommendedChecks ?? [];
+    const readinessEntries = action.checkReadiness ?? [];
+    recommendedCheckCount += recommendedChecks.length;
+    trackedCheckCount += readinessEntries.length;
+    checksWithoutReadiness += Math.max(0, recommendedChecks.length - readinessEntries.length);
+
+    for (const readiness of readinessEntries) {
+      if (readiness.status === "ready") {
+        readyCount += 1;
+        continue;
+      }
+      if (readiness.status === "no-op-risk") {
+        noOpRiskCount += 1;
+      } else {
+        unknownCount += 1;
+      }
+      findings.push({
+        actionId: action.id,
+        actionTitle: action.title,
+        command: readiness.command,
+        status: readiness.status,
+        reason: readiness.reason
+      });
+    }
+  }
+
+  return {
+    actionPlanPath: filePath,
+    actionCount: actions.length,
+    recommendedCheckCount,
+    trackedCheckCount,
+    checksWithoutReadiness,
+    readyCount,
+    noOpRiskCount,
+    unknownCount,
+    findings
+  };
+}
+
+function actionPlanArtifactPath(loaded: LoadedConfig, pkg: MigrationRunPackage): string {
+  const fileName = pkg.run.adapter === "md-monorepo"
+    ? "md-monorepo-action-plan.json"
+    : "pnpm-vite-vue-action-plan.json";
+  return path.join(migrationRunDir(loaded, pkg.run.id), "adapter", fileName);
 }
 
 async function readProposalSummaries(loaded: LoadedConfig, runId: string): Promise<ProposedPatch[]> {

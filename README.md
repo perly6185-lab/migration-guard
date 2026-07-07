@@ -122,6 +122,8 @@ MD action plans include static check-readiness hints so missing pnpm scripts can
 be spotted before proposal gates run.
 `action propose` blocks `no-op-risk` actions by default; use
 `--allow-no-op-risk` only for an explicitly accepted exception.
+Run `status` and `report` now summarize action check readiness as well, so
+no-op-risk checks become visible in the run handoff before proposal generation.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at
