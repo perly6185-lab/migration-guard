@@ -1922,6 +1922,46 @@ node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json -
 - repeated repair brief generation 是幂等的。
 - `npm test` 覆盖 brief/context 写出。
 
+## Phase 55: MD Multi-Domain Proposal Batch
+
+目标：在真实 `md` monorepo 上跑多 domain proposal batch，而不是继续停留在单 action proposal 验证。批次需要真实 apply proposals、执行推荐 checks、输出 batch report，并在验证后 rollback target 改动。
+
+执行命令：
+
+```bash
+node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "Phase 55 MD multi-domain proposal batch" --dry-run --adapter md-monorepo --issue-provider local
+node dist/cli.js resume --config configs/md-fast.migration-guard.json --run run-2026-07-07T10-58-36-339Z-k48bw4 --auto
+node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run run-2026-07-07T10-58-36-339Z-k48bw4 --limit 3 --gate-policy fail-fast
+```
+
+真实 batch 结果：
+
+- run: `run-2026-07-07T10-58-36-339Z-k48bw4`
+- passing batch report: `proposal-batch-report-2026-07-07T11-08-02-379Z-lamclw`
+- proposals executed: MCP render, API contracts, core renderer
+- executed: 3
+- skipped: 0
+- final rollback: passed for all three applied proposals
+- target `md` repository remained clean after rollback
+
+保留的后续修复线索：
+
+- shared TS package action 不应使用要求 Vue `<template>` / `<script>` 的 `ui-smoke-probe`。
+- MCP renderer smoke 依赖远程 CSS fetch，首次运行可出现 `ECONNRESET` flake。
+- adapter fixture proposal 排除流程需要更明确的 reject/ignore 状态，而不是对未应用 patch 调 rollback。
+
+产物：
+
+- `docs/PHASE_55_REPORT.md`
+- run-scoped proposal batch reports under `.migration-guard/external-targets/md-fast/...`
+
+完成标准：
+
+- 至少 3 个不同 domain proposals 进入同一个 batch。
+- batch apply 真正执行推荐 checks。
+- passing batch report 写出 executed/skipped/result 状态。
+- 所有 applied proposals rollback 后 target repository clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
