@@ -1962,6 +1962,31 @@ node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.j
 - passing batch report 写出 executed/skipped/result 状态。
 - 所有 applied proposals rollback 后 target repository clean。
 
+## Phase 56: PR Split and Release Notes
+
+目标：收口 Phase 53-55 的 PR 拆分和 release note，让 reviewer / operator 可以从单页记录看到哪些 PR 已合并、每个 PR 的 scope、CI 状态、release highlights 和后续修复线索。
+
+交付内容：
+
+- `docs/PHASE_56_REPORT.md`
+- PR #1/#3/#4/#5 的 scope、merge commit 和 CI 状态
+- release highlights
+- operator commands
+- known follow-ups
+
+PR split 结果：
+
+- PR #1: Phase 36-52 runner loop, proposal gates, MD guardrails, CI readiness
+- PR #3: Phase 53 readiness handoff -> issue-linked replan tasks
+- PR #4: Phase 54 AI/human repair briefs
+- PR #5: Phase 55 real MD multi-domain proposal batch evidence
+
+完成标准：
+
+- release note 能说明当前不需要继续拆 PR。
+- 已合并 PR 的范围、merge commit 和 CI 状态可追踪。
+- Phase 55 发现的 shared probe / MCP flake / proposal exclusion 后续工作被保留。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
