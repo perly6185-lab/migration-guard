@@ -1173,6 +1173,52 @@ test("proposeActionPatch generated probes can inspect affected directories", asy
   }
 });
 
+test("proposeActionPatch blocks no-op-risk action checks unless explicitly allowed", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-no-op-action-"));
+
+  try {
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    const actionPlanDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "adapter");
+    await mkdir(actionPlanDir, { recursive: true });
+    await writeFile(path.join(actionPlanDir, "pnpm-vite-vue-action-plan.json"), `${JSON.stringify({
+      version: 1,
+      runId: pkg.run.id,
+      createdAt: "2026-07-07T00:00:00.000Z",
+      goal: pkg.run.goal,
+      actions: [
+        {
+          id: "action-no-op-risk",
+          title: "No-op risk action",
+          summary: "Has a known no-op command.",
+          risk: "medium",
+          affectedFiles: ["packages/mcp-server/src"],
+          recommendedChecks: ["pnpm --filter @md/mcp-server type-check"],
+          checkReadiness: [
+            {
+              command: "pnpm --filter @md/mcp-server type-check",
+              status: "no-op-risk",
+              reason: "package @md/mcp-server has no script type-check"
+            }
+          ],
+          patchMode: "dry-run-only",
+          patchTemplate: "renderer-probe"
+        }
+      ]
+    }, null, 2)}\n`, "utf8");
+
+    await assert.rejects(
+      proposeActionPatch(loaded, pkg, "action-no-op-risk"),
+      /no-op-risk recommended check/
+    );
+
+    const proposal = await proposeActionPatch(loaded, pkg, "action-no-op-risk", { allowNoOpRisk: true });
+    assert.equal(proposal.actionId, "action-no-op-risk");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 async function readProposal(proposalPath: string): Promise<ProposedPatch> {
   return JSON.parse(await readFile(proposalPath, "utf8")) as ProposedPatch;
 }

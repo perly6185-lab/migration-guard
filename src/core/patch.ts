@@ -48,6 +48,10 @@ export interface ApplyProposedPatchOptions {
   behaviorDiff?: boolean;
 }
 
+export interface ProposeActionPatchOptions {
+  allowNoOpRisk?: boolean;
+}
+
 export interface ApplyProposedPatchResult {
   message: string;
   proposal: ProposedPatch;
@@ -192,11 +196,24 @@ export async function proposePatch(loaded: LoadedConfig, pkg: MigrationRunPackag
   return proposed;
 }
 
-export async function proposeActionPatch(loaded: LoadedConfig, pkg: MigrationRunPackage, actionId: string): Promise<ProposedPatch> {
+export async function proposeActionPatch(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  actionId: string,
+  options: ProposeActionPatchOptions = {}
+): Promise<ProposedPatch> {
   const plan = await loadActionPlan(loaded, pkg);
   const action = plan.actions.find((candidate) => candidate.id === actionId);
   if (!action) {
     throw new Error(`Action not found: ${actionId}`);
+  }
+  const noOpRisks = (action.checkReadiness ?? []).filter((readiness) => readiness.status === "no-op-risk");
+  if (noOpRisks.length > 0 && !options.allowNoOpRisk) {
+    throw new Error([
+      `Action ${action.id} has ${noOpRisks.length} no-op-risk recommended check(s).`,
+      ...noOpRisks.map((readiness) => `- ${readiness.command}: ${readiness.reason}`),
+      "Re-run with --allow-no-op-risk only after replacing or intentionally accepting these checks."
+    ].join("\n"));
   }
 
   const id = createId("patch");

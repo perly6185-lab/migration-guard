@@ -587,7 +587,9 @@ async function commandAction(args: ParsedArgs): Promise<void> {
     if (!actionId) {
       throw new Error("action propose requires --action <action-id>.");
     }
-    const patch = await proposeActionPatch(loaded, pkg, actionId);
+    const patch = await proposeActionPatch(loaded, pkg, actionId, {
+      allowNoOpRisk: Boolean(args.options["allow-no-op-risk"])
+    });
     console.log(`Proposed ${patch.id}`);
     console.log(patch.patchPath);
     if (patch.generatedFiles && patch.generatedFiles.length > 0) {
@@ -1003,7 +1005,7 @@ Usage:
   migration-guard task run [--run <id|latest>] --task <id>
   migration-guard task propose [--run <id|latest>] --task <id>
   migration-guard task apply [--run <id|latest>] --proposal <id> [--behavior-diff]
-  migration-guard action propose [--run <id|latest>] --action <id>
+  migration-guard action propose [--run <id|latest>] --action <id> [--allow-no-op-risk]
   migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks] [--rollback-on-fail] [--gate-policy fail-fast|collect-all] [--behavior-diff]
   migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--gate-policy fail-fast|collect-all] [--json]
   migration-guard proposal status [--run <id|latest>] --proposal <id> [--json]

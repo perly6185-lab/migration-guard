@@ -1695,6 +1695,36 @@ node dist/cli.js actions --config configs/md-fast.migration-guard.json --run lat
 - 当前 MD action candidates 的 checks 均标为 `ready` 或 `unknown`，且 MCP runtime smoke 标为 `ready`。
 - `npm test` 覆盖 readiness 分类。
 
+## Phase 48: Action Propose Readiness Gate
+
+目标：把 Phase 47 的 readiness 从提示升级为 proposal 生成前门禁。`no-op-risk` action 默认不能生成 proposal，避免把已知空跑检查带入后续 gate。
+
+新增能力：
+
+- `action propose` 默认拒绝 `checkReadiness.status = no-op-risk`
+- 错误信息列出具体 command 和 reason
+- `--allow-no-op-risk` 显式 override
+- 单测覆盖默认拒绝和 override 生成
+
+建议命令：
+
+```bash
+node dist/cli.js action propose --config configs/md-fast.migration-guard.json --run latest --action <action-id>
+node dist/cli.js action propose --config configs/md-fast.migration-guard.json --run latest --action <action-id> --allow-no-op-risk
+```
+
+产物：
+
+- 默认拒绝 no-op-risk action 时不写 proposal
+- override 后照常写 proposal artifacts
+
+完成标准：
+
+- no-op-risk action 默认无法 propose。
+- ready action 不受影响。
+- override 行为必须显式。
+- `npm test` 覆盖 gate。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

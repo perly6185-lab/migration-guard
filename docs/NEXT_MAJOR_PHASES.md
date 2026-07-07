@@ -63,6 +63,7 @@ Progress:
 - Phase 45: `proposal verify --checks` temporarily applies generated-script proposals and rolls them back.
 - Phase 46: proposal gates fail package-manager no-op checks and MD MCP uses a real render runtime smoke.
 - Phase 47: MD action plans include static check-readiness hints for recommended commands.
+- Phase 48: `action propose` blocks no-op-risk actions unless explicitly overridden.
 
 候选能力：
 
