@@ -114,6 +114,8 @@ Use `--adapter md-monorepo` to generate a project-specific refactor task plan
 and action candidates for `md` domains before allowing whole-repo source edits.
 Action probe proposals can inspect affected directories as well as individual
 files, which lets domain-scoped proposals use real package boundaries.
+`proposal verify --checks` temporarily applies generated-script proposals while
+checks run, then rolls them back and keeps the proposal unapplied.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at

@@ -32,6 +32,7 @@ import type {
   ProposalPreviewConfig,
   ProposalPreviewResult,
   ProposalRollbackReport,
+  ProposalTemporaryApply,
   ProposalVerificationReport,
   ProposedPatch,
   Snapshot
@@ -259,8 +260,10 @@ export async function verifyProposedPatch(
   const patchContent = await fs.readFile(proposal.patchPath, "utf8");
   const patchCheck = await checkPatchApplicability(loaded, pkg, proposal, patchContent);
   const gatePolicy = resolveGatePolicy(loaded, options.gatePolicy);
-  const checks = options.runChecks && patchCheck.passed ? await runProposalChecks(loaded, pkg, proposal, undefined, gatePolicy) : [];
-  const report = await writeProposalVerificationReport(loaded, pkg, proposal, "verify", false, patchCheck, checks, undefined, gatePolicy);
+  const checkRun = options.runChecks && patchCheck.passed
+    ? await runProposalChecksForVerify(loaded, pkg, proposal, patchContent, gatePolicy)
+    : { checks: [] };
+  const report = await writeProposalVerificationReport(loaded, pkg, proposal, "verify", false, patchCheck, checkRun.checks, checkRun.preview, gatePolicy, undefined, checkRun.temporaryApply);
   if (isPreApplyState(proposal.applyState)) {
     proposal.applyState = report.passed ? "verified" : "verification-failed";
     proposal.lastVerificationPath = report.outputPath;
@@ -276,7 +279,8 @@ export async function verifyProposedPatch(
       proposalId: proposal.id,
       actionId: proposal.actionId,
       outputPath: report.outputPath,
-      runChecks: Boolean(options.runChecks)
+      runChecks: Boolean(options.runChecks),
+      temporaryApply: report.temporaryApply
     }
   });
   return report;
@@ -736,6 +740,7 @@ export function renderProposalVerificationReport(report: ProposalVerificationRep
     `Applied: ${report.applied ? "yes" : "no"}`,
     `Passed: ${report.passed ? "yes" : "no"}`,
     `Patch check: ${report.patchCheck.skipped ? "skipped" : report.patchCheck.passed ? "passed" : "failed"}`,
+    `Temporary apply: ${report.temporaryApply ? `${report.temporaryApply.applied ? "applied" : "not applied"}, ${report.temporaryApply.rolledBack ? "rolled back" : "not rolled back"}` : "not used"}`,
     `Preview: ${report.preview ? report.preview.ready ? `ready ${report.preview.url}` : `failed ${report.preview.url}` : "not managed"}`,
     `Gate policy: ${report.gatePolicy?.mode ?? DEFAULT_GATE_POLICY.mode}`,
     `Check plan: ${report.checkPlan?.length ?? 0}`,
@@ -1353,6 +1358,59 @@ async function runProposalChecksForApply(
   };
 }
 
+async function runProposalChecksForVerify(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch,
+  patchContent: string,
+  gatePolicy: ProposalGatePolicy = DEFAULT_GATE_POLICY
+): Promise<{ checks: ProposalCommandCheck[]; preview?: ProposalPreviewResult; temporaryApply?: ProposalTemporaryApply }> {
+  if (!isGitPatchContent(patchContent)) {
+    return runProposalChecksForApply(loaded, pkg, proposal, gatePolicy);
+  }
+
+  const apply = await runShellCommand(`git apply "${proposal.patchPath}"`, {
+    cwd: pkg.run.targetRoot,
+    timeoutMs: 30000,
+    maxOutputBytes: loaded.config.output.maxOutputBytes
+  });
+  const applyCheck = commandResultToProposalCheck(apply);
+  const temporaryApply: ProposalTemporaryApply = {
+    applied: applyCheck.passed,
+    rolledBack: false,
+    passed: false,
+    apply: applyCheck
+  };
+
+  let checks: ProposalCommandCheck[] = [];
+  let preview: ProposalPreviewResult | undefined;
+  try {
+    if (applyCheck.passed) {
+      const checkRun = await runProposalChecksForApply(loaded, pkg, proposal, gatePolicy);
+      checks = checkRun.checks;
+      preview = checkRun.preview;
+    }
+  } finally {
+    if (applyCheck.passed) {
+      const rollback = await runShellCommand(`git apply -R "${proposal.patchPath}"`, {
+        cwd: pkg.run.targetRoot,
+        timeoutMs: 30000,
+        maxOutputBytes: loaded.config.output.maxOutputBytes
+      });
+      const rollbackCheck = commandResultToProposalCheck(rollback);
+      temporaryApply.rollback = rollbackCheck;
+      temporaryApply.rolledBack = rollbackCheck.passed;
+    }
+  }
+
+  temporaryApply.passed = temporaryApply.applied && temporaryApply.rolledBack;
+  return {
+    checks,
+    preview,
+    temporaryApply
+  };
+}
+
 function splitPreviewChecks(plan: ProposalCheckPlanItem[]): { regularChecks: ProposalCheckPlanItem[]; previewChecks: ProposalCheckPlanItem[] } {
   const previewChecks = plan.filter((check) => check.phase === "preview");
   const previewCheckSet = new Set(previewChecks.map((check) => check.command));
@@ -1437,12 +1495,13 @@ async function writeProposalVerificationReport(
   checks: ProposalCommandCheck[],
   preview?: ProposalPreviewResult,
   gatePolicy: ProposalGatePolicy = DEFAULT_GATE_POLICY,
-  behaviorDiff?: ProposalBehaviorDiffReport
+  behaviorDiff?: ProposalBehaviorDiffReport,
+  temporaryApply?: ProposalTemporaryApply
 ): Promise<ProposalVerificationReport> {
   const outputPath = path.join(proposalDir(loaded, pkg, proposal.id), `verification-${Date.now()}.json`);
   const checkPlan = ensureProposalCheckPlan(loaded, proposal);
   const timeline = createProposalGateTimeline(patchCheck, checks, preview);
-  const passed = patchCheck.passed && (preview?.ready ?? true) && checks.every((check) => check.passed);
+  const passed = patchCheck.passed && (temporaryApply?.passed ?? true) && (preview?.ready ?? true) && checks.every((check) => check.passed);
   const report: ProposalVerificationReport = {
     version: 1,
     id: createId("proposal-verification"),
@@ -1457,6 +1516,7 @@ async function writeProposalVerificationReport(
     checkPlan,
     gatePolicy,
     preview,
+    temporaryApply,
     checks,
     timeline,
     behaviorDiff,

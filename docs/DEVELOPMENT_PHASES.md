@@ -1602,6 +1602,36 @@ node dist/cli.js proposal rollback --config configs/md-fast.migration-guard.json
 - rollback 后目标 `md` 仓库保持 clean。
 - `npm test` 覆盖目录型 action probe。
 
+## Phase 45: Verify Checks Temporary Apply
+
+目标：补齐 `proposal verify --checks` 对 generated-script proposal 的语义。verify 模式不应把 proposal 标记为 applied，但必须能让新增的 probe/check 脚本在检查期间存在。
+
+新增能力：
+
+- `proposal verify --checks` 对 git patch 临时 apply
+- checks 完成后自动 `git apply -R` 回滚
+- verification report 写入 `temporaryApply`
+- report 文本展示 temporary apply/rollback 状态
+- verify-with-checks 复用 preview-aware check runner
+
+建议命令：
+
+```bash
+node dist/cli.js proposal verify --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id> --checks
+```
+
+产物：
+
+- `proposals/<proposal-id>/verification-*.json`
+- verification report `temporaryApply`
+
+完成标准：
+
+- 新增脚本型 proposal 可以在 verify mode 跑 checks。
+- verify 后 proposal 仍未持久 applied。
+- verify 后目标工作树恢复 clean。
+- apply gate 语义保持不变。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

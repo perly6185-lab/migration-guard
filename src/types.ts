@@ -680,6 +680,14 @@ export interface ProposalPreviewResult {
   outputPath?: string;
 }
 
+export interface ProposalTemporaryApply {
+  applied: boolean;
+  rolledBack: boolean;
+  passed: boolean;
+  apply?: ProposalCommandCheck;
+  rollback?: ProposalCommandCheck;
+}
+
 export interface ProposalGateEvent {
   type: ProposalGateEventType;
   status: ProposalGateEventStatus;
@@ -709,6 +717,7 @@ export interface ProposalVerificationReport {
   checkPlan?: ProposalCheckPlanItem[];
   gatePolicy?: ProposalGatePolicy;
   preview?: ProposalPreviewResult;
+  temporaryApply?: ProposalTemporaryApply;
   checks: ProposalCommandCheck[];
   timeline: ProposalGateEvent[];
   replanIssueId?: string;

@@ -78,11 +78,17 @@ test("proposal verify and apply write verification reports", async () => {
     await writeFile(patchPath, createAddFilePatch("scripts/migration-guard/probe.mjs", "console.log(\"probe-ok\");\n"), "utf8");
     await writeFile(proposalPath, `${JSON.stringify(proposal, null, 2)}\n`, "utf8");
 
-    const verify = await verifyProposedPatch(loaded, pkg, proposal.id);
+    const verify = await verifyProposedPatch(loaded, pkg, proposal.id, { runChecks: true });
     assert.equal(verify.passed, true);
     assert.equal(verify.applied, false);
-    assert.equal(verify.checks.length, 0);
+    assert.equal(verify.temporaryApply?.applied, true);
+    assert.equal(verify.temporaryApply?.rolledBack, true);
+    assert.equal(verify.temporaryApply?.passed, true);
+    assert.equal(verify.checks.length, 1);
+    assert.match(verify.checks[0]?.stdout ?? "", /probe-ok/);
+    assert.match(renderProposalVerificationReport(verify), /Temporary apply: applied, rolled back/);
     assert.equal((await readProposal(proposalPath)).applyState, "verified");
+    await assert.rejects(access(path.join(dir, "scripts", "migration-guard", "probe.mjs")));
 
     const apply = await applyProposedPatch(loaded, pkg, proposal.id, { runChecks: true, behaviorDiff: true });
     assert.equal(apply.report?.passed, true);
