@@ -1856,6 +1856,39 @@ gh pr checks 1
 - PR checks 在 GitHub 上开始 reported。
 - 工具仓库和 target `md` 仓库 clean。
 
+## Phase 53: Readiness Handoff Replan Tasks
+
+目标：把 readiness handoff attention items 转成 migration run 内的 issue + replan task，让 readiness 修复进入同一个任务图和 issue sync 流程。
+
+新增能力：
+
+- `actions handoff --create-replans`
+- no-op-risk / unknown / missing metadata attention item 生成 replan task
+- replan task 关联 task issue
+- deterministic task id，重复运行不会重复创建
+- handoff item 写回 `taskId`、`issueId`、`affectedFiles`
+- handoff summary 增加 `replanTaskCount`
+
+建议命令：
+
+```bash
+node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json --run latest --create-replans
+node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json --run latest --create-replans --json
+```
+
+产物：
+
+- `task-graph.json` 中的 readiness replan tasks
+- `issues.json` 中的 task issues
+- `reports/action-check-readiness-handoff.json` 中的 `taskId` / `issueId`
+
+完成标准：
+
+- attention item 能生成 issue-linked replan task。
+- repeated create-replans 是幂等的。
+- 默认 `actions handoff` 不创建 task。
+- `npm test` 覆盖 task/issue 创建和幂等复跑。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

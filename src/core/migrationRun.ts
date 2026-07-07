@@ -5,6 +5,7 @@ import { scanProject } from "./scan.js";
 import { createEstimate, createTaskGraph, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
 import { decisionPolicyForCompareReportPath, formatPolicyLine } from "./diffDecision.js";
 import { ensureDir, pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
+import { sha256 } from "./hash.js";
 import type {
   EvidenceEvent,
   LoadedConfig,
@@ -51,6 +52,7 @@ export interface ActionCheckReadinessFinding {
   command: string;
   status: MigrationActionCheckReadiness["status"];
   reason: string;
+  affectedFiles: string[];
 }
 
 export interface ActionCheckReadinessMissing {
@@ -58,6 +60,7 @@ export interface ActionCheckReadinessMissing {
   actionTitle: string;
   command: string;
   reason: string;
+  affectedFiles: string[];
 }
 
 export interface ActionCheckReadinessSummary {
@@ -84,6 +87,9 @@ export interface ActionCheckReadinessHandoffItem {
   status: ActionCheckReadinessHandoffItemStatus;
   reason: string;
   recommendedAction: string;
+  affectedFiles: string[];
+  taskId?: string;
+  issueId?: string;
 }
 
 export interface ActionCheckReadinessHandoff {
@@ -103,10 +109,15 @@ export interface ActionCheckReadinessHandoff {
     noOpRiskCount: number;
     unknownCount: number;
     attentionItemCount: number;
+    replanTaskCount: number;
   };
   blockedBeforeProposal: boolean;
   items: ActionCheckReadinessHandoffItem[];
   recommendedNextActions: string[];
+}
+
+export interface WriteActionCheckReadinessHandoffOptions {
+  createReplans?: boolean;
 }
 
 interface ProposalGateSummary {
@@ -432,13 +443,18 @@ export async function writeRunReport(loaded: LoadedConfig, pkg: MigrationRunPack
 
 export async function writeActionCheckReadinessHandoff(
   loaded: LoadedConfig,
-  pkg: MigrationRunPackage
+  pkg: MigrationRunPackage,
+  options: WriteActionCheckReadinessHandoffOptions = {}
 ): Promise<ActionCheckReadinessHandoff | undefined> {
   const summary = await readActionCheckReadinessSummary(loaded, pkg);
   if (!summary) {
     return undefined;
   }
   const handoff = createActionCheckReadinessHandoff(pkg, summary);
+  if (options.createReplans) {
+    ensureActionCheckReadinessReplanTasks(pkg, handoff);
+    await saveRunPackage(loaded, pkg);
+  }
   await writeJsonFile(summary.handoffJsonPath, handoff);
   await writeTextFile(summary.handoffMarkdownPath, renderActionCheckReadinessHandoffMarkdown(handoff));
   return handoff;
@@ -774,7 +790,8 @@ function createActionCheckReadinessHandoff(
       readyCount: summary.readyCount,
       noOpRiskCount: summary.noOpRiskCount,
       unknownCount: summary.unknownCount,
-      attentionItemCount: items.length
+      attentionItemCount: items.length,
+      replanTaskCount: 0
     },
     blockedBeforeProposal: summary.noOpRiskCount > 0,
     items,
@@ -794,7 +811,8 @@ function createActionCheckReadinessHandoffItems(summary: ActionCheckReadinessSum
         reason: finding.reason,
         recommendedAction: finding.status === "no-op-risk"
           ? "Replace the recommended check with a command that definitely runs for the target package, or use --allow-no-op-risk only after explicit review."
-          : "Inspect the command manually and add a more specific readiness classifier or safer recommended check."
+          : "Inspect the command manually and add a more specific readiness classifier or safer recommended check.",
+        affectedFiles: finding.affectedFiles
       });
     }
   }
@@ -805,10 +823,98 @@ function createActionCheckReadinessHandoffItems(summary: ActionCheckReadinessSum
       command: finding.command,
       status: "missing-metadata" as const,
       reason: finding.reason,
-      recommendedAction: "Regenerate the action plan with readiness metadata or add a readiness entry for this recommended check."
+      recommendedAction: "Regenerate the action plan with readiness metadata or add a readiness entry for this recommended check.",
+      affectedFiles: finding.affectedFiles
     });
   }
   return items;
+}
+
+function ensureActionCheckReadinessReplanTasks(
+  pkg: MigrationRunPackage,
+  handoff: ActionCheckReadinessHandoff
+): void {
+  const now = new Date().toISOString();
+  for (const item of handoff.items) {
+    const taskId = actionCheckReadinessReplanTaskId(item);
+    let task = pkg.graph.tasks.find((candidate) => candidate.id === taskId);
+    if (!task) {
+      task = {
+        id: taskId,
+        title: `Replan action check readiness for ${item.actionId}`,
+        description: renderActionCheckReadinessReplanDescription(item, handoff),
+        type: "replan",
+        status: "ready",
+        priority: item.status === "no-op-risk" ? 82 : 72,
+        risk: item.status === "no-op-risk" ? "medium" : "low",
+        owner: "engine",
+        dependsOn: [],
+        affectedFiles: item.affectedFiles,
+        verificationCommands: ["migration-guard actions handoff --run latest --json"],
+        acceptanceCriteria: [
+          "readiness handoff no longer lists this action/check attention item",
+          "recommended check is ready or explicitly documented as accepted",
+          "action propose can continue without relying on a known no-op check"
+        ],
+        executor: "manual",
+        result: `Created from action check readiness handoff ${handoff.jsonPath}`,
+        createdAt: now,
+        updatedAt: now
+      };
+      pkg.graph.tasks.push(task);
+    }
+
+    let issue = task.issueId
+      ? pkg.issues.find((candidate) => candidate.id === task.issueId)
+      : undefined;
+    if (!issue) {
+      issue = {
+        id: createId("issue"),
+        runId: pkg.run.id,
+        taskId: task.id,
+        type: "task",
+        title: task.title,
+        body: task.description,
+        status: task.status,
+        risk: task.risk,
+        owner: task.owner,
+        affectedFiles: task.affectedFiles,
+        createdAt: now,
+        updatedAt: now
+      };
+      pkg.issues.push(issue);
+      task.issueId = issue.id;
+    }
+
+    item.taskId = task.id;
+    item.issueId = issue.id;
+  }
+  handoff.summary.replanTaskCount = handoff.items.filter((item) => item.taskId).length;
+}
+
+function actionCheckReadinessReplanTaskId(item: ActionCheckReadinessHandoffItem): string {
+  const actionSlug = item.actionId.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 64);
+  const fingerprint = sha256(`${item.status}\n${item.actionId}\n${item.command}`).slice(0, 10);
+  return `task-readiness-replan-${actionSlug}-${fingerprint}`;
+}
+
+function renderActionCheckReadinessReplanDescription(
+  item: ActionCheckReadinessHandoffItem,
+  handoff: ActionCheckReadinessHandoff
+): string {
+  return [
+    `Action check readiness needs repair before proposal generation.`,
+    `Action: ${item.actionId}`,
+    `Action title: ${item.actionTitle}`,
+    `Status: ${item.status}`,
+    `Command: ${item.command}`,
+    `Reason: ${item.reason}`,
+    `Recommended action: ${item.recommendedAction}`,
+    `Handoff: ${handoff.markdownPath}`,
+    `Handoff JSON: ${handoff.jsonPath}`,
+    `Action plan: ${handoff.actionPlanPath}`,
+    item.affectedFiles.length > 0 ? `Affected files: ${item.affectedFiles.join(", ")}` : undefined
+  ].filter(Boolean).join("\n");
 }
 
 function createActionCheckReadinessNextActions(summary: ActionCheckReadinessSummary): string[] {
@@ -836,7 +942,7 @@ export function renderActionCheckReadinessHandoffMarkdown(handoff: ActionCheckRe
     `- Action plan: ${handoff.actionPlanPath}`,
     `- JSON: ${handoff.jsonPath}`,
     `- Blocked before proposal: ${handoff.blockedBeforeProposal ? "yes" : "no"}`,
-    `- Summary: actions:${handoff.summary.actionCount} checks:${handoff.summary.recommendedCheckCount} tracked:${handoff.summary.trackedCheckCount} ready:${handoff.summary.readyCount} no-op-risk:${handoff.summary.noOpRiskCount} unknown:${handoff.summary.unknownCount} missing:${handoff.summary.checksWithoutReadiness}`,
+    `- Summary: actions:${handoff.summary.actionCount} checks:${handoff.summary.recommendedCheckCount} tracked:${handoff.summary.trackedCheckCount} ready:${handoff.summary.readyCount} no-op-risk:${handoff.summary.noOpRiskCount} unknown:${handoff.summary.unknownCount} missing:${handoff.summary.checksWithoutReadiness} replan-tasks:${handoff.summary.replanTaskCount}`,
     "",
     "## Recommended Next Actions",
     "",
@@ -849,8 +955,10 @@ export function renderActionCheckReadinessHandoffMarkdown(handoff: ActionCheckRe
         `- ${item.actionId} [${item.status}] ${item.command}`,
         `  action-title: ${item.actionTitle}`,
         `  reason: ${item.reason}`,
-        `  recommended: ${item.recommendedAction}`
-      ].join("\n")).join("\n")
+        `  recommended: ${item.recommendedAction}`,
+        item.taskId ? `  task: ${item.taskId}` : undefined,
+        item.issueId ? `  issue: ${item.issueId}` : undefined
+      ].filter(Boolean).join("\n")).join("\n")
       : "No attention items."
   ].join("\n");
 }
@@ -1129,7 +1237,8 @@ async function readActionCheckReadinessSummary(
           actionId: action.id,
           actionTitle: action.title,
           command,
-          reason: "recommended check has no checkReadiness entry"
+          reason: "recommended check has no checkReadiness entry",
+          affectedFiles: action.affectedFiles
         });
       }
     }
@@ -1149,7 +1258,8 @@ async function readActionCheckReadinessSummary(
         actionTitle: action.title,
         command: readiness.command,
         status: readiness.status,
-        reason: readiness.reason
+        reason: readiness.reason,
+        affectedFiles: action.affectedFiles
       });
     }
   }

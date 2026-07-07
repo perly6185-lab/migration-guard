@@ -473,7 +473,9 @@ async function commandActions(args: ParsedArgs): Promise<void> {
   const action = args.positionals[0];
 
   if (action === "handoff") {
-    const handoff = await writeActionCheckReadinessHandoff(loaded, pkg);
+    const handoff = await writeActionCheckReadinessHandoff(loaded, pkg, {
+      createReplans: Boolean(args.options["create-replans"])
+    });
     if (!handoff) {
       throw new Error(`No action plan found for run ${pkg.run.id}. Run or resume a supported adapter migration first.`);
     }
@@ -1018,7 +1020,7 @@ Usage:
   migration-guard issues [--run <id|latest>] [--json]
   migration-guard tasks [--run <id|latest>] [--json]
   migration-guard actions [--run <id|latest>] [--json]
-  migration-guard actions handoff [--run <id|latest>] [--json]
+  migration-guard actions handoff [--run <id|latest>] [--create-replans] [--json]
   migration-guard report [--run <id|latest>]
   migration-guard checkpoint create|list [--run <id|latest>]
   migration-guard resume [--run <id|latest>] [--auto]

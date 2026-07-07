@@ -1255,7 +1255,7 @@ test("run status and report surface action check readiness risks", async () => {
     const handoffMarkdownPath = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "reports", "action-check-readiness-handoff.md");
     const handoff = JSON.parse(await readFile(handoffJsonPath, "utf8")) as {
       blockedBeforeProposal?: boolean;
-      summary?: { attentionItemCount?: number; noOpRiskCount?: number; unknownCount?: number };
+      summary?: { attentionItemCount?: number; noOpRiskCount?: number; unknownCount?: number; replanTaskCount?: number };
       items?: Array<{ status?: string; command?: string; recommendedAction?: string }>;
     };
     const handoffMarkdown = await readFile(handoffMarkdownPath, "utf8");
@@ -1263,6 +1263,7 @@ test("run status and report surface action check readiness risks", async () => {
     assert.equal(handoff.summary?.attentionItemCount, 2);
     assert.equal(handoff.summary?.noOpRiskCount, 1);
     assert.equal(handoff.summary?.unknownCount, 1);
+    assert.equal(handoff.summary?.replanTaskCount, 0);
     assert.ok(handoff.items?.some((item) => item.status === "no-op-risk" && item.command === "pnpm --filter @md/mcp-server type-check"));
     assert.ok(handoff.items?.some((item) => item.status === "unknown" && item.recommendedAction?.includes("Inspect the command manually")));
     assert.match(handoffMarkdown, /# Action Check Readiness Handoff/);
@@ -1279,20 +1280,49 @@ test("run status and report surface action check readiness risks", async () => {
       loaded.path,
       "--run",
       pkg.run.id,
+      "--create-replans",
       "--json"
     ]);
     const cliHandoff = JSON.parse(stdout) as {
       blockedBeforeProposal?: boolean;
       jsonPath?: string;
       markdownPath?: string;
-      summary?: { attentionItemCount?: number };
+      summary?: { attentionItemCount?: number; replanTaskCount?: number };
+      items?: Array<{ status?: string; taskId?: string; issueId?: string; affectedFiles?: string[] }>;
     };
+    const taskGraph = JSON.parse(await readFile(path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "task-graph.json"), "utf8")) as MigrationTaskGraph;
+    const issues = JSON.parse(await readFile(path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "issues.json"), "utf8")) as MigrationIssue[];
+    const readinessTasks = taskGraph.tasks.filter((task) => task.id.startsWith("task-readiness-replan-"));
+    const readinessIssues = issues.filter((issue) => issue.taskId?.startsWith("task-readiness-replan-"));
     assert.equal(cliHandoff.blockedBeforeProposal, true);
     assert.equal(cliHandoff.summary?.attentionItemCount, 2);
+    assert.equal(cliHandoff.summary?.replanTaskCount, 2);
     assert.equal(cliHandoff.jsonPath, handoffJsonPath);
     assert.equal(cliHandoff.markdownPath, handoffMarkdownPath);
+    assert.equal(readinessTasks.length, 2);
+    assert.equal(readinessIssues.length, 2);
+    assert.ok(cliHandoff.items?.every((item) => item.taskId && item.issueId));
+    assert.ok(cliHandoff.items?.every((item) => item.affectedFiles?.includes("packages/mcp-server/src")));
+    assert.ok(readinessTasks.every((task) => task.type === "replan" && task.status === "ready"));
+    assert.ok(readinessTasks.every((task) => task.issueId && issues.some((issue) => issue.id === task.issueId)));
     await access(handoffJsonPath);
     await access(handoffMarkdownPath);
+
+    const { stdout: secondStdout } = await execFileAsync(process.execPath, [
+      path.resolve("dist", "cli.js"),
+      "actions",
+      "handoff",
+      "--config",
+      loaded.path,
+      "--run",
+      pkg.run.id,
+      "--create-replans",
+      "--json"
+    ]);
+    const secondHandoff = JSON.parse(secondStdout) as { summary?: { replanTaskCount?: number } };
+    const secondTaskGraph = JSON.parse(await readFile(path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "task-graph.json"), "utf8")) as MigrationTaskGraph;
+    assert.equal(secondHandoff.summary?.replanTaskCount, 2);
+    assert.equal(secondTaskGraph.tasks.filter((task) => task.id.startsWith("task-readiness-replan-")).length, 2);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
