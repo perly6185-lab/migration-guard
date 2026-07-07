@@ -1566,6 +1566,42 @@ node dist/cli.js actions --config configs/md-fast.migration-guard.json --run lat
 - 高风险 domain 默认 `manual-approval-required`。
 - 任务计划可作为后续整仓自动重构的执行边界，而不是临时口头计划。
 
+## Phase 44: First MD Domain Gated Proposal
+
+目标：从 Phase 43 的 `md-monorepo` action candidates 中选择一个低风险 domain，生成真实 proposal，跑通 patch verify、apply checks、proposal-scoped behavior diff 和 rollback。
+
+新增能力：
+
+- action probe script 支持 affected path 为目录
+- 非 UI action probe 对整个 action 范围聚合检查信号
+- `action-md-mcp-render` 可生成目录型 renderer probe proposal
+- 单测覆盖目录型 generated probe
+- 首个 MD domain proposal smoke 记录 apply/behavior-diff/rollback artifact
+
+建议命令：
+
+```bash
+node dist/cli.js action propose --config configs/md-fast.migration-guard.json --run latest --action action-md-mcp-render
+node dist/cli.js proposal verify --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id>
+node dist/cli.js action apply --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id> --rollback-on-fail --behavior-diff
+node dist/cli.js proposal rollback --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id>
+```
+
+产物：
+
+- `proposals/<proposal-id>/patch.diff`
+- `proposals/<proposal-id>/verification-*.json`
+- `proposals/<proposal-id>/behavior-diff-*-compare.json`
+- `proposals/<proposal-id>/rollback-*.json`
+
+完成标准：
+
+- patch-only verify 通过。
+- apply checks 通过。
+- behavior diff 通过且无 error/warn drift。
+- rollback 后目标 `md` 仓库保持 clean。
+- `npm test` 覆盖目录型 action probe。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

@@ -59,6 +59,7 @@ Progress:
 - Phase 41: `pnpm-vite-vue` emits low-risk proposal candidates before source edits.
 - Phase 42: `md` adds API contract and web static/build probes.
 - Phase 43: `md-monorepo` emits a project-specific refactor task plan and action plan.
+- Phase 44: first `md` domain action proposal passes apply checks, behavior diff, and rollback.
 
 候选能力：
 

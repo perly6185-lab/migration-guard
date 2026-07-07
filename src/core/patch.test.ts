@@ -1080,6 +1080,49 @@ test("proposeActionPatch generates an optional Playwright UI smoke probe", async
   }
 });
 
+test("proposeActionPatch generated probes can inspect affected directories", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-directory-probe-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: dir });
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    const actionPlanDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "adapter");
+    const sourceDir = path.join(dir, "packages", "mcp-server", "src");
+    await mkdir(sourceDir, { recursive: true });
+    await mkdir(actionPlanDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "index.ts"), "export function renderMarkdown(value: string) {\n  return value;\n}\n", "utf8");
+    await writeFile(path.join(actionPlanDir, "pnpm-vite-vue-action-plan.json"), `${JSON.stringify({
+      version: 1,
+      runId: pkg.run.id,
+      createdAt: "2026-07-07T00:00:00.000Z",
+      goal: pkg.run.goal,
+      actions: [
+        {
+          id: "action-mcp-render",
+          title: "Guard MCP renderer",
+          summary: "Add directory-backed renderer probe.",
+          risk: "medium",
+          affectedFiles: ["packages/mcp-server/src"],
+          recommendedChecks: [],
+          patchMode: "dry-run-only",
+          patchTemplate: "renderer-probe"
+        }
+      ]
+    }, null, 2)}\n`, "utf8");
+
+    const proposal = await proposeActionPatch(loaded, pkg, "action-mcp-render");
+    const patch = await readFile(proposal.patchPath, "utf8");
+    assert.match(patch, /collectReadableFiles/);
+
+    const apply = await applyProposedPatch(loaded, pkg, proposal.id, { runChecks: true });
+    assert.equal(apply.report?.passed, true);
+    assert.match(apply.report?.checks[0]?.stdout ?? "", /packages\/mcp-server\/src\/index\.ts/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 async function readProposal(proposalPath: string): Promise<ProposedPatch> {
   return JSON.parse(await readFile(proposalPath, "utf8")) as ProposedPatch;
 }

@@ -112,6 +112,8 @@ static/build probes so large refactors can be guarded by project-specific
 evidence instead of generic tests alone.
 Use `--adapter md-monorepo` to generate a project-specific refactor task plan
 and action candidates for `md` domains before allowing whole-repo source edits.
+Action probe proposals can inspect affected directories as well as individual
+files, which lets domain-scoped proposals use real package boundaries.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at
