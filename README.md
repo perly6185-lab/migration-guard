@@ -124,6 +124,9 @@ be spotted before proposal gates run.
 `--allow-no-op-risk` only for an explicitly accepted exception.
 Run `status` and `report` now summarize action check readiness as well, so
 no-op-risk checks become visible in the run handoff before proposal generation.
+Writing a run report also emits `reports/action-check-readiness-handoff.json`
+and `.md`, with attention items for no-op-risk, unknown, or missing readiness
+metadata.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at

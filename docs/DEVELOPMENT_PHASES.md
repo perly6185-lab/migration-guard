@@ -1757,6 +1757,39 @@ node dist/cli.js report --config configs/md-fast.migration-guard.json --run late
 - 没有 action plan 时 report 给出清晰空状态。
 - `npm test` 覆盖 run-level readiness 汇总。
 
+## Phase 50: Action Check Readiness Handoff
+
+目标：把 run-level readiness 从“报告里可见”推进到“可交接修复”。写 run report 时同步生成 JSON/Markdown handoff，供团队或 AI 直接处理 no-op-risk、unknown、missing metadata checks。
+
+新增能力：
+
+- `writeRunReport` 写出 `reports/action-check-readiness-handoff.json`
+- `writeRunReport` 写出 `reports/action-check-readiness-handoff.md`
+- status/report 输出 handoff artifact 路径
+- handoff JSON 包含 summary、blockedBeforeProposal、attention items、recommendedNextActions
+- attention items 覆盖 no-op-risk / unknown / missing readiness metadata
+- 单测覆盖 handoff artifact 内容
+
+建议命令：
+
+```bash
+node dist/cli.js report --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js status --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- `reports/action-check-readiness-handoff.json`
+- `reports/action-check-readiness-handoff.md`
+- report 中的 handoff JSON/Markdown 路径
+
+完成标准：
+
+- 写 run report 时同步写出 readiness handoff artifacts。
+- JSON artifact 可机器读取 attention items。
+- Markdown artifact 可直接交给人或 AI。
+- `npm test` 覆盖 no-op-risk/unknown handoff 写出。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

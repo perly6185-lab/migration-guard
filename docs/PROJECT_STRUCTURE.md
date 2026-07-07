@@ -54,6 +54,7 @@ migration-guard/
     PHASE_47_REPORT.md
     PHASE_48_REPORT.md
     PHASE_49_REPORT.md
+    PHASE_50_REPORT.md
     PRODUCT_DESIGN.md
     PROJECT_STRUCTURE.md
     REQUIREMENTS.md
@@ -350,6 +351,7 @@ AI 不直接绕过验证流程。AI 每次迁移动作后必须回到 `verify` �
 - 追加 evidence log
 - 渲染 status、issues、report
 - 汇总 action check readiness 到 status/report/next action
+- 写出 action check readiness handoff JSON/Markdown
 - 维护 latest migration run 指针
 
 ### `src/core/taskGraph.ts`

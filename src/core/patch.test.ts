@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { applyProposalBatch, applyProposedPatch, createAddFilePatch, createProposalBatchPlan, createProposalRetry, proposeActionPatch, renderProposalVerificationReport, replanProposal, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
 import { syncIssues } from "./issueSync.js";
-import { renderRunReport, renderRunStatus, resolveRunNextAction, writeCiHandoffReport } from "./migrationRun.js";
+import { renderRunReport, renderRunStatus, resolveRunNextAction, writeCiHandoffReport, writeRunReport } from "./migrationRun.js";
 import { createGitHubIssues } from "./githubIssueAdapter.js";
 import type { LoadedConfig, MigrationIssue, MigrationRun, MigrationTaskGraph, ProposalVerificationReport, ProposedPatch } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
@@ -1239,13 +1239,34 @@ test("run status and report surface action check readiness risks", async () => {
 
     const status = renderRunStatus(pkg, next);
     assert.match(status, /Action check readiness: actions:2 checks:3 tracked:3 ready:1 no-op-risk:1 unknown:1/);
+    assert.match(status, /Action check handoff: .*action-check-readiness-handoff\.md/);
     assert.match(status, /Action check risk: action-no-op-risk pnpm --filter @md\/mcp-server type-check/);
 
     const report = await renderRunReport(loaded, pkg);
     assert.match(report, /## Action Check Readiness/);
+    assert.match(report, /Handoff JSON: .*action-check-readiness-handoff\.json/);
+    assert.match(report, /Handoff Markdown: .*action-check-readiness-handoff\.md/);
     assert.match(report, /Status counts: ready:1, no-op-risk:1, unknown:1/);
     assert.match(report, /package @md\/mcp-server has no script type-check/);
     assert.match(report, /Unknown checks:/);
+
+    await writeRunReport(loaded, pkg);
+    const handoffJsonPath = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "reports", "action-check-readiness-handoff.json");
+    const handoffMarkdownPath = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "reports", "action-check-readiness-handoff.md");
+    const handoff = JSON.parse(await readFile(handoffJsonPath, "utf8")) as {
+      blockedBeforeProposal?: boolean;
+      summary?: { attentionItemCount?: number; noOpRiskCount?: number; unknownCount?: number };
+      items?: Array<{ status?: string; command?: string; recommendedAction?: string }>;
+    };
+    const handoffMarkdown = await readFile(handoffMarkdownPath, "utf8");
+    assert.equal(handoff.blockedBeforeProposal, true);
+    assert.equal(handoff.summary?.attentionItemCount, 2);
+    assert.equal(handoff.summary?.noOpRiskCount, 1);
+    assert.equal(handoff.summary?.unknownCount, 1);
+    assert.ok(handoff.items?.some((item) => item.status === "no-op-risk" && item.command === "pnpm --filter @md/mcp-server type-check"));
+    assert.ok(handoff.items?.some((item) => item.status === "unknown" && item.recommendedAction?.includes("Inspect the command manually")));
+    assert.match(handoffMarkdown, /# Action Check Readiness Handoff/);
+    assert.match(handoffMarkdown, /Fix no-op-risk recommended checks/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -53,8 +53,17 @@ export interface ActionCheckReadinessFinding {
   reason: string;
 }
 
+export interface ActionCheckReadinessMissing {
+  actionId: string;
+  actionTitle: string;
+  command: string;
+  reason: string;
+}
+
 export interface ActionCheckReadinessSummary {
   actionPlanPath: string;
+  handoffJsonPath: string;
+  handoffMarkdownPath: string;
   actionCount: number;
   recommendedCheckCount: number;
   trackedCheckCount: number;
@@ -63,6 +72,41 @@ export interface ActionCheckReadinessSummary {
   noOpRiskCount: number;
   unknownCount: number;
   findings: ActionCheckReadinessFinding[];
+  missingReadiness: ActionCheckReadinessMissing[];
+}
+
+export type ActionCheckReadinessHandoffItemStatus = "no-op-risk" | "unknown" | "missing-metadata";
+
+export interface ActionCheckReadinessHandoffItem {
+  actionId: string;
+  actionTitle: string;
+  command: string;
+  status: ActionCheckReadinessHandoffItemStatus;
+  reason: string;
+  recommendedAction: string;
+}
+
+export interface ActionCheckReadinessHandoff {
+  version: 1;
+  runId: string;
+  createdAt: string;
+  goal: string;
+  actionPlanPath: string;
+  markdownPath: string;
+  jsonPath: string;
+  summary: {
+    actionCount: number;
+    recommendedCheckCount: number;
+    trackedCheckCount: number;
+    checksWithoutReadiness: number;
+    readyCount: number;
+    noOpRiskCount: number;
+    unknownCount: number;
+    attentionItemCount: number;
+  };
+  blockedBeforeProposal: boolean;
+  items: ActionCheckReadinessHandoffItem[];
+  recommendedNextActions: string[];
 }
 
 interface ProposalGateSummary {
@@ -380,9 +424,24 @@ export async function writeRunReport(loaded: LoadedConfig, pkg: MigrationRunPack
   const report = await renderRunReport(loaded, pkg);
   const reportPath = path.join(migrationRunDir(loaded, pkg.run.id), "reports", name);
   await writeTextFile(reportPath, report);
+  await writeActionCheckReadinessHandoff(loaded, pkg);
   pkg.run.finalReportPath = reportPath;
   await saveRunPackage(loaded, pkg);
   return reportPath;
+}
+
+export async function writeActionCheckReadinessHandoff(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage
+): Promise<ActionCheckReadinessHandoff | undefined> {
+  const summary = await readActionCheckReadinessSummary(loaded, pkg);
+  if (!summary) {
+    return undefined;
+  }
+  const handoff = createActionCheckReadinessHandoff(pkg, summary);
+  await writeJsonFile(summary.handoffJsonPath, handoff);
+  await writeTextFile(summary.handoffMarkdownPath, renderActionCheckReadinessHandoffMarkdown(handoff));
+  return handoff;
 }
 
 export async function writeCiHandoffReport(loaded: LoadedConfig, pkg: MigrationRunPackage, name = "ci-handoff.md"): Promise<string> {
@@ -559,7 +618,7 @@ function nextActionForActionCheckReadiness(summary?: ActionCheckReadinessSummary
     reason: firstRisk
       ? `${summary.noOpRiskCount} recommended check(s) may no-op; first: ${firstRisk.actionId} ${firstRisk.command} (${firstRisk.reason})`
       : `${summary.noOpRiskCount} recommended check(s) may no-op`,
-    evidence: [summary.actionPlanPath]
+    evidence: [summary.handoffMarkdownPath, summary.handoffJsonPath, summary.actionPlanPath]
   };
 }
 
@@ -660,6 +719,7 @@ function renderActionCheckReadinessTextLines(summary?: ActionCheckReadinessSumma
   return [
     `Action check readiness: actions:${summary.actionCount} checks:${summary.recommendedCheckCount} tracked:${summary.trackedCheckCount} ready:${summary.readyCount} no-op-risk:${summary.noOpRiskCount} unknown:${summary.unknownCount}`,
     summary.checksWithoutReadiness > 0 ? `Action check readiness missing: ${summary.checksWithoutReadiness}` : undefined,
+    `Action check handoff: ${summary.handoffMarkdownPath}`,
     firstRisk ? `Action check risk: ${firstRisk.actionId} ${firstRisk.command} (${firstRisk.reason})` : undefined
   ].filter((line): line is string => Boolean(line));
 }
@@ -672,6 +732,8 @@ function renderActionCheckReadinessMarkdownLines(summary?: ActionCheckReadinessS
   const unknownFindings = summary.findings.filter((finding) => finding.status === "unknown");
   return [
     `- Action plan: ${summary.actionPlanPath}`,
+    `- Handoff JSON: ${summary.handoffJsonPath}`,
+    `- Handoff Markdown: ${summary.handoffMarkdownPath}`,
     `- Actions: ${summary.actionCount}`,
     `- Checks: ${summary.recommendedCheckCount} recommended, ${summary.trackedCheckCount} readiness-tracked`,
     `- Status counts: ready:${summary.readyCount}, no-op-risk:${summary.noOpRiskCount}, unknown:${summary.unknownCount}`,
@@ -683,8 +745,114 @@ function renderActionCheckReadinessMarkdownLines(summary?: ActionCheckReadinessS
     ...(unknownFindings.length > 0 ? [
       "- Unknown checks:",
       ...unknownFindings.slice(0, 5).map((finding) => `  - ${finding.actionId}: \`${finding.command}\` (${finding.reason})`)
+    ] : []),
+    ...(summary.missingReadiness.length > 0 ? [
+      "- Missing readiness metadata:",
+      ...summary.missingReadiness.slice(0, 5).map((finding) => `  - ${finding.actionId}: \`${finding.command}\` (${finding.reason})`)
     ] : [])
   ].filter((line): line is string => Boolean(line));
+}
+
+function createActionCheckReadinessHandoff(
+  pkg: MigrationRunPackage,
+  summary: ActionCheckReadinessSummary
+): ActionCheckReadinessHandoff {
+  const items = createActionCheckReadinessHandoffItems(summary);
+  return {
+    version: 1,
+    runId: pkg.run.id,
+    createdAt: new Date().toISOString(),
+    goal: pkg.run.goal,
+    actionPlanPath: summary.actionPlanPath,
+    markdownPath: summary.handoffMarkdownPath,
+    jsonPath: summary.handoffJsonPath,
+    summary: {
+      actionCount: summary.actionCount,
+      recommendedCheckCount: summary.recommendedCheckCount,
+      trackedCheckCount: summary.trackedCheckCount,
+      checksWithoutReadiness: summary.checksWithoutReadiness,
+      readyCount: summary.readyCount,
+      noOpRiskCount: summary.noOpRiskCount,
+      unknownCount: summary.unknownCount,
+      attentionItemCount: items.length
+    },
+    blockedBeforeProposal: summary.noOpRiskCount > 0,
+    items,
+    recommendedNextActions: createActionCheckReadinessNextActions(summary)
+  };
+}
+
+function createActionCheckReadinessHandoffItems(summary: ActionCheckReadinessSummary): ActionCheckReadinessHandoffItem[] {
+  const items: ActionCheckReadinessHandoffItem[] = [];
+  for (const finding of summary.findings) {
+    if (finding.status === "no-op-risk" || finding.status === "unknown") {
+      items.push({
+        actionId: finding.actionId,
+        actionTitle: finding.actionTitle,
+        command: finding.command,
+        status: finding.status,
+        reason: finding.reason,
+        recommendedAction: finding.status === "no-op-risk"
+          ? "Replace the recommended check with a command that definitely runs for the target package, or use --allow-no-op-risk only after explicit review."
+          : "Inspect the command manually and add a more specific readiness classifier or safer recommended check."
+      });
+    }
+  }
+  for (const finding of summary.missingReadiness) {
+    items.push({
+      actionId: finding.actionId,
+      actionTitle: finding.actionTitle,
+      command: finding.command,
+      status: "missing-metadata" as const,
+      reason: finding.reason,
+      recommendedAction: "Regenerate the action plan with readiness metadata or add a readiness entry for this recommended check."
+    });
+  }
+  return items;
+}
+
+function createActionCheckReadinessNextActions(summary: ActionCheckReadinessSummary): string[] {
+  const actions: string[] = [];
+  if (summary.noOpRiskCount > 0) {
+    actions.push("Fix no-op-risk recommended checks before running action propose.");
+  }
+  if (summary.unknownCount > 0) {
+    actions.push("Review unknown recommended checks before relying on them as proposal gates.");
+  }
+  if (summary.checksWithoutReadiness > 0) {
+    actions.push("Regenerate or update the action plan so every recommended check has readiness metadata.");
+  }
+  if (actions.length === 0) {
+    actions.push("No action check readiness blockers found.");
+  }
+  return actions;
+}
+
+function renderActionCheckReadinessHandoffMarkdown(handoff: ActionCheckReadinessHandoff): string {
+  return [
+    `# Action Check Readiness Handoff: ${handoff.runId}`,
+    "",
+    `- Goal: ${handoff.goal}`,
+    `- Action plan: ${handoff.actionPlanPath}`,
+    `- JSON: ${handoff.jsonPath}`,
+    `- Blocked before proposal: ${handoff.blockedBeforeProposal ? "yes" : "no"}`,
+    `- Summary: actions:${handoff.summary.actionCount} checks:${handoff.summary.recommendedCheckCount} tracked:${handoff.summary.trackedCheckCount} ready:${handoff.summary.readyCount} no-op-risk:${handoff.summary.noOpRiskCount} unknown:${handoff.summary.unknownCount} missing:${handoff.summary.checksWithoutReadiness}`,
+    "",
+    "## Recommended Next Actions",
+    "",
+    ...handoff.recommendedNextActions.map((action) => `- ${action}`),
+    "",
+    "## Attention Items",
+    "",
+    handoff.items.length > 0
+      ? handoff.items.map((item) => [
+        `- ${item.actionId} [${item.status}] ${item.command}`,
+        `  action-title: ${item.actionTitle}`,
+        `  reason: ${item.reason}`,
+        `  recommended: ${item.recommendedAction}`
+      ].join("\n")).join("\n")
+      : "No attention items."
+  ].join("\n");
 }
 
 export function syncIssueStatuses(pkg: MigrationRunPackage): void {
@@ -936,13 +1104,15 @@ async function readActionCheckReadinessSummary(
   if (!await pathExists(filePath)) {
     return undefined;
   }
+  const handoffJsonPath = actionCheckReadinessHandoffJsonPath(loaded, pkg.run.id);
+  const handoffMarkdownPath = actionCheckReadinessHandoffMarkdownPath(loaded, pkg.run.id);
 
   const raw = await readJsonFile<Partial<MigrationActionPlan>>(filePath);
   const actions = raw.actions ?? [];
   const findings: ActionCheckReadinessFinding[] = [];
+  const missingReadiness: ActionCheckReadinessMissing[] = [];
   let recommendedCheckCount = 0;
   let trackedCheckCount = 0;
-  let checksWithoutReadiness = 0;
   let readyCount = 0;
   let noOpRiskCount = 0;
   let unknownCount = 0;
@@ -952,7 +1122,17 @@ async function readActionCheckReadinessSummary(
     const readinessEntries = action.checkReadiness ?? [];
     recommendedCheckCount += recommendedChecks.length;
     trackedCheckCount += readinessEntries.length;
-    checksWithoutReadiness += Math.max(0, recommendedChecks.length - readinessEntries.length);
+
+    for (const command of recommendedChecks) {
+      if (!readinessEntries.some((readiness) => readiness.command === command)) {
+        missingReadiness.push({
+          actionId: action.id,
+          actionTitle: action.title,
+          command,
+          reason: "recommended check has no checkReadiness entry"
+        });
+      }
+    }
 
     for (const readiness of readinessEntries) {
       if (readiness.status === "ready") {
@@ -976,14 +1156,17 @@ async function readActionCheckReadinessSummary(
 
   return {
     actionPlanPath: filePath,
+    handoffJsonPath,
+    handoffMarkdownPath,
     actionCount: actions.length,
     recommendedCheckCount,
     trackedCheckCount,
-    checksWithoutReadiness,
+    checksWithoutReadiness: missingReadiness.length,
     readyCount,
     noOpRiskCount,
     unknownCount,
-    findings
+    findings,
+    missingReadiness
   };
 }
 
@@ -992,6 +1175,14 @@ function actionPlanArtifactPath(loaded: LoadedConfig, pkg: MigrationRunPackage):
     ? "md-monorepo-action-plan.json"
     : "pnpm-vite-vue-action-plan.json";
   return path.join(migrationRunDir(loaded, pkg.run.id), "adapter", fileName);
+}
+
+function actionCheckReadinessHandoffJsonPath(loaded: LoadedConfig, runId: string): string {
+  return path.join(migrationRunDir(loaded, runId), "reports", "action-check-readiness-handoff.json");
+}
+
+function actionCheckReadinessHandoffMarkdownPath(loaded: LoadedConfig, runId: string): string {
+  return path.join(migrationRunDir(loaded, runId), "reports", "action-check-readiness-handoff.md");
 }
 
 async function readProposalSummaries(loaded: LoadedConfig, runId: string): Promise<ProposedPatch[]> {
