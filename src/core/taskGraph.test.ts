@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createMdMonorepoRefactorTaskPlan, createPnpmViteVueActions } from "./executor.js";
+import { createMdMonorepoRefactorTaskPlan, createPnpmViteVueActions, evaluateActionCheckReadiness } from "./executor.js";
 import { createTaskGraph, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 import type { ScanSummary } from "../types.js";
@@ -82,6 +82,37 @@ test("createMdMonorepoRefactorTaskPlan covers md refactor domains and probes", (
   assert.ok(plan.tasks.some((task) => task.id === "md-task-web-editor-shell" && task.requiredProbes.includes("md-web-static-contract")));
   assert.ok(plan.tasks.some((task) => task.id === "md-task-mcp-render" && task.recommendedChecks.some((check) => check.includes("buildRenderedOutput"))));
   assert.ok(plan.tasks.some((task) => task.id === "md-task-cross-package-verification" && task.recommendedChecks.includes("pnpm test")));
+});
+
+test("evaluateActionCheckReadiness flags missing pnpm scripts before gates run", () => {
+  const index = {
+    rootScripts: new Set(["type-check", "build:cli"]),
+    packageScriptsByName: new Map([
+      ["@md/core", new Set(["test", "type-check"])],
+      ["@md/mcp-server", new Set(["start", "dev"])]
+    ])
+  };
+
+  assert.deepEqual(
+    evaluateActionCheckReadiness("pnpm --filter @md/core test", index),
+    {
+      command: "pnpm --filter @md/core test",
+      status: "ready",
+      reason: "package script exists: @md/core#test"
+    }
+  );
+  assert.deepEqual(
+    evaluateActionCheckReadiness("pnpm --filter @md/mcp-server type-check", index),
+    {
+      command: "pnpm --filter @md/mcp-server type-check",
+      status: "no-op-risk",
+      reason: "package @md/mcp-server has no script type-check"
+    }
+  );
+  assert.equal(
+    evaluateActionCheckReadiness("pnpm --filter @md/mcp-server exec tsx -e \"console.log(1)\"", index).status,
+    "ready"
+  );
 });
 
 function makeScan(): ScanSummary {

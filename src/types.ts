@@ -524,10 +524,17 @@ export interface MigrationAction {
   risk: "low" | "medium" | "high";
   affectedFiles: string[];
   recommendedChecks: string[];
+  checkReadiness?: MigrationActionCheckReadiness[];
   patchMode: MigrationActionPatchMode;
   patchTemplate?: MigrationActionPatchTemplate;
   preview?: ProposalPreviewConfig;
   checkPlan?: ProposalCheckPlanItem[];
+}
+
+export interface MigrationActionCheckReadiness {
+  command: string;
+  status: "ready" | "no-op-risk" | "unknown";
+  reason: string;
 }
 
 export interface MigrationActionPlan {

@@ -1663,6 +1663,38 @@ node dist/cli.js proposal verify --config configs/md-fast.migration-guard.json -
 - verify 后目标 `md` 工作树保持 clean。
 - `npm test` 覆盖 no-op 分类和 MD MCP recommended check。
 
+## Phase 47: Action Check Readiness
+
+目标：把 Phase 46 的 no-op gate 经验前置到 action plan。用户查看 actions 时，应能看到 recommended checks 是否能静态确认会实际运行，而不是等到 proposal gate 才发现缺脚本。
+
+新增能力：
+
+- `MigrationAction.checkReadiness`
+- root/package pnpm script 静态索引
+- `pnpm --filter <pkg> <script>` ready / no-op-risk 判断
+- `pnpm --filter <pkg> exec ...` ready 判断
+- `actions` CLI 输出 check-readiness 行
+
+建议命令：
+
+```bash
+node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "MD action check readiness validation" --dry-run --adapter md-monorepo --issue-provider local
+node dist/cli.js resume --config configs/md-fast.migration-guard.json --run latest --auto
+node dist/cli.js actions --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- `adapter/md-monorepo-action-plan.json` action `checkReadiness`
+- `actions` CLI 中的 `check-readiness: ready|no-op-risk|unknown`
+
+完成标准：
+
+- MD action plan 写出每个 recommended check 的 readiness。
+- 已知缺脚本的 pnpm filter 命令可静态标为 `no-op-risk`。
+- 当前 MD action candidates 的 checks 均标为 `ready` 或 `unknown`，且 MCP runtime smoke 标为 `ready`。
+- `npm test` 覆盖 readiness 分类。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

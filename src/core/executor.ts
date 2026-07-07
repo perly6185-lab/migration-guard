@@ -9,7 +9,7 @@ import { scanProject } from "./scan.js";
 import { updateTaskStatus, insertFailureTask, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
 import { appendEvidence, createFailureIssue, createId, migrationRunDir, saveRunPackage, setRunStatus, syncIssueStatuses, writeRunReport } from "./migrationRun.js";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
-import type { LoadedConfig, MigrationAction, MigrationIssue, MigrationTask, ScanSummary } from "../types.js";
+import type { LoadedConfig, MigrationAction, MigrationActionCheckReadiness, MigrationIssue, MigrationTask, ScanSummary } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
 export interface ExecuteTaskOptions {
@@ -310,7 +310,7 @@ async function createMdMonorepoActionPlan(loaded: LoadedConfig, pkg: MigrationRu
   const plan = await pathExists(planPath)
     ? await readJsonFile<MdRefactorTaskPlan>(planPath)
     : createMdMonorepoRefactorTaskPlan(pkg, await scanProject({ ...loaded, targetRoot: pkg.run.targetRoot }));
-  const actions = createMdMonorepoActions(plan);
+  const actions = await createMdMonorepoActions(plan, pkg.run.targetRoot);
   const actionPlanPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "md-monorepo-action-plan.json");
   await writeJsonFile(actionPlanPath, {
     version: 1,
@@ -458,7 +458,8 @@ export function createMdMonorepoRefactorTaskPlan(pkg: MigrationRunPackage, scan:
   };
 }
 
-function createMdMonorepoActions(plan: MdRefactorTaskPlan): MigrationAction[] {
+async function createMdMonorepoActions(plan: MdRefactorTaskPlan, targetRoot: string): Promise<MigrationAction[]> {
+  const packageScripts = await collectPackageScripts(targetRoot);
   return plan.tasks
     .filter((task) => task.owner !== "engine")
     .map((task) => ({
@@ -472,9 +473,138 @@ function createMdMonorepoActions(plan: MdRefactorTaskPlan): MigrationAction[] {
       risk: task.risk,
       affectedFiles: task.affectedFiles,
       recommendedChecks: task.recommendedChecks,
+      checkReadiness: task.recommendedChecks.map((command) => evaluateActionCheckReadiness(command, packageScripts)),
       patchMode: task.risk === "high" ? "manual-approval-required" : "dry-run-only",
       patchTemplate: inferMdActionTemplate(task)
     }));
+}
+
+interface PackageScriptIndex {
+  rootScripts: Set<string>;
+  packageScriptsByName: Map<string, Set<string>>;
+}
+
+export async function collectPackageScripts(targetRoot: string): Promise<PackageScriptIndex> {
+  const packageJsonPaths = await collectFiles(targetRoot, (file) => path.basename(file) === "package.json");
+  const packageScriptsByName = new Map<string, Set<string>>();
+  let rootScripts = new Set<string>();
+
+  for (const packageJsonPath of packageJsonPaths) {
+    if (packageJsonPath.includes(`${path.sep}node_modules${path.sep}`)) {
+      continue;
+    }
+    const raw = await readJsonFile<Record<string, unknown>>(packageJsonPath).catch(() => undefined);
+    if (!raw) {
+      continue;
+    }
+    const scripts = new Set(Object.keys(readScripts(raw)));
+    if (path.resolve(packageJsonPath) === path.resolve(targetRoot, "package.json")) {
+      rootScripts = scripts;
+    }
+    if (typeof raw.name === "string") {
+      packageScriptsByName.set(raw.name, scripts);
+    }
+  }
+
+  return {
+    rootScripts,
+    packageScriptsByName
+  };
+}
+
+export function evaluateActionCheckReadiness(command: string, packageScripts: PackageScriptIndex): MigrationActionCheckReadiness {
+  const words = shellWords(command);
+  if (words[0] !== "pnpm") {
+    return {
+      command,
+      status: "unknown",
+      reason: "non-pnpm command; runtime gate will validate it"
+    };
+  }
+
+  const filterIndex = words.indexOf("--filter");
+  if (filterIndex >= 0) {
+    const packageName = words[filterIndex + 1];
+    const afterFilter = words.slice(filterIndex + 2);
+    if (!packageName || afterFilter.length === 0) {
+      return {
+        command,
+        status: "unknown",
+        reason: "pnpm filter command could not be statically resolved"
+      };
+    }
+    if (afterFilter[0] === "exec") {
+      return {
+        command,
+        status: "ready",
+        reason: `direct pnpm exec for ${packageName}`
+      };
+    }
+    const scriptName = afterFilter[0] === "run" ? afterFilter[1] : afterFilter[0];
+    const scripts = packageScripts.packageScriptsByName.get(packageName);
+    if (!scripts) {
+      return {
+        command,
+        status: "unknown",
+        reason: `package ${packageName} was not found in target package index`
+      };
+    }
+    if (scripts.has(scriptName)) {
+      return {
+        command,
+        status: "ready",
+        reason: `package script exists: ${packageName}#${scriptName}`
+      };
+    }
+    return {
+      command,
+      status: "no-op-risk",
+      reason: `package ${packageName} has no script ${scriptName}`
+    };
+  }
+
+  const scriptName = words[1] === "run" ? words[2] : words[1];
+  if (!scriptName) {
+    return {
+      command,
+      status: "unknown",
+      reason: "pnpm command has no script or subcommand to validate"
+    };
+  }
+  if (scriptName === "exec" || scriptName === "dlx" || scriptName === "install") {
+    return {
+      command,
+      status: "ready",
+      reason: `pnpm ${scriptName} command does not require a package script`
+    };
+  }
+  if (packageScripts.rootScripts.has(scriptName)) {
+    return {
+      command,
+      status: "ready",
+      reason: `root script exists: ${scriptName}`
+    };
+  }
+  return {
+    command,
+    status: "no-op-risk",
+    reason: `root package has no script ${scriptName}`
+  };
+}
+
+function shellWords(command: string): string[] {
+  return command.match(/"[^"]*"|'[^']*'|\S+/g)?.map((word) => word.replace(/^["']|["']$/g, "")) ?? [];
+}
+
+function readScripts(packageJson: Record<string, unknown> | undefined): Record<string, string> {
+  if (!packageJson || typeof packageJson.scripts !== "object" || packageJson.scripts === null) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(packageJson.scripts as Record<string, unknown>)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
 }
 
 function inferMdActionTemplate(task: MdRefactorTaskPlanItem): MigrationAction["patchTemplate"] {

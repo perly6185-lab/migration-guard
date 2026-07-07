@@ -39,6 +39,9 @@ export function renderActionPlan(plan: MigrationActionPlan): string {
       `  files: ${action.affectedFiles.join(", ") || "none"}`,
       `  checks: ${action.recommendedChecks.join(", ") || "none"}`
     );
+    for (const readiness of action.checkReadiness ?? []) {
+      lines.push(`  check-readiness: ${readiness.status} ${readiness.command} (${readiness.reason})`);
+    }
   }
 
   return lines.join("\n");

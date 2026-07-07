@@ -118,6 +118,8 @@ files, which lets domain-scoped proposals use real package boundaries.
 checks run, then rolls them back and keeps the proposal unapplied.
 Proposal checks also fail on package-manager no-op output, such as a pnpm filter
 that exits successfully without running the requested script.
+MD action plans include static check-readiness hints so missing pnpm scripts can
+be spotted before proposal gates run.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at
