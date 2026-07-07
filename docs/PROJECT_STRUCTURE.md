@@ -12,6 +12,10 @@ migration-guard/
   .gitignore
   .migration-guard.json
 
+  .github/
+    workflows/
+      ci.yml
+
   docs/
     DEVELOPMENT_PHASES.md
     GITHUB_MUTATION_SMOKE_PLAN.md
@@ -20,6 +24,7 @@ migration-guard/
     MD_REAL_WORLD_VALIDATION_REPORT.md
     NEXT_MAJOR_PHASES.md
     PHASE_COMPLETION_REPORT.md
+    PR_MERGE_READINESS.md
     PHASE_12_REPORT.md
     PHASE_13_REPORT.md
     PHASE_14_REPORT.md
@@ -56,6 +61,7 @@ migration-guard/
     PHASE_49_REPORT.md
     PHASE_50_REPORT.md
     PHASE_51_REPORT.md
+    PHASE_52_REPORT.md
     PRODUCT_DESIGN.md
     PROJECT_STRUCTURE.md
     REQUIREMENTS.md

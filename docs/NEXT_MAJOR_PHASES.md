@@ -67,6 +67,7 @@ Progress:
 - Phase 49: status/report summarize action check readiness and surface no-op-risk as next action.
 - Phase 50: run reports emit action check readiness JSON/Markdown handoff artifacts.
 - Phase 51: `actions handoff` generates readiness handoff artifacts on demand.
+- Phase 52: GitHub Actions CI and PR merge readiness checklist close the development loop.
 
 候选能力：
 
@@ -81,6 +82,7 @@ Progress:
 - 至少一个真实项目能展示 proposal 前后行为证据。
 - gate 失败时可以直接定位到具体 check/probe drift。
 - report 能说明“为什么停、下一步做什么、依据是什么”。
+- PR CI 能在 GitHub 上报告 `npm test` 结果。
 
 ## Major Phase D: AI Collaboration Loop
 

@@ -1823,6 +1823,39 @@ node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json -
 - 入口不修改 target repository。
 - `npm test` 覆盖 CLI 入口。
 
+## Phase 52: PR Merge Readiness and CI Closure
+
+目标：停止继续扩展迁移功能，转向 PR 收口。让 PR 在 GitHub 上报告 CI，并给 reviewer 一个明确的 merge readiness checklist。
+
+新增能力：
+
+- `.github/workflows/ci.yml`
+- pull request / main push / manual dispatch 触发 CI
+- CI 使用 Node 22、`npm ci`、`npm test`
+- `docs/PR_MERGE_READINESS.md`
+- README 增加 merge readiness 入口
+
+建议命令：
+
+```bash
+npm test
+node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json --run latest --json
+gh pr checks 1
+```
+
+产物：
+
+- GitHub Actions `CI / Build and Test`
+- `docs/PR_MERGE_READINESS.md`
+- `docs/PHASE_52_REPORT.md`
+
+完成标准：
+
+- CI workflow 提交到 PR。
+- 本地 `npm test` 通过。
+- PR checks 在 GitHub 上开始 reported。
+- 工具仓库和 target `md` 仓库 clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

@@ -75,6 +75,18 @@ node dist/cli.js sync-issues --run latest --provider github --live --repo owner/
 node dist/cli.js ci verify --baseline .migration-guard/latest-baseline.json --run latest
 ```
 
+Merge readiness:
+
+```bash
+npm test
+node dist/cli.js actions handoff --run latest --json
+gh pr checks 1
+```
+
+Pull requests run GitHub Actions CI with Node 22, `npm ci`, and `npm test`.
+Use [docs/PR_MERGE_READINESS.md](docs/PR_MERGE_READINESS.md) as the final PR
+handoff checklist.
+
 Proposal gates support two execution policies:
 
 - `collect-all` runs all planned checks and records the full failure surface.
