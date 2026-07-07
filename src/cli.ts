@@ -13,29 +13,45 @@ import {
   renderIssues,
   renderRunReport,
   renderRunStatus,
+  renderActionCheckReadinessHandoffMarkdown,
+  resolveRunNextAction,
   setRunStatus,
+  writeActionCheckReadinessHandoff,
+  writeCiHandoffReport,
   writeRunReport
 } from "./core/migrationRun.js";
 import { renderMigrationPlan } from "./core/plan.js";
 import { scanProject } from "./core/scan.js";
 import { captureSnapshot, latestBaselinePath, latestRunPath, loadSnapshot, saveSnapshot } from "./core/snapshot.js";
 import { compareSnapshots } from "./core/compare.js";
+import {
+  decisionsForCompareReport,
+  loadDiffDecisionLedger,
+  recordDiffDecision,
+  renderDiffDecisionList
+} from "./core/diffDecision.js";
 import { getReadyTasks, validateTaskGraph } from "./core/taskGraph.js";
 import { syncIssues } from "./core/issueSync.js";
 import { loadActionPlan, renderActionPlan } from "./core/actionPlan.js";
 import {
+  applyProposalBatch,
   applyProposedPatch,
+  createProposalRetry,
+  createProposalBatchPlan,
   getProposalStatus,
   proposeActionPatch,
   proposePatch,
+  renderProposalBatchPlan,
+  renderProposalBatchReport,
   renderProposalRollbackReport,
   renderProposalStatus,
   renderProposalVerificationReport,
+  replanProposal,
   rollbackProposedPatch,
   verifyProposedPatch
 } from "./core/patch.js";
 import { runPreviewProbe } from "./core/preview.js";
-import type { CompareReport, MigrationAutomationMode, MigrationRun } from "./types.js";
+import type { CompareReport, DiffDecisionClassification, Difference, MigrationAutomationMode, MigrationRun, ProposalGatePolicy } from "./types.js";
 
 interface ParsedArgs {
   command: string;
@@ -66,6 +82,9 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "compare":
       await commandCompare(args);
+      return;
+    case "diff":
+      await commandDiff(args);
       return;
     case "plan":
       await commandPlan(args);
@@ -249,6 +268,66 @@ async function commandCompare(args: ParsedArgs): Promise<void> {
   }
 }
 
+async function commandDiff(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "list";
+  const loaded = await loadFromArgs(args);
+  const runId = await resolveRunIdOption(loaded, args);
+
+  if (action === "decide") {
+    const compareReportPath = stringOption(args, "compare");
+    const area = differenceAreaOption(args);
+    const name = stringOption(args, "name");
+    const classification = diffDecisionClassificationOption(args);
+    const reason = stringOption(args, "reason");
+    if (!compareReportPath || !area || !name || !classification || !reason) {
+      throw new Error("diff decide requires --compare <compare.json> --area check|probe|scan --name <name> --as intentional|accidental|unknown --reason <text>.");
+    }
+    const result = await recordDiffDecision(loaded, {
+      runId,
+      proposalId: stringOption(args, "proposal"),
+      compareReportPath,
+      area,
+      name,
+      classification,
+      reason,
+      approvedBy: stringOption(args, "approved-by"),
+      severity: differenceSeverityOption(args),
+      message: stringOption(args, "message")
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(result.decision, null, 2));
+    } else {
+      console.log(`Recorded ${result.decision.classification} decision for ${result.decision.area}/${result.decision.name}.`);
+      console.log(`Ledger: ${result.ledgerPath}`);
+      console.log(`Compare: ${result.decision.compareReportPath}`);
+    }
+    return;
+  }
+
+  if (action === "list") {
+    const ledger = await loadDiffDecisionLedger(loaded, runId);
+    const compareReportPath = stringOption(args, "compare");
+    if (compareReportPath) {
+      const report = await readJsonFile<CompareReport>(path.resolve(process.cwd(), compareReportPath));
+      const decisions = await decisionsForCompareReport(loaded, report, runId);
+      if (args.options.json) {
+        console.log(JSON.stringify({ ledgerPath: undefined, report, decisions }, null, 2));
+      } else {
+        console.log(renderDiffDecisionList(ledger, report, decisions));
+      }
+      return;
+    }
+    if (args.options.json) {
+      console.log(JSON.stringify(ledger, null, 2));
+    } else {
+      console.log(renderDiffDecisionList(ledger));
+    }
+    return;
+  }
+
+  throw new Error(`Unknown diff command: ${action}`);
+}
+
 async function commandPlan(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const scan = await scanProject(loaded);
@@ -325,7 +404,7 @@ async function commandRun(args: ParsedArgs): Promise<void> {
       pkg.run.mode = "auto";
     }
     await executeReadyTasks(loaded, pkg, { createCheckpoint: true });
-    console.log(renderRunStatus(pkg));
+    console.log(renderRunStatus(pkg, await resolveRunNextAction(loaded, pkg)));
     return;
   }
 
@@ -342,7 +421,7 @@ async function commandRun(args: ParsedArgs): Promise<void> {
     await executeReadyTasks(loaded, pkg, { createCheckpoint: true });
   }
 
-  console.log(renderRunStatus(pkg));
+  console.log(renderRunStatus(pkg, await resolveRunNextAction(loaded, pkg)));
   const reportPath = await writeRunReport(loaded, pkg);
   console.log("");
   console.log(`Wrote ${reportPath}`);
@@ -351,7 +430,7 @@ async function commandRun(args: ParsedArgs): Promise<void> {
 async function commandStatus(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
-  console.log(renderRunStatus(pkg));
+  console.log(renderRunStatus(pkg, await resolveRunNextAction(loaded, pkg)));
 }
 
 async function commandIssues(args: ParsedArgs): Promise<void> {
@@ -391,6 +470,24 @@ async function commandTasks(args: ParsedArgs): Promise<void> {
 async function commandActions(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const action = args.positionals[0];
+
+  if (action === "handoff") {
+    const handoff = await writeActionCheckReadinessHandoff(loaded, pkg);
+    if (!handoff) {
+      throw new Error(`No action plan found for run ${pkg.run.id}. Run or resume a supported adapter migration first.`);
+    }
+    if (args.options.json) {
+      console.log(JSON.stringify(handoff, null, 2));
+      return;
+    }
+    console.log(renderActionCheckReadinessHandoffMarkdown(handoff));
+    console.log("");
+    console.log(`Wrote ${handoff.markdownPath}`);
+    console.log(`Wrote ${handoff.jsonPath}`);
+    return;
+  }
+
   const plan = await loadActionPlan(loaded, pkg);
   if (args.options.json) {
     console.log(JSON.stringify(plan, null, 2));
@@ -444,7 +541,7 @@ async function commandResume(args: ParsedArgs): Promise<void> {
   }
   setRunStatus(pkg, "running");
   await executeReadyTasks(loaded, pkg, { createCheckpoint: true });
-  console.log(renderRunStatus(pkg));
+  console.log(renderRunStatus(pkg, await resolveRunNextAction(loaded, pkg)));
 }
 
 async function commandRollback(args: ParsedArgs): Promise<void> {
@@ -488,7 +585,9 @@ async function commandTask(args: ParsedArgs): Promise<void> {
     if (!proposalId) {
       throw new Error("task apply requires --proposal <proposal-id>.");
     }
-    const result = await applyProposedPatch(loaded, pkg, proposalId);
+    const result = await applyProposedPatch(loaded, pkg, proposalId, {
+      behaviorDiff: Boolean(args.options["behavior-diff"])
+    });
     console.log(result.message);
     if (result.report) {
       console.log(renderProposalVerificationReport(result.report));
@@ -508,7 +607,9 @@ async function commandAction(args: ParsedArgs): Promise<void> {
     if (!actionId) {
       throw new Error("action propose requires --action <action-id>.");
     }
-    const patch = await proposeActionPatch(loaded, pkg, actionId);
+    const patch = await proposeActionPatch(loaded, pkg, actionId, {
+      allowNoOpRisk: Boolean(args.options["allow-no-op-risk"])
+    });
     console.log(`Proposed ${patch.id}`);
     console.log(patch.patchPath);
     if (patch.generatedFiles && patch.generatedFiles.length > 0) {
@@ -524,7 +625,9 @@ async function commandAction(args: ParsedArgs): Promise<void> {
     }
     const result = await applyProposedPatch(loaded, pkg, proposalId, {
       runChecks: !args.options["skip-checks"],
-      rollbackOnFail: Boolean(args.options["rollback-on-fail"])
+      rollbackOnFail: Boolean(args.options["rollback-on-fail"]),
+      gatePolicy: gatePolicyOption(args),
+      behaviorDiff: Boolean(args.options["behavior-diff"])
     });
     console.log(result.message);
     if (result.report) {
@@ -545,11 +648,47 @@ async function commandProposal(args: ParsedArgs): Promise<void> {
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
   const proposalId = stringOption(args, "proposal") ?? args.positionals[1];
 
+  if (action === "batch") {
+    const batchAction = args.positionals[1] ?? "plan";
+    const limit = numberOption(args, "limit");
+    if (batchAction === "plan") {
+      const plan = await createProposalBatchPlan(loaded, pkg, { limit });
+      if (args.options.json) {
+        console.log(JSON.stringify(plan, null, 2));
+      } else {
+        console.log(renderProposalBatchPlan(plan));
+      }
+      return;
+    }
+    if (batchAction === "apply") {
+      const report = await applyProposalBatch(loaded, pkg, {
+        limit,
+        runChecks: !args.options["skip-checks"],
+        rollbackOnFail: !args.options["no-rollback-on-fail"],
+        gatePolicy: gatePolicyOption(args),
+        behaviorDiff: Boolean(args.options["behavior-diff"])
+      });
+      if (args.options.json) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        console.log(renderProposalBatchReport(report));
+      }
+      if (!report.passed) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+    throw new Error(`Unknown proposal batch command: ${batchAction}`);
+  }
+
   if (action === "verify") {
     if (!proposalId) {
       throw new Error("proposal verify requires --proposal <proposal-id>.");
     }
-    const report = await verifyProposedPatch(loaded, pkg, proposalId, { runChecks: Boolean(args.options.checks) });
+    const report = await verifyProposedPatch(loaded, pkg, proposalId, {
+      runChecks: Boolean(args.options.checks),
+      gatePolicy: gatePolicyOption(args)
+    });
     if (args.options.json) {
       console.log(JSON.stringify(report, null, 2));
     } else {
@@ -590,6 +729,40 @@ async function commandProposal(args: ParsedArgs): Promise<void> {
     return;
   }
 
+  if (action === "replan") {
+    if (!proposalId) {
+      throw new Error("proposal replan requires --proposal <proposal-id>.");
+    }
+    const result = await replanProposal(loaded, pkg, proposalId);
+    if (args.options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(result.message);
+      console.log(`Task: ${result.task.id}`);
+      console.log(`Report: ${result.report.outputPath}`);
+      console.log(`Replan brief: ${result.briefPath}`);
+      console.log(`Replan context: ${result.contextPath}`);
+    }
+    return;
+  }
+
+  if (action === "retry") {
+    if (!proposalId) {
+      throw new Error("proposal retry requires --proposal <proposal-id>.");
+    }
+    const result = await createProposalRetry(loaded, pkg, proposalId);
+    if (args.options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(result.message);
+      console.log(`Retry proposal: ${result.proposal.id}`);
+      console.log(`Patch: ${result.proposal.patchPath}`);
+      console.log(`Replan brief: ${result.proposal.replanBriefPath ?? "none"}`);
+      console.log(`Replan context: ${result.proposal.replanContextPath ?? "none"}`);
+    }
+    return;
+  }
+
   throw new Error(`Unknown proposal command: ${action}`);
 }
 
@@ -597,8 +770,27 @@ async function commandSyncIssues(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
   const provider = issueProviderOption(args) ?? "local";
-  const outputPath = await syncIssues(loaded, pkg, provider, { dryRun: Boolean(args.options["dry-run"]) });
-  console.log(args.options["dry-run"] ? `Dry-run export wrote ${outputPath}` : `Wrote ${outputPath}`);
+  const outputPath = await syncIssues(loaded, pkg, provider, {
+    dryRun: Boolean(args.options["dry-run"]),
+    live: Boolean(args.options.live),
+    livePlan: Boolean(args.options["live-plan"]),
+    repo: stringOption(args, "repo"),
+    liveConfirm: stringOption(args, "live-confirm"),
+    livePlanConfirm: stringOption(args, "live-plan-confirm"),
+    labels: labelsOption(args),
+    onlyIssue: stringOption(args, "only-issue"),
+    maxLiveMutations: nonNegativeIntegerOption(args, "max-live-mutations")
+  });
+  if (args.options["dry-run"]) {
+    console.log(`Dry-run export wrote ${outputPath}`);
+    return;
+  }
+  if (args.options["live-plan"]) {
+    console.log(`GitHub live-plan read-only lookup wrote ${outputPath}`);
+    console.log("Read-only: fetched open issues with GET only; no POST/PATCH mutations were sent.");
+    return;
+  }
+  console.log(`Wrote ${outputPath}`);
 }
 
 async function commandCi(args: ParsedArgs): Promise<void> {
@@ -607,6 +799,13 @@ async function commandCi(args: ParsedArgs): Promise<void> {
     throw new Error(`Unknown ci action: ${action}`);
   }
   await commandVerify(args);
+  const runId = stringOption(args, "run");
+  if (runId) {
+    const loaded = await loadFromArgs(args);
+    const pkg = await loadRunPackage(loaded, runId);
+    const outputPath = await writeCiHandoffReport(loaded, pkg);
+    console.log(`CI handoff wrote ${outputPath}`);
+  }
 }
 
 async function commandContract(args: ParsedArgs): Promise<void> {
@@ -690,6 +889,89 @@ function stringOption(args: ParsedArgs, name: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function numberOption(args: ParsedArgs, name: string): number | undefined {
+  const value = stringOption(args, name);
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid number for --${name}: ${value}`);
+  }
+  return parsed;
+}
+
+function nonNegativeIntegerOption(args: ParsedArgs, name: string): number | undefined {
+  const value = numberOption(args, name);
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid --${name}: ${value}. Expected a non-negative integer.`);
+  }
+  return value;
+}
+
+function labelsOption(args: ParsedArgs): string[] | undefined {
+  const value = stringOption(args, "labels") ?? stringOption(args, "label");
+  if (!value) {
+    return undefined;
+  }
+  return [...new Set(value.split(",").map((label) => label.trim()).filter(Boolean))];
+}
+
+function gatePolicyOption(args: ParsedArgs): ProposalGatePolicy | undefined {
+  const value = stringOption(args, "gate-policy");
+  if (!value) {
+    return undefined;
+  }
+  if (value !== "fail-fast" && value !== "collect-all") {
+    throw new Error(`Invalid --gate-policy: ${value}. Expected fail-fast or collect-all.`);
+  }
+  return { mode: value };
+}
+
+async function resolveRunIdOption(loaded: Awaited<ReturnType<typeof loadFromArgs>>, args: ParsedArgs): Promise<string | undefined> {
+  const runSelector = stringOption(args, "run");
+  if (!runSelector) {
+    return undefined;
+  }
+  return (await loadRunPackage(loaded, runSelector)).run.id;
+}
+
+function diffDecisionClassificationOption(args: ParsedArgs): DiffDecisionClassification | undefined {
+  const value = stringOption(args, "as") ?? stringOption(args, "classification");
+  if (!value) {
+    return undefined;
+  }
+  if (value === "intentional" || value === "accidental" || value === "unknown") {
+    return value;
+  }
+  throw new Error(`Invalid diff decision: ${value}. Expected intentional, accidental, or unknown.`);
+}
+
+function differenceAreaOption(args: ParsedArgs): Difference["area"] | undefined {
+  const value = stringOption(args, "area");
+  if (!value) {
+    return undefined;
+  }
+  if (value === "check" || value === "probe" || value === "scan") {
+    return value;
+  }
+  throw new Error(`Invalid --area: ${value}. Expected check, probe, or scan.`);
+}
+
+function differenceSeverityOption(args: ParsedArgs): Difference["severity"] | undefined {
+  const value = stringOption(args, "severity");
+  if (!value) {
+    return undefined;
+  }
+  if (value === "error" || value === "warn" || value === "info") {
+    return value;
+  }
+  throw new Error(`Invalid --severity: ${value}. Expected error, warn, or info.`);
+}
+
 function resolveRunMode(args: ParsedArgs): MigrationAutomationMode {
   if (args.options.auto) {
     return "auto";
@@ -727,6 +1009,8 @@ Usage:
   migration-guard baseline [--config <path>]
   migration-guard verify [--config <path>] [--baseline <path>]
   migration-guard compare [--config <path>] [--baseline <path>] [--current <path>]
+  migration-guard diff list [--run <id|latest>] [--compare <compare.json>] [--json]
+  migration-guard diff decide [--run <id|latest>] --compare <compare.json> --area check|probe|scan --name <name> --as intentional|accidental|unknown --reason <text> [--approved-by <name>] [--proposal <id>] [--json]
   migration-guard plan [--config <path>]
   migration-guard ai-brief [--config <path>] [--baseline <path>] [--current <path>] [--output <path>]
   migration-guard run [--source <path>] [--target <path>] --goal <text> [--init-only|--dry-run|--auto]
@@ -734,20 +1018,24 @@ Usage:
   migration-guard issues [--run <id|latest>] [--json]
   migration-guard tasks [--run <id|latest>] [--json]
   migration-guard actions [--run <id|latest>] [--json]
+  migration-guard actions handoff [--run <id|latest>] [--json]
   migration-guard report [--run <id|latest>]
   migration-guard checkpoint create|list [--run <id|latest>]
   migration-guard resume [--run <id|latest>] [--auto]
   migration-guard rollback [--run <id|latest>] --checkpoint <id>
   migration-guard task run [--run <id|latest>] --task <id>
   migration-guard task propose [--run <id|latest>] --task <id>
-  migration-guard task apply [--run <id|latest>] --proposal <id>
-  migration-guard action propose [--run <id|latest>] --action <id>
-  migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks] [--rollback-on-fail]
-  migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--json]
+  migration-guard task apply [--run <id|latest>] --proposal <id> [--behavior-diff]
+  migration-guard action propose [--run <id|latest>] --action <id> [--allow-no-op-risk]
+  migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks] [--rollback-on-fail] [--gate-policy fail-fast|collect-all] [--behavior-diff]
+  migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--gate-policy fail-fast|collect-all] [--json]
   migration-guard proposal status [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal rollback [--run <id|latest>] --proposal <id> [--json]
-  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run]
-  migration-guard ci verify --baseline <path>
+  migration-guard proposal replan [--run <id|latest>] --proposal <id> [--json]
+  migration-guard proposal retry [--run <id|latest>] --proposal <id> [--json]
+  migration-guard proposal batch plan|apply [--run <id|latest>] [--limit <n>] [--skip-checks] [--gate-policy fail-fast|collect-all] [--behavior-diff] [--json]
+  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run|--live|--live-plan] [--repo owner/name] [--live-confirm <run-id>] [--live-plan-confirm <hash>] [--labels a,b] [--only-issue <issue-id>] [--max-live-mutations <n>]
+  migration-guard ci verify --baseline <path> [--run <id|latest>]
   migration-guard contract capture --source <url>
   migration-guard contract test --target <url> --contract <path>
   migration-guard dual-run --source <url> --target <url>
@@ -758,7 +1046,8 @@ Behavior consistency workflow:
   2. baseline  Capture the current behavior
   3. verify    Re-run checks and probes after a small migration step
   4. compare   Inspect behavior drift explicitly
-  5. ai-brief  Give an AI assistant the current evidence and operating rules
+  5. diff      Classify differences as intentional, accidental, or unknown
+  6. ai-brief  Give an AI assistant the current evidence and operating rules
 `);
 }
 

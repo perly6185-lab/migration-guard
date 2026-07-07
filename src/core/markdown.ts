@@ -1,4 +1,6 @@
-import type { CompareReport, ScanSummary, Snapshot } from "../types.js";
+import { sha256 } from "./hash.js";
+import { stableStringify } from "./normalize.js";
+import type { CompareReport, DiffDecision, ScanSummary, Snapshot } from "../types.js";
 
 export function renderScanSummary(scan: ScanSummary): string {
   const riskRows = scan.riskFiles
@@ -27,9 +29,22 @@ export function renderScanSummary(scan: ScanSummary): string {
   ].join("\n");
 }
 
-export function renderCompareReport(report: CompareReport): string {
+export function renderCompareReport(report: CompareReport, decisions: DiffDecision[] = []): string {
+  const decisionByKey = new Map(decisions.map((decision) => [decision.differenceKey, decision]));
   const rows = report.differences
-    .map((difference) => `| ${difference.severity} | ${difference.area} | ${difference.name} | ${difference.message} |`)
+    .map((difference) => {
+      const decision = decisionByKey.get(sha256(stableStringify({
+        severity: difference.severity,
+        area: difference.area,
+        name: difference.name,
+        message: difference.message,
+        before: difference.before,
+        after: difference.after
+      })));
+      return decisions.length > 0
+        ? `| ${difference.severity} | ${difference.area} | ${difference.name} | ${decision?.classification ?? "pending"} | ${decision?.reason ?? ""} | ${difference.message} |`
+        : `| ${difference.severity} | ${difference.area} | ${difference.name} | ${difference.message} |`;
+    })
     .join("\n");
 
   return [
@@ -40,7 +55,11 @@ export function renderCompareReport(report: CompareReport): string {
     `Created at: ${report.createdAt}`,
     `Passed: ${report.passed ? "yes" : "no"}`,
     "",
-    rows ? "| Severity | Area | Name | Message |\n| --- | --- | --- | --- |\n" + rows : "No differences detected."
+    rows
+      ? decisions.length > 0
+        ? "| Severity | Area | Name | Decision | Reason | Message |\n| --- | --- | --- | --- | --- | --- |\n" + rows
+        : "| Severity | Area | Name | Message |\n| --- | --- | --- | --- |\n" + rows
+      : "No differences detected."
   ].join("\n");
 }
 

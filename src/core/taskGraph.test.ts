@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createMdMonorepoRefactorTaskPlan, createPnpmViteVueActions, evaluateActionCheckReadiness } from "./executor.js";
 import { createTaskGraph, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
+import type { MigrationRunPackage } from "./migrationRun.js";
 import type { ScanSummary } from "../types.js";
 
 test("createTaskGraph builds a valid JS/Vite migration graph", () => {
@@ -21,6 +23,98 @@ test("createTaskGraph builds a non-mutating pnpm/Vite/Vue inventory graph", () =
   assert.equal(graph.tasks.some((task) => task.executor === "js-vite:config"), false);
 });
 
+test("createTaskGraph builds an md monorepo task-planning graph", () => {
+  const graph = createTaskGraph("run-1", makeScan(), "MD monorepo refactor task planning", "md-monorepo");
+
+  assert.deepEqual(validateTaskGraph(graph), []);
+  assert.ok(graph.tasks.some((task) => task.executor === "md-monorepo:plan"));
+  assert.ok(graph.tasks.some((task) => task.executor === "md-monorepo:actions"));
+  assert.equal(graph.tasks.some((task) => task.executor?.startsWith("pnpm-vite-vue:")), false);
+  assert.deepEqual(graph.tasks.find((task) => task.id === "task-verify")?.dependsOn, ["task-md-monorepo-actions"]);
+});
+
+test("createPnpmViteVueActions includes low-risk proposal candidates", () => {
+  const actions = createPnpmViteVueActions({
+    ...makeScan(),
+    packageManager: "pnpm",
+    stackHints: ["vue", "vite", "typescript"],
+    riskFiles: [
+      {
+        path: "packages/core/src/renderer/renderer-impl.ts",
+        score: 45,
+        reasons: ["large file"],
+        lines: 400,
+        importerCount: 3
+      }
+    ]
+  });
+
+  assert.ok(actions.some((action) => action.id === "action-adapter-fixture-inventory" && action.risk === "low"));
+  assert.ok(actions.some((action) => action.id === "action-normalize-check-noise" && action.patchTemplate === "normalization-probe"));
+  assert.ok(actions.some((action) => action.id === "action-renderer-probes"));
+});
+
+test("createMdMonorepoRefactorTaskPlan covers md refactor domains and probes", () => {
+  const plan = createMdMonorepoRefactorTaskPlan(makeRunPackage(), {
+    ...makeScan(),
+    riskFiles: [
+      {
+        path: "packages/core/src/renderer/MarkdownRenderer.ts",
+        score: 45,
+        reasons: ["large renderer file"],
+        lines: 500,
+        importerCount: 6
+      },
+      {
+        path: "apps/api/src/upload.ts",
+        score: 42,
+        reasons: ["api boundary"],
+        lines: 250,
+        importerCount: 2
+      }
+    ]
+  });
+
+  assert.equal(plan.version, 1);
+  assert.equal(plan.tasks.length >= 10, true);
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-core-renderer" && task.risk === "high"));
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-api-contracts" && task.requiredProbes.includes("md-api-contract")));
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-web-editor-shell" && task.requiredProbes.includes("md-web-static-contract")));
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-mcp-render" && task.recommendedChecks.some((check) => check.includes("buildRenderedOutput"))));
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-cross-package-verification" && task.recommendedChecks.includes("pnpm test")));
+});
+
+test("evaluateActionCheckReadiness flags missing pnpm scripts before gates run", () => {
+  const index = {
+    rootScripts: new Set(["type-check", "build:cli"]),
+    packageScriptsByName: new Map([
+      ["@md/core", new Set(["test", "type-check"])],
+      ["@md/mcp-server", new Set(["start", "dev"])]
+    ])
+  };
+
+  assert.deepEqual(
+    evaluateActionCheckReadiness("pnpm --filter @md/core test", index),
+    {
+      command: "pnpm --filter @md/core test",
+      status: "ready",
+      reason: "package script exists: @md/core#test"
+    }
+  );
+  assert.deepEqual(
+    evaluateActionCheckReadiness("pnpm --filter @md/mcp-server type-check", index),
+    {
+      command: "pnpm --filter @md/mcp-server type-check",
+      status: "no-op-risk",
+      reason: "package @md/mcp-server has no script type-check"
+    }
+  );
+  assert.equal(
+    evaluateActionCheckReadiness("pnpm --filter @md/mcp-server exec tsx -e \"console.log(1)\"", index).status,
+    "ready"
+  );
+});
+
 function makeScan(): ScanSummary {
   return {
     root: "/repo",
@@ -36,5 +130,44 @@ function makeScan(): ScanSummary {
     stackHints: ["typescript", "webpack"],
     riskFiles: [],
     dependencyEdges: []
+  };
+}
+
+function makeRunPackage(): MigrationRunPackage {
+  const createdAt = "2026-07-04T00:00:00.000Z";
+  const estimate = {
+    sourceFiles: 4,
+    testFiles: 1,
+    taskCount: 0,
+    riskLevel: "medium" as const,
+    confidence: "medium" as const,
+    estimatedVerificationRounds: 1,
+    notes: [],
+    updatedAt: createdAt
+  };
+  return {
+    run: {
+      version: 1 as const,
+      id: "run-1",
+      goal: "MD monorepo refactor task planning",
+      sourceRoot: "/repo",
+      targetRoot: "/repo",
+      artifactsDir: "/repo/.migration-guard/migration-runs/run-1",
+      createdAt,
+      updatedAt: createdAt,
+      status: "planned" as const,
+      mode: "dry-run" as const,
+      adapter: "md-monorepo",
+      issueProvider: "local" as const,
+      estimate
+    },
+    graph: {
+      version: 1 as const,
+      runId: "run-1",
+      createdAt,
+      updatedAt: createdAt,
+      tasks: []
+    },
+    issues: []
   };
 }

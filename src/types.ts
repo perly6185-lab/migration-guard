@@ -9,6 +9,7 @@ export interface MigrationGuardConfig {
   probes: BehaviorProbeConfig[];
   output: OutputConfig;
   compare: ComparePolicy;
+  proposalGate: ProposalGateConfig;
   variables?: Record<string, string>;
 }
 
@@ -19,6 +20,12 @@ export interface OutputConfig {
 export interface ComparePolicy {
   failOnCheckRegression: boolean;
   failOnProbeDiff: boolean;
+}
+
+export interface ProposalGateConfig {
+  defaultPolicy: ProposalGatePolicyMode;
+  batchPolicy: ProposalGatePolicyMode;
+  retry?: Partial<Record<ProposalCheckKind, ProposalCheckRetryPolicy>>;
 }
 
 export interface CheckConfig {
@@ -200,12 +207,102 @@ export interface Difference {
   after?: unknown;
 }
 
+export type DiffDecisionClassification = "intentional" | "accidental" | "unknown";
+
+export interface DiffDecision {
+  version: 1;
+  id: string;
+  differenceKey: string;
+  runId?: string;
+  proposalId?: string;
+  compareReportPath: string;
+  baselineId: string;
+  currentId: string;
+  severity: Difference["severity"];
+  area: Difference["area"];
+  name: string;
+  message: string;
+  classification: DiffDecisionClassification;
+  reason: string;
+  approvedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DiffDecisionLedger {
+  version: 1;
+  runId?: string;
+  createdAt: string;
+  updatedAt: string;
+  decisions: DiffDecision[];
+}
+
+export interface DiffDecisionCoverage {
+  total: number;
+  decided: number;
+  pending: number;
+  pendingRisk: number;
+  intentional: number;
+  accidental: number;
+  unknown: number;
+}
+
+export type DiffDecisionGateStatus = "clean" | "accepted" | "pending" | "blocked";
+
+export interface DiffDecisionPolicyResult {
+  rawPassed: boolean;
+  status: DiffDecisionGateStatus;
+  canContinue: boolean;
+  reason: string;
+  coverage: DiffDecisionCoverage;
+  riskTotal: number;
+  intentionalRisk: number;
+  accidentalRisk: number;
+  unknownRisk: number;
+  pendingRisk: number;
+}
+
 export interface CompareReport {
   passed: boolean;
   baselineId: string;
   currentId: string;
   createdAt: string;
   differences: Difference[];
+}
+
+export interface ProposalBehaviorDriftReference {
+  compareReportPath: string;
+  baselineId: string;
+  currentId: string;
+  passed: boolean;
+  differences: Array<{
+    severity: Difference["severity"];
+    area: "check" | "probe";
+    name: string;
+    message: string;
+    before?: unknown;
+    after?: unknown;
+    relatedFailedCommand?: string;
+  }>;
+}
+
+export interface ProposalBehaviorDiffReport {
+  beforeSnapshotPath: string;
+  afterSnapshotPath: string;
+  compareReportPath: string;
+  compareMarkdownPath: string;
+  beforeSnapshotId: string;
+  afterSnapshotId: string;
+  passed: boolean;
+  differenceCount: number;
+  errorCount: number;
+  warningCount: number;
+  differences: Array<{
+    severity: Difference["severity"];
+    area: Difference["area"];
+    name: string;
+    message: string;
+  }>;
 }
 
 export type MigrationRunStatus =
@@ -406,9 +503,17 @@ export interface DualRunReport {
 }
 
 export type MigrationActionPatchMode = "dry-run-only" | "manual-approval-required";
-export type MigrationActionPatchTemplate = "renderer-probe" | "api-contract-probe" | "ui-smoke-probe";
+export type MigrationActionPatchTemplate =
+  | "renderer-probe"
+  | "api-contract-probe"
+  | "ui-smoke-probe"
+  | "adapter-fixture-probe"
+  | "normalization-probe";
 export type ProposalCheckKind = "unit-test" | "type-check" | "ui-probe" | "contract-probe" | "build" | "lint" | "other";
 export type ProposalCheckPhase = "pre-preview" | "preview" | "post-preview";
+export type ProposalCheckResourceProfile = "default" | "cpu-bound" | "io-bound" | "browser";
+export type ProposalCheckFailureCategory = "command-failed" | "timeout" | "error" | "flake-suspected" | "no-op";
+export type ProposalGatePolicyMode = "fail-fast" | "collect-all";
 export type ProposalGateEventType = "patch-check" | "check" | "preview";
 export type ProposalGateEventStatus = "passed" | "failed" | "skipped";
 
@@ -419,10 +524,17 @@ export interface MigrationAction {
   risk: "low" | "medium" | "high";
   affectedFiles: string[];
   recommendedChecks: string[];
+  checkReadiness?: MigrationActionCheckReadiness[];
   patchMode: MigrationActionPatchMode;
   patchTemplate?: MigrationActionPatchTemplate;
   preview?: ProposalPreviewConfig;
   checkPlan?: ProposalCheckPlanItem[];
+}
+
+export interface MigrationActionCheckReadiness {
+  command: string;
+  status: "ready" | "no-op-risk" | "unknown";
+  reason: string;
 }
 
 export interface MigrationActionPlan {
@@ -439,6 +551,11 @@ export interface ProposedPatch {
   runId: string;
   taskId?: string;
   actionId?: string;
+  retryOfProposalId?: string;
+  replanIssueId?: string;
+  replanTaskId?: string;
+  replanBriefPath?: string;
+  replanContextPath?: string;
   createdAt: string;
   title: string;
   summary: string;
@@ -449,7 +566,7 @@ export interface ProposedPatch {
   recommendedChecks: string[];
   checkPlan?: ProposalCheckPlanItem[];
   preview?: ProposalPreviewConfig;
-  patchKind?: "task-placeholder" | "action-probe";
+  patchKind?: "task-placeholder" | "action-probe" | "replan-retry";
   applyState:
     | "proposed"
     | "verified"
@@ -483,7 +600,36 @@ export interface ProposalCheckPlanItem {
   phase: ProposalCheckPhase;
   timeoutMs?: number;
   critical?: boolean;
+  retry?: ProposalCheckRetryPolicy;
+  resourceProfile?: ProposalCheckResourceProfile;
   reason?: string;
+}
+
+export interface ProposalCheckRetryPolicy {
+  maxAttempts: number;
+  delayMs?: number;
+  retryOn?: ProposalCheckFailureCategory[];
+}
+
+export interface ProposalCheckAttempt {
+  attempt: number;
+  passed: boolean;
+  exitCode: number | null;
+  durationMs: number;
+  startedAt?: string;
+  endedAt?: string;
+  stdout: string;
+  stderr: string;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+  timedOut: boolean;
+  error?: string;
+  failureCategory?: ProposalCheckFailureCategory;
+  flakeSuspected?: boolean;
+}
+
+export interface ProposalGatePolicy {
+  mode: ProposalGatePolicyMode;
 }
 
 export interface ProposalCommandCheck {
@@ -492,6 +638,13 @@ export interface ProposalCommandCheck {
   kind?: ProposalCheckKind;
   phase?: ProposalCheckPhase;
   critical?: boolean;
+  resourceProfile?: ProposalCheckResourceProfile;
+  retry?: ProposalCheckRetryPolicy;
+  attemptCount?: number;
+  attempts?: ProposalCheckAttempt[];
+  failureCategory?: ProposalCheckFailureCategory;
+  flakeSuspected?: boolean;
+  remediationHints?: string[];
   passed: boolean;
   exitCode: number | null;
   durationMs: number;
@@ -534,6 +687,14 @@ export interface ProposalPreviewResult {
   outputPath?: string;
 }
 
+export interface ProposalTemporaryApply {
+  applied: boolean;
+  rolledBack: boolean;
+  passed: boolean;
+  apply?: ProposalCommandCheck;
+  rollback?: ProposalCommandCheck;
+}
+
 export interface ProposalGateEvent {
   type: ProposalGateEventType;
   status: ProposalGateEventStatus;
@@ -561,10 +722,80 @@ export interface ProposalVerificationReport {
   passed: boolean;
   patchCheck: ProposalPatchCheck;
   checkPlan?: ProposalCheckPlanItem[];
+  gatePolicy?: ProposalGatePolicy;
   preview?: ProposalPreviewResult;
+  temporaryApply?: ProposalTemporaryApply;
   checks: ProposalCommandCheck[];
   timeline: ProposalGateEvent[];
   replanIssueId?: string;
+  replanTaskId?: string;
+  replanBriefPath?: string;
+  replanContextPath?: string;
+  retryProposalId?: string;
+  behaviorDrift?: ProposalBehaviorDriftReference;
+  behaviorDiff?: ProposalBehaviorDiffReport;
+  outputPath: string;
+}
+
+export interface ProposalBatchItem {
+  proposalId: string;
+  title: string;
+  risk: "low" | "medium" | "high";
+  applyState: ProposedPatch["applyState"];
+  checkPlan: Array<{
+    kind: ProposalCheckKind;
+    phase: ProposalCheckPhase;
+    command: string;
+  }>;
+}
+
+export interface ProposalBatchPlan {
+  version: 1;
+  id: string;
+  runId: string;
+  createdAt: string;
+  proposals: ProposalBatchItem[];
+  outputPath: string;
+}
+
+export interface ProposalBatchResult {
+  proposalId: string;
+  passed: boolean;
+  state: ProposedPatch["applyState"];
+  verificationPath?: string;
+  rollbackPath?: string;
+  firstFailedCheck?: {
+    command: string;
+    kind?: ProposalCheckKind;
+    phase?: ProposalCheckPhase;
+    failureCategory?: ProposalCheckFailureCategory;
+    remediationHints?: string[];
+  };
+  error?: string;
+}
+
+export interface ProposalBatchSkippedItem {
+  proposalId: string;
+  reason: string;
+}
+
+export interface ProposalBatchReport {
+  version: 1;
+  id: string;
+  runId: string;
+  createdAt: string;
+  planId: string;
+  gatePolicy?: ProposalGatePolicy;
+  passed: boolean;
+  executedCount: number;
+  skippedCount: number;
+  firstFailedProposalId?: string;
+  firstFailedVerificationPath?: string;
+  results: ProposalBatchResult[];
+  skipped: ProposalBatchSkippedItem[];
+  stopReason?: string;
+  nextCommand?: string;
+  recommendedNextActions?: string[];
   outputPath: string;
 }
 

@@ -36,6 +36,12 @@
 | Phase 18 | Proposal Check Classification | 能把 recommended checks 结构化为 kind/phase/timeout 的 check plan |
 | Phase 19 | Proposal Gate Timeline | 能在 verification report 和 run report 中展示 gate 执行时间线 |
 | Phase 20 | Failed Gate Replan Issues | 能把失败的 proposal gate 自动转成 replan/failure issue |
+| Phase 21 | Adaptive Gate Policy + Flake Handling | 能对疑似环境抖动重试、按策略执行 gate，并批量推进低风险 proposal |
+| Phase 22 | Gate Remediation Hints + Batch Stop Reporting | 能把 gate 失败转成修复建议，并解释 batch 为什么停止和跳过 |
+| Phase 23 | Configurable Gate Policy + Batch Summary | 能用项目配置控制 gate policy/retry，并在 run report 汇总 batch |
+| Phase 24 | External Issue Gate Context + CI Handoff | 能把 gate/batch 失败上下文导出给 issue sync 和 CI |
+| Phase 25 | Provider Adapter + PR Comment Preview | 能生成 GitHub PR comment preview、provider mapping 和 CI summary |
+| Phase 26 | GitHub Live Adapter Boundary + API Mock | 能用显式 live 开关和 mock API 验证 GitHub issue 创建边界 |
 
 ## Phase 0: CLI Bootstrap
 
@@ -751,6 +757,1104 @@ migration-guard report --run latest
 - gate 失败不是单次命令错误，而是可追踪 issue。
 - 后续 replanner 能读取失败 check 的 kind/phase 决定插入什么补救任务。
 - 成功 proposal 不创建额外 failure issue。
+
+## Phase 21: Adaptive Gate Policy + Flake Handling
+
+目标：让 proposal gate 能区分真实失败和疑似环境抖动，并支持更适合批量执行的 gate 策略。
+
+新增能力：
+
+- proposal `checkPlan` 支持 retry policy
+- check result 记录 attempts、failure category 和 flake-suspected 标记
+- check result 记录 resource profile
+- gate policy 支持 `collect-all` 和 `fail-fast`
+- `proposal replan` 可为已有失败 verification report 显式生成 replan task
+- `proposal batch plan`
+- `proposal batch apply`
+- batch apply 默认使用 fail-fast 并在失败 proposal 后停止
+
+建议命令：
+
+```bash
+migration-guard proposal verify --run latest --proposal <proposal-id> --checks --gate-policy collect-all
+migration-guard proposal replan --run latest --proposal <proposal-id>
+migration-guard proposal batch plan --run latest --limit 3
+migration-guard proposal batch apply --run latest --limit 3 --gate-policy fail-fast
+```
+
+产物：
+
+- proposal `verification-*.json` 中的 `gatePolicy`
+- proposal check attempts
+- proposal check failure category
+- proposal `replanTaskId`
+- `.migration-guard/migration-runs/run-*/proposal-batches/*/batch-plan.json`
+- `.migration-guard/migration-runs/run-*/proposal-batches/*/proposal-batch-report-*.json`
+
+完成标准：
+
+- 疑似 flaky 的 unit/UI check 至少能按默认策略重试一次。
+- `fail-fast` 能在第一个 critical check 失败后停止后续 checks。
+- `collect-all` 能继续收集完整失败面。
+- 失败 proposal 能生成可追踪 replan issue 和 replan task。
+- batch apply 能按低风险优先顺序执行 proposal，并在失败时停止后续 proposal。
+
+## Phase 22: Gate Remediation Hints + Batch Stop Reporting
+
+目标：让失败的 proposal gate 不只记录“失败了”，还要说明“下一步该怎么处理”，并让 batch report 能解释停止和跳过原因。
+
+新增能力：
+
+- check failure 生成 remediation hints
+- failure issue body 写入 hints
+- replan task description 写入 hints
+- run report Recent Proposal Gates 展示首个失败分类和第一条 hint
+- batch report 记录 first failed check
+- batch report 记录 skipped proposals
+- batch report 记录 stop reason
+- batch report 给出下一步 replan 命令
+
+建议命令：
+
+```bash
+migration-guard proposal batch apply --run latest --limit 3 --gate-policy fail-fast
+migration-guard proposal replan --run latest --proposal <failed-proposal-id>
+migration-guard report --run latest
+```
+
+产物：
+
+- proposal `verification-*.json` 中的 `checks[].remediationHints`
+- `issues.json` 中 failure issue 的 hints
+- `task-graph.json` 中 replan task 的 hints
+- proposal batch report 中的 `stopReason`
+- proposal batch report 中的 `skipped`
+- proposal batch report 中的 `nextCommand`
+
+完成标准：
+
+- `command-failed`、`timeout`、`error`、`flake-suspected` 都能生成面向用户的下一步建议。
+- proposal gate 失败创建的 issue/replan task 能展示 remediation hints。
+- batch apply 失败后能记录首个失败 check、停止原因和跳过的 proposal。
+- batch report 能给出下一条建议命令。
+- 单元测试覆盖成功 batch 和失败 batch 两条路径。
+
+## Phase 23: Configurable Gate Policy + Batch Summary
+
+目标：把 proposal gate 的默认策略从代码常量升级为项目配置，并让 batch report/run report 对批量执行结果有完整摘要。
+
+新增能力：
+
+- `.migration-guard.json` 支持 `proposalGate.defaultPolicy`
+- `.migration-guard.json` 支持 `proposalGate.batchPolicy`
+- `.migration-guard.json` 支持按 check kind 配置 retry policy
+- CLI `--gate-policy` 仍可覆盖配置默认值
+- proposal checkPlan 未声明 retry 时使用配置默认 retry
+- batch report 记录 `gatePolicy`
+- batch report 记录 executed/skipped count
+- batch report 记录 first failed proposal 和 verification path
+- batch report 记录 recommended next actions
+- run report 新增 `Recent Proposal Batches`
+
+建议配置：
+
+```json
+{
+  "proposalGate": {
+    "defaultPolicy": "collect-all",
+    "batchPolicy": "fail-fast",
+    "retry": {
+      "unit-test": {
+        "maxAttempts": 2,
+        "delayMs": 1000,
+        "retryOn": ["flake-suspected"]
+      },
+      "ui-probe": {
+        "maxAttempts": 2,
+        "delayMs": 1000,
+        "retryOn": ["flake-suspected", "timeout"]
+      }
+    }
+  }
+}
+```
+
+建议命令：
+
+```bash
+migration-guard proposal batch apply --run latest --limit 3
+migration-guard proposal batch apply --run latest --limit 3 --gate-policy collect-all
+migration-guard report --run latest
+```
+
+产物：
+
+- proposal verification report 中的 config-resolved `gatePolicy`
+- proposal check result 中的 config-resolved `retry`
+- proposal batch report 中的 batch summary fields
+- run report 中的 `Recent Proposal Batches`
+
+完成标准：
+
+- 配置默认 gate policy 能控制 proposal verify/apply。
+- 配置 batch policy 能控制 batch apply。
+- CLI gate policy 能覆盖配置。
+- 配置 retry 能被没有显式 retry 的 checkPlan 使用。
+- run report 能展示最近 batch 的通过状态、策略、执行数、跳过数和下一步命令。
+- 单元测试覆盖配置 policy/retry 和 batch summary。
+
+## Phase 24: External Issue Gate Context + CI Handoff
+
+目标：把 proposal gate/batch 的失败上下文从本地 artifact 推送到团队协作和 CI handoff 层。
+
+新增能力：
+
+- issue sync export 读取 proposal verification reports
+- issue sync export 读取 proposal batch reports
+- provider-neutral issue JSON 写入 `migrationGuard.gate`
+- provider-neutral issue JSON 写入 `migrationGuard.batch`
+- issue body/Markdown export 展示 proposal gate context
+- issue body/Markdown export 展示 proposal batch context
+- run report batch section 展示 batch report path、first failed verification、skipped proposals 和 recommended actions
+- `ci verify --run <id|latest>` 额外写出 CI handoff report
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider local
+migration-guard sync-issues --run latest --provider github --dry-run
+migration-guard ci verify --baseline .migration-guard/latest-baseline.json --run latest
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/local-issues.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/<provider>-dry-run-issues.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/<provider>-dry-run-issues.md`
+- `.migration-guard/migration-runs/run-*/reports/ci-handoff.md`
+
+完成标准：
+
+- failure issue export 包含 failed proposal id、verification path、failure category 和 remediation hints。
+- batch context 包含 stopReason、skipped proposals、nextCommand 和 recommended next actions。
+- CI handoff report 能展示最近 failed gate/batch 和下一步命令。
+- 真实 local sync smoke 通过，目标仓库保持 clean。
+
+## Phase 25: Provider Adapter + PR Comment Preview
+
+目标：在不调用真实外部 API 的前提下，把 provider-neutral issue context 转换成接近真实协作平台可用的预览 artifact。
+
+新增能力：
+
+- provider mapping artifact
+- GitHub dry-run PR comment preview
+- external provider non-dry-run safety guard
+- CI GitHub step summary artifact
+- issue export 记录 provider field mapping
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github --dry-run
+migration-guard ci verify --baseline .migration-guard/latest-baseline.json --run latest
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-dry-run-issues.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-dry-run-issues.md`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-dry-run-mapping.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-pr-comment.md`
+- `.migration-guard/migration-runs/run-*/reports/github-step-summary.md`
+
+完成标准：
+
+- GitHub dry-run export 包含 PR comment preview。
+- Provider mapping 明确 title/body/labels/status 字段映射。
+- 非 local provider 不带 `--dry-run` 时不会尝试外部 API，并输出明确错误。
+- CI handoff 同时写出普通 report 和 GitHub Actions summary style artifact。
+- 真实 GitHub dry-run smoke 通过，目标仓库保持 clean。
+
+## Phase 26: GitHub Live Adapter Boundary + API Mock
+
+目标：把 GitHub provider 从 dry-run preview 推进到可测试的 live adapter 边界，但仍要求显式 live 开关和严格安全校验。
+
+新增能力：
+
+- `sync-issues --provider github --live --repo owner/name --live-confirm <run-id>`
+- GitHub repo 格式校验
+- `GITHUB_TOKEN` 必填校验
+- `--dry-run` 和 `--live` 互斥
+- mockable GitHub issue adapter
+- GitHub open issue lookup by `mg_issue_id`
+- matching issue update via PATCH
+- GitHub live sync summary artifact
+- token 不写入 artifact
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github --dry-run
+migration-guard sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id>
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-sync.json`
+
+完成标准：
+
+- 不带 `--dry-run` 或 `--live` 时外部 provider 拒绝执行。
+- `--live` 缺 repo/token 时拒绝执行。
+- `--live` 缺 live-confirm 或 confirm 不匹配当前 run id 时拒绝执行。
+- mock GitHub API 测试能验证 lookup/create/update URL、Authorization header、payload 和返回 URL。
+- live summary 能区分 created/updated/failed。
+- live summary 不包含 token。
+- 安全 smoke 验证拒绝路径，不触发真实外部 API。
+
+## Phase 27: GitHub Live Confirmation + Update Path
+
+目标：把 GitHub live adapter 从 create-only 边界推进到可控的 lookup/update/create 流程，并增加 run id 二次确认。
+
+新增能力：
+
+- `sync-issues --provider github --live --repo owner/name --live-confirm <run-id>`
+- GitHub open issue lookup by `mg_issue_id`
+- matching issue update via PATCH
+- missing/mismatched live confirmation 拒绝执行
+- live summary 区分 created/updated/failed
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github --dry-run
+migration-guard sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id>
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-sync.json`
+
+完成标准：
+
+- 缺 live-confirm 或 confirm 不匹配当前 run id 时拒绝执行。
+- mock GitHub API 测试能验证 lookup/update/create 顺序。
+- token 不写入 summary artifact。
+
+## Phase 28: GitHub Live Plan + Unchanged Skip Smoke
+
+目标：在真实 live 变更前写出可审计 plan，并避免重复更新正文未变化的 GitHub issue，同时补齐可复用失败 batch smoke。
+
+新增能力：
+
+- GitHub live plan artifact
+- issue body SHA-256 hash
+- unchanged body skip
+- live summary 区分 created/updated/skipped/failed
+- mock create/update/skip 覆盖
+- reusable failing proposal batch smoke helper
+
+建议命令：
+
+```bash
+node scripts/smoke/create-failing-proposal-batch.mjs --config configs/md-fast.migration-guard.json --run latest
+migration-guard proposal batch apply --config configs/md-fast.migration-guard.json --run latest --limit 2 --gate-policy fail-fast
+migration-guard sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --dry-run
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-sync.json`
+- `.migration-guard/migration-runs/run-*/proposal-batches/*/proposal-batch-report-*.json`
+- `scripts/smoke/create-failing-proposal-batch.mjs`
+
+完成标准：
+
+- live plan 包含 repo、matching strategy、willCreate/willUpdate/willSkip、issue id、existing number 和 body hash。
+- 正文 hash 相同的 existing issue 不触发 PATCH。
+- live summary 不包含 token，并记录 skippedCount。
+- safe smoke 不调用真实 GitHub API，目标仓库保持 clean。
+
+## Phase 29: GitHub Live Guardrails + Observability
+
+目标：把 GitHub live sync 从“可执行”推进到“可控执行”，在真实 mutation 前提供更强护栏和排障信息。
+
+新增能力：
+
+- `sync-issues --provider github --live-plan --repo owner/name`
+- `sync-issues --provider github --live --max-live-mutations <n>`
+- `sync-issues --provider github --labels team:migration,phase-1`
+- GitHub live 默认 mutation cap
+- GitHub read-only live plan summary
+- GitHub rate-limit 非敏感 header summary
+- GitHub 429/5xx retry backoff
+- mutation limit 超限时先写 plan 再拒绝 mutation
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github --dry-run --labels team:migration
+migration-guard sync-issues --run latest --provider github --live-plan --repo owner/name
+migration-guard sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --max-live-mutations 3
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan-summary.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-sync.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan-issues.json`
+
+完成标准：
+
+- `--live-plan` 只查询 GitHub open issues，不触发 POST/PATCH。
+- `--max-live-mutations` 超限时拒绝 live mutation，并保留 plan artifact。
+- `--labels` 追加团队标签且不重复默认标签。
+- live/live-plan summary 不包含 token。
+- summary 写入 rate-limit remaining/reset 等非敏感信息。
+- mock API 覆盖 429/5xx retry。
+- safe smoke 不调用真实 GitHub API，目标仓库保持 clean。
+
+## Phase 30: GitHub Live Plan Hash Confirmation
+
+目标：把真实 GitHub live mutation 绑定到用户已审阅的 plan artifact，避免 read-only plan 和 live 执行之间出现未确认 drift。
+
+新增能力：
+
+- `github-live-plan.json` 写出稳定 `planHash`
+- `github-live-plan-summary.json` 写出 `planHash`
+- `github-live-sync.json` 写出 `planHash` 和 `livePlanConfirm`
+- `sync-issues --provider github --live --live-plan-confirm <plan-hash>`
+- live mutation 前校验当前计划 hash 与确认 hash 一致
+- hash mismatch 时只执行 GET lookup，不执行 POST/PATCH
+
+建议命令：
+
+```bash
+migration-guard sync-issues --run latest --provider github --live-plan --repo owner/name
+migration-guard sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --live-plan-confirm <plan-hash> --max-live-mutations 1
+```
+
+产物：
+
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-plan-summary.json`
+- `.migration-guard/migration-runs/run-*/issue-sync/github-live-sync.json`
+
+完成标准：
+
+- read-only live plan 和 live sync 对相同 create/update/skip 决策生成相同 `planHash`。
+- 缺 `--live-plan-confirm` 时 GitHub live 拒绝执行。
+- hash mismatch 时拒绝 live mutation，并保留最新 plan artifact。
+- live summary 记录 `planHash` 和用户确认的 hash。
+- mock API 验证 hash mismatch 不触发 POST/PATCH。
+- safe smoke 不调用真实 GitHub API，目标仓库保持 clean。
+
+## Phase 31: Real GitHub Read-Only Smoke Prep
+
+目标：准备真实 GitHub read-only smoke，但本阶段不需要真实 token，也不触发外部 API。
+
+新增能力：
+
+- GitHub read-only smoke runbook
+- `--live-plan` 成功输出明确提示 read-only GET、无 POST/PATCH
+- 本地 no-network planHash stability smoke helper
+- 本地 no-network read-only smoke preflight helper
+
+建议命令：
+
+```bash
+npm run build
+node scripts/smoke/prepare-github-read-only-smoke.mjs --config configs/md-fast.migration-guard.json --run latest --repo owner/name
+node scripts/smoke/check-live-plan-hash-stability.mjs
+```
+
+产物：
+
+- `docs/GITHUB_READ_ONLY_SMOKE_RUNBOOK.md`
+- `scripts/smoke/prepare-github-read-only-smoke.mjs`
+- `scripts/smoke/check-live-plan-hash-stability.mjs`
+
+完成标准：
+
+- runbook 明确真实 read-only smoke 的前置授权、命令和禁止事项。
+- CLI `--live-plan` 成功时明确声明不会 POST/PATCH。
+- 预检脚本只读取本地 run/config 并打印真实 read-only 命令，不触发 GitHub API。
+- 本地稳定性脚本连续生成两个 mocked live plan，确认 `planHash` 一致。
+- 本阶段不需要 `GITHUB_TOKEN`，不触发真实 GitHub API。
+
+## Phase 33: Single-Issue GitHub Mutation Smoke Plan
+
+目标：为未来真实 GitHub mutation smoke 增加单 issue 限缩能力和 runbook，但本阶段不触发真实 mutation。
+
+新增能力：
+
+- `sync-issues --only-issue <issue-id>`
+- dry-run/live-plan/live 均只导出或同步指定 issue
+- live plan hash 基于过滤后的单 issue 计划
+- local issue external URL 只回写到匹配 issue
+- GitHub mutation smoke plan 文档
+
+建议命令：
+
+```bash
+node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --dry-run --only-issue <issue-id>
+node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live-plan --repo perly6185-lab/migration-guard --only-issue <issue-id>
+```
+
+产物：
+
+- `docs/GITHUB_MUTATION_SMOKE_PLAN.md`
+- `.migration-guard/.../issue-sync/github-dry-run-issues.json`
+- `.migration-guard/.../issue-sync/github-live-plan.json`
+- `.migration-guard/.../issue-sync/github-live-plan-summary.json`
+
+完成标准：
+
+- `--only-issue` 不存在时拒绝执行。
+- dry-run filtered export 只包含一个 issue。
+- live-plan filtered summary 的 mutationCount 可降为 1。
+- mocked live filtered sync 在 `--max-live-mutations 1` 下只执行一个 mutation。
+- 不执行真实 GitHub POST/PATCH。
+
+## Phase 34: Runner Loop Replan Brief + Next Action
+
+目标：从 GitHub 配套建设回到 Migration Runner Loop，让失败 proposal 直接产出 AI/人类可执行的 replan 证据包，并在 status/report 中给出唯一下一步动作。
+
+新增能力：
+
+- `proposal replan` 写出 replan brief
+- `proposal replan` 写出 JSON context pack
+- verification report 回写 `replanBriefPath` 和 `replanContextPath`
+- `status` 输出唯一 `Next action`
+- `report` 新增 `Next Action` 区块
+
+建议命令：
+
+```bash
+node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run latest --limit 2 --gate-policy fail-fast
+node dist/cli.js status --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js proposal replan --config configs/md-fast.migration-guard.json --run latest --proposal <failed-proposal-id>
+node dist/cli.js report --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- `.migration-guard/.../replans/<proposal-id>/replan-brief.md`
+- `.migration-guard/.../replans/<proposal-id>/replan-context.json`
+- verification report 中的 replan brief/context 路径
+- run report `Next Action`
+
+完成标准：
+
+- 失败 batch 后，status/report 只推荐创建 replan brief。
+- `proposal replan` 后，status/report 改为推荐使用 replan brief 修复 proposal。
+- replan context 包含 failed check、report path、patch path、issue/task、retry command。
+- `npm test` 覆盖 next action 和 replan artifact。
+
+## Phase 35: Authorized Single-Issue GitHub Mutation Smoke
+
+目标：在明确授权后完成一次真实 GitHub 单 issue mutation smoke，证明外部 handoff 可用，然后停止 GitHub provider 深挖。
+
+新增能力：
+
+- 无新增 provider 功能
+- 真实 GitHub create/update smoke 记录
+- local issue `externalUrl` 回写验证
+- credential marker scan 记录
+
+建议命令：
+
+```bash
+node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live-plan --repo perly6185-lab/migration-guard --only-issue <issue-id>
+node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live --repo perly6185-lab/migration-guard --live-confirm <run-id> --live-plan-confirm <planHash> --max-live-mutations 1 --only-issue <issue-id>
+```
+
+产物：
+
+- `.migration-guard/.../issue-sync/github-live-plan.json`
+- `.migration-guard/.../issue-sync/github-live-sync.json`
+- `docs/PHASE_35_REPORT.md`
+- GitHub issue URL
+
+完成标准：
+
+- `mutationCount` 为 1。
+- live sync 只 created/updated 一个 issue。
+- 本地只有匹配 issue 写入 `externalUrl`。
+- artifact 不包含真实 token 或 Authorization header。
+- GitHub 后续扩展进入 deferred backlog，下一活跃主线回到 Runner Loop。
+
+## Phase 36: Replan Task to Retry Proposal Loop
+
+目标：把 Phase 34 的 replan brief/context 向前推进成可跟踪的 retry proposal，形成 `proposal failure -> issue -> replan task -> brief/context -> retry proposal` 的最小闭环。
+
+新增能力：
+
+- `proposal retry --proposal <failed-proposal-id>`
+- retry proposal 回连原 failed proposal
+- retry proposal 回连 replan issue/task/brief/context
+- 原 verification report 写入 `retryProposalId`
+- replan task 在 retry proposal 创建后标记为 done
+- `status` / `report` 在 retry proposal 创建后推荐验证或应用 retry proposal
+
+建议命令：
+
+```bash
+node dist/cli.js proposal replan --config configs/md-fast.migration-guard.json --run latest --proposal <failed-proposal-id>
+node dist/cli.js proposal retry --config configs/md-fast.migration-guard.json --run latest --proposal <failed-proposal-id>
+node dist/cli.js status --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js proposal verify --config configs/md-fast.migration-guard.json --run latest --proposal <retry-proposal-id> --checks
+```
+
+产物：
+
+- `.migration-guard/.../proposals/<retry-proposal-id>/proposal.json`
+- `.migration-guard/.../proposals/<retry-proposal-id>/patch.diff`
+- failed verification report 中的 `retryProposalId`
+- run report `Next Action`
+
+完成标准：
+
+- replan 后，status/report 推荐 `proposal retry`。
+- retry 后，status/report 推荐验证 retry proposal。
+- retry proposal 可从 metadata 找回原 failed proposal 和 replan evidence。
+- `npm test` 覆盖 retry proposal 创建、复用和 next action 转移。
+
+## Phase 37: Proposal Gate Behavior Drift References
+
+目标：把行为一致性证据链接回 proposal gate。gate 失败时，如果存在最新 compare report，verification report、failure issue、replan brief 和 run report 都应引用具体 check/probe drift。
+
+新增能力：
+
+- failed proposal verification report 写入 `behaviorDrift`
+- behavior drift 只引用 check/probe error/warn，不把 scan info 当成 gate drift
+- failure issue 和 replan task 写入 compare report path 与 drift 摘要
+- replan brief/context 写入 drift 摘要
+- issue sync gate context 导出 drift 摘要
+- run report 的 Recent Proposal Gates 展示 drift count 和第一条 drift
+
+建议命令：
+
+```bash
+node dist/cli.js verify --config configs/md-fast.migration-guard.json
+node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run latest --limit 2 --gate-policy fail-fast
+node dist/cli.js proposal replan --config configs/md-fast.migration-guard.json --run latest --proposal <failed-proposal-id>
+node dist/cli.js report --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- proposal verification report `behaviorDrift`
+- replan brief/context 中的 `Behavior Drift`
+- issue sync export 中的 behavior drift context
+- run report `behavior-drift:<count>`
+
+完成标准：
+
+- gate 失败时能引用最新 compare report。
+- 只展示具体 check/probe drift。
+- replan brief 足以告诉 AI 哪个 probe/check drift 与失败相关。
+- `npm test` 覆盖 verification report、replan brief、issue sync 和 run report。
+
+## Phase 38: Proposal-Scoped Behavior Diff
+
+目标：在 proposal apply 周围显式捕获 before/after behavior snapshots，并把 compare report 关联回 proposal verification report。
+
+新增能力：
+
+- `task apply --behavior-diff`
+- `action apply --behavior-diff`
+- `proposal batch apply --behavior-diff`
+- proposal 目录写入 before snapshot
+- proposal 目录写入 after snapshot
+- proposal 目录写入 compare JSON/Markdown
+- verification report 写入 `behaviorDiff`
+- run report Recent Proposal Gates 展示 proposal-scoped behavior diff 摘要
+
+建议命令：
+
+```bash
+node dist/cli.js action apply --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id> --rollback-on-fail --behavior-diff
+node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run latest --limit 1 --behavior-diff
+```
+
+产物：
+
+- `.migration-guard/.../proposals/<proposal-id>/behavior-diff-*-before.json`
+- `.migration-guard/.../proposals/<proposal-id>/behavior-diff-*-after.json`
+- `.migration-guard/.../proposals/<proposal-id>/behavior-diff-*-compare.json`
+- `.migration-guard/.../proposals/<proposal-id>/behavior-diff-*-compare.md`
+- verification report `behaviorDiff`
+
+完成标准：
+
+- 默认 apply 不增加完整 behavior snapshot 成本。
+- 显式 `--behavior-diff` 时捕获 before/after。
+- compare result 写入 verification report。
+- `npm test` 覆盖 apply behavior diff artifact。
+
+## Phase 39: Behavior Diff Decision Ledger
+
+目标：把 behavior drift / proposal-scoped behavior diff 从“发现差异”推进到“记录决策”。每个 compare difference 可以被分类为 `intentional`、`accidental` 或 `unknown`，并带上原因和批准来源。
+
+新增能力：
+
+- `diff list --compare <compare.json>`
+- `diff decide --compare <compare.json> --area <area> --name <name> --as <classification> --reason <text>`
+- run-scoped diff decision ledger
+- compare Markdown 刷新后展示 decision/reason
+- run report Recent Proposal Gates 展示 decision coverage
+- pending risk behavior diff 会成为 status/report 的下一步动作
+- replan brief 中的 Behavior Drift 展示 decision 状态
+
+建议命令：
+
+```bash
+node dist/cli.js diff list --config configs/md-fast.migration-guard.json --run latest --compare <compare.json>
+node dist/cli.js diff decide --config configs/md-fast.migration-guard.json --run latest --compare <compare.json> --area probe --name md-renderer-behavior --as intentional --reason "expected renderer behavior change"
+node dist/cli.js report --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- `.migration-guard/.../diff-decisions/decisions.json`
+- refreshed compare Markdown with decision columns
+- run report `behavior-decisions`
+- replan brief `[pending]` / `[intentional]` drift labels
+
+完成标准：
+
+- 一个 compare difference 可以被分类并持久化。
+- report 能显示 decided/pending/pending-risk 计数。
+- 未分类 risk diff 会被推荐为下一步动作。
+- `npm test` 覆盖 ledger、coverage 和 Markdown 刷新。
+
+## Phase 40: Decision-Aware Behavior Gate
+
+目标：让 Phase 39 的 diff decision ledger 进入迁移控制流，但不改变原始 compare 结果。
+
+新增能力：
+
+- decision policy：`clean` / `accepted` / `pending` / `blocked`
+- raw compare failed 但全部 risk diff 为 `intentional` 时，run verify 可继续
+- `accidental` risk diff 进入 blocked/replan 路径
+- `unknown` 或未分类 risk diff 进入 pending/classify 路径
+- run report 展示 `Decision gate`
+- status/report next action 基于 accidental / unknown / pending 分类选择 replan 或 classify
+
+建议命令：
+
+```bash
+node dist/cli.js diff decide --run latest --compare <compare.json> --area probe --name <probe-name> --as intentional --reason "approved expected behavior change"
+node dist/cli.js resume --run latest --auto
+node dist/cli.js report --run latest
+```
+
+产物：
+
+- refreshed compare Markdown `Decision gate`
+- run report `behavior-decisions`
+- decision-aware next action
+
+完成标准：
+
+- 原始 compare report 仍保留 raw passed/failed。
+- decision gate 可以说明是否可继续。
+- `accidental` 推荐 replan。
+- `unknown` / pending 推荐 classify。
+
+## Phase 41: Low-Risk Adapter Proposal Generation
+
+目标：让 `pnpm-vite-vue` adapter 从只读 inventory 进入可验证 proposal 候选生成，但仍不直接修改目标源码。
+
+新增能力：
+
+- action plan 增加 `action-adapter-fixture-inventory`
+- action plan 增加 `action-normalize-check-noise`
+- 新增 action patch template：`adapter-fixture-probe`
+- 新增 action patch template：`normalization-probe`
+- 低风险 action 通过现有 `action propose` 生成 probe proposal
+
+建议命令：
+
+```bash
+node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "Vite/Vue monorepo safety validation" --dry-run --adapter pnpm-vite-vue
+node dist/cli.js resume --config configs/md-fast.migration-guard.json --run latest --auto
+node dist/cli.js actions --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js action propose --config configs/md-fast.migration-guard.json --run latest --action action-adapter-fixture-inventory
+```
+
+产物：
+
+- `adapter/pnpm-vite-vue-action-plan.json`
+- proposal `patch.diff`
+- generated low-risk probe under `scripts/migration-guard/`
+
+完成标准：
+
+- adapter action plan 至少包含两个 low-risk action。
+- action proposal 不直接改目标业务源码。
+- proposal 仍走现有 verification/apply gate。
+
+## Phase 42: MD UI/API Contract Probe Expansion
+
+目标：回到 `perly6185-lab/md` 真实项目，为整仓自动重构补关键行为证据。先覆盖 API 路由/CORS/鉴权边界和 web app build/static 入口契约，不修改目标业务源码。
+
+新增能力：
+
+- `md-api-contract` command probe
+- `md-web-static-contract` command probe
+- fast config 增加 API contract probe
+- full config 增加 API contract + web static/build probe
+
+建议命令：
+
+```bash
+pnpm --dir D:/learn/migration-guard-targets/md exec tsx D:/learn/migration-guard/scripts/probes/md-api-contract-probe.mjs
+pnpm --dir D:/learn/migration-guard-targets/md exec tsx D:/learn/migration-guard/scripts/probes/md-web-static-probe.mjs
+node dist/cli.js baseline --config configs/md-fast.migration-guard.json
+node dist/cli.js verify --config configs/md-fast.migration-guard.json
+```
+
+产物：
+
+- API contract JSON output
+- web source/build contract JSON output
+- updated `md-fast` / `md-full` snapshots containing the new probes
+
+完成标准：
+
+- API probe 覆盖 root health、CORS preflight、upload disabled、unauthenticated `/me`。
+- web probe 覆盖 app bootstrap、root component、Vite base、dist index、JS/CSS assets。
+- fast lane 可不启动 web dev server。
+- full lane 在 `web-build` 后校验 build artifact。
+
+## Phase 43: MD Adapter Task Graph
+
+目标：把 `perly6185-lab/md` 的整仓重构准备路线固化为 adapter 任务图和可审计 action plan。仍不修改目标业务源码，而是产出按 domain 切分的任务、风险、probe、验收标准和回滚边界。
+
+新增能力：
+
+- `md-monorepo` adapter task graph
+- `adapter/md-monorepo-task-plan.json`
+- `adapter/md-monorepo-task-plan.md`
+- `adapter/md-monorepo-action-plan.json`
+- MD domain 任务覆盖 core/shared/web/api/vscode/cli/mcp/cross-package verification
+
+建议命令：
+
+```bash
+node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "MD monorepo refactor task planning" --dry-run --adapter md-monorepo --issue-provider local
+node dist/cli.js resume --config configs/md-fast.migration-guard.json --run latest --auto
+node dist/cli.js tasks --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js actions --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- run task graph 中的 `task-md-monorepo-plan`
+- run task graph 中的 `task-md-monorepo-actions`
+- task issues：每个 MD refactor domain 一个 planned issue
+- action issues：每个 AI-owned domain 一个 proposal candidate issue
+
+完成标准：
+
+- `md-monorepo` graph 通过 DAG 校验。
+- action plan 绑定 Phase 42 的 renderer/API/web probes。
+- 高风险 domain 默认 `manual-approval-required`。
+- 任务计划可作为后续整仓自动重构的执行边界，而不是临时口头计划。
+
+## Phase 44: First MD Domain Gated Proposal
+
+目标：从 Phase 43 的 `md-monorepo` action candidates 中选择一个低风险 domain，生成真实 proposal，跑通 patch verify、apply checks、proposal-scoped behavior diff 和 rollback。
+
+新增能力：
+
+- action probe script 支持 affected path 为目录
+- 非 UI action probe 对整个 action 范围聚合检查信号
+- `action-md-mcp-render` 可生成目录型 renderer probe proposal
+- 单测覆盖目录型 generated probe
+- 首个 MD domain proposal smoke 记录 apply/behavior-diff/rollback artifact
+
+建议命令：
+
+```bash
+node dist/cli.js action propose --config configs/md-fast.migration-guard.json --run latest --action action-md-mcp-render
+node dist/cli.js proposal verify --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id>
+node dist/cli.js action apply --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id> --rollback-on-fail --behavior-diff
+node dist/cli.js proposal rollback --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id>
+```
+
+产物：
+
+- `proposals/<proposal-id>/patch.diff`
+- `proposals/<proposal-id>/verification-*.json`
+- `proposals/<proposal-id>/behavior-diff-*-compare.json`
+- `proposals/<proposal-id>/rollback-*.json`
+
+完成标准：
+
+- patch-only verify 通过。
+- apply checks 通过。
+- behavior diff 通过且无 error/warn drift。
+- rollback 后目标 `md` 仓库保持 clean。
+- `npm test` 覆盖目录型 action probe。
+
+## Phase 45: Verify Checks Temporary Apply
+
+目标：补齐 `proposal verify --checks` 对 generated-script proposal 的语义。verify 模式不应把 proposal 标记为 applied，但必须能让新增的 probe/check 脚本在检查期间存在。
+
+新增能力：
+
+- `proposal verify --checks` 对 git patch 临时 apply
+- checks 完成后自动 `git apply -R` 回滚
+- verification report 写入 `temporaryApply`
+- report 文本展示 temporary apply/rollback 状态
+- verify-with-checks 复用 preview-aware check runner
+
+建议命令：
+
+```bash
+node dist/cli.js proposal verify --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id> --checks
+```
+
+产物：
+
+- `proposals/<proposal-id>/verification-*.json`
+- verification report `temporaryApply`
+
+完成标准：
+
+- 新增脚本型 proposal 可以在 verify mode 跑 checks。
+- verify 后 proposal 仍未持久 applied。
+- verify 后目标工作树恢复 clean。
+- apply gate 语义保持不变。
+
+## Phase 46: No-Op Check Detection
+
+目标：阻止 proposal gate 把“命令成功退出但没有实际运行检查”的输出误判为通过，并修正 MD MCP action 的推荐检查。
+
+新增能力：
+
+- proposal check failure category 增加 `no-op`
+- 识别 pnpm filter no-op 输出
+- no-op check 生成针对性的 remediation hints
+- `md-task-mcp-render` 改用真实 MCP render runtime smoke
+- 单测覆盖 exit 0 no-op 输出被判失败
+
+建议命令：
+
+```bash
+node dist/cli.js proposal verify --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id> --checks
+```
+
+产物：
+
+- verification report check `failureCategory: "no-op"`
+- replan issue/task 中的 no-op remediation hints
+- MD MCP action plan 中的 runtime smoke recommended check
+
+完成标准：
+
+- 旧 `pnpm --filter @md/mcp-server type-check` 空跑输出被 gate 拦下。
+- 新 MD MCP runtime smoke proposal verify-with-checks 通过。
+- verify 后目标 `md` 工作树保持 clean。
+- `npm test` 覆盖 no-op 分类和 MD MCP recommended check。
+
+## Phase 47: Action Check Readiness
+
+目标：把 Phase 46 的 no-op gate 经验前置到 action plan。用户查看 actions 时，应能看到 recommended checks 是否能静态确认会实际运行，而不是等到 proposal gate 才发现缺脚本。
+
+新增能力：
+
+- `MigrationAction.checkReadiness`
+- root/package pnpm script 静态索引
+- `pnpm --filter <pkg> <script>` ready / no-op-risk 判断
+- `pnpm --filter <pkg> exec ...` ready 判断
+- `actions` CLI 输出 check-readiness 行
+
+建议命令：
+
+```bash
+node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "MD action check readiness validation" --dry-run --adapter md-monorepo --issue-provider local
+node dist/cli.js resume --config configs/md-fast.migration-guard.json --run latest --auto
+node dist/cli.js actions --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- `adapter/md-monorepo-action-plan.json` action `checkReadiness`
+- `actions` CLI 中的 `check-readiness: ready|no-op-risk|unknown`
+
+完成标准：
+
+- MD action plan 写出每个 recommended check 的 readiness。
+- 已知缺脚本的 pnpm filter 命令可静态标为 `no-op-risk`。
+- 当前 MD action candidates 的 checks 均标为 `ready` 或 `unknown`，且 MCP runtime smoke 标为 `ready`。
+- `npm test` 覆盖 readiness 分类。
+
+## Phase 48: Action Propose Readiness Gate
+
+目标：把 Phase 47 的 readiness 从提示升级为 proposal 生成前门禁。`no-op-risk` action 默认不能生成 proposal，避免把已知空跑检查带入后续 gate。
+
+新增能力：
+
+- `action propose` 默认拒绝 `checkReadiness.status = no-op-risk`
+- 错误信息列出具体 command 和 reason
+- `--allow-no-op-risk` 显式 override
+- 单测覆盖默认拒绝和 override 生成
+
+建议命令：
+
+```bash
+node dist/cli.js action propose --config configs/md-fast.migration-guard.json --run latest --action <action-id>
+node dist/cli.js action propose --config configs/md-fast.migration-guard.json --run latest --action <action-id> --allow-no-op-risk
+```
+
+产物：
+
+- 默认拒绝 no-op-risk action 时不写 proposal
+- override 后照常写 proposal artifacts
+
+完成标准：
+
+- no-op-risk action 默认无法 propose。
+- ready action 不受影响。
+- override 行为必须显式。
+- `npm test` 覆盖 gate。
+
+## Phase 49: Run Report Check Readiness Rollup
+
+目标：把 action check readiness 从 `actions` 详情页推进到 run status/report，让团队在迁移摘要和 handoff 里直接看到 no-op-risk，而不是必须打开 action plan。
+
+新增能力：
+
+- `status` 输出 action check readiness 汇总
+- `report` 新增 `Action Check Readiness` 章节
+- no-op-risk 在没有更强 proposal/behavior blocker 时成为 next action
+- 汇总 ready / no-op-risk / unknown / missing metadata 计数
+- 单测覆盖 status/report/next-action 风险展示
+
+建议命令：
+
+```bash
+node dist/cli.js status --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js report --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- status 中的 `Action check readiness: ...`
+- report 中的 `## Action Check Readiness`
+- no-op-risk action check 的 command、reason、action plan evidence
+
+完成标准：
+
+- 有 action plan 时 status/report 展示 readiness 计数。
+- no-op-risk action check 优先提示修复，再进入 proposal generation。
+- 没有 action plan 时 report 给出清晰空状态。
+- `npm test` 覆盖 run-level readiness 汇总。
+
+## Phase 50: Action Check Readiness Handoff
+
+目标：把 run-level readiness 从“报告里可见”推进到“可交接修复”。写 run report 时同步生成 JSON/Markdown handoff，供团队或 AI 直接处理 no-op-risk、unknown、missing metadata checks。
+
+新增能力：
+
+- `writeRunReport` 写出 `reports/action-check-readiness-handoff.json`
+- `writeRunReport` 写出 `reports/action-check-readiness-handoff.md`
+- status/report 输出 handoff artifact 路径
+- handoff JSON 包含 summary、blockedBeforeProposal、attention items、recommendedNextActions
+- attention items 覆盖 no-op-risk / unknown / missing readiness metadata
+- 单测覆盖 handoff artifact 内容
+
+建议命令：
+
+```bash
+node dist/cli.js report --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js status --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- `reports/action-check-readiness-handoff.json`
+- `reports/action-check-readiness-handoff.md`
+- report 中的 handoff JSON/Markdown 路径
+
+完成标准：
+
+- 写 run report 时同步写出 readiness handoff artifacts。
+- JSON artifact 可机器读取 attention items。
+- Markdown artifact 可直接交给人或 AI。
+- `npm test` 覆盖 no-op-risk/unknown handoff 写出。
+
+## Phase 51: On-Demand Readiness Handoff CLI
+
+目标：把 readiness handoff 从 `report` 的副产物变成可按需调用的 CLI。用户可以直接刷新/查看 action check readiness handoff，不需要重新渲染完整 run report。
+
+新增能力：
+
+- `actions handoff` 子命令
+- 默认输出 handoff Markdown
+- `--json` 输出机器可读 handoff JSON
+- 入口会写出/刷新 JSON 和 Markdown artifacts
+- CLI help 增加新命令
+- 单测通过真实 `dist/cli.js actions handoff --json` 覆盖入口
+
+建议命令：
+
+```bash
+node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json --run latest --json
+```
+
+产物：
+
+- `reports/action-check-readiness-handoff.json`
+- `reports/action-check-readiness-handoff.md`
+- CLI stdout 中的 Markdown 或 JSON handoff
+
+完成标准：
+
+- 用户不跑完整 report 也能刷新 readiness handoff。
+- `--json` 输出能被自动化读取。
+- 入口不修改 target repository。
+- `npm test` 覆盖 CLI 入口。
+
+## Phase 52: PR Merge Readiness and CI Closure
+
+目标：停止继续扩展迁移功能，转向 PR 收口。让 PR 在 GitHub 上报告 CI，并给 reviewer 一个明确的 merge readiness checklist。
+
+新增能力：
+
+- `.github/workflows/ci.yml`
+- pull request / main push / manual dispatch 触发 CI
+- CI 使用 Node 22、`npm ci`、`npm test`
+- `docs/PR_MERGE_READINESS.md`
+- README 增加 merge readiness 入口
+
+建议命令：
+
+```bash
+npm test
+node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json --run latest --json
+gh pr checks 1
+```
+
+产物：
+
+- GitHub Actions `CI / Build and Test`
+- `docs/PR_MERGE_READINESS.md`
+- `docs/PHASE_52_REPORT.md`
+
+完成标准：
+
+- CI workflow 提交到 PR。
+- 本地 `npm test` 通过。
+- PR checks 在 GitHub 上开始 reported。
+- 工具仓库和 target `md` 仓库 clean。
 
 ## 阶段交付规则
 

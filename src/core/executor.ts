@@ -2,13 +2,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { compareSnapshots } from "./compare.js";
 import { createCheckpoint } from "./checkpoint.js";
+import { decisionsForCompareReport, evaluateDiffDecisionPolicy, formatPolicyLine } from "./diffDecision.js";
 import { renderCompareReport } from "./markdown.js";
 import { captureSnapshot, latestBaselinePath, loadSnapshot, saveSnapshot } from "./snapshot.js";
 import { scanProject } from "./scan.js";
 import { updateTaskStatus, insertFailureTask, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
 import { appendEvidence, createFailureIssue, createId, migrationRunDir, saveRunPackage, setRunStatus, syncIssueStatuses, writeRunReport } from "./migrationRun.js";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
-import type { LoadedConfig, MigrationAction, MigrationIssue, MigrationTask, ScanSummary } from "../types.js";
+import type { LoadedConfig, MigrationAction, MigrationActionCheckReadiness, MigrationIssue, MigrationTask, ScanSummary } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
 export interface ExecuteTaskOptions {
@@ -112,6 +113,9 @@ async function runTaskBody(loaded: LoadedConfig, pkg: MigrationRunPackage, task:
   if (task.executor?.startsWith("js-vite:")) {
     return executeJsViteTask(loaded, pkg, task);
   }
+  if (task.executor?.startsWith("md-monorepo:")) {
+    return executeMdMonorepoTask(loaded, pkg, task);
+  }
   if (task.executor?.startsWith("pnpm-vite-vue:")) {
     return executePnpmViteVueTask(loaded, pkg, task);
   }
@@ -189,12 +193,22 @@ async function executeVerify(loaded: LoadedConfig, pkg: MigrationRunPackage): Pr
 
   const baseline = await loadSnapshot(baselineFile);
   const report = compareSnapshots(baseline, snapshot, loaded.config.compare);
+  const decisions = await decisionsForCompareReport(loaded, report, pkg.run.id);
+  const decisionPolicy = evaluateDiffDecisionPolicy(report, decisions);
   const reportBase = path.join(migrationRunDir(loaded, pkg.run.id), "verifications", `${snapshot.id}-compare`);
   await writeJsonFile(`${reportBase}.json`, report);
-  await writeTextFile(`${reportBase}.md`, renderCompareReport(report));
+  await writeTextFile(`${reportBase}.md`, [
+    renderCompareReport(report, decisions),
+    "",
+    formatPolicyLine(decisionPolicy)
+  ].join("\n"));
+
+  if (!decisionPolicy.canContinue) {
+    throw new Error(`Verification decision gate ${decisionPolicy.status}: ${decisionPolicy.reason}. See ${reportBase}.md`);
+  }
 
   if (!report.passed) {
-    throw new Error(`Verification failed with ${report.differences.filter((difference) => difference.severity === "error").length} error differences. See ${reportBase}.md`);
+    return `Verification ${snapshot.id} raw compare failed but decision gate accepted the differences. Wrote ${reportBase}.md`;
   }
 
   return `Verification ${snapshot.id} passed. Wrote ${reportBase}.md`;
@@ -240,6 +254,474 @@ async function executePnpmViteVueTask(loaded: LoadedConfig, pkg: MigrationRunPac
     default:
       return `No pnpm-vite-vue executor for ${task.executor}.`;
   }
+}
+
+async function executeMdMonorepoTask(loaded: LoadedConfig, pkg: MigrationRunPackage, task: MigrationTask): Promise<string> {
+  switch (task.executor) {
+    case "md-monorepo:plan":
+      return createMdMonorepoTaskPlan(loaded, pkg);
+    case "md-monorepo:actions":
+      return createMdMonorepoActionPlan(loaded, pkg);
+    default:
+      return `No md-monorepo executor for ${task.executor}.`;
+  }
+}
+
+interface MdRefactorTaskPlanItem {
+  id: string;
+  domain: string;
+  title: string;
+  risk: MigrationTask["risk"];
+  owner: MigrationTask["owner"];
+  affectedFiles: string[];
+  recommendedChecks: string[];
+  requiredProbes: string[];
+  acceptanceCriteria: string[];
+  rollbackBoundary: string;
+}
+
+interface MdRefactorTaskPlan {
+  version: 1;
+  runId: string;
+  createdAt: string;
+  goal: string;
+  targetRoot: string;
+  tasks: MdRefactorTaskPlanItem[];
+}
+
+async function createMdMonorepoTaskPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const scan = await scanProject({
+    ...loaded,
+    targetRoot: pkg.run.targetRoot
+  });
+  const plan = createMdMonorepoRefactorTaskPlan(pkg, scan);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "md-monorepo-task-plan.json");
+  const markdownPath = path.join(dir, "md-monorepo-task-plan.md");
+  await writeJsonFile(jsonPath, plan);
+  await writeTextFile(markdownPath, renderMdMonorepoTaskPlan(plan));
+  createMdMonorepoTaskIssues(pkg, plan);
+  await saveRunPackage(loaded, pkg);
+  return `Wrote md monorepo task plan to ${jsonPath} and ${markdownPath}`;
+}
+
+async function createMdMonorepoActionPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const planPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "md-monorepo-task-plan.json");
+  const plan = await pathExists(planPath)
+    ? await readJsonFile<MdRefactorTaskPlan>(planPath)
+    : createMdMonorepoRefactorTaskPlan(pkg, await scanProject({ ...loaded, targetRoot: pkg.run.targetRoot }));
+  const actions = await createMdMonorepoActions(plan, pkg.run.targetRoot);
+  const actionPlanPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "md-monorepo-action-plan.json");
+  await writeJsonFile(actionPlanPath, {
+    version: 1,
+    runId: pkg.run.id,
+    createdAt: new Date().toISOString(),
+    goal: pkg.run.goal,
+    actions
+  });
+  createMdMonorepoActionIssues(pkg, actions);
+  await saveRunPackage(loaded, pkg);
+  return `Wrote md monorepo action plan with ${actions.length} actions to ${actionPlanPath}`;
+}
+
+export function createMdMonorepoRefactorTaskPlan(pkg: MigrationRunPackage, scan: ScanSummary): MdRefactorTaskPlan {
+  const riskByPrefix = createRiskLookup(scan);
+  const tasks: MdRefactorTaskPlanItem[] = [
+    {
+      id: "md-task-core-renderer",
+      domain: "packages/core",
+      title: "Stabilize renderer and extension refactors",
+      risk: riskFor(["packages/core/src/renderer", "packages/core/src/extensions"], riskByPrefix, "high"),
+      owner: "ai",
+      affectedFiles: ["packages/core/src/renderer", "packages/core/src/extensions", "packages/core/src/theme"],
+      recommendedChecks: ["pnpm --filter @md/core test", "pnpm type-check:packages"],
+      requiredProbes: ["md-renderer-behavior"],
+      acceptanceCriteria: ["renderer behavior probe passes", "core tests pass", "no accidental behavior drift"],
+      rollbackBoundary: "packages/core"
+    },
+    {
+      id: "md-task-shared-contracts",
+      domain: "packages/shared",
+      title: "Consolidate shared configs, types, and editor utilities",
+      risk: riskFor(["packages/shared/src"], riskByPrefix, "medium"),
+      owner: "ai",
+      affectedFiles: ["packages/shared/src/configs", "packages/shared/src/types", "packages/shared/src/editor", "packages/shared/src/utils"],
+      recommendedChecks: ["pnpm type-check:packages", "pnpm --filter @md/web test"],
+      requiredProbes: ["md-renderer-behavior", "md-web-static-contract"],
+      acceptanceCriteria: ["shared type-check passes", "web tests pass", "web static contract remains stable"],
+      rollbackBoundary: "packages/shared"
+    },
+    {
+      id: "md-task-web-editor-shell",
+      domain: "apps/web",
+      title: "Split editor shell, command palette, and document orchestration",
+      risk: riskFor(["apps/web/src/components/editor", "apps/web/src/composables"], riskByPrefix, "high"),
+      owner: "ai",
+      affectedFiles: ["apps/web/src/components/editor", "apps/web/src/composables", "apps/web/src/lib/markdown"],
+      recommendedChecks: ["pnpm --filter @md/web test", "pnpm type-check:web"],
+      requiredProbes: ["md-web-static-contract", "md-renderer-behavior"],
+      acceptanceCriteria: ["web tests pass", "web type-check passes", "editor entry contract remains stable"],
+      rollbackBoundary: "apps/web/src/components/editor"
+    },
+    {
+      id: "md-task-web-ai-image",
+      domain: "apps/web",
+      title: "Decompose AI assistant and image generation panels",
+      risk: riskFor(["apps/web/src/components/ai", "apps/web/src/services/upload"], riskByPrefix, "high"),
+      owner: "ai",
+      affectedFiles: ["apps/web/src/components/ai", "apps/web/src/services/upload", "apps/web/src/composables/useAIFetch.ts"],
+      recommendedChecks: ["pnpm --filter @md/web test", "pnpm type-check:web"],
+      requiredProbes: ["md-web-static-contract"],
+      acceptanceCriteria: ["AI/image panel routes still build", "upload service contracts are unchanged", "web static contract passes"],
+      rollbackBoundary: "apps/web/src/components/ai"
+    },
+    {
+      id: "md-task-web-state-stores",
+      domain: "apps/web",
+      title: "Normalize Pinia stores and persistence boundaries",
+      risk: riskFor(["apps/web/src/stores", "apps/web/src/storage"], riskByPrefix, "medium"),
+      owner: "ai",
+      affectedFiles: ["apps/web/src/stores", "apps/web/src/storage"],
+      recommendedChecks: ["pnpm --filter @md/web test", "pnpm type-check:web"],
+      requiredProbes: ["md-web-static-contract"],
+      acceptanceCriteria: ["store imports stay stable", "web tests pass", "no app bootstrap drift"],
+      rollbackBoundary: "apps/web/src/stores"
+    },
+    {
+      id: "md-task-api-contracts",
+      domain: "apps/api",
+      title: "Refactor API route modules and shared contracts",
+      risk: riskFor(["apps/api/src"], riskByPrefix, "high"),
+      owner: "ai",
+      affectedFiles: ["apps/api/src/index.ts", "apps/api/src/types.ts", "apps/api/src/share.ts", "apps/api/src/sync.ts", "apps/api/src/upload.ts"],
+      recommendedChecks: ["pnpm type-check:packages"],
+      requiredProbes: ["md-api-contract"],
+      acceptanceCriteria: ["API contract probe passes", "package type-check passes", "public unauthenticated behavior stays explicit"],
+      rollbackBoundary: "apps/api/src"
+    },
+    {
+      id: "md-task-vscode-preview",
+      domain: "apps/vscode",
+      title: "Guard VSCode extension preview behavior before refactor",
+      risk: riskFor(["apps/vscode/src"], riskByPrefix, "medium"),
+      owner: "ai",
+      affectedFiles: ["apps/vscode/src/extension.ts", "apps/vscode/src/previewRenderer.ts", "apps/vscode/scripts"],
+      recommendedChecks: ["pnpm vscode:test"],
+      requiredProbes: [],
+      acceptanceCriteria: ["VSCode smoke scripts pass or produce actionable failure evidence"],
+      rollbackBoundary: "apps/vscode"
+    },
+    {
+      id: "md-task-cli-package",
+      domain: "packages/md-cli",
+      title: "Protect CLI packaging and static asset copy flow",
+      risk: riskFor(["packages/md-cli"], riskByPrefix, "medium"),
+      owner: "ai",
+      affectedFiles: ["packages/md-cli", "scripts/release.js"],
+      recommendedChecks: ["pnpm build:cli"],
+      requiredProbes: ["md-web-static-contract"],
+      acceptanceCriteria: ["CLI package build succeeds", "web static contract remains stable"],
+      rollbackBoundary: "packages/md-cli"
+    },
+    {
+      id: "md-task-mcp-render",
+      domain: "packages/mcp-server",
+      title: "Guard MCP render contract before server refactor",
+      risk: riskFor(["packages/mcp-server"], riskByPrefix, "medium"),
+      owner: "ai",
+      affectedFiles: ["packages/mcp-server/src", "packages/mcp-server/run.mjs"],
+      recommendedChecks: ["pnpm --filter @md/mcp-server exec tsx -e \"(async () => { const { buildRenderedOutput } = await import('./src/render-article.ts'); const result = await buildRenderedOutput({ markdown: '# Hi' }); console.log(JSON.stringify({ hasHeading: result.html.includes('<h1'), words: result.readingTime.words })); if (!result.html.includes('<h1')) process.exit(1); })();\""],
+      requiredProbes: ["md-renderer-behavior"],
+      acceptanceCriteria: ["MCP render runtime smoke passes", "renderer probe remains stable"],
+      rollbackBoundary: "packages/mcp-server"
+    },
+    {
+      id: "md-task-cross-package-verification",
+      domain: "root",
+      title: "Run cross-package verification and accepted-diff review",
+      risk: "medium",
+      owner: "engine",
+      affectedFiles: ["package.json", "pnpm-workspace.yaml", "configs"],
+      recommendedChecks: ["pnpm type-check", "pnpm test", "pnpm web build"],
+      requiredProbes: ["md-renderer-behavior", "md-api-contract", "md-web-static-contract"],
+      acceptanceCriteria: ["full lane passes", "all risk diffs classified", "final report generated"],
+      rollbackBoundary: "workspace"
+    }
+  ];
+  return {
+    version: 1,
+    runId: pkg.run.id,
+    createdAt: new Date().toISOString(),
+    goal: pkg.run.goal,
+    targetRoot: pkg.run.targetRoot,
+    tasks
+  };
+}
+
+async function createMdMonorepoActions(plan: MdRefactorTaskPlan, targetRoot: string): Promise<MigrationAction[]> {
+  const packageScripts = await collectPackageScripts(targetRoot);
+  return plan.tasks
+    .filter((task) => task.owner !== "engine")
+    .map((task) => ({
+      id: `action-${task.id.replace(/^md-task-/, "md-")}`,
+      title: `Prepare ${task.title}`,
+      summary: [
+        `Create a probe/review proposal for ${task.domain} before source edits.`,
+        `Rollback boundary: ${task.rollbackBoundary}.`,
+        `Required probes: ${task.requiredProbes.join(", ") || "none"}.`
+      ].join(" "),
+      risk: task.risk,
+      affectedFiles: task.affectedFiles,
+      recommendedChecks: task.recommendedChecks,
+      checkReadiness: task.recommendedChecks.map((command) => evaluateActionCheckReadiness(command, packageScripts)),
+      patchMode: task.risk === "high" ? "manual-approval-required" : "dry-run-only",
+      patchTemplate: inferMdActionTemplate(task)
+    }));
+}
+
+interface PackageScriptIndex {
+  rootScripts: Set<string>;
+  packageScriptsByName: Map<string, Set<string>>;
+}
+
+export async function collectPackageScripts(targetRoot: string): Promise<PackageScriptIndex> {
+  const packageJsonPaths = await collectFiles(targetRoot, (file) => path.basename(file) === "package.json");
+  const packageScriptsByName = new Map<string, Set<string>>();
+  let rootScripts = new Set<string>();
+
+  for (const packageJsonPath of packageJsonPaths) {
+    if (packageJsonPath.includes(`${path.sep}node_modules${path.sep}`)) {
+      continue;
+    }
+    const raw = await readJsonFile<Record<string, unknown>>(packageJsonPath).catch(() => undefined);
+    if (!raw) {
+      continue;
+    }
+    const scripts = new Set(Object.keys(readScripts(raw)));
+    if (path.resolve(packageJsonPath) === path.resolve(targetRoot, "package.json")) {
+      rootScripts = scripts;
+    }
+    if (typeof raw.name === "string") {
+      packageScriptsByName.set(raw.name, scripts);
+    }
+  }
+
+  return {
+    rootScripts,
+    packageScriptsByName
+  };
+}
+
+export function evaluateActionCheckReadiness(command: string, packageScripts: PackageScriptIndex): MigrationActionCheckReadiness {
+  const words = shellWords(command);
+  if (words[0] !== "pnpm") {
+    return {
+      command,
+      status: "unknown",
+      reason: "non-pnpm command; runtime gate will validate it"
+    };
+  }
+
+  const filterIndex = words.indexOf("--filter");
+  if (filterIndex >= 0) {
+    const packageName = words[filterIndex + 1];
+    const afterFilter = words.slice(filterIndex + 2);
+    if (!packageName || afterFilter.length === 0) {
+      return {
+        command,
+        status: "unknown",
+        reason: "pnpm filter command could not be statically resolved"
+      };
+    }
+    if (afterFilter[0] === "exec") {
+      return {
+        command,
+        status: "ready",
+        reason: `direct pnpm exec for ${packageName}`
+      };
+    }
+    const scriptName = afterFilter[0] === "run" ? afterFilter[1] : afterFilter[0];
+    const scripts = packageScripts.packageScriptsByName.get(packageName);
+    if (!scripts) {
+      return {
+        command,
+        status: "unknown",
+        reason: `package ${packageName} was not found in target package index`
+      };
+    }
+    if (scripts.has(scriptName)) {
+      return {
+        command,
+        status: "ready",
+        reason: `package script exists: ${packageName}#${scriptName}`
+      };
+    }
+    return {
+      command,
+      status: "no-op-risk",
+      reason: `package ${packageName} has no script ${scriptName}`
+    };
+  }
+
+  const scriptName = words[1] === "run" ? words[2] : words[1];
+  if (!scriptName) {
+    return {
+      command,
+      status: "unknown",
+      reason: "pnpm command has no script or subcommand to validate"
+    };
+  }
+  if (scriptName === "exec" || scriptName === "dlx" || scriptName === "install") {
+    return {
+      command,
+      status: "ready",
+      reason: `pnpm ${scriptName} command does not require a package script`
+    };
+  }
+  if (packageScripts.rootScripts.has(scriptName)) {
+    return {
+      command,
+      status: "ready",
+      reason: `root script exists: ${scriptName}`
+    };
+  }
+  return {
+    command,
+    status: "no-op-risk",
+    reason: `root package has no script ${scriptName}`
+  };
+}
+
+function shellWords(command: string): string[] {
+  return command.match(/"[^"]*"|'[^']*'|\S+/g)?.map((word) => word.replace(/^["']|["']$/g, "")) ?? [];
+}
+
+function readScripts(packageJson: Record<string, unknown> | undefined): Record<string, string> {
+  if (!packageJson || typeof packageJson.scripts !== "object" || packageJson.scripts === null) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(packageJson.scripts as Record<string, unknown>)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
+}
+
+function inferMdActionTemplate(task: MdRefactorTaskPlanItem): MigrationAction["patchTemplate"] {
+  if (task.requiredProbes.includes("md-web-static-contract")) {
+    return "ui-smoke-probe";
+  }
+  if (task.requiredProbes.includes("md-api-contract")) {
+    return "api-contract-probe";
+  }
+  if (task.requiredProbes.includes("md-renderer-behavior")) {
+    return "renderer-probe";
+  }
+  return "adapter-fixture-probe";
+}
+
+function renderMdMonorepoTaskPlan(plan: MdRefactorTaskPlan): string {
+  return [
+    `# MD Monorepo Task Plan: ${plan.runId}`,
+    "",
+    `Goal: ${plan.goal}`,
+    `Target: ${plan.targetRoot}`,
+    `Tasks: ${plan.tasks.length}`,
+    "",
+    ...plan.tasks.flatMap((task) => [
+      `## ${task.id}`,
+      "",
+      `- Domain: ${task.domain}`,
+      `- Title: ${task.title}`,
+      `- Risk: ${task.risk}`,
+      `- Owner: ${task.owner}`,
+      `- Rollback boundary: ${task.rollbackBoundary}`,
+      `- Affected files: ${task.affectedFiles.join(", ") || "none"}`,
+      `- Recommended checks: ${task.recommendedChecks.join(", ") || "none"}`,
+      `- Required probes: ${task.requiredProbes.join(", ") || "none"}`,
+      `- Acceptance criteria: ${task.acceptanceCriteria.join("; ")}`,
+      ""
+    ])
+  ].join("\n");
+}
+
+function createMdMonorepoTaskIssues(pkg: MigrationRunPackage, plan: MdRefactorTaskPlan): void {
+  const existing = new Set(pkg.issues.map((issue) => `${issue.type}:${issue.title}`));
+  const now = new Date().toISOString();
+  for (const task of plan.tasks) {
+    const issue: MigrationIssue = {
+      id: createId("issue"),
+      runId: pkg.run.id,
+      type: "task",
+      title: task.title,
+      body: [
+        `Domain: ${task.domain}`,
+        `Rollback boundary: ${task.rollbackBoundary}`,
+        `Recommended checks: ${task.recommendedChecks.join(", ") || "none"}`,
+        `Required probes: ${task.requiredProbes.join(", ") || "none"}`,
+        `Acceptance: ${task.acceptanceCriteria.join("; ")}`
+      ].join("\n"),
+      status: "planned",
+      risk: task.risk,
+      owner: task.owner,
+      affectedFiles: task.affectedFiles,
+      createdAt: now,
+      updatedAt: now
+    };
+    if (!existing.has(`${issue.type}:${issue.title}`)) {
+      pkg.issues.push(issue);
+      existing.add(`${issue.type}:${issue.title}`);
+    }
+  }
+}
+
+function createMdMonorepoActionIssues(pkg: MigrationRunPackage, actions: MigrationAction[]): void {
+  const existing = new Set(pkg.issues.map((issue) => `${issue.type}:${issue.title}`));
+  const now = new Date().toISOString();
+  for (const action of actions) {
+    const issue: MigrationIssue = {
+      id: createId("issue"),
+      runId: pkg.run.id,
+      type: "task",
+      title: action.title,
+      body: [
+        action.summary,
+        "",
+        `Recommended checks: ${action.recommendedChecks.join(", ") || "none"}`,
+        `Patch mode: ${action.patchMode}`
+      ].join("\n"),
+      status: "planned",
+      risk: action.risk,
+      owner: "ai",
+      affectedFiles: action.affectedFiles,
+      createdAt: now,
+      updatedAt: now
+    };
+    if (!existing.has(`${issue.type}:${issue.title}`)) {
+      pkg.issues.push(issue);
+      existing.add(`${issue.type}:${issue.title}`);
+    }
+  }
+}
+
+function createRiskLookup(scan: ScanSummary): Map<string, number> {
+  return new Map(scan.riskFiles.map((file) => [file.path, file.score]));
+}
+
+function riskFor(prefixes: string[], riskByPath: Map<string, number>, fallback: MigrationTask["risk"]): MigrationTask["risk"] {
+  const maxScore = Math.max(
+    0,
+    ...[...riskByPath.entries()]
+      .filter(([file]) => prefixes.some((prefix) => file.startsWith(prefix)))
+      .map(([, score]) => score)
+  );
+  if (maxScore >= 40) {
+    return "high";
+  }
+  if (maxScore >= 25) {
+    return "medium";
+  }
+  return fallback;
 }
 
 async function inventoryPnpmWorkspace(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
@@ -394,12 +876,32 @@ async function createPnpmViteVueRiskIssues(loaded: LoadedConfig, pkg: MigrationR
   return `Created ${issues.length} risk issues and wrote ${reportPath} plus ${actionPlanPath}`;
 }
 
-function createPnpmViteVueActions(scan: ScanSummary): MigrationAction[] {
+export function createPnpmViteVueActions(scan: ScanSummary): MigrationAction[] {
   const risks = scan.riskFiles;
   const renderer = risks.find((file) => file.path.includes("packages/core/src/renderer/renderer-impl.ts"));
   const apiTypes = risks.find((file) => file.path.includes("apps/api/src/types.ts"));
   const largeVue = risks.find((file) => file.path.endsWith(".vue"));
   const actions: MigrationAction[] = [
+    {
+      id: "action-adapter-fixture-inventory",
+      title: "Add adapter fixture coverage before source edits",
+      summary: "Create a low-risk proposal that records package/workspace fixture expectations before adapter-generated code changes.",
+      risk: "low",
+      affectedFiles: ["package.json", "pnpm-workspace.yaml"],
+      recommendedChecks: [],
+      patchMode: "dry-run-only" as const,
+      patchTemplate: "adapter-fixture-probe"
+    },
+    {
+      id: "action-normalize-check-noise",
+      title: "Review noisy check output normalization before widening gates",
+      summary: "Create a low-risk normalization probe so known stdout/stderr drift can be reviewed before broader automated changes.",
+      risk: "low",
+      affectedFiles: ["package.json"],
+      recommendedChecks: [],
+      patchMode: "dry-run-only" as const,
+      patchTemplate: "normalization-probe"
+    },
     {
       id: "action-renderer-probes",
       title: "Add/expand behavior probes before renderer refactor",
