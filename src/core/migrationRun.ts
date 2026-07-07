@@ -3,7 +3,7 @@ import path from "node:path";
 import { renderMigrationPlan } from "./plan.js";
 import { scanProject } from "./scan.js";
 import { createEstimate, createTaskGraph, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
-import { decisionCoverageForCompareReportPath, formatCoverageLine } from "./diffDecision.js";
+import { decisionPolicyForCompareReportPath, formatPolicyLine } from "./diffDecision.js";
 import { ensureDir, pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
 import type {
   EvidenceEvent,
@@ -62,8 +62,12 @@ interface ProposalGateSummary {
   behaviorDiffPassed?: boolean;
   behaviorDiffErrors?: number;
   behaviorDiffWarnings?: number;
+  behaviorDecisionStatus?: string;
+  behaviorDecisionCanContinue?: boolean;
   behaviorDecisionSummary?: string;
   behaviorDecisionPendingRisk?: number;
+  behaviorDecisionAccidentalRisk?: number;
+  behaviorDecisionUnknownRisk?: number;
 }
 
 interface ProposalBatchSummary {
@@ -434,14 +438,31 @@ function selectRunNextAction(
     };
   }
 
+  const latestBlockedBehaviorDecision = [...gates].reverse().find((gate) => {
+    return (gate.behaviorDecisionAccidentalRisk ?? 0) > 0 && Boolean(gate.behaviorComparePath);
+  });
+  if (latestBlockedBehaviorDecision?.behaviorComparePath) {
+    return {
+      action: `Replan accidental behavior differences for proposal ${latestBlockedBehaviorDecision.proposalId}.`,
+      command: `migration-guard proposal replan --run latest --proposal ${latestBlockedBehaviorDecision.proposalId}`,
+      reason: `${latestBlockedBehaviorDecision.behaviorDecisionAccidentalRisk} risk difference(s) are classified accidental`,
+      evidence: [
+        latestBlockedBehaviorDecision.behaviorComparePath,
+        latestBlockedBehaviorDecision.reportPath
+      ]
+    };
+  }
+
   const latestPendingBehaviorDecision = [...gates].reverse().find((gate) => {
-    return (gate.behaviorDecisionPendingRisk ?? 0) > 0 && Boolean(gate.behaviorComparePath);
+    return ((gate.behaviorDecisionPendingRisk ?? 0) > 0 || (gate.behaviorDecisionUnknownRisk ?? 0) > 0) && Boolean(gate.behaviorComparePath);
   });
   if (latestPendingBehaviorDecision?.behaviorComparePath) {
+    const pendingCount = (latestPendingBehaviorDecision.behaviorDecisionPendingRisk ?? 0)
+      + (latestPendingBehaviorDecision.behaviorDecisionUnknownRisk ?? 0);
     return {
       action: `Classify behavior differences for proposal ${latestPendingBehaviorDecision.proposalId}.`,
       command: `migration-guard diff list --run latest --compare ${latestPendingBehaviorDecision.behaviorComparePath}`,
-      reason: `${latestPendingBehaviorDecision.behaviorDecisionPendingRisk} risk difference(s) are not classified`,
+      reason: `${pendingCount} risk difference(s) are pending or unknown`,
       evidence: [
         latestPendingBehaviorDecision.behaviorComparePath,
         latestPendingBehaviorDecision.reportPath
@@ -854,7 +875,7 @@ async function readRecentProposalGateSummaries(
     .map(async (report) => {
       const failed = report.checks.find((check) => !check.passed);
       const behaviorComparePath = report.behaviorDiff?.compareReportPath ?? report.behaviorDrift?.compareReportPath;
-      const coverage = await decisionCoverageForCompareReportPath(loaded, runId, behaviorComparePath);
+      const policy = await decisionPolicyForCompareReportPath(loaded, runId, behaviorComparePath);
       return {
         proposalId: report.proposalId,
         createdAt: report.createdAt,
@@ -877,8 +898,12 @@ async function readRecentProposalGateSummaries(
         behaviorDiffPassed: report.behaviorDiff?.passed,
         behaviorDiffErrors: report.behaviorDiff?.errorCount,
         behaviorDiffWarnings: report.behaviorDiff?.warningCount,
-        behaviorDecisionSummary: coverage ? formatCoverageLine(coverage) : undefined,
-        behaviorDecisionPendingRisk: coverage?.pendingRisk
+        behaviorDecisionStatus: policy?.status,
+        behaviorDecisionCanContinue: policy?.canContinue,
+        behaviorDecisionSummary: policy ? formatPolicyLine(policy) : undefined,
+        behaviorDecisionPendingRisk: policy?.pendingRisk,
+        behaviorDecisionAccidentalRisk: policy?.accidentalRisk,
+        behaviorDecisionUnknownRisk: policy?.unknownRisk
       };
     }));
 }

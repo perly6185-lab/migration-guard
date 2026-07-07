@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { compareSnapshots } from "./compare.js";
 import { createCheckpoint } from "./checkpoint.js";
+import { decisionsForCompareReport, evaluateDiffDecisionPolicy, formatPolicyLine } from "./diffDecision.js";
 import { renderCompareReport } from "./markdown.js";
 import { captureSnapshot, latestBaselinePath, loadSnapshot, saveSnapshot } from "./snapshot.js";
 import { scanProject } from "./scan.js";
@@ -189,12 +190,22 @@ async function executeVerify(loaded: LoadedConfig, pkg: MigrationRunPackage): Pr
 
   const baseline = await loadSnapshot(baselineFile);
   const report = compareSnapshots(baseline, snapshot, loaded.config.compare);
+  const decisions = await decisionsForCompareReport(loaded, report, pkg.run.id);
+  const decisionPolicy = evaluateDiffDecisionPolicy(report, decisions);
   const reportBase = path.join(migrationRunDir(loaded, pkg.run.id), "verifications", `${snapshot.id}-compare`);
   await writeJsonFile(`${reportBase}.json`, report);
-  await writeTextFile(`${reportBase}.md`, renderCompareReport(report));
+  await writeTextFile(`${reportBase}.md`, [
+    renderCompareReport(report, decisions),
+    "",
+    formatPolicyLine(decisionPolicy)
+  ].join("\n"));
+
+  if (!decisionPolicy.canContinue) {
+    throw new Error(`Verification decision gate ${decisionPolicy.status}: ${decisionPolicy.reason}. See ${reportBase}.md`);
+  }
 
   if (!report.passed) {
-    throw new Error(`Verification failed with ${report.differences.filter((difference) => difference.severity === "error").length} error differences. See ${reportBase}.md`);
+    return `Verification ${snapshot.id} raw compare failed but decision gate accepted the differences. Wrote ${reportBase}.md`;
   }
 
   return `Verification ${snapshot.id} passed. Wrote ${reportBase}.md`;
@@ -394,12 +405,32 @@ async function createPnpmViteVueRiskIssues(loaded: LoadedConfig, pkg: MigrationR
   return `Created ${issues.length} risk issues and wrote ${reportPath} plus ${actionPlanPath}`;
 }
 
-function createPnpmViteVueActions(scan: ScanSummary): MigrationAction[] {
+export function createPnpmViteVueActions(scan: ScanSummary): MigrationAction[] {
   const risks = scan.riskFiles;
   const renderer = risks.find((file) => file.path.includes("packages/core/src/renderer/renderer-impl.ts"));
   const apiTypes = risks.find((file) => file.path.includes("apps/api/src/types.ts"));
   const largeVue = risks.find((file) => file.path.endsWith(".vue"));
   const actions: MigrationAction[] = [
+    {
+      id: "action-adapter-fixture-inventory",
+      title: "Add adapter fixture coverage before source edits",
+      summary: "Create a low-risk proposal that records package/workspace fixture expectations before adapter-generated code changes.",
+      risk: "low",
+      affectedFiles: ["package.json", "pnpm-workspace.yaml"],
+      recommendedChecks: [],
+      patchMode: "dry-run-only" as const,
+      patchTemplate: "adapter-fixture-probe"
+    },
+    {
+      id: "action-normalize-check-noise",
+      title: "Review noisy check output normalization before widening gates",
+      summary: "Create a low-risk normalization probe so known stdout/stderr drift can be reviewed before broader automated changes.",
+      risk: "low",
+      affectedFiles: ["package.json"],
+      recommendedChecks: [],
+      patchMode: "dry-run-only" as const,
+      patchTemplate: "normalization-probe"
+    },
     {
       id: "action-renderer-probes",
       title: "Add/expand behavior probes before renderer refactor",

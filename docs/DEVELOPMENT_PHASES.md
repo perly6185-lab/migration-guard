@@ -1431,6 +1431,73 @@ node dist/cli.js report --config configs/md-fast.migration-guard.json --run late
 - 未分类 risk diff 会被推荐为下一步动作。
 - `npm test` 覆盖 ledger、coverage 和 Markdown 刷新。
 
+## Phase 40: Decision-Aware Behavior Gate
+
+目标：让 Phase 39 的 diff decision ledger 进入迁移控制流，但不改变原始 compare 结果。
+
+新增能力：
+
+- decision policy：`clean` / `accepted` / `pending` / `blocked`
+- raw compare failed 但全部 risk diff 为 `intentional` 时，run verify 可继续
+- `accidental` risk diff 进入 blocked/replan 路径
+- `unknown` 或未分类 risk diff 进入 pending/classify 路径
+- run report 展示 `Decision gate`
+- status/report next action 基于 accidental / unknown / pending 分类选择 replan 或 classify
+
+建议命令：
+
+```bash
+node dist/cli.js diff decide --run latest --compare <compare.json> --area probe --name <probe-name> --as intentional --reason "approved expected behavior change"
+node dist/cli.js resume --run latest --auto
+node dist/cli.js report --run latest
+```
+
+产物：
+
+- refreshed compare Markdown `Decision gate`
+- run report `behavior-decisions`
+- decision-aware next action
+
+完成标准：
+
+- 原始 compare report 仍保留 raw passed/failed。
+- decision gate 可以说明是否可继续。
+- `accidental` 推荐 replan。
+- `unknown` / pending 推荐 classify。
+
+## Phase 41: Low-Risk Adapter Proposal Generation
+
+目标：让 `pnpm-vite-vue` adapter 从只读 inventory 进入可验证 proposal 候选生成，但仍不直接修改目标源码。
+
+新增能力：
+
+- action plan 增加 `action-adapter-fixture-inventory`
+- action plan 增加 `action-normalize-check-noise`
+- 新增 action patch template：`adapter-fixture-probe`
+- 新增 action patch template：`normalization-probe`
+- 低风险 action 通过现有 `action propose` 生成 probe proposal
+
+建议命令：
+
+```bash
+node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "Vite/Vue monorepo safety validation" --dry-run --adapter pnpm-vite-vue
+node dist/cli.js resume --config configs/md-fast.migration-guard.json --run latest --auto
+node dist/cli.js actions --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js action propose --config configs/md-fast.migration-guard.json --run latest --action action-adapter-fixture-inventory
+```
+
+产物：
+
+- `adapter/pnpm-vite-vue-action-plan.json`
+- proposal `patch.diff`
+- generated low-risk probe under `scripts/migration-guard/`
+
+完成标准：
+
+- adapter action plan 至少包含两个 low-risk action。
+- action proposal 不直接改目标业务源码。
+- proposal 仍走现有 verification/apply gate。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

@@ -247,6 +247,21 @@ export interface DiffDecisionCoverage {
   unknown: number;
 }
 
+export type DiffDecisionGateStatus = "clean" | "accepted" | "pending" | "blocked";
+
+export interface DiffDecisionPolicyResult {
+  rawPassed: boolean;
+  status: DiffDecisionGateStatus;
+  canContinue: boolean;
+  reason: string;
+  coverage: DiffDecisionCoverage;
+  riskTotal: number;
+  intentionalRisk: number;
+  accidentalRisk: number;
+  unknownRisk: number;
+  pendingRisk: number;
+}
+
 export interface CompareReport {
   passed: boolean;
   baselineId: string;
@@ -488,7 +503,12 @@ export interface DualRunReport {
 }
 
 export type MigrationActionPatchMode = "dry-run-only" | "manual-approval-required";
-export type MigrationActionPatchTemplate = "renderer-probe" | "api-contract-probe" | "ui-smoke-probe";
+export type MigrationActionPatchTemplate =
+  | "renderer-probe"
+  | "api-contract-probe"
+  | "ui-smoke-probe"
+  | "adapter-fixture-probe"
+  | "normalization-probe";
 export type ProposalCheckKind = "unit-test" | "type-check" | "ui-probe" | "contract-probe" | "build" | "lint" | "other";
 export type ProposalCheckPhase = "pre-preview" | "preview" | "post-preview";
 export type ProposalCheckResourceProfile = "default" | "cpu-bound" | "io-bound" | "browser";

@@ -5,6 +5,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   decisionsForCompareReport,
+  createDifferenceKey,
+  evaluateDiffDecisionPolicy,
   loadDiffDecisionLedger,
   recordDiffDecision,
   summarizeDiffDecisionCoverage
@@ -77,6 +79,69 @@ test("recordDiffDecision classifies a compare difference and refreshes markdown"
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("evaluateDiffDecisionPolicy accepts intentional risk drift and blocks accidental or unknown drift", () => {
+  const report: CompareReport = {
+    passed: false,
+    baselineId: "baseline-1",
+    currentId: "run-1",
+    createdAt: "2026-07-07T00:00:00.000Z",
+    differences: [
+      {
+        severity: "error",
+        area: "probe",
+        name: "renderer",
+        message: "Probe output changed.",
+        before: "aaa",
+        after: "bbb"
+      }
+    ]
+  };
+  const key = createDifferenceKey(report.differences[0]);
+  const baseDecision = {
+    version: 1 as const,
+    id: "decision-1",
+    differenceKey: key,
+    runId: "run-1",
+    compareReportPath: "compare.json",
+    baselineId: report.baselineId,
+    currentId: report.currentId,
+    severity: "error" as const,
+    area: "probe" as const,
+    name: "renderer",
+    message: "Probe output changed.",
+    reason: "test",
+    createdAt: "2026-07-07T00:00:00.000Z",
+    updatedAt: "2026-07-07T00:00:00.000Z"
+  };
+  const pending = evaluateDiffDecisionPolicy(report, []);
+  assert.equal(pending.status, "pending");
+  assert.equal(pending.canContinue, false);
+
+  const intentional = evaluateDiffDecisionPolicy(report, [{
+    ...baseDecision,
+    differenceKey: key,
+    classification: "intentional"
+  }]);
+  assert.equal(intentional.status, "accepted");
+  assert.equal(intentional.canContinue, true);
+
+  const accidental = evaluateDiffDecisionPolicy(report, [{
+    ...baseDecision,
+    differenceKey: key,
+    classification: "accidental"
+  }]);
+  assert.equal(accidental.status, "blocked");
+  assert.equal(accidental.canContinue, false);
+
+  const unknown = evaluateDiffDecisionPolicy(report, [{
+    ...baseDecision,
+    differenceKey: key,
+    classification: "unknown"
+  }]);
+  assert.equal(unknown.status, "pending");
+  assert.equal(unknown.canContinue, false);
 });
 
 function makeLoadedConfig(root: string): LoadedConfig {

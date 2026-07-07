@@ -101,6 +101,12 @@ snapshots and a compare report around the applied patch.
 Use `diff decide` to classify compare differences as `intentional`,
 `accidental` or `unknown`. Decisions are written to a local diff decision ledger
 and appear in refreshed compare Markdown, run reports and replan briefs.
+Migration run verification now interprets those decisions as a separate
+decision gate: raw compare results stay unchanged, while accepted intentional
+risk differences can continue, accidental differences require replan, and
+pending/unknown risk differences require classification.
+The `pnpm-vite-vue` adapter also emits low-risk proposal candidates for fixture
+coverage and normalization review before broader automated source edits.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at

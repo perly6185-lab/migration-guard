@@ -9,6 +9,7 @@ import type {
   DiffDecisionClassification,
   DiffDecisionCoverage,
   DiffDecisionLedger,
+  DiffDecisionPolicyResult,
   Difference,
   LoadedConfig
 } from "../types.js";
@@ -129,6 +130,22 @@ export async function decisionCoverageForCompareReportPath(
   return summarizeDiffDecisionCoverage(report, decisions);
 }
 
+export async function decisionPolicyForCompareReportPath(
+  loaded: LoadedConfig,
+  runId: string | undefined,
+  compareReportPath: string | undefined
+): Promise<DiffDecisionPolicyResult | undefined> {
+  if (!compareReportPath || !await pathExists(compareReportPath)) {
+    return undefined;
+  }
+  const report = await readJsonFile<CompareReport>(compareReportPath).catch(() => undefined);
+  if (!report) {
+    return undefined;
+  }
+  const decisions = await decisionsForCompareReport(loaded, report, runId);
+  return evaluateDiffDecisionPolicy(report, decisions);
+}
+
 export function summarizeDiffDecisionCoverage(
   report: CompareReport,
   decisions: DiffDecision[]
@@ -146,6 +163,90 @@ export function summarizeDiffDecisionCoverage(
   };
 }
 
+export function evaluateDiffDecisionPolicy(
+  report: CompareReport,
+  decisions: DiffDecision[]
+): DiffDecisionPolicyResult {
+  const coverage = summarizeDiffDecisionCoverage(report, decisions);
+  const decisionByKey = indexDecisionsByKey(decisions);
+  const riskDifferences = report.differences.filter(isRiskDifference);
+  let intentionalRisk = 0;
+  let accidentalRisk = 0;
+  let unknownRisk = 0;
+  let pendingRisk = 0;
+
+  for (const difference of riskDifferences) {
+    const decision = decisionByKey.get(createDifferenceKey(difference));
+    if (!decision) {
+      pendingRisk += 1;
+    } else if (decision.classification === "intentional") {
+      intentionalRisk += 1;
+    } else if (decision.classification === "accidental") {
+      accidentalRisk += 1;
+    } else {
+      unknownRisk += 1;
+    }
+  }
+
+  if (riskDifferences.length === 0) {
+    return {
+      rawPassed: report.passed,
+      status: "clean",
+      canContinue: true,
+      reason: "no error or warning behavior differences",
+      coverage,
+      riskTotal: 0,
+      intentionalRisk,
+      accidentalRisk,
+      unknownRisk,
+      pendingRisk
+    };
+  }
+
+  if (accidentalRisk > 0) {
+    return {
+      rawPassed: report.passed,
+      status: "blocked",
+      canContinue: false,
+      reason: `${accidentalRisk} risk difference(s) are classified accidental and require replan`,
+      coverage,
+      riskTotal: riskDifferences.length,
+      intentionalRisk,
+      accidentalRisk,
+      unknownRisk,
+      pendingRisk
+    };
+  }
+
+  if (pendingRisk > 0 || unknownRisk > 0) {
+    return {
+      rawPassed: report.passed,
+      status: "pending",
+      canContinue: false,
+      reason: `${pendingRisk + unknownRisk} risk difference(s) are pending or unknown`,
+      coverage,
+      riskTotal: riskDifferences.length,
+      intentionalRisk,
+      accidentalRisk,
+      unknownRisk,
+      pendingRisk
+    };
+  }
+
+  return {
+    rawPassed: report.passed,
+    status: "accepted",
+    canContinue: true,
+    reason: "all risk behavior differences are classified intentional",
+    coverage,
+    riskTotal: riskDifferences.length,
+    intentionalRisk,
+    accidentalRisk,
+    unknownRisk,
+    pendingRisk
+  };
+}
+
 export function renderDiffDecisionList(
   ledger: DiffDecisionLedger,
   report?: CompareReport,
@@ -153,6 +254,7 @@ export function renderDiffDecisionList(
 ): string {
   if (report) {
     const coverage = summarizeDiffDecisionCoverage(report, decisions);
+    const policy = evaluateDiffDecisionPolicy(report, decisions);
     const decisionByKey = indexDecisionsByKey(decisions);
     const rows = report.differences.map((difference) => {
       const decision = decisionByKey.get(createDifferenceKey(difference));
@@ -163,6 +265,7 @@ export function renderDiffDecisionList(
       "",
       `Compare: ${report.baselineId} -> ${report.currentId}`,
       formatCoverageLine(coverage),
+      `Policy: ${policy.status} (${policy.reason})`,
       "",
       rows ? "| Severity | Area | Name | Decision | Reason | Message |\n| --- | --- | --- | --- | --- | --- |\n" + rows : "No differences detected."
     ].join("\n");
@@ -203,6 +306,10 @@ export function formatCoverageLine(coverage: DiffDecisionCoverage): string {
   return `Decisions: ${coverage.decided}/${coverage.total} decided, pending:${coverage.pending}, pending-risk:${coverage.pendingRisk}, intentional:${coverage.intentional}, accidental:${coverage.accidental}, unknown:${coverage.unknown}`;
 }
 
+export function formatPolicyLine(policy: DiffDecisionPolicyResult): string {
+  return `Decision gate: ${policy.status} can-continue:${policy.canContinue ? "yes" : "no"} risk:${policy.riskTotal} intentional:${policy.intentionalRisk} accidental:${policy.accidentalRisk} unknown:${policy.unknownRisk} pending:${policy.pendingRisk} (${policy.reason})`;
+}
+
 function findDifference(report: CompareReport, options: RecordDiffDecisionOptions): Difference {
   const matches = report.differences.filter((difference) => {
     return difference.area === options.area
@@ -221,6 +328,10 @@ function findDifference(report: CompareReport, options: RecordDiffDecisionOption
 
 function indexDecisionsByKey(decisions: DiffDecision[]): Map<string, DiffDecision> {
   return new Map(decisions.map((decision) => [decision.differenceKey, decision]));
+}
+
+function isRiskDifference(difference: Difference): boolean {
+  return difference.severity === "error" || difference.severity === "warn";
 }
 
 function createDecisionId(key: string): string {

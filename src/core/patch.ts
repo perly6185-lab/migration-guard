@@ -2399,6 +2399,16 @@ function createProbeChecks(template: MigrationActionPatchTemplate): Array<{ name
         { name: "has-template", pattern: "/<template[\\s>]/i" },
         { name: "has-script", pattern: "/<script[\\s>]/i" }
       ];
+    case "adapter-fixture-probe":
+      return [
+        { name: "has-package-json", pattern: "/\"scripts\"|\"dependencies\"|\"devDependencies\"/" },
+        { name: "has-workspace-or-package-signal", pattern: "/packages:|\"workspaces\"|\"packageManager\"/" }
+      ];
+    case "normalization-probe":
+      return [
+        { name: "has-script-signal", pattern: "/\"scripts\"/" },
+        { name: "has-test-or-build-script", pattern: "/\"(test|build|type-check|typecheck)\"/" }
+      ];
     default:
       return [{ name: "has-content", pattern: "/\\S/" }];
   }
@@ -2413,6 +2423,12 @@ function inferPatchTemplate(action: MigrationAction): MigrationActionPatchTempla
   }
   if (action.id.includes("api")) {
     return "api-contract-probe";
+  }
+  if (action.id.includes("fixture") || action.id.includes("adapter")) {
+    return "adapter-fixture-probe";
+  }
+  if (action.id.includes("normalize")) {
+    return "normalization-probe";
   }
   return "ui-smoke-probe";
 }

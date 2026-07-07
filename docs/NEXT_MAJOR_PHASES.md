@@ -55,6 +55,8 @@ Progress:
 - Phase 37: gate failure can reference latest check/probe drift.
 - Phase 38: apply can capture proposal-scoped before/after behavior diff with `--behavior-diff`.
 - Phase 39: behavior differences can be classified through a local decision ledger.
+- Phase 40: decision ledger now acts as a behavior decision gate.
+- Phase 41: `pnpm-vite-vue` emits low-risk proposal candidates before source edits.
 
 候选能力：
 
