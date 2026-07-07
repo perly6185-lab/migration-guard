@@ -62,6 +62,20 @@
           "sortKeys": true
         }
       }
+    },
+    {
+      "type": "command",
+      "name": "md-api-contract",
+      "command": "pnpm exec tsx ${MG_REPO_ROOT}/scripts/probes/md-api-contract-probe.mjs",
+      "timeoutMs": 120000,
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "json": {
+          "sortKeys": true
+        }
+      }
     }
   ],
   "output": {

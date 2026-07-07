@@ -113,6 +113,9 @@ async function runTaskBody(loaded: LoadedConfig, pkg: MigrationRunPackage, task:
   if (task.executor?.startsWith("js-vite:")) {
     return executeJsViteTask(loaded, pkg, task);
   }
+  if (task.executor?.startsWith("md-monorepo:")) {
+    return executeMdMonorepoTask(loaded, pkg, task);
+  }
   if (task.executor?.startsWith("pnpm-vite-vue:")) {
     return executePnpmViteVueTask(loaded, pkg, task);
   }
@@ -251,6 +254,344 @@ async function executePnpmViteVueTask(loaded: LoadedConfig, pkg: MigrationRunPac
     default:
       return `No pnpm-vite-vue executor for ${task.executor}.`;
   }
+}
+
+async function executeMdMonorepoTask(loaded: LoadedConfig, pkg: MigrationRunPackage, task: MigrationTask): Promise<string> {
+  switch (task.executor) {
+    case "md-monorepo:plan":
+      return createMdMonorepoTaskPlan(loaded, pkg);
+    case "md-monorepo:actions":
+      return createMdMonorepoActionPlan(loaded, pkg);
+    default:
+      return `No md-monorepo executor for ${task.executor}.`;
+  }
+}
+
+interface MdRefactorTaskPlanItem {
+  id: string;
+  domain: string;
+  title: string;
+  risk: MigrationTask["risk"];
+  owner: MigrationTask["owner"];
+  affectedFiles: string[];
+  recommendedChecks: string[];
+  requiredProbes: string[];
+  acceptanceCriteria: string[];
+  rollbackBoundary: string;
+}
+
+interface MdRefactorTaskPlan {
+  version: 1;
+  runId: string;
+  createdAt: string;
+  goal: string;
+  targetRoot: string;
+  tasks: MdRefactorTaskPlanItem[];
+}
+
+async function createMdMonorepoTaskPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const scan = await scanProject({
+    ...loaded,
+    targetRoot: pkg.run.targetRoot
+  });
+  const plan = createMdMonorepoRefactorTaskPlan(pkg, scan);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "md-monorepo-task-plan.json");
+  const markdownPath = path.join(dir, "md-monorepo-task-plan.md");
+  await writeJsonFile(jsonPath, plan);
+  await writeTextFile(markdownPath, renderMdMonorepoTaskPlan(plan));
+  createMdMonorepoTaskIssues(pkg, plan);
+  await saveRunPackage(loaded, pkg);
+  return `Wrote md monorepo task plan to ${jsonPath} and ${markdownPath}`;
+}
+
+async function createMdMonorepoActionPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const planPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "md-monorepo-task-plan.json");
+  const plan = await pathExists(planPath)
+    ? await readJsonFile<MdRefactorTaskPlan>(planPath)
+    : createMdMonorepoRefactorTaskPlan(pkg, await scanProject({ ...loaded, targetRoot: pkg.run.targetRoot }));
+  const actions = createMdMonorepoActions(plan);
+  const actionPlanPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "md-monorepo-action-plan.json");
+  await writeJsonFile(actionPlanPath, {
+    version: 1,
+    runId: pkg.run.id,
+    createdAt: new Date().toISOString(),
+    goal: pkg.run.goal,
+    actions
+  });
+  createMdMonorepoActionIssues(pkg, actions);
+  await saveRunPackage(loaded, pkg);
+  return `Wrote md monorepo action plan with ${actions.length} actions to ${actionPlanPath}`;
+}
+
+export function createMdMonorepoRefactorTaskPlan(pkg: MigrationRunPackage, scan: ScanSummary): MdRefactorTaskPlan {
+  const riskByPrefix = createRiskLookup(scan);
+  const tasks: MdRefactorTaskPlanItem[] = [
+    {
+      id: "md-task-core-renderer",
+      domain: "packages/core",
+      title: "Stabilize renderer and extension refactors",
+      risk: riskFor(["packages/core/src/renderer", "packages/core/src/extensions"], riskByPrefix, "high"),
+      owner: "ai",
+      affectedFiles: ["packages/core/src/renderer", "packages/core/src/extensions", "packages/core/src/theme"],
+      recommendedChecks: ["pnpm --filter @md/core test", "pnpm type-check:packages"],
+      requiredProbes: ["md-renderer-behavior"],
+      acceptanceCriteria: ["renderer behavior probe passes", "core tests pass", "no accidental behavior drift"],
+      rollbackBoundary: "packages/core"
+    },
+    {
+      id: "md-task-shared-contracts",
+      domain: "packages/shared",
+      title: "Consolidate shared configs, types, and editor utilities",
+      risk: riskFor(["packages/shared/src"], riskByPrefix, "medium"),
+      owner: "ai",
+      affectedFiles: ["packages/shared/src/configs", "packages/shared/src/types", "packages/shared/src/editor", "packages/shared/src/utils"],
+      recommendedChecks: ["pnpm type-check:packages", "pnpm --filter @md/web test"],
+      requiredProbes: ["md-renderer-behavior", "md-web-static-contract"],
+      acceptanceCriteria: ["shared type-check passes", "web tests pass", "web static contract remains stable"],
+      rollbackBoundary: "packages/shared"
+    },
+    {
+      id: "md-task-web-editor-shell",
+      domain: "apps/web",
+      title: "Split editor shell, command palette, and document orchestration",
+      risk: riskFor(["apps/web/src/components/editor", "apps/web/src/composables"], riskByPrefix, "high"),
+      owner: "ai",
+      affectedFiles: ["apps/web/src/components/editor", "apps/web/src/composables", "apps/web/src/lib/markdown"],
+      recommendedChecks: ["pnpm --filter @md/web test", "pnpm type-check:web"],
+      requiredProbes: ["md-web-static-contract", "md-renderer-behavior"],
+      acceptanceCriteria: ["web tests pass", "web type-check passes", "editor entry contract remains stable"],
+      rollbackBoundary: "apps/web/src/components/editor"
+    },
+    {
+      id: "md-task-web-ai-image",
+      domain: "apps/web",
+      title: "Decompose AI assistant and image generation panels",
+      risk: riskFor(["apps/web/src/components/ai", "apps/web/src/services/upload"], riskByPrefix, "high"),
+      owner: "ai",
+      affectedFiles: ["apps/web/src/components/ai", "apps/web/src/services/upload", "apps/web/src/composables/useAIFetch.ts"],
+      recommendedChecks: ["pnpm --filter @md/web test", "pnpm type-check:web"],
+      requiredProbes: ["md-web-static-contract"],
+      acceptanceCriteria: ["AI/image panel routes still build", "upload service contracts are unchanged", "web static contract passes"],
+      rollbackBoundary: "apps/web/src/components/ai"
+    },
+    {
+      id: "md-task-web-state-stores",
+      domain: "apps/web",
+      title: "Normalize Pinia stores and persistence boundaries",
+      risk: riskFor(["apps/web/src/stores", "apps/web/src/storage"], riskByPrefix, "medium"),
+      owner: "ai",
+      affectedFiles: ["apps/web/src/stores", "apps/web/src/storage"],
+      recommendedChecks: ["pnpm --filter @md/web test", "pnpm type-check:web"],
+      requiredProbes: ["md-web-static-contract"],
+      acceptanceCriteria: ["store imports stay stable", "web tests pass", "no app bootstrap drift"],
+      rollbackBoundary: "apps/web/src/stores"
+    },
+    {
+      id: "md-task-api-contracts",
+      domain: "apps/api",
+      title: "Refactor API route modules and shared contracts",
+      risk: riskFor(["apps/api/src"], riskByPrefix, "high"),
+      owner: "ai",
+      affectedFiles: ["apps/api/src/index.ts", "apps/api/src/types.ts", "apps/api/src/share.ts", "apps/api/src/sync.ts", "apps/api/src/upload.ts"],
+      recommendedChecks: ["pnpm type-check:packages"],
+      requiredProbes: ["md-api-contract"],
+      acceptanceCriteria: ["API contract probe passes", "package type-check passes", "public unauthenticated behavior stays explicit"],
+      rollbackBoundary: "apps/api/src"
+    },
+    {
+      id: "md-task-vscode-preview",
+      domain: "apps/vscode",
+      title: "Guard VSCode extension preview behavior before refactor",
+      risk: riskFor(["apps/vscode/src"], riskByPrefix, "medium"),
+      owner: "ai",
+      affectedFiles: ["apps/vscode/src/extension.ts", "apps/vscode/src/previewRenderer.ts", "apps/vscode/scripts"],
+      recommendedChecks: ["pnpm vscode:test"],
+      requiredProbes: [],
+      acceptanceCriteria: ["VSCode smoke scripts pass or produce actionable failure evidence"],
+      rollbackBoundary: "apps/vscode"
+    },
+    {
+      id: "md-task-cli-package",
+      domain: "packages/md-cli",
+      title: "Protect CLI packaging and static asset copy flow",
+      risk: riskFor(["packages/md-cli"], riskByPrefix, "medium"),
+      owner: "ai",
+      affectedFiles: ["packages/md-cli", "scripts/release.js"],
+      recommendedChecks: ["pnpm build:cli"],
+      requiredProbes: ["md-web-static-contract"],
+      acceptanceCriteria: ["CLI package build succeeds", "web static contract remains stable"],
+      rollbackBoundary: "packages/md-cli"
+    },
+    {
+      id: "md-task-mcp-render",
+      domain: "packages/mcp-server",
+      title: "Guard MCP render contract before server refactor",
+      risk: riskFor(["packages/mcp-server"], riskByPrefix, "medium"),
+      owner: "ai",
+      affectedFiles: ["packages/mcp-server/src", "packages/mcp-server/run.mjs"],
+      recommendedChecks: ["pnpm --filter @md/mcp-server type-check"],
+      requiredProbes: ["md-renderer-behavior"],
+      acceptanceCriteria: ["MCP type-check passes", "renderer probe remains stable"],
+      rollbackBoundary: "packages/mcp-server"
+    },
+    {
+      id: "md-task-cross-package-verification",
+      domain: "root",
+      title: "Run cross-package verification and accepted-diff review",
+      risk: "medium",
+      owner: "engine",
+      affectedFiles: ["package.json", "pnpm-workspace.yaml", "configs"],
+      recommendedChecks: ["pnpm type-check", "pnpm test", "pnpm web build"],
+      requiredProbes: ["md-renderer-behavior", "md-api-contract", "md-web-static-contract"],
+      acceptanceCriteria: ["full lane passes", "all risk diffs classified", "final report generated"],
+      rollbackBoundary: "workspace"
+    }
+  ];
+  return {
+    version: 1,
+    runId: pkg.run.id,
+    createdAt: new Date().toISOString(),
+    goal: pkg.run.goal,
+    targetRoot: pkg.run.targetRoot,
+    tasks
+  };
+}
+
+function createMdMonorepoActions(plan: MdRefactorTaskPlan): MigrationAction[] {
+  return plan.tasks
+    .filter((task) => task.owner !== "engine")
+    .map((task) => ({
+      id: `action-${task.id.replace(/^md-task-/, "md-")}`,
+      title: `Prepare ${task.title}`,
+      summary: [
+        `Create a probe/review proposal for ${task.domain} before source edits.`,
+        `Rollback boundary: ${task.rollbackBoundary}.`,
+        `Required probes: ${task.requiredProbes.join(", ") || "none"}.`
+      ].join(" "),
+      risk: task.risk,
+      affectedFiles: task.affectedFiles,
+      recommendedChecks: task.recommendedChecks,
+      patchMode: task.risk === "high" ? "manual-approval-required" : "dry-run-only",
+      patchTemplate: inferMdActionTemplate(task)
+    }));
+}
+
+function inferMdActionTemplate(task: MdRefactorTaskPlanItem): MigrationAction["patchTemplate"] {
+  if (task.requiredProbes.includes("md-web-static-contract")) {
+    return "ui-smoke-probe";
+  }
+  if (task.requiredProbes.includes("md-api-contract")) {
+    return "api-contract-probe";
+  }
+  if (task.requiredProbes.includes("md-renderer-behavior")) {
+    return "renderer-probe";
+  }
+  return "adapter-fixture-probe";
+}
+
+function renderMdMonorepoTaskPlan(plan: MdRefactorTaskPlan): string {
+  return [
+    `# MD Monorepo Task Plan: ${plan.runId}`,
+    "",
+    `Goal: ${plan.goal}`,
+    `Target: ${plan.targetRoot}`,
+    `Tasks: ${plan.tasks.length}`,
+    "",
+    ...plan.tasks.flatMap((task) => [
+      `## ${task.id}`,
+      "",
+      `- Domain: ${task.domain}`,
+      `- Title: ${task.title}`,
+      `- Risk: ${task.risk}`,
+      `- Owner: ${task.owner}`,
+      `- Rollback boundary: ${task.rollbackBoundary}`,
+      `- Affected files: ${task.affectedFiles.join(", ") || "none"}`,
+      `- Recommended checks: ${task.recommendedChecks.join(", ") || "none"}`,
+      `- Required probes: ${task.requiredProbes.join(", ") || "none"}`,
+      `- Acceptance criteria: ${task.acceptanceCriteria.join("; ")}`,
+      ""
+    ])
+  ].join("\n");
+}
+
+function createMdMonorepoTaskIssues(pkg: MigrationRunPackage, plan: MdRefactorTaskPlan): void {
+  const existing = new Set(pkg.issues.map((issue) => `${issue.type}:${issue.title}`));
+  const now = new Date().toISOString();
+  for (const task of plan.tasks) {
+    const issue: MigrationIssue = {
+      id: createId("issue"),
+      runId: pkg.run.id,
+      type: "task",
+      title: task.title,
+      body: [
+        `Domain: ${task.domain}`,
+        `Rollback boundary: ${task.rollbackBoundary}`,
+        `Recommended checks: ${task.recommendedChecks.join(", ") || "none"}`,
+        `Required probes: ${task.requiredProbes.join(", ") || "none"}`,
+        `Acceptance: ${task.acceptanceCriteria.join("; ")}`
+      ].join("\n"),
+      status: "planned",
+      risk: task.risk,
+      owner: task.owner,
+      affectedFiles: task.affectedFiles,
+      createdAt: now,
+      updatedAt: now
+    };
+    if (!existing.has(`${issue.type}:${issue.title}`)) {
+      pkg.issues.push(issue);
+      existing.add(`${issue.type}:${issue.title}`);
+    }
+  }
+}
+
+function createMdMonorepoActionIssues(pkg: MigrationRunPackage, actions: MigrationAction[]): void {
+  const existing = new Set(pkg.issues.map((issue) => `${issue.type}:${issue.title}`));
+  const now = new Date().toISOString();
+  for (const action of actions) {
+    const issue: MigrationIssue = {
+      id: createId("issue"),
+      runId: pkg.run.id,
+      type: "task",
+      title: action.title,
+      body: [
+        action.summary,
+        "",
+        `Recommended checks: ${action.recommendedChecks.join(", ") || "none"}`,
+        `Patch mode: ${action.patchMode}`
+      ].join("\n"),
+      status: "planned",
+      risk: action.risk,
+      owner: "ai",
+      affectedFiles: action.affectedFiles,
+      createdAt: now,
+      updatedAt: now
+    };
+    if (!existing.has(`${issue.type}:${issue.title}`)) {
+      pkg.issues.push(issue);
+      existing.add(`${issue.type}:${issue.title}`);
+    }
+  }
+}
+
+function createRiskLookup(scan: ScanSummary): Map<string, number> {
+  return new Map(scan.riskFiles.map((file) => [file.path, file.score]));
+}
+
+function riskFor(prefixes: string[], riskByPath: Map<string, number>, fallback: MigrationTask["risk"]): MigrationTask["risk"] {
+  const maxScore = Math.max(
+    0,
+    ...[...riskByPath.entries()]
+      .filter(([file]) => prefixes.some((prefix) => file.startsWith(prefix)))
+      .map(([, score]) => score)
+  );
+  if (maxScore >= 40) {
+    return "high";
+  }
+  if (maxScore >= 25) {
+    return "medium";
+  }
+  return fallback;
 }
 
 async function inventoryPnpmWorkspace(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {

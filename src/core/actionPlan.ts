@@ -5,13 +5,16 @@ import type { LoadedConfig, MigrationActionPlan } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
 export function actionPlanPath(loaded: LoadedConfig, pkg: MigrationRunPackage): string {
+  if (pkg.run.adapter === "md-monorepo") {
+    return path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "md-monorepo-action-plan.json");
+  }
   return path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "pnpm-vite-vue-action-plan.json");
 }
 
 export async function loadActionPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<MigrationActionPlan> {
   const filePath = actionPlanPath(loaded, pkg);
   if (!await pathExists(filePath)) {
-    throw new Error(`No action plan found for run ${pkg.run.id}. Run or resume a pnpm-vite-vue migration first.`);
+    throw new Error(`No action plan found for run ${pkg.run.id}. Run or resume a supported adapter migration first.`);
   }
   const raw = await readJsonFile<Partial<MigrationActionPlan>>(filePath);
   return {

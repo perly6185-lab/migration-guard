@@ -57,6 +57,8 @@ Progress:
 - Phase 39: behavior differences can be classified through a local decision ledger.
 - Phase 40: decision ledger now acts as a behavior decision gate.
 - Phase 41: `pnpm-vite-vue` emits low-risk proposal candidates before source edits.
+- Phase 42: `md` adds API contract and web static/build probes.
+- Phase 43: `md-monorepo` emits a project-specific refactor task plan and action plan.
 
 候选能力：
 

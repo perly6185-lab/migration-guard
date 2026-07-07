@@ -107,6 +107,11 @@ risk differences can continue, accidental differences require replan, and
 pending/unknown risk differences require classification.
 The `pnpm-vite-vue` adapter also emits low-risk proposal candidates for fixture
 coverage and normalization review before broader automated source edits.
+The `md` validation configs include renderer behavior, API contract, and web
+static/build probes so large refactors can be guarded by project-specific
+evidence instead of generic tests alone.
+Use `--adapter md-monorepo` to generate a project-specific refactor task plan
+and action candidates for `md` domains before allowing whole-repo source edits.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at

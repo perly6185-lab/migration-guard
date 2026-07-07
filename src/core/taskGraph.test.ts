@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPnpmViteVueActions } from "./executor.js";
+import { createMdMonorepoRefactorTaskPlan, createPnpmViteVueActions } from "./executor.js";
 import { createTaskGraph, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
+import type { MigrationRunPackage } from "./migrationRun.js";
 import type { ScanSummary } from "../types.js";
 
 test("createTaskGraph builds a valid JS/Vite migration graph", () => {
@@ -20,6 +21,16 @@ test("createTaskGraph builds a non-mutating pnpm/Vite/Vue inventory graph", () =
   assert.ok(graph.tasks.some((task) => task.executor === "pnpm-vite-vue:configs"));
   assert.ok(graph.tasks.some((task) => task.executor === "pnpm-vite-vue:risks"));
   assert.equal(graph.tasks.some((task) => task.executor === "js-vite:config"), false);
+});
+
+test("createTaskGraph builds an md monorepo task-planning graph", () => {
+  const graph = createTaskGraph("run-1", makeScan(), "MD monorepo refactor task planning", "md-monorepo");
+
+  assert.deepEqual(validateTaskGraph(graph), []);
+  assert.ok(graph.tasks.some((task) => task.executor === "md-monorepo:plan"));
+  assert.ok(graph.tasks.some((task) => task.executor === "md-monorepo:actions"));
+  assert.equal(graph.tasks.some((task) => task.executor?.startsWith("pnpm-vite-vue:")), false);
+  assert.deepEqual(graph.tasks.find((task) => task.id === "task-verify")?.dependsOn, ["task-md-monorepo-actions"]);
 });
 
 test("createPnpmViteVueActions includes low-risk proposal candidates", () => {
@@ -43,6 +54,35 @@ test("createPnpmViteVueActions includes low-risk proposal candidates", () => {
   assert.ok(actions.some((action) => action.id === "action-renderer-probes"));
 });
 
+test("createMdMonorepoRefactorTaskPlan covers md refactor domains and probes", () => {
+  const plan = createMdMonorepoRefactorTaskPlan(makeRunPackage(), {
+    ...makeScan(),
+    riskFiles: [
+      {
+        path: "packages/core/src/renderer/MarkdownRenderer.ts",
+        score: 45,
+        reasons: ["large renderer file"],
+        lines: 500,
+        importerCount: 6
+      },
+      {
+        path: "apps/api/src/upload.ts",
+        score: 42,
+        reasons: ["api boundary"],
+        lines: 250,
+        importerCount: 2
+      }
+    ]
+  });
+
+  assert.equal(plan.version, 1);
+  assert.equal(plan.tasks.length >= 10, true);
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-core-renderer" && task.risk === "high"));
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-api-contracts" && task.requiredProbes.includes("md-api-contract")));
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-web-editor-shell" && task.requiredProbes.includes("md-web-static-contract")));
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-cross-package-verification" && task.recommendedChecks.includes("pnpm test")));
+});
+
 function makeScan(): ScanSummary {
   return {
     root: "/repo",
@@ -58,5 +98,44 @@ function makeScan(): ScanSummary {
     stackHints: ["typescript", "webpack"],
     riskFiles: [],
     dependencyEdges: []
+  };
+}
+
+function makeRunPackage(): MigrationRunPackage {
+  const createdAt = "2026-07-04T00:00:00.000Z";
+  const estimate = {
+    sourceFiles: 4,
+    testFiles: 1,
+    taskCount: 0,
+    riskLevel: "medium" as const,
+    confidence: "medium" as const,
+    estimatedVerificationRounds: 1,
+    notes: [],
+    updatedAt: createdAt
+  };
+  return {
+    run: {
+      version: 1 as const,
+      id: "run-1",
+      goal: "MD monorepo refactor task planning",
+      sourceRoot: "/repo",
+      targetRoot: "/repo",
+      artifactsDir: "/repo/.migration-guard/migration-runs/run-1",
+      createdAt,
+      updatedAt: createdAt,
+      status: "planned" as const,
+      mode: "dry-run" as const,
+      adapter: "md-monorepo",
+      issueProvider: "local" as const,
+      estimate
+    },
+    graph: {
+      version: 1 as const,
+      runId: "run-1",
+      createdAt,
+      updatedAt: createdAt,
+      tasks: []
+    },
+    issues: []
   };
 }

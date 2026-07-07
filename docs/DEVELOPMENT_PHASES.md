@@ -1498,6 +1498,74 @@ node dist/cli.js action propose --config configs/md-fast.migration-guard.json --
 - action proposal 不直接改目标业务源码。
 - proposal 仍走现有 verification/apply gate。
 
+## Phase 42: MD UI/API Contract Probe Expansion
+
+目标：回到 `perly6185-lab/md` 真实项目，为整仓自动重构补关键行为证据。先覆盖 API 路由/CORS/鉴权边界和 web app build/static 入口契约，不修改目标业务源码。
+
+新增能力：
+
+- `md-api-contract` command probe
+- `md-web-static-contract` command probe
+- fast config 增加 API contract probe
+- full config 增加 API contract + web static/build probe
+
+建议命令：
+
+```bash
+pnpm --dir D:/learn/migration-guard-targets/md exec tsx D:/learn/migration-guard/scripts/probes/md-api-contract-probe.mjs
+pnpm --dir D:/learn/migration-guard-targets/md exec tsx D:/learn/migration-guard/scripts/probes/md-web-static-probe.mjs
+node dist/cli.js baseline --config configs/md-fast.migration-guard.json
+node dist/cli.js verify --config configs/md-fast.migration-guard.json
+```
+
+产物：
+
+- API contract JSON output
+- web source/build contract JSON output
+- updated `md-fast` / `md-full` snapshots containing the new probes
+
+完成标准：
+
+- API probe 覆盖 root health、CORS preflight、upload disabled、unauthenticated `/me`。
+- web probe 覆盖 app bootstrap、root component、Vite base、dist index、JS/CSS assets。
+- fast lane 可不启动 web dev server。
+- full lane 在 `web-build` 后校验 build artifact。
+
+## Phase 43: MD Adapter Task Graph
+
+目标：把 `perly6185-lab/md` 的整仓重构准备路线固化为 adapter 任务图和可审计 action plan。仍不修改目标业务源码，而是产出按 domain 切分的任务、风险、probe、验收标准和回滚边界。
+
+新增能力：
+
+- `md-monorepo` adapter task graph
+- `adapter/md-monorepo-task-plan.json`
+- `adapter/md-monorepo-task-plan.md`
+- `adapter/md-monorepo-action-plan.json`
+- MD domain 任务覆盖 core/shared/web/api/vscode/cli/mcp/cross-package verification
+
+建议命令：
+
+```bash
+node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "MD monorepo refactor task planning" --dry-run --adapter md-monorepo --issue-provider local
+node dist/cli.js resume --config configs/md-fast.migration-guard.json --run latest --auto
+node dist/cli.js tasks --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js actions --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- run task graph 中的 `task-md-monorepo-plan`
+- run task graph 中的 `task-md-monorepo-actions`
+- task issues：每个 MD refactor domain 一个 planned issue
+- action issues：每个 AI-owned domain 一个 proposal candidate issue
+
+完成标准：
+
+- `md-monorepo` graph 通过 DAG 校验。
+- action plan 绑定 Phase 42 的 renderer/API/web probes。
+- 高风险 domain 默认 `manual-approval-required`。
+- 任务计划可作为后续整仓自动重构的执行边界，而不是临时口头计划。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

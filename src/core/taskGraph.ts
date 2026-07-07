@@ -17,7 +17,18 @@ export function createTaskGraph(runId: string, scan: ScanSummary, goal: string, 
   ];
 
   const goalText = `${goal} ${adapter ?? ""}`.toLowerCase();
-  if (adapter === "pnpm-vite-vue") {
+  if (adapter === "md-monorepo") {
+    tasks.splice(
+      3,
+      0,
+      createTask("task-md-monorepo-plan", "Create md monorepo refactor task plan", "Generate a project-specific task graph for md domains: core, shared, web, api, vscode, cli, and mcp.", "adapter", ["task-plan"], "engine", "medium", 40, ["packages/core", "packages/shared", "apps/web", "apps/api"], ["md monorepo task plan artifact exists"], createdAt, "md-monorepo:plan"),
+      createTask("task-md-monorepo-actions", "Create md refactor action candidates", "Generate gated action candidates tied to the md task plan without modifying target source.", "adapter", ["task-md-monorepo-plan"], "engine", "medium", 50, [], ["md monorepo action plan artifact exists"], createdAt, "md-monorepo:actions")
+    );
+    const verify = tasks.find((task) => task.id === "task-verify");
+    if (verify) {
+      verify.dependsOn = ["task-md-monorepo-actions"];
+    }
+  } else if (adapter === "pnpm-vite-vue") {
     tasks.splice(
       3,
       0,
