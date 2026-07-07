@@ -2,12 +2,20 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
 import { loadActionPlan } from "./actionPlan.js";
+import { compareSnapshots } from "./compare.js";
+import { decisionsForCompareReport } from "./diffDecision.js";
+import { renderCompareReport } from "./markdown.js";
+import { captureSnapshot } from "./snapshot.js";
 import { appendEvidence, createId, createProposalFailureIssue, createProposalReplanTask, migrationRunDir, saveRunPackage } from "./migrationRun.js";
 import type {
   LoadedConfig,
   MigrationAction,
   MigrationActionPatchTemplate,
+  CompareReport,
+  DiffDecision,
   MigrationTask,
+  ProposalBehaviorDiffReport,
+  ProposalBehaviorDriftReference,
   ProposalBatchPlan,
   ProposalBatchReport,
   ProposalBatchResult,
@@ -25,7 +33,8 @@ import type {
   ProposalPreviewResult,
   ProposalRollbackReport,
   ProposalVerificationReport,
-  ProposedPatch
+  ProposedPatch,
+  Snapshot
 } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 import { runShellCommand } from "./exec.js";
@@ -35,6 +44,7 @@ export interface ApplyProposedPatchOptions {
   runChecks?: boolean;
   rollbackOnFail?: boolean;
   gatePolicy?: ProposalGatePolicy;
+  behaviorDiff?: boolean;
 }
 
 export interface ApplyProposedPatchResult {
@@ -55,6 +65,16 @@ export interface ProposalReplanResult {
   proposal: ProposedPatch;
   report: ProposalVerificationReport;
   task: MigrationTask;
+  briefPath: string;
+  contextPath: string;
+}
+
+export interface ProposalRetryResult {
+  message: string;
+  sourceProposal: ProposedPatch;
+  proposal: ProposedPatch;
+  report: ProposalVerificationReport;
+  reused: boolean;
 }
 
 export interface ProposalBatchOptions {
@@ -62,6 +82,71 @@ export interface ProposalBatchOptions {
   runChecks?: boolean;
   rollbackOnFail?: boolean;
   gatePolicy?: ProposalGatePolicy;
+  behaviorDiff?: boolean;
+}
+
+interface ProposalReplanArtifactPaths {
+  briefPath: string;
+  contextPath: string;
+}
+
+interface ProposalReplanContext {
+  version: 1;
+  createdAt: string;
+  run: {
+    id: string;
+    goal: string;
+    status: string;
+    targetRoot: string;
+  };
+  proposal: {
+    id: string;
+    title: string;
+    summary: string;
+    risk: ProposedPatch["risk"];
+    patchPath: string;
+    affectedFiles: string[];
+    generatedFiles: string[];
+    recommendedChecks: string[];
+  };
+  failure: {
+    issueId: string;
+    taskId: string;
+    verificationReportPath: string;
+    patchCheck: Pick<ProposalPatchCheck, "passed" | "skipped" | "command" | "exitCode" | "stdout" | "stderr" | "error">;
+    firstFailedCheck?: {
+      command: string;
+      kind?: ProposalCheckKind;
+      phase?: ProposalCheckPhase;
+      failureCategory?: ProposalCheckFailureCategory;
+      exitCode: number | null;
+      timedOut: boolean;
+      stdout: string;
+      stderr: string;
+      error?: string;
+      remediationHints: string[];
+    };
+    behaviorDrift?: ProposalBehaviorDriftReference;
+    behaviorDriftDecisions?: Array<{
+      area: "check" | "probe";
+      name: string;
+      message: string;
+      classification: string;
+      reason?: string;
+    }>;
+  };
+  commands: {
+    status: string;
+    retryVerify: string;
+    retryApply: string;
+    runReplanTask: string;
+  };
+  paths: {
+    brief: string;
+    context: string;
+    verificationReport: string;
+    patch: string;
+  };
 }
 
 const DEFAULT_GATE_POLICY: ProposalGatePolicy = { mode: "collect-all" };
@@ -208,12 +293,18 @@ export async function applyProposedPatch(
   const patchContent = await fs.readFile(proposal.patchPath, "utf8");
   const patchCheck = await checkPatchApplicability(loaded, pkg, proposal, patchContent);
   const gatePolicy = resolveGatePolicy(loaded, options.gatePolicy);
+  const behaviorBefore = options.behaviorDiff && patchCheck.passed
+    ? await captureProposalBehaviorSnapshot(loaded, pkg)
+    : undefined;
 
   if (!isGitPatchContent(patchContent)) {
     proposal.applyState = "applied";
     await writeJsonFile(proposalPath, proposal);
     const checkRun = options.runChecks ? await runProposalChecksForApply(loaded, pkg, proposal, gatePolicy) : { checks: [] };
-    const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checkRun.checks, checkRun.preview, gatePolicy);
+    const behaviorDiff = behaviorBefore
+      ? await writeProposalBehaviorDiff(loaded, pkg, proposal, behaviorBefore)
+      : undefined;
+    const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checkRun.checks, checkRun.preview, gatePolicy, behaviorDiff);
     proposal.applyState = report.passed ? "applied" : "applied-with-failed-checks";
     proposal.lastVerificationPath = report.outputPath;
     if (!report.passed) {
@@ -228,7 +319,8 @@ export async function applyProposedPatch(
       data: {
         patchPath: proposal.patchPath,
         noOp: true,
-        outputPath: report.outputPath
+        outputPath: report.outputPath,
+        behaviorDiffPath: report.behaviorDiff?.compareReportPath
       }
     });
     await saveRunPackage(loaded, pkg);
@@ -265,7 +357,10 @@ export async function applyProposedPatch(
   proposal.applyState = "applied";
   await writeJsonFile(proposalPath, proposal);
   const checkRun = options.runChecks ? await runProposalChecksForApply(loaded, pkg, proposal, gatePolicy) : { checks: [] };
-  const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checkRun.checks, checkRun.preview, gatePolicy);
+  const behaviorDiff = behaviorBefore
+    ? await writeProposalBehaviorDiff(loaded, pkg, proposal, behaviorBefore)
+    : undefined;
+  const report = await writeProposalVerificationReport(loaded, pkg, proposal, "apply", true, patchCheck, checkRun.checks, checkRun.preview, gatePolicy, behaviorDiff);
   proposal.applyState = report.passed ? "applied" : "applied-with-failed-checks";
   proposal.lastVerificationPath = report.outputPath;
   if (!report.passed) {
@@ -280,7 +375,8 @@ export async function applyProposedPatch(
     data: {
       patchPath: proposal.patchPath,
       outputPath: report.outputPath,
-      runChecks: Boolean(options.runChecks)
+      runChecks: Boolean(options.runChecks),
+      behaviorDiffPath: report.behaviorDiff?.compareReportPath
     }
   });
   await saveRunPackage(loaded, pkg);
@@ -352,8 +448,11 @@ export async function replanProposal(
     issueId = createProposalFailureIssue(pkg, proposal, report).id;
   }
   const task = createProposalReplanTask(pkg, proposal, report, issueId);
+  const replanArtifacts = await writeProposalReplanArtifacts(loaded, pkg, proposal, report, task, issueId);
   report.replanIssueId = issueId;
   report.replanTaskId = task.id;
+  report.replanBriefPath = replanArtifacts.briefPath;
+  report.replanContextPath = replanArtifacts.contextPath;
   await writeJsonFile(report.outputPath, report);
   await appendEvidence(loaded, pkg.run.id, {
     runId: pkg.run.id,
@@ -363,7 +462,9 @@ export async function replanProposal(
     message: `Replan task ${task.id} is ready for failed proposal ${proposal.id}`,
     data: {
       proposalId: proposal.id,
-      outputPath: report.outputPath
+      outputPath: report.outputPath,
+      briefPath: replanArtifacts.briefPath,
+      contextPath: replanArtifacts.contextPath
     }
   });
   await saveRunPackage(loaded, pkg);
@@ -372,7 +473,103 @@ export async function replanProposal(
     message: `Created replan task ${task.id} for proposal ${proposal.id}.`,
     proposal,
     report,
-    task
+    task,
+    briefPath: replanArtifacts.briefPath,
+    contextPath: replanArtifacts.contextPath
+  };
+}
+
+export async function createProposalRetry(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposalId: string
+): Promise<ProposalRetryResult> {
+  const sourceProposal = await loadProposal(loaded, pkg, proposalId);
+  const reportPath = sourceProposal.lastVerificationPath ?? await latestProposalVerificationPath(loaded, pkg, proposalId);
+  if (!reportPath) {
+    throw new Error(`No verification report found for proposal ${proposalId}.`);
+  }
+
+  let report = await readJsonFile<ProposalVerificationReport>(reportPath);
+  if (report.passed) {
+    throw new Error(`Proposal ${proposalId} has a passing latest verification report.`);
+  }
+
+  if (!report.replanBriefPath || !report.replanContextPath || !report.replanTaskId) {
+    const replan = await replanProposal(loaded, pkg, proposalId);
+    report = replan.report;
+  }
+
+  const existing = (await loadAllProposals(loaded, pkg))
+    .filter((proposal) => proposal.retryOfProposalId === sourceProposal.id && proposal.applyState !== "rejected")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (existing) {
+    report.retryProposalId = existing.id;
+    await writeJsonFile(report.outputPath, report);
+    return {
+      message: `Reused retry proposal ${existing.id} for ${sourceProposal.id}.`,
+      sourceProposal,
+      proposal: existing,
+      report,
+      reused: true
+    };
+  }
+
+  const id = createId("retry");
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "proposals", id);
+  const patchPath = path.join(dir, "patch.diff");
+  const retryProposal: ProposedPatch = {
+    version: 1,
+    id,
+    runId: pkg.run.id,
+    taskId: report.replanTaskId ?? sourceProposal.taskId,
+    actionId: sourceProposal.actionId,
+    retryOfProposalId: sourceProposal.id,
+    replanIssueId: report.replanIssueId,
+    replanTaskId: report.replanTaskId,
+    replanBriefPath: report.replanBriefPath,
+    replanContextPath: report.replanContextPath,
+    createdAt: new Date().toISOString(),
+    title: `Retry proposal for ${sourceProposal.title}`,
+    summary: createRetryProposalSummary(sourceProposal, report),
+    risk: sourceProposal.risk,
+    patchPath,
+    affectedFiles: sourceProposal.affectedFiles,
+    generatedFiles: sourceProposal.generatedFiles,
+    recommendedChecks: sourceProposal.recommendedChecks,
+    checkPlan: sourceProposal.checkPlan,
+    preview: sourceProposal.preview,
+    patchKind: "replan-retry",
+    applyState: "proposed"
+  };
+
+  await writeTextFile(patchPath, createRetryPatchContent(pkg, sourceProposal, report));
+  await writeJsonFile(path.join(dir, "proposal.json"), retryProposal);
+  report.retryProposalId = retryProposal.id;
+  await writeJsonFile(report.outputPath, report);
+  markReplanTaskDone(pkg, report.replanTaskId, retryProposal.id);
+  await appendEvidence(loaded, pkg.run.id, {
+    runId: pkg.run.id,
+    taskId: retryProposal.taskId,
+    issueId: report.replanIssueId,
+    type: "proposal",
+    message: `Created retry proposal ${retryProposal.id} for failed proposal ${sourceProposal.id}`,
+    data: {
+      sourceProposalId: sourceProposal.id,
+      retryProposalId: retryProposal.id,
+      replanBriefPath: report.replanBriefPath,
+      replanContextPath: report.replanContextPath,
+      patchPath
+    }
+  });
+  await saveRunPackage(loaded, pkg);
+
+  return {
+    message: `Created retry proposal ${retryProposal.id} for ${sourceProposal.id}.`,
+    sourceProposal,
+    proposal: retryProposal,
+    report,
+    reused: false
   };
 }
 
@@ -435,7 +632,8 @@ export async function applyProposalBatch(
       const result = await applyProposedPatch(loaded, pkg, item.proposalId, {
         runChecks: options.runChecks ?? true,
         rollbackOnFail: options.rollbackOnFail ?? true,
-        gatePolicy
+        gatePolicy,
+        behaviorDiff: options.behaviorDiff
       });
       results.push({
         proposalId: item.proposalId,
@@ -555,6 +753,22 @@ export function renderProposalVerificationReport(report: ProposalVerificationRep
     }
   }
 
+  if (report.replanBriefPath) {
+    lines.push(`Replan brief: ${report.replanBriefPath}`);
+  }
+  if (report.replanContextPath) {
+    lines.push(`Replan context: ${report.replanContextPath}`);
+  }
+  if (report.behaviorDrift) {
+    lines.push(`Behavior drift: ${report.behaviorDrift.differences.length} check/probe difference(s) from ${report.behaviorDrift.compareReportPath}`);
+    for (const difference of report.behaviorDrift.differences.slice(0, 5)) {
+      lines.push(`- drift ${difference.severity} ${difference.area}/${difference.name}: ${difference.message}`);
+    }
+  }
+  if (report.behaviorDiff) {
+    lines.push(`Behavior diff: ${report.behaviorDiff.passed ? "passed" : "failed"} errors:${report.behaviorDiff.errorCount} warnings:${report.behaviorDiff.warningCount}`);
+    lines.push(`Behavior compare: ${report.behaviorDiff.compareReportPath}`);
+  }
   lines.push(`Wrote ${report.outputPath}`);
   return lines.join("\n");
 }
@@ -580,6 +794,11 @@ export function renderProposalStatus(status: ProposalStatus): string {
     `Patch kind: ${proposal.patchKind ?? "unknown"}`,
     `Action: ${proposal.actionId ?? "none"}`,
     `Task: ${proposal.taskId ?? "none"}`,
+    `Retry of: ${proposal.retryOfProposalId ?? "none"}`,
+    `Replan issue: ${proposal.replanIssueId ?? "none"}`,
+    `Replan task: ${proposal.replanTaskId ?? "none"}`,
+    `Replan brief: ${proposal.replanBriefPath ?? "none"}`,
+    `Replan context: ${proposal.replanContextPath ?? "none"}`,
     `Generated files: ${proposal.generatedFiles?.join(", ") || "none"}`,
     `Recommended checks: ${proposal.recommendedChecks.join(", ") || "none"}`,
     `Check plan: ${(proposal.checkPlan ?? []).map((check) => `${check.kind}/${check.phase}`).join(", ") || "none"}`,
@@ -635,6 +854,268 @@ export function renderProposalBatchReport(report: ProposalBatchReport): string {
   }
   lines.push(`Wrote ${report.outputPath}`);
   return lines.join("\n");
+}
+
+async function writeProposalReplanArtifacts(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch,
+  report: ProposalVerificationReport,
+  task: MigrationTask,
+  issueId: string
+): Promise<ProposalReplanArtifactPaths> {
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "replans", proposal.id);
+  const briefPath = path.join(dir, "replan-brief.md");
+  const contextPath = path.join(dir, "replan-context.json");
+  const firstFailedCheck = report.checks.find((check) => !check.passed);
+  const context: ProposalReplanContext = {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    run: {
+      id: pkg.run.id,
+      goal: pkg.run.goal,
+      status: pkg.run.status,
+      targetRoot: pkg.run.targetRoot
+    },
+    proposal: {
+      id: proposal.id,
+      title: proposal.title,
+      summary: proposal.summary,
+      risk: proposal.risk,
+      patchPath: proposal.patchPath,
+      affectedFiles: proposal.affectedFiles,
+      generatedFiles: proposal.generatedFiles ?? [],
+      recommendedChecks: proposal.recommendedChecks
+    },
+    failure: {
+      issueId,
+      taskId: task.id,
+      verificationReportPath: report.outputPath,
+      patchCheck: {
+        passed: report.patchCheck.passed,
+        skipped: report.patchCheck.skipped,
+        command: report.patchCheck.command,
+        exitCode: report.patchCheck.exitCode,
+        stdout: clipText(report.patchCheck.stdout),
+        stderr: clipText(report.patchCheck.stderr),
+        error: report.patchCheck.error
+      },
+      firstFailedCheck: firstFailedCheck ? {
+        command: firstFailedCheck.command,
+        kind: firstFailedCheck.kind,
+        phase: firstFailedCheck.phase,
+        failureCategory: firstFailedCheck.failureCategory,
+        exitCode: firstFailedCheck.exitCode,
+        timedOut: firstFailedCheck.timedOut,
+        stdout: clipText(firstFailedCheck.stdout),
+        stderr: clipText(firstFailedCheck.stderr),
+        error: firstFailedCheck.error,
+        remediationHints: firstFailedCheck.remediationHints ?? []
+      } : undefined,
+      behaviorDrift: report.behaviorDrift,
+      behaviorDriftDecisions: report.behaviorDrift
+        ? await readBehaviorDriftDecisionSummaries(loaded, pkg.run.id, report.behaviorDrift)
+        : undefined
+    },
+    commands: {
+      status: "migration-guard status --run latest",
+      retryVerify: `migration-guard proposal verify --run latest --proposal ${proposal.id} --checks`,
+      retryApply: `migration-guard action apply --run latest --proposal ${proposal.id} --rollback-on-fail`,
+      runReplanTask: `migration-guard task run --run latest --task ${task.id}`
+    },
+    paths: {
+      brief: briefPath,
+      context: contextPath,
+      verificationReport: report.outputPath,
+      patch: proposal.patchPath
+    }
+  };
+
+  await writeJsonFile(contextPath, context);
+  await writeTextFile(briefPath, renderProposalReplanBrief(context));
+  return { briefPath, contextPath };
+}
+
+async function readBehaviorDriftDecisionSummaries(
+  loaded: LoadedConfig,
+  runId: string,
+  behaviorDrift: ProposalBehaviorDriftReference
+): Promise<ProposalReplanContext["failure"]["behaviorDriftDecisions"]> {
+  if (!await pathExists(behaviorDrift.compareReportPath)) {
+    return undefined;
+  }
+  const report = await readJsonFile<CompareReport>(behaviorDrift.compareReportPath).catch(() => undefined);
+  if (!report) {
+    return undefined;
+  }
+  const decisions = await decisionsForCompareReport(loaded, report, runId);
+  return behaviorDrift.differences.map((difference) => {
+    const decision = findDecisionForBehaviorDrift(difference, decisions);
+    return {
+      area: difference.area,
+      name: difference.name,
+      message: difference.message,
+      classification: decision?.classification ?? "pending",
+      reason: decision?.reason
+    };
+  });
+}
+
+function findDecisionForBehaviorDrift(
+  difference: ProposalBehaviorDriftReference["differences"][number],
+  decisions: DiffDecision[]
+): DiffDecision | undefined {
+  return decisions.find((decision) => {
+    return decision.area === difference.area
+      && decision.name === difference.name
+      && decision.message === difference.message
+      && decision.severity === difference.severity;
+  });
+}
+
+function renderProposalReplanBrief(context: ProposalReplanContext): string {
+  const failed = context.failure.firstFailedCheck;
+  return [
+    `# Replan Brief: ${context.proposal.id}`,
+    "",
+    "## Objective",
+    "",
+    `Repair or replace the failed proposal for run ${context.run.id}. Use the evidence below as the source of truth, then produce one small retryable proposal.`,
+    "",
+    "## Proposal",
+    "",
+    `- Title: ${context.proposal.title}`,
+    `- Risk: ${context.proposal.risk}`,
+    `- Patch: ${context.proposal.patchPath}`,
+    `- Affected files: ${context.proposal.affectedFiles.join(", ") || "none"}`,
+    `- Generated files: ${context.proposal.generatedFiles.join(", ") || "none"}`,
+    "",
+    "## Failure Evidence",
+    "",
+    `- Verification report: ${context.failure.verificationReportPath}`,
+    `- Failure issue: ${context.failure.issueId}`,
+    `- Replan task: ${context.failure.taskId}`,
+    `- Patch check: ${context.failure.patchCheck.passed ? "passed" : "failed"}`,
+    failed ? `- First failed check: ${failed.command}` : "- First failed check: none",
+    failed?.kind ? `- Check kind: ${failed.kind}` : undefined,
+    failed?.phase ? `- Check phase: ${failed.phase}` : undefined,
+    failed?.failureCategory ? `- Failure category: ${failed.failureCategory}` : undefined,
+    ...(failed?.remediationHints.length ? [
+      "",
+      "## Remediation Hints",
+      "",
+      ...failed.remediationHints.map((hint) => `- ${hint}`)
+    ] : []),
+    ...(context.failure.behaviorDrift?.differences.length ? [
+      "",
+      "## Behavior Drift",
+      "",
+      `- Compare report: ${context.failure.behaviorDrift.compareReportPath}`,
+      ...context.failure.behaviorDrift.differences.slice(0, 5).map((difference) => {
+        const decision = context.failure.behaviorDriftDecisions?.find((candidate) => {
+          return candidate.area === difference.area
+            && candidate.name === difference.name
+            && candidate.message === difference.message;
+        });
+        const decisionLabel = decision
+          ? `${decision.classification}${decision.reason ? ` (${decision.reason})` : ""}`
+          : "pending";
+        return `- [${decisionLabel}] ${difference.severity} ${difference.area}/${difference.name}: ${difference.message}`;
+      })
+    ] : []),
+    "",
+    "## Minimal Context",
+    "",
+    `- Goal: ${context.run.goal}`,
+    `- Target root: ${context.run.targetRoot}`,
+    `- Context JSON: ${context.paths.context}`,
+    "",
+    "## Next AI Task",
+    "",
+    "Use this brief and the context JSON to create the smallest repair that addresses the failed gate. Do not broaden scope, weaken checks, or treat compile success alone as behavior proof.",
+    "",
+    "## Retry Commands",
+    "",
+    "```bash",
+    context.commands.retryVerify,
+    context.commands.retryApply,
+    "```",
+    "",
+    failed?.stderr ? [
+      "## First Failed Stderr Excerpt",
+      "",
+      "```text",
+      failed.stderr,
+      "```",
+      ""
+    ].join("\n") : undefined,
+    failed?.stdout ? [
+      "## First Failed Stdout Excerpt",
+      "",
+      "```text",
+      failed.stdout,
+      "```",
+      ""
+    ].join("\n") : undefined
+  ].filter(Boolean).join("\n");
+}
+
+function clipText(text: string, maxLength = 4000): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength)}\n...[truncated]` : text;
+}
+
+function createRetryProposalSummary(sourceProposal: ProposedPatch, report: ProposalVerificationReport): string {
+  const failed = report.checks.find((check) => !check.passed);
+  return [
+    `Retry scaffold for failed proposal ${sourceProposal.id}.`,
+    failed ? `First failed check: ${failed.command}.` : undefined,
+    report.replanBriefPath ? `Use replan brief: ${report.replanBriefPath}.` : undefined
+  ].filter(Boolean).join(" ");
+}
+
+function createRetryPatchContent(
+  pkg: MigrationRunPackage,
+  sourceProposal: ProposedPatch,
+  report: ProposalVerificationReport
+): string {
+  const failed = report.checks.find((check) => !check.passed);
+  return [
+    "# Retry proposal scaffold",
+    "#",
+    `# Run: ${pkg.run.id}`,
+    `# Goal: ${pkg.run.goal}`,
+    `# Source proposal: ${sourceProposal.id}`,
+    `# Verification report: ${report.outputPath}`,
+    report.replanIssueId ? `# Replan issue: ${report.replanIssueId}` : undefined,
+    report.replanTaskId ? `# Replan task: ${report.replanTaskId}` : undefined,
+    report.replanBriefPath ? `# Replan brief: ${report.replanBriefPath}` : undefined,
+    report.replanContextPath ? `# Replan context: ${report.replanContextPath}` : undefined,
+    failed ? `# First failed check: ${failed.command}` : undefined,
+    failed?.failureCategory ? `# Failure category: ${failed.failureCategory}` : undefined,
+    "#",
+    "# This scaffold intentionally does not mutate source code. Replace this file",
+    "# with a focused git patch after using the replan brief/context to repair the",
+    "# failed proposal, then run proposal verify/apply on the retry proposal.",
+    ""
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function markReplanTaskDone(pkg: MigrationRunPackage, taskId: string | undefined, retryProposalId: string): void {
+  if (!taskId) {
+    return;
+  }
+  const task = pkg.graph.tasks.find((candidate) => candidate.id === taskId);
+  if (!task) {
+    return;
+  }
+  task.status = "done";
+  task.result = `Created retry proposal ${retryProposalId}.`;
+  task.updatedAt = new Date().toISOString();
+  const issue = pkg.issues.find((candidate) => candidate.taskId === task.id);
+  if (issue) {
+    issue.status = "done";
+    issue.updatedAt = task.updatedAt;
+  }
 }
 
 function createPatchSummary(title: string, affectedFiles: string[]): string {
@@ -955,11 +1436,13 @@ async function writeProposalVerificationReport(
   patchCheck: ProposalPatchCheck,
   checks: ProposalCommandCheck[],
   preview?: ProposalPreviewResult,
-  gatePolicy: ProposalGatePolicy = DEFAULT_GATE_POLICY
+  gatePolicy: ProposalGatePolicy = DEFAULT_GATE_POLICY,
+  behaviorDiff?: ProposalBehaviorDiffReport
 ): Promise<ProposalVerificationReport> {
   const outputPath = path.join(proposalDir(loaded, pkg, proposal.id), `verification-${Date.now()}.json`);
   const checkPlan = ensureProposalCheckPlan(loaded, proposal);
   const timeline = createProposalGateTimeline(patchCheck, checks, preview);
+  const passed = patchCheck.passed && (preview?.ready ?? true) && checks.every((check) => check.passed);
   const report: ProposalVerificationReport = {
     version: 1,
     id: createId("proposal-verification"),
@@ -969,18 +1452,147 @@ async function writeProposalVerificationReport(
     createdAt: new Date().toISOString(),
     patchPath: proposal.patchPath,
     applied,
-    passed: patchCheck.passed && (preview?.ready ?? true) && checks.every((check) => check.passed),
+    passed,
     patchCheck,
     checkPlan,
     gatePolicy,
     preview,
     checks,
     timeline,
+    behaviorDiff,
     outputPath
   };
+  if (!passed) {
+    report.behaviorDrift = await readLatestBehaviorDriftReference(loaded, pkg, checks);
+  }
 
   await writeJsonFile(outputPath, report);
   return report;
+}
+
+async function captureProposalBehaviorSnapshot(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage
+): Promise<Snapshot> {
+  return captureSnapshot({
+    ...loaded,
+    targetRoot: pkg.run.targetRoot
+  }, "run");
+}
+
+async function writeProposalBehaviorDiff(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposal: ProposedPatch,
+  before: Snapshot
+): Promise<ProposalBehaviorDiffReport> {
+  const after = await captureProposalBehaviorSnapshot(loaded, pkg);
+  const compare = compareSnapshots(before, after, loaded.config.compare);
+  const id = createId("behavior-diff");
+  const dir = proposalDir(loaded, pkg, proposal.id);
+  const beforeSnapshotPath = path.join(dir, `${id}-before.json`);
+  const afterSnapshotPath = path.join(dir, `${id}-after.json`);
+  const compareReportPath = path.join(dir, `${id}-compare.json`);
+  const compareMarkdownPath = path.join(dir, `${id}-compare.md`);
+  await writeJsonFile(beforeSnapshotPath, before);
+  await writeJsonFile(afterSnapshotPath, after);
+  await writeJsonFile(compareReportPath, compare);
+  await writeTextFile(compareMarkdownPath, renderCompareReport(compare, await decisionsForCompareReport(loaded, compare, pkg.run.id)));
+  const errors = compare.differences.filter((difference) => difference.severity === "error").length;
+  const warnings = compare.differences.filter((difference) => difference.severity === "warn").length;
+  return {
+    beforeSnapshotPath,
+    afterSnapshotPath,
+    compareReportPath,
+    compareMarkdownPath,
+    beforeSnapshotId: before.id,
+    afterSnapshotId: after.id,
+    passed: compare.passed,
+    differenceCount: compare.differences.length,
+    errorCount: errors,
+    warningCount: warnings,
+    differences: compare.differences.slice(0, 10).map((difference) => ({
+      severity: difference.severity,
+      area: difference.area,
+      name: difference.name,
+      message: difference.message
+    }))
+  };
+}
+
+async function readLatestBehaviorDriftReference(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  checks: ProposalCommandCheck[]
+): Promise<ProposalBehaviorDriftReference | undefined> {
+  const latest = await latestCompareReportCandidate(loaded, pkg);
+  if (!latest) {
+    return undefined;
+  }
+  const compareReport = await readJsonFile<CompareReport>(latest.path).catch(() => undefined);
+  if (!compareReport) {
+    return undefined;
+  }
+  const failedChecks = checks.filter((check) => !check.passed);
+  const differences = compareReport.differences
+    .filter((difference) => difference.area === "check" || difference.area === "probe")
+    .filter((difference) => difference.severity === "error" || difference.severity === "warn")
+    .slice(0, 10)
+    .map((difference) => ({
+      severity: difference.severity,
+      area: difference.area as "check" | "probe",
+      name: difference.name,
+      message: difference.message,
+      before: difference.before,
+      after: difference.after,
+      relatedFailedCommand: relatedFailedCommandForDifference(difference.name, failedChecks)
+    }));
+  if (differences.length === 0) {
+    return undefined;
+  }
+  return {
+    compareReportPath: latest.path,
+    baselineId: compareReport.baselineId,
+    currentId: compareReport.currentId,
+    passed: compareReport.passed,
+    differences
+  };
+}
+
+async function latestCompareReportCandidate(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage
+): Promise<{ path: string; mtimeMs: number } | undefined> {
+  const candidates: Array<{ path: string; mtimeMs: number }> = [];
+  for (const dir of [
+    path.join(loaded.artifactsDir, "compare"),
+    path.join(migrationRunDir(loaded, pkg.run.id), "verifications")
+  ]) {
+    if (!await pathExists(dir)) {
+      continue;
+    }
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) {
+        continue;
+      }
+      if (path.basename(dir) === "verifications" && !entry.name.endsWith("-compare.json")) {
+        continue;
+      }
+      const filePath = path.join(dir, entry.name);
+      const stat = await fs.stat(filePath);
+      candidates.push({ path: filePath, mtimeMs: stat.mtimeMs });
+    }
+  }
+  return candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
+}
+
+function relatedFailedCommandForDifference(name: string, failedChecks: ProposalCommandCheck[]): string | undefined {
+  const normalizedName = name.toLowerCase();
+  return failedChecks.find((check) => {
+    const command = check.command.toLowerCase();
+    return command.includes(normalizedName) || normalizedName.includes(command);
+  })?.command;
 }
 
 async function recordProposalGateFailure(

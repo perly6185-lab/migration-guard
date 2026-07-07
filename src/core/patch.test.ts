@@ -5,9 +5,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyProposalBatch, applyProposedPatch, createAddFilePatch, createProposalBatchPlan, proposeActionPatch, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
+import { applyProposalBatch, applyProposedPatch, createAddFilePatch, createProposalBatchPlan, createProposalRetry, proposeActionPatch, renderProposalVerificationReport, replanProposal, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
 import { syncIssues } from "./issueSync.js";
-import { writeCiHandoffReport } from "./migrationRun.js";
+import { renderRunReport, renderRunStatus, resolveRunNextAction, writeCiHandoffReport } from "./migrationRun.js";
 import { createGitHubIssues } from "./githubIssueAdapter.js";
 import type { LoadedConfig, MigrationIssue, MigrationRun, MigrationTaskGraph, ProposalVerificationReport, ProposedPatch } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
@@ -44,6 +44,16 @@ test("proposal verify and apply write verification reports", async () => {
   try {
     await execFileAsync("git", ["init"], { cwd: dir });
     const loaded = makeLoadedConfig(dir);
+    await writeFile(path.join(dir, "probe-status.mjs"), [
+      "import { existsSync } from \"node:fs\";",
+      "console.log(existsSync(\"scripts/migration-guard/probe.mjs\") ? \"present\" : \"missing\");",
+      ""
+    ].join("\n"), "utf8");
+    loaded.config.probes = [{
+      type: "command",
+      name: "generated-probe-presence",
+      command: "node probe-status.mjs"
+    }];
     const pkg = makeRunPackage(dir);
     const proposalDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "proposals", "patch-1");
     const patchPath = path.join(proposalDir, "patch.diff");
@@ -74,12 +84,19 @@ test("proposal verify and apply write verification reports", async () => {
     assert.equal(verify.checks.length, 0);
     assert.equal((await readProposal(proposalPath)).applyState, "verified");
 
-    const apply = await applyProposedPatch(loaded, pkg, proposal.id, { runChecks: true });
+    const apply = await applyProposedPatch(loaded, pkg, proposal.id, { runChecks: true, behaviorDiff: true });
     assert.equal(apply.report?.passed, true);
     assert.equal(apply.report?.checks.length, 1);
     assert.equal(apply.report?.checkPlan?.[0]?.kind, "other");
     assert.equal(apply.report?.timeline.length, 2);
     assert.match(apply.report?.checks[0]?.stdout ?? "", /probe-ok/);
+    assert.equal(apply.report?.behaviorDiff?.passed, false);
+    assert.ok((apply.report?.behaviorDiff?.differenceCount ?? 0) > 0);
+    assert.match(apply.report?.behaviorDiff?.compareReportPath ?? "", /behavior-diff-.*-compare\.json$/);
+    await access(apply.report?.behaviorDiff?.beforeSnapshotPath ?? "");
+    await access(apply.report?.behaviorDiff?.afterSnapshotPath ?? "");
+    await access(apply.report?.behaviorDiff?.compareMarkdownPath ?? "");
+    assert.match(renderProposalVerificationReport(apply.report as ProposalVerificationReport), /Behavior diff: failed/);
     assert.equal((await readProposal(proposalPath)).applyState, "applied");
 
     const rollback = await rollbackProposedPatch(loaded, pkg, proposal.id);
@@ -312,6 +329,36 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     await execFileAsync("git", ["init"], { cwd: dir });
     const loaded = makeLoadedConfig(dir);
     const pkg = makeRunPackage(dir);
+    const compareDir = path.join(loaded.artifactsDir, "compare");
+    await mkdir(compareDir, { recursive: true });
+    await writeFile(path.join(compareDir, "latest-compare.json"), `${JSON.stringify({
+      passed: false,
+      baselineId: "baseline-drift",
+      currentId: "run-drift",
+      createdAt: "2026-07-06T00:00:00.000Z",
+      differences: [
+        {
+          severity: "error",
+          area: "probe",
+          name: "renderer-output",
+          message: "Probe output changed.",
+          before: "before-hash",
+          after: "after-hash"
+        },
+        {
+          severity: "warn",
+          area: "check",
+          name: "a-fail",
+          message: "Check stdout changed while still passing."
+        },
+        {
+          severity: "info",
+          area: "scan",
+          name: "source-files",
+          message: "Source file count changed."
+        }
+      ]
+    }, null, 2)}\n`, "utf8");
     await writeBatchProposal(loaded, pkg, "patch-a-fail", "low", "scripts/migration-guard/a-fail.mjs", "console.error(\"a-fail\");\nprocess.exit(1);\n");
     await writeBatchProposal(loaded, pkg, "patch-b-skip", "low", "scripts/migration-guard/b-skip.mjs", "console.log(\"b-ok\");\n");
 
@@ -331,6 +378,66 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.match(report.stopReason ?? "", /patch-a-fail/);
     assert.match(report.nextCommand ?? "", /proposal replan/);
     assert.ok(report.recommendedNextActions?.some((action) => action.includes("proposal replan")));
+    const failedVerification = await readVerificationReport(report.firstFailedVerificationPath ?? "");
+    assert.equal(failedVerification.behaviorDrift?.baselineId, "baseline-drift");
+    assert.equal(failedVerification.behaviorDrift?.differences.length, 2);
+    assert.equal(failedVerification.behaviorDrift?.differences[0]?.area, "probe");
+    assert.equal(failedVerification.behaviorDrift?.differences[1]?.relatedFailedCommand, "node scripts/migration-guard/a-fail.mjs");
+    assert.doesNotMatch(renderProposalVerificationReport(failedVerification), /source-files/);
+    const nextBeforeReplan = await resolveRunNextAction(loaded, pkg);
+    assert.match(nextBeforeReplan.action, /Create a replan brief/);
+    assert.match(nextBeforeReplan.command ?? "", /proposal replan/);
+    assert.ok(nextBeforeReplan.evidence?.some((item) => item.includes("proposal-batch-report-")));
+    assert.match(renderRunStatus(pkg, nextBeforeReplan), /Next action: Create a replan brief/);
+
+    const replan = await replanProposal(loaded, pkg, "patch-a-fail");
+    assert.match(replan.briefPath, /replan-brief\.md$/);
+    assert.match(replan.contextPath, /replan-context\.json$/);
+    await access(replan.briefPath);
+    await access(replan.contextPath);
+    const replanBrief = await readFile(replan.briefPath, "utf8");
+    assert.match(replanBrief, /First failed check/);
+    assert.match(replanBrief, /Retry Commands/);
+    assert.match(replanBrief, /Behavior Drift/);
+    assert.match(replanBrief, /probe\/renderer-output/);
+    const replanContext = JSON.parse(await readFile(replan.contextPath, "utf8")) as {
+      proposal?: { id?: string };
+      failure?: { firstFailedCheck?: { failureCategory?: string }; issueId?: string; taskId?: string; behaviorDrift?: { differences?: unknown[] } };
+      commands?: { retryVerify?: string };
+    };
+    assert.equal(replanContext.proposal?.id, "patch-a-fail");
+    assert.equal(replanContext.failure?.firstFailedCheck?.failureCategory, "command-failed");
+    assert.equal(replanContext.failure?.issueId, replan.report.replanIssueId);
+    assert.equal(replanContext.failure?.taskId, replan.task.id);
+    assert.equal(replanContext.failure?.behaviorDrift?.differences?.length, 2);
+    assert.match(replanContext.commands?.retryVerify ?? "", /proposal verify/);
+    const nextAfterReplan = await resolveRunNextAction(loaded, pkg);
+    assert.match(nextAfterReplan.action, /Create a retry proposal/);
+    assert.match(nextAfterReplan.command ?? "", /proposal retry/);
+    assert.ok(nextAfterReplan.evidence?.includes(replan.briefPath));
+    const retry = await createProposalRetry(loaded, pkg, "patch-a-fail");
+    assert.equal(retry.reused, false);
+    assert.equal(retry.proposal.retryOfProposalId, "patch-a-fail");
+    assert.equal(retry.proposal.patchKind, "replan-retry");
+    assert.equal(retry.proposal.replanBriefPath, replan.briefPath);
+    assert.equal(retry.report.retryProposalId, retry.proposal.id);
+    await access(retry.proposal.patchPath);
+    const retryPatch = await readFile(retry.proposal.patchPath, "utf8");
+    assert.match(retryPatch, /Retry proposal scaffold/);
+    assert.equal(pkg.graph.tasks.find((task) => task.id === replan.task.id)?.status, "done");
+    assert.equal(pkg.issues.find((issue) => issue.taskId === replan.task.id)?.status, "done");
+    const retryAgain = await createProposalRetry(loaded, pkg, "patch-a-fail");
+    assert.equal(retryAgain.reused, true);
+    assert.equal(retryAgain.proposal.id, retry.proposal.id);
+    const nextAfterRetry = await resolveRunNextAction(loaded, pkg);
+    assert.match(nextAfterRetry.action, /Verify retry proposal/);
+    assert.match(nextAfterRetry.command ?? "", /proposal verify/);
+    assert.ok(nextAfterRetry.evidence?.includes(retry.proposal.patchPath));
+    const runReport = await renderRunReport(loaded, pkg);
+    assert.match(runReport, /## Next Action/);
+    assert.match(runReport, /Verify retry proposal/);
+    assert.match(runReport, /replan-brief/);
+    assert.match(runReport, /behavior-drift:2/);
     const manualIssue: MigrationIssue = {
       id: "issue-manual-live-create",
       runId: pkg.run.id,
@@ -357,6 +464,7 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.ok(failureIssue);
     assert.match(failureIssue.body, /Proposal gate context/);
     assert.match(failureIssue.body, /Proposal batch context/);
+    assert.match(failureIssue.body, /Behavior drift: 2 check\/probe difference/);
     assert.equal(failureIssue.migrationGuard?.gate?.firstFailedCheck?.failureCategory, "command-failed");
     assert.ok(failureIssue.migrationGuard?.gate?.firstFailedCheck?.remediationHints?.some((hint) => hint.includes("stdout/stderr")));
     assert.match(failureIssue.migrationGuard?.batch?.stopReason ?? "", /patch-a-fail/);
@@ -365,6 +473,14 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     const githubDryRunPath = await syncIssues(loaded, pkg, "github", { dryRun: true });
     assert.match(githubDryRunPath, /github-dry-run-issues\.json$/);
     const issueSyncDir = path.dirname(githubDryRunPath);
+    const singleDryRunPath = await syncIssues(loaded, pkg, "github", {
+      dryRun: true,
+      onlyIssue: manualIssue.id
+    });
+    const singleDryRun = JSON.parse(await readFile(singleDryRunPath, "utf8")) as Array<{ migrationGuard?: { issueId?: string } }>;
+    assert.equal(singleDryRun.length, 1);
+    assert.equal(singleDryRun[0]?.migrationGuard?.issueId, manualIssue.id);
+    await assert.rejects(syncIssues(loaded, pkg, "github", { dryRun: true, onlyIssue: "issue-missing" }), /Issue not found/);
     const mapping = JSON.parse(await readFile(path.join(issueSyncDir, "github-dry-run-mapping.json"), "utf8")) as { tokenEnv?: string; fields?: { title?: string } };
     assert.equal(mapping.tokenEnv, "GITHUB_TOKEN");
     assert.equal(mapping.fields?.title, "title");
@@ -605,6 +721,74 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.equal(livePlanSummary.mutationCount, pkg.issues.length - 1);
     assert.match(livePlanSummary.planHash ?? "", /^[a-f0-9]{64}$/);
     assert.equal(livePlanSummary.rateLimit?.[0]?.remaining, 4997);
+    const singlePlanRequests: Array<{ url: string; init?: RequestInit }> = [];
+    const singlePlanMockFetch: typeof fetch = async (input, init) => {
+      singlePlanRequests.push({ url: String(input), init });
+      if (!String(input).includes("?state=open")) {
+        throw new Error("single issue live-plan must not create or update issues");
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    };
+    const singlePlanPath = await syncIssues(loaded, pkg, "github", {
+      livePlan: true,
+      repo: "owner/repo",
+      token: "secret-token",
+      onlyIssue: manualIssue.id,
+      fetchImpl: singlePlanMockFetch
+    });
+    assert.match(singlePlanPath, /github-live-plan-issues\.json$/);
+    assert.equal(singlePlanRequests.length, 1);
+    const singlePlanExport = JSON.parse(await readFile(singlePlanPath, "utf8")) as Array<{ migrationGuard?: { issueId?: string } }>;
+    assert.equal(singlePlanExport.length, 1);
+    assert.equal(singlePlanExport[0]?.migrationGuard?.issueId, manualIssue.id);
+    const singlePlanSummary = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-plan-summary.json"), "utf8")) as { mutationCount: number; willCreate: number; willUpdate: number; willSkip: number; planHash?: string };
+    assert.equal(singlePlanSummary.mutationCount, 1);
+    assert.equal(singlePlanSummary.willCreate, 1);
+    assert.equal(singlePlanSummary.willUpdate, 0);
+    assert.equal(singlePlanSummary.willSkip, 0);
+    assert.match(singlePlanSummary.planHash ?? "", /^[a-f0-9]{64}$/);
+    const singleLiveRequests: Array<{ url: string; init?: RequestInit }> = [];
+    const singleLiveMockFetch: typeof fetch = async (input, init) => {
+      singleLiveRequests.push({ url: String(input), init });
+      if (String(input).includes("?state=open")) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      return new Response(JSON.stringify({
+        html_url: "https://github.com/owner/repo/issues/123",
+        number: 123
+      }), {
+        status: 201,
+        headers: { "content-type": "application/json" }
+      });
+    };
+    const singleLivePath = await syncIssues(loaded, pkg, "github", {
+      live: true,
+      repo: "owner/repo",
+      token: "secret-token",
+      liveConfirm: pkg.run.id,
+      livePlanConfirm: singlePlanSummary.planHash,
+      maxLiveMutations: 1,
+      onlyIssue: manualIssue.id,
+      fetchImpl: singleLiveMockFetch
+    });
+    assert.match(singleLivePath, /github-issues\.json$/);
+    assert.equal(singleLiveRequests.length, 2);
+    assert.equal(singleLiveRequests[0]?.init?.method, "GET");
+    assert.equal(singleLiveRequests[1]?.init?.method, "POST");
+    const singleLiveSummary = JSON.parse(await readFile(path.join(issueSyncDir, "github-live-sync.json"), "utf8")) as { createdCount: number; updatedCount: number; skippedCount: number; failedCount: number; issues: Array<{ action?: string }> };
+    assert.equal(singleLiveSummary.createdCount, 1);
+    assert.equal(singleLiveSummary.updatedCount, 0);
+    assert.equal(singleLiveSummary.skippedCount, 0);
+    assert.equal(singleLiveSummary.failedCount, 0);
+    assert.equal(singleLiveSummary.issues.length, 1);
+    assert.equal(singleLiveSummary.issues[0]?.action, "created");
+    assert.match(pkg.issues.find((issue) => issue.id === manualIssue.id)?.externalUrl ?? "", /issues\/123/);
     const ciHandoffPath = await writeCiHandoffReport(loaded, pkg);
     const ciHandoff = await readFile(ciHandoffPath, "utf8");
     assert.match(ciHandoff, /Latest failed batch/);

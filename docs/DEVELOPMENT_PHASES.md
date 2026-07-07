@@ -1184,6 +1184,253 @@ node scripts/smoke/check-live-plan-hash-stability.mjs
 - 本地稳定性脚本连续生成两个 mocked live plan，确认 `planHash` 一致。
 - 本阶段不需要 `GITHUB_TOKEN`，不触发真实 GitHub API。
 
+## Phase 33: Single-Issue GitHub Mutation Smoke Plan
+
+目标：为未来真实 GitHub mutation smoke 增加单 issue 限缩能力和 runbook，但本阶段不触发真实 mutation。
+
+新增能力：
+
+- `sync-issues --only-issue <issue-id>`
+- dry-run/live-plan/live 均只导出或同步指定 issue
+- live plan hash 基于过滤后的单 issue 计划
+- local issue external URL 只回写到匹配 issue
+- GitHub mutation smoke plan 文档
+
+建议命令：
+
+```bash
+node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --dry-run --only-issue <issue-id>
+node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live-plan --repo perly6185-lab/migration-guard --only-issue <issue-id>
+```
+
+产物：
+
+- `docs/GITHUB_MUTATION_SMOKE_PLAN.md`
+- `.migration-guard/.../issue-sync/github-dry-run-issues.json`
+- `.migration-guard/.../issue-sync/github-live-plan.json`
+- `.migration-guard/.../issue-sync/github-live-plan-summary.json`
+
+完成标准：
+
+- `--only-issue` 不存在时拒绝执行。
+- dry-run filtered export 只包含一个 issue。
+- live-plan filtered summary 的 mutationCount 可降为 1。
+- mocked live filtered sync 在 `--max-live-mutations 1` 下只执行一个 mutation。
+- 不执行真实 GitHub POST/PATCH。
+
+## Phase 34: Runner Loop Replan Brief + Next Action
+
+目标：从 GitHub 配套建设回到 Migration Runner Loop，让失败 proposal 直接产出 AI/人类可执行的 replan 证据包，并在 status/report 中给出唯一下一步动作。
+
+新增能力：
+
+- `proposal replan` 写出 replan brief
+- `proposal replan` 写出 JSON context pack
+- verification report 回写 `replanBriefPath` 和 `replanContextPath`
+- `status` 输出唯一 `Next action`
+- `report` 新增 `Next Action` 区块
+
+建议命令：
+
+```bash
+node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run latest --limit 2 --gate-policy fail-fast
+node dist/cli.js status --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js proposal replan --config configs/md-fast.migration-guard.json --run latest --proposal <failed-proposal-id>
+node dist/cli.js report --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- `.migration-guard/.../replans/<proposal-id>/replan-brief.md`
+- `.migration-guard/.../replans/<proposal-id>/replan-context.json`
+- verification report 中的 replan brief/context 路径
+- run report `Next Action`
+
+完成标准：
+
+- 失败 batch 后，status/report 只推荐创建 replan brief。
+- `proposal replan` 后，status/report 改为推荐使用 replan brief 修复 proposal。
+- replan context 包含 failed check、report path、patch path、issue/task、retry command。
+- `npm test` 覆盖 next action 和 replan artifact。
+
+## Phase 35: Authorized Single-Issue GitHub Mutation Smoke
+
+目标：在明确授权后完成一次真实 GitHub 单 issue mutation smoke，证明外部 handoff 可用，然后停止 GitHub provider 深挖。
+
+新增能力：
+
+- 无新增 provider 功能
+- 真实 GitHub create/update smoke 记录
+- local issue `externalUrl` 回写验证
+- credential marker scan 记录
+
+建议命令：
+
+```bash
+node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live-plan --repo perly6185-lab/migration-guard --only-issue <issue-id>
+node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live --repo perly6185-lab/migration-guard --live-confirm <run-id> --live-plan-confirm <planHash> --max-live-mutations 1 --only-issue <issue-id>
+```
+
+产物：
+
+- `.migration-guard/.../issue-sync/github-live-plan.json`
+- `.migration-guard/.../issue-sync/github-live-sync.json`
+- `docs/PHASE_35_REPORT.md`
+- GitHub issue URL
+
+完成标准：
+
+- `mutationCount` 为 1。
+- live sync 只 created/updated 一个 issue。
+- 本地只有匹配 issue 写入 `externalUrl`。
+- artifact 不包含真实 token 或 Authorization header。
+- GitHub 后续扩展进入 deferred backlog，下一活跃主线回到 Runner Loop。
+
+## Phase 36: Replan Task to Retry Proposal Loop
+
+目标：把 Phase 34 的 replan brief/context 向前推进成可跟踪的 retry proposal，形成 `proposal failure -> issue -> replan task -> brief/context -> retry proposal` 的最小闭环。
+
+新增能力：
+
+- `proposal retry --proposal <failed-proposal-id>`
+- retry proposal 回连原 failed proposal
+- retry proposal 回连 replan issue/task/brief/context
+- 原 verification report 写入 `retryProposalId`
+- replan task 在 retry proposal 创建后标记为 done
+- `status` / `report` 在 retry proposal 创建后推荐验证或应用 retry proposal
+
+建议命令：
+
+```bash
+node dist/cli.js proposal replan --config configs/md-fast.migration-guard.json --run latest --proposal <failed-proposal-id>
+node dist/cli.js proposal retry --config configs/md-fast.migration-guard.json --run latest --proposal <failed-proposal-id>
+node dist/cli.js status --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js proposal verify --config configs/md-fast.migration-guard.json --run latest --proposal <retry-proposal-id> --checks
+```
+
+产物：
+
+- `.migration-guard/.../proposals/<retry-proposal-id>/proposal.json`
+- `.migration-guard/.../proposals/<retry-proposal-id>/patch.diff`
+- failed verification report 中的 `retryProposalId`
+- run report `Next Action`
+
+完成标准：
+
+- replan 后，status/report 推荐 `proposal retry`。
+- retry 后，status/report 推荐验证 retry proposal。
+- retry proposal 可从 metadata 找回原 failed proposal 和 replan evidence。
+- `npm test` 覆盖 retry proposal 创建、复用和 next action 转移。
+
+## Phase 37: Proposal Gate Behavior Drift References
+
+目标：把行为一致性证据链接回 proposal gate。gate 失败时，如果存在最新 compare report，verification report、failure issue、replan brief 和 run report 都应引用具体 check/probe drift。
+
+新增能力：
+
+- failed proposal verification report 写入 `behaviorDrift`
+- behavior drift 只引用 check/probe error/warn，不把 scan info 当成 gate drift
+- failure issue 和 replan task 写入 compare report path 与 drift 摘要
+- replan brief/context 写入 drift 摘要
+- issue sync gate context 导出 drift 摘要
+- run report 的 Recent Proposal Gates 展示 drift count 和第一条 drift
+
+建议命令：
+
+```bash
+node dist/cli.js verify --config configs/md-fast.migration-guard.json
+node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run latest --limit 2 --gate-policy fail-fast
+node dist/cli.js proposal replan --config configs/md-fast.migration-guard.json --run latest --proposal <failed-proposal-id>
+node dist/cli.js report --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- proposal verification report `behaviorDrift`
+- replan brief/context 中的 `Behavior Drift`
+- issue sync export 中的 behavior drift context
+- run report `behavior-drift:<count>`
+
+完成标准：
+
+- gate 失败时能引用最新 compare report。
+- 只展示具体 check/probe drift。
+- replan brief 足以告诉 AI 哪个 probe/check drift 与失败相关。
+- `npm test` 覆盖 verification report、replan brief、issue sync 和 run report。
+
+## Phase 38: Proposal-Scoped Behavior Diff
+
+目标：在 proposal apply 周围显式捕获 before/after behavior snapshots，并把 compare report 关联回 proposal verification report。
+
+新增能力：
+
+- `task apply --behavior-diff`
+- `action apply --behavior-diff`
+- `proposal batch apply --behavior-diff`
+- proposal 目录写入 before snapshot
+- proposal 目录写入 after snapshot
+- proposal 目录写入 compare JSON/Markdown
+- verification report 写入 `behaviorDiff`
+- run report Recent Proposal Gates 展示 proposal-scoped behavior diff 摘要
+
+建议命令：
+
+```bash
+node dist/cli.js action apply --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id> --rollback-on-fail --behavior-diff
+node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run latest --limit 1 --behavior-diff
+```
+
+产物：
+
+- `.migration-guard/.../proposals/<proposal-id>/behavior-diff-*-before.json`
+- `.migration-guard/.../proposals/<proposal-id>/behavior-diff-*-after.json`
+- `.migration-guard/.../proposals/<proposal-id>/behavior-diff-*-compare.json`
+- `.migration-guard/.../proposals/<proposal-id>/behavior-diff-*-compare.md`
+- verification report `behaviorDiff`
+
+完成标准：
+
+- 默认 apply 不增加完整 behavior snapshot 成本。
+- 显式 `--behavior-diff` 时捕获 before/after。
+- compare result 写入 verification report。
+- `npm test` 覆盖 apply behavior diff artifact。
+
+## Phase 39: Behavior Diff Decision Ledger
+
+目标：把 behavior drift / proposal-scoped behavior diff 从“发现差异”推进到“记录决策”。每个 compare difference 可以被分类为 `intentional`、`accidental` 或 `unknown`，并带上原因和批准来源。
+
+新增能力：
+
+- `diff list --compare <compare.json>`
+- `diff decide --compare <compare.json> --area <area> --name <name> --as <classification> --reason <text>`
+- run-scoped diff decision ledger
+- compare Markdown 刷新后展示 decision/reason
+- run report Recent Proposal Gates 展示 decision coverage
+- pending risk behavior diff 会成为 status/report 的下一步动作
+- replan brief 中的 Behavior Drift 展示 decision 状态
+
+建议命令：
+
+```bash
+node dist/cli.js diff list --config configs/md-fast.migration-guard.json --run latest --compare <compare.json>
+node dist/cli.js diff decide --config configs/md-fast.migration-guard.json --run latest --compare <compare.json> --area probe --name md-renderer-behavior --as intentional --reason "expected renderer behavior change"
+node dist/cli.js report --config configs/md-fast.migration-guard.json --run latest
+```
+
+产物：
+
+- `.migration-guard/.../diff-decisions/decisions.json`
+- refreshed compare Markdown with decision columns
+- run report `behavior-decisions`
+- replan brief `[pending]` / `[intentional]` drift labels
+
+完成标准：
+
+- 一个 compare difference 可以被分类并持久化。
+- report 能显示 decided/pending/pending-risk 计数。
+- 未分类 risk diff 会被推荐为下一步动作。
+- `npm test` 覆盖 ledger、coverage 和 Markdown 刷新。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

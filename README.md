@@ -59,15 +59,18 @@ Proposal gate commands:
 node dist/cli.js actions --run latest
 node dist/cli.js action propose --run latest --action action-renderer-probes
 node dist/cli.js proposal verify --run latest --proposal <proposal-id> --checks
-node dist/cli.js action apply --run latest --proposal <proposal-id> --rollback-on-fail
+node dist/cli.js action apply --run latest --proposal <proposal-id> --rollback-on-fail --behavior-diff
 node dist/cli.js proposal rollback --run latest --proposal <proposal-id>
 node dist/cli.js proposal replan --run latest --proposal <proposal-id>
+node dist/cli.js proposal retry --run latest --proposal <failed-proposal-id>
 node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
+node dist/cli.js diff list --run latest --compare <compare.json>
+node dist/cli.js diff decide --run latest --compare <compare.json> --area probe --name renderer --as intentional --reason "expected renderer behavior change"
 node dist/cli.js sync-issues --run latest --provider local
 node dist/cli.js sync-issues --run latest --provider github --dry-run
 node dist/cli.js sync-issues --run latest --provider github --live-plan --repo owner/name
-node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --live-plan-confirm <plan-hash> --max-live-mutations 3 --labels team:migration
+node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --live-plan-confirm <plan-hash> --only-issue <issue-id> --max-live-mutations 1 --labels team:migration
 node dist/cli.js ci verify --baseline .migration-guard/latest-baseline.json --run latest
 ```
 
@@ -84,6 +87,20 @@ startup failures, transient socket resets and timeouts.
 When a proposal gate fails, verification and batch reports include remediation
 hints. Batch reports also explain why the batch stopped, which proposals were
 skipped, and the next `proposal replan` command to run.
+`status` and `report` also show one current next action. After `proposal replan`,
+Migration Guard writes a focused replan brief and JSON context pack under
+`replans/<proposal-id>/` so Codex, another AI assistant, or a human can repair
+the failed proposal from evidence instead of guessing. `proposal retry` then
+creates a linked retry proposal scaffold so the next verification/apply step is
+tracked as part of the same failure loop.
+When a latest compare report exists, failed proposal gates also reference
+specific check/probe behavior drift in the verification report, failure issue,
+replan brief, issue sync export, and run report.
+Use `--behavior-diff` on apply commands to capture proposal-scoped before/after
+snapshots and a compare report around the applied patch.
+Use `diff decide` to classify compare differences as `intentional`,
+`accidental` or `unknown`. Decisions are written to a local diff decision ledger
+and appear in refreshed compare Markdown, run reports and replan briefs.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at
@@ -241,8 +258,32 @@ See [docs/GITHUB_READ_ONLY_SMOKE_RUNBOOK.md](docs/GITHUB_READ_ONLY_SMOKE_RUNBOOK
 for the opt-in real GitHub read-only smoke procedure and the local no-network
 planHash stability check.
 
+See [docs/GITHUB_MUTATION_SMOKE_PLAN.md](docs/GITHUB_MUTATION_SMOKE_PLAN.md)
+for the future single-issue GitHub mutation smoke plan.
+
 See [docs/PHASE_32_REPORT.md](docs/PHASE_32_REPORT.md) for the completed real
 GitHub read-only smoke result.
+
+See [docs/PHASE_33_REPORT.md](docs/PHASE_33_REPORT.md) for single-issue
+mutation smoke planning and filtered read-only verification.
+
+See [docs/PHASE_34_REPORT.md](docs/PHASE_34_REPORT.md) for runner loop replan
+briefs and unique next-action reporting.
+
+See [docs/PHASE_35_REPORT.md](docs/PHASE_35_REPORT.md) for the completed
+authorized single-issue GitHub mutation smoke.
+
+See [docs/PHASE_36_REPORT.md](docs/PHASE_36_REPORT.md) for the replan task to
+retry proposal loop.
+
+See [docs/PHASE_37_REPORT.md](docs/PHASE_37_REPORT.md) for behavior drift
+references in proposal gates.
+
+See [docs/PHASE_38_REPORT.md](docs/PHASE_38_REPORT.md) for proposal-scoped
+before/after behavior diff artifacts.
+
+See [docs/NEXT_MAJOR_PHASES.md](docs/NEXT_MAJOR_PHASES.md) for the larger
+roadmap after the GitHub mutation smoke.
 
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
 for the next real-world validation plan using `perly6185-lab/md`.

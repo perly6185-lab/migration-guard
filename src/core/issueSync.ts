@@ -10,20 +10,21 @@ export async function syncIssues(
   loaded: LoadedConfig,
   pkg: MigrationRunPackage,
   provider: "local" | "github" | "gitlab" | "jira" | "linear",
-  options: { dryRun?: boolean; live?: boolean; livePlan?: boolean; repo?: string; token?: string; liveConfirm?: string; livePlanConfirm?: string; labels?: string[]; maxLiveMutations?: number; retry?: { maxAttempts?: number; delayMs?: number }; fetchImpl?: typeof fetch } = {}
+  options: { dryRun?: boolean; live?: boolean; livePlan?: boolean; repo?: string; token?: string; liveConfirm?: string; livePlanConfirm?: string; labels?: string[]; onlyIssue?: string; maxLiveMutations?: number; retry?: { maxAttempts?: number; delayMs?: number }; fetchImpl?: typeof fetch } = {}
 ): Promise<string> {
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "issue-sync");
   enforceProviderSafety(provider, options, pkg.run.id);
   const context = await readIssueSyncContext(loaded, pkg);
   const mapping = providerMapping(provider);
-  const exported = pkg.issues.map((issue) => serializeIssue(issue, provider, context, mapping, normalizeExtraLabels(options.labels)));
+  const issuesToSync = filterIssues(pkg.issues, options.onlyIssue);
+  const exported = issuesToSync.map((issue) => serializeIssue(issue, provider, context, mapping, normalizeExtraLabels(options.labels)));
   const suffix = issueSyncSuffix(options);
   const outputPath = path.join(dir, `${provider}${suffix}-issues.json`);
   await writeJsonFile(outputPath, exported);
 
   if (provider !== "local") {
     const markdownPath = path.join(dir, `${provider}${suffix}-issues.md`);
-    await writeTextFile(markdownPath, renderIssueSyncMarkdown(pkg.issues, provider, context));
+    await writeTextFile(markdownPath, renderIssueSyncMarkdown(issuesToSync, provider, context));
     await writeJsonFile(path.join(dir, `${provider}${suffix}-mapping.json`), mapping);
     if (provider === "github" && options.dryRun) {
       await writeTextFile(path.join(dir, "github-pr-comment.md"), renderGitHubPrComment(pkg, context));
@@ -86,16 +87,19 @@ export async function syncIssues(
         rateLimit: result.rateLimit,
         issues: result.issues
       });
-      for (let index = 0; index < pkg.issues.length; index += 1) {
+      for (let index = 0; index < issuesToSync.length; index += 1) {
         const externalUrl = result.issues[index]?.url;
         if (externalUrl) {
-          pkg.issues[index].externalUrl = externalUrl;
-          pkg.issues[index].updatedAt = new Date().toISOString();
+          const originalIssue = pkg.issues.find((issue) => issue.id === issuesToSync[index]?.id);
+          if (originalIssue) {
+            originalIssue.externalUrl = externalUrl;
+            originalIssue.updatedAt = new Date().toISOString();
+          }
         }
       }
     }
     if (!options.dryRun && !options.livePlan) {
-      for (const issue of pkg.issues) {
+      for (const issue of issuesToSync) {
         issue.externalUrl = issue.externalUrl ?? (options.live ? undefined : `${provider}:pending:${issue.id}`);
         issue.updatedAt = new Date().toISOString();
       }
@@ -109,9 +113,10 @@ export async function syncIssues(
   await appendEvidence(loaded, pkg.run.id, {
     runId: pkg.run.id,
     type: "sync",
-    message: `${options.dryRun ? "Dry-run exported" : "Exported"} ${pkg.issues.length} issues for provider ${provider}`,
+    message: `${options.dryRun ? "Dry-run exported" : "Exported"} ${issuesToSync.length} issues for provider ${provider}`,
     data: {
-      outputPath
+      outputPath,
+      onlyIssue: options.onlyIssue
     }
   });
   return outputPath;
@@ -135,6 +140,15 @@ interface ProposalGateContext {
     phase?: string;
     failureCategory?: string;
     remediationHints?: string[];
+  };
+  behaviorDrift?: {
+    compareReportPath: string;
+    differences: Array<{
+      severity: string;
+      area: string;
+      name: string;
+      message: string;
+    }>;
   };
 }
 
@@ -264,6 +278,8 @@ function renderGitHubPrComment(pkg: MigrationRunPackage, context: IssueSyncConte
       failedGate.replanTaskId ? `- Replan task: \`${failedGate.replanTaskId}\`` : undefined,
       failedGate.firstFailedCheck ? `- First failed check: \`${failedGate.firstFailedCheck.command}\`` : undefined,
       failedGate.firstFailedCheck?.failureCategory ? `- Failure category: \`${failedGate.firstFailedCheck.failureCategory}\`` : undefined,
+      failedGate.behaviorDrift ? `- Behavior drift: ${failedGate.behaviorDrift.differences.length} check/probe difference(s)` : undefined,
+      failedGate.behaviorDrift ? `- Compare report: \`${failedGate.behaviorDrift.compareReportPath}\`` : undefined,
       ...(failedGate.firstFailedCheck?.remediationHints?.length ? [
         "",
         "Remediation hints:",
@@ -382,6 +398,17 @@ function issueSyncSuffix(options: { dryRun?: boolean; livePlan?: boolean }): str
   return "";
 }
 
+function filterIssues(issues: MigrationIssue[], onlyIssue?: string): MigrationIssue[] {
+  if (!onlyIssue) {
+    return issues;
+  }
+  const filtered = issues.filter((issue) => issue.id === onlyIssue);
+  if (filtered.length === 0) {
+    throw new Error(`Issue not found for --only-issue ${onlyIssue}.`);
+  }
+  return filtered;
+}
+
 function normalizeExtraLabels(labels: string[] | undefined): string[] {
   return uniqueLabels((labels ?? []).map((label) => label.trim()).filter(Boolean));
 }
@@ -413,6 +440,12 @@ function renderGateContext(gate: ProposalGateContext): string {
     gate.replanTaskId ? `- Replan task: ${gate.replanTaskId}` : undefined,
     gate.firstFailedCheck ? `- First failed check: ${gate.firstFailedCheck.command}` : undefined,
     gate.firstFailedCheck?.failureCategory ? `- Failure category: ${gate.firstFailedCheck.failureCategory}` : undefined,
+    gate.behaviorDrift ? `- Behavior drift: ${gate.behaviorDrift.differences.length} check/probe difference(s)` : undefined,
+    gate.behaviorDrift ? `- Compare report: ${gate.behaviorDrift.compareReportPath}` : undefined,
+    ...(gate.behaviorDrift?.differences.length ? [
+      "- Drift details:",
+      ...gate.behaviorDrift.differences.slice(0, 5).map((difference) => `  - ${difference.severity} ${difference.area}/${difference.name}: ${difference.message}`)
+    ] : []),
     ...(gate.firstFailedCheck?.remediationHints?.length ? [
       "- Remediation hints:",
       ...gate.firstFailedCheck.remediationHints.map((hint) => `  - ${hint}`)
@@ -493,7 +526,16 @@ async function readProposalGateContexts(loaded: LoadedConfig, runId: string): Pr
         reportPath: report.outputPath,
         replanIssueId: report.replanIssueId,
         replanTaskId: report.replanTaskId,
-        firstFailedCheck: failed ? checkToContext(failed) : undefined
+        firstFailedCheck: failed ? checkToContext(failed) : undefined,
+        behaviorDrift: report.behaviorDrift ? {
+          compareReportPath: report.behaviorDrift.compareReportPath,
+          differences: report.behaviorDrift.differences.map((difference) => ({
+            severity: difference.severity,
+            area: difference.area,
+            name: difference.name,
+            message: difference.message
+          }))
+        } : undefined
       };
     });
 }

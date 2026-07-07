@@ -14,9 +14,11 @@ migration-guard/
 
   docs/
     DEVELOPMENT_PHASES.md
+    GITHUB_MUTATION_SMOKE_PLAN.md
     GITHUB_READ_ONLY_SMOKE_RUNBOOK.md
     MD_REAL_WORLD_VALIDATION_PLAN.md
     MD_REAL_WORLD_VALIDATION_REPORT.md
+    NEXT_MAJOR_PHASES.md
     PHASE_COMPLETION_REPORT.md
     PHASE_12_REPORT.md
     PHASE_13_REPORT.md
@@ -35,6 +37,12 @@ migration-guard/
     PHASE_29_REPORT.md
     PHASE_30_REPORT.md
     PHASE_32_REPORT.md
+    PHASE_33_REPORT.md
+    PHASE_34_REPORT.md
+    PHASE_35_REPORT.md
+    PHASE_36_REPORT.md
+    PHASE_37_REPORT.md
+    PHASE_38_REPORT.md
     PRODUCT_DESIGN.md
     PROJECT_STRUCTURE.md
     REQUIREMENTS.md
@@ -63,6 +71,7 @@ migration-guard/
       compare.ts
       config.ts
       contract.ts
+      diffDecision.ts
       exec.ts
       executor.ts
       files.ts
@@ -83,6 +92,7 @@ migration-guard/
       compare.test.ts
       checkNormalize.test.ts
       config.test.ts
+      diffDecision.test.ts
       normalize.test.ts
       patch.test.ts
       taskGraph.test.ts
@@ -276,6 +286,18 @@ migration-guard ai-brief
 - `error`：会阻断迁移继续推进
 - `warn`：需要 review，但不一定阻断
 - `info`：上下文变化提示
+
+### `src/core/diffDecision.ts`
+
+负责记录 behavior diff / compare difference 的人工或流程决策。
+
+核心能力：
+
+- 为 difference 生成稳定 fingerprint
+- 写入 run-scoped decision ledger
+- 支持 `intentional` / `accidental` / `unknown` 分类
+- 统计 decided / pending / pending-risk coverage
+- 刷新 compare Markdown 中的 decision/reason 列
 
 ### `src/core/aiBrief.ts`
 

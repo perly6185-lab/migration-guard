@@ -207,12 +207,87 @@ export interface Difference {
   after?: unknown;
 }
 
+export type DiffDecisionClassification = "intentional" | "accidental" | "unknown";
+
+export interface DiffDecision {
+  version: 1;
+  id: string;
+  differenceKey: string;
+  runId?: string;
+  proposalId?: string;
+  compareReportPath: string;
+  baselineId: string;
+  currentId: string;
+  severity: Difference["severity"];
+  area: Difference["area"];
+  name: string;
+  message: string;
+  classification: DiffDecisionClassification;
+  reason: string;
+  approvedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DiffDecisionLedger {
+  version: 1;
+  runId?: string;
+  createdAt: string;
+  updatedAt: string;
+  decisions: DiffDecision[];
+}
+
+export interface DiffDecisionCoverage {
+  total: number;
+  decided: number;
+  pending: number;
+  pendingRisk: number;
+  intentional: number;
+  accidental: number;
+  unknown: number;
+}
+
 export interface CompareReport {
   passed: boolean;
   baselineId: string;
   currentId: string;
   createdAt: string;
   differences: Difference[];
+}
+
+export interface ProposalBehaviorDriftReference {
+  compareReportPath: string;
+  baselineId: string;
+  currentId: string;
+  passed: boolean;
+  differences: Array<{
+    severity: Difference["severity"];
+    area: "check" | "probe";
+    name: string;
+    message: string;
+    before?: unknown;
+    after?: unknown;
+    relatedFailedCommand?: string;
+  }>;
+}
+
+export interface ProposalBehaviorDiffReport {
+  beforeSnapshotPath: string;
+  afterSnapshotPath: string;
+  compareReportPath: string;
+  compareMarkdownPath: string;
+  beforeSnapshotId: string;
+  afterSnapshotId: string;
+  passed: boolean;
+  differenceCount: number;
+  errorCount: number;
+  warningCount: number;
+  differences: Array<{
+    severity: Difference["severity"];
+    area: Difference["area"];
+    name: string;
+    message: string;
+  }>;
 }
 
 export type MigrationRunStatus =
@@ -449,6 +524,11 @@ export interface ProposedPatch {
   runId: string;
   taskId?: string;
   actionId?: string;
+  retryOfProposalId?: string;
+  replanIssueId?: string;
+  replanTaskId?: string;
+  replanBriefPath?: string;
+  replanContextPath?: string;
   createdAt: string;
   title: string;
   summary: string;
@@ -459,7 +539,7 @@ export interface ProposedPatch {
   recommendedChecks: string[];
   checkPlan?: ProposalCheckPlanItem[];
   preview?: ProposalPreviewConfig;
-  patchKind?: "task-placeholder" | "action-probe";
+  patchKind?: "task-placeholder" | "action-probe" | "replan-retry";
   applyState:
     | "proposed"
     | "verified"
@@ -613,6 +693,11 @@ export interface ProposalVerificationReport {
   timeline: ProposalGateEvent[];
   replanIssueId?: string;
   replanTaskId?: string;
+  replanBriefPath?: string;
+  replanContextPath?: string;
+  retryProposalId?: string;
+  behaviorDrift?: ProposalBehaviorDriftReference;
+  behaviorDiff?: ProposalBehaviorDiffReport;
   outputPath: string;
 }
 

@@ -3,6 +3,7 @@ import path from "node:path";
 import { renderMigrationPlan } from "./plan.js";
 import { scanProject } from "./scan.js";
 import { createEstimate, createTaskGraph, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
+import { decisionCoverageForCompareReportPath, formatCoverageLine } from "./diffDecision.js";
 import { ensureDir, pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
 import type {
   EvidenceEvent,
@@ -31,6 +32,54 @@ export interface MigrationRunPackage {
   run: MigrationRun;
   graph: MigrationTaskGraph;
   issues: MigrationIssue[];
+}
+
+export interface MigrationRunNextAction {
+  action: string;
+  command?: string;
+  reason?: string;
+  evidence?: string[];
+  retryCommand?: string;
+}
+
+interface ProposalGateSummary {
+  proposalId: string;
+  createdAt: string;
+  passed: boolean;
+  checks: number;
+  timeline: number;
+  reportPath: string;
+  replanIssueId?: string;
+  replanTaskId?: string;
+  replanBriefPath?: string;
+  replanContextPath?: string;
+  failureCategory?: string;
+  remediationHint?: string;
+  behaviorDriftCount?: number;
+  firstBehaviorDrift?: string;
+  behaviorComparePath?: string;
+  behaviorDiffPath?: string;
+  behaviorDiffPassed?: boolean;
+  behaviorDiffErrors?: number;
+  behaviorDiffWarnings?: number;
+  behaviorDecisionSummary?: string;
+  behaviorDecisionPendingRisk?: number;
+}
+
+interface ProposalBatchSummary {
+  id: string;
+  createdAt: string;
+  passed: boolean;
+  gatePolicy?: string;
+  executedCount: number;
+  skippedCount: number;
+  reportPath: string;
+  firstFailedProposalId?: string;
+  firstFailedVerificationPath?: string;
+  stopReason?: string;
+  nextCommand?: string;
+  skippedProposals: string[];
+  recommendedNextActions?: string[];
 }
 
 export function migrationRunsDir(loaded: LoadedConfig): string {
@@ -148,7 +197,7 @@ export async function readEvidence(loaded: LoadedConfig, runId: string): Promise
     .map((line) => JSON.parse(line) as EvidenceEvent);
 }
 
-export function renderRunStatus(pkg: MigrationRunPackage): string {
+export function renderRunStatus(pkg: MigrationRunPackage, nextAction?: MigrationRunNextAction): string {
   const ready = getReadyTasks(pkg.graph);
   const counts = countTasks(pkg.graph);
 
@@ -163,7 +212,9 @@ export function renderRunStatus(pkg: MigrationRunPackage): string {
     `Issues: ${pkg.issues.length}`,
     `Risk: ${pkg.run.estimate.riskLevel}`,
     `Confidence: ${pkg.run.estimate.confidence}`,
-    `Ready tasks: ${ready.map((task) => task.id).join(", ") || "none"}`
+    `Ready tasks: ${ready.map((task) => task.id).join(", ") || "none"}`,
+    "",
+    ...renderNextActionTextLines(nextAction)
   ].join("\n");
 }
 
@@ -181,6 +232,13 @@ export function renderIssues(issues: MigrationIssue[]): string {
     .join("\n");
 }
 
+export async function resolveRunNextAction(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<MigrationRunNextAction> {
+  const proposals = await readProposalSummaries(loaded, pkg.run.id);
+  const proposalGates = await readRecentProposalGateSummaries(loaded, pkg.run.id);
+  const proposalBatches = await readRecentProposalBatchSummaries(loaded, pkg.run.id);
+  return selectRunNextAction(pkg, proposals, proposalGates, proposalBatches);
+}
+
 export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
   const evidence = await readEvidence(loaded, pkg.run.id);
   const counts = countTasks(pkg.graph);
@@ -189,6 +247,7 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
   const proposals = await readProposalSummaries(loaded, pkg.run.id);
   const proposalGates = await readRecentProposalGateSummaries(loaded, pkg.run.id);
   const proposalBatches = await readRecentProposalBatchSummaries(loaded, pkg.run.id);
+  const nextAction = selectRunNextAction(pkg, proposals, proposalGates, proposalBatches);
 
   return [
     `# Migration Run Report: ${pkg.run.id}`,
@@ -203,6 +262,10 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
     `- Target: ${pkg.run.targetRoot}`,
     `- Created: ${pkg.run.createdAt}`,
     `- Updated: ${pkg.run.updatedAt}`,
+    "",
+    "## Next Action",
+    "",
+    ...renderNextActionMarkdownLines(nextAction),
     "",
     "## Estimate",
     "",
@@ -233,7 +296,7 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
     "## Proposals",
     "",
     proposals.length > 0
-      ? proposals.map((proposal) => `- ${proposal.id} [${proposal.applyState}/${proposal.risk}] ${proposal.title}`).join("\n")
+      ? proposals.map((proposal) => `- ${proposal.id} [${proposal.applyState}/${proposal.risk}] ${proposal.title}${proposal.retryOfProposalId ? ` retry-of:${proposal.retryOfProposalId}` : ""}`).join("\n")
       : "No proposals.",
     "",
     "## Recent Proposal Gates",
@@ -242,7 +305,14 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
       ? proposalGates.map((gate) => [
         `- ${gate.createdAt} ${gate.proposalId} ${gate.passed ? "passed" : "failed"} checks:${gate.checks} timeline:${gate.timeline}${gate.replanIssueId ? ` replan:${gate.replanIssueId}` : ""}`,
         gate.failureCategory ? `  failure:${gate.failureCategory}` : undefined,
-        gate.remediationHint ? `  hint:${gate.remediationHint}` : undefined
+        gate.remediationHint ? `  hint:${gate.remediationHint}` : undefined,
+        gate.behaviorDriftCount ? `  behavior-drift:${gate.behaviorDriftCount}` : undefined,
+        gate.firstBehaviorDrift ? `  first-drift:${gate.firstBehaviorDrift}` : undefined,
+        gate.behaviorDiffPath ? `  behavior-diff:${gate.behaviorDiffPassed ? "passed" : "failed"} errors:${gate.behaviorDiffErrors ?? 0} warnings:${gate.behaviorDiffWarnings ?? 0}` : undefined,
+        gate.behaviorDiffPath ? `  behavior-compare:${gate.behaviorDiffPath}` : undefined,
+        gate.behaviorDecisionSummary ? `  behavior-decisions: ${gate.behaviorDecisionSummary}` : undefined,
+        gate.replanBriefPath ? `  replan-brief:${gate.replanBriefPath}` : undefined,
+        gate.replanContextPath ? `  replan-context:${gate.replanContextPath}` : undefined
       ].filter(Boolean).join("\n")).join("\n")
       : "No proposal gate reports.",
     "",
@@ -314,6 +384,183 @@ function renderCiHandoffMarkdown(
   ].filter(Boolean).join("\n");
 }
 
+function selectRunNextAction(
+  pkg: MigrationRunPackage,
+  proposals: ProposedPatch[],
+  gates: ProposalGateSummary[],
+  batches: ProposalBatchSummary[]
+): MigrationRunNextAction {
+  const latestFailedBatch = [...batches].reverse().find((batch) => !batch.passed);
+  const latestFailedGate = latestFailedBatch?.firstFailedProposalId
+    ? [...gates].reverse().find((gate) => !gate.passed && gate.proposalId === latestFailedBatch.firstFailedProposalId)
+    : [...gates].reverse().find((gate) => !gate.passed);
+
+  if (latestFailedGate?.replanBriefPath) {
+    const retryProposal = latestRetryProposalFor(proposals, latestFailedGate.proposalId);
+    if (retryProposal) {
+      return nextActionForRetryProposal(retryProposal, latestFailedGate, latestFailedBatch);
+    }
+    return {
+      action: `Create a retry proposal for ${latestFailedGate.proposalId}.`,
+      command: `migration-guard proposal retry --run latest --proposal ${latestFailedGate.proposalId}`,
+      reason: latestFailedBatch?.stopReason ?? latestFailedGate.failureCategory ?? "replan brief is ready",
+      evidence: [
+        latestFailedGate.replanBriefPath,
+        latestFailedGate.replanContextPath,
+        latestFailedGate.reportPath,
+        latestFailedBatch?.reportPath
+      ].filter((item): item is string => Boolean(item))
+    };
+  }
+
+  if (latestFailedBatch?.nextCommand) {
+    return {
+      action: `Create a replan brief for proposal ${latestFailedBatch.firstFailedProposalId ?? "latest failed proposal"}.`,
+      command: latestFailedBatch.nextCommand,
+      reason: latestFailedBatch.stopReason,
+      evidence: [
+        latestFailedBatch.reportPath,
+        latestFailedBatch.firstFailedVerificationPath
+      ].filter((item): item is string => Boolean(item))
+    };
+  }
+
+  if (latestFailedGate) {
+    return {
+      action: `Create a replan brief for proposal ${latestFailedGate.proposalId}.`,
+      command: `migration-guard proposal replan --run latest --proposal ${latestFailedGate.proposalId}`,
+      reason: latestFailedGate.failureCategory ?? "latest proposal gate failed",
+      evidence: [latestFailedGate.reportPath]
+    };
+  }
+
+  const latestPendingBehaviorDecision = [...gates].reverse().find((gate) => {
+    return (gate.behaviorDecisionPendingRisk ?? 0) > 0 && Boolean(gate.behaviorComparePath);
+  });
+  if (latestPendingBehaviorDecision?.behaviorComparePath) {
+    return {
+      action: `Classify behavior differences for proposal ${latestPendingBehaviorDecision.proposalId}.`,
+      command: `migration-guard diff list --run latest --compare ${latestPendingBehaviorDecision.behaviorComparePath}`,
+      reason: `${latestPendingBehaviorDecision.behaviorDecisionPendingRisk} risk difference(s) are not classified`,
+      evidence: [
+        latestPendingBehaviorDecision.behaviorComparePath,
+        latestPendingBehaviorDecision.reportPath
+      ]
+    };
+  }
+
+  const readyReplanTask = getReadyTasks(pkg.graph)
+    .filter((task) => task.type === "replan")
+    .sort((a, b) => a.priority - b.priority)[0];
+  if (readyReplanTask) {
+    return {
+      action: `Run replan task ${readyReplanTask.id}.`,
+      command: `migration-guard task run --run latest --task ${readyReplanTask.id}`,
+      reason: "a replan task is ready",
+      evidence: readyReplanTask.issueId ? [readyReplanTask.issueId] : undefined
+    };
+  }
+
+  const readyTask = getReadyTasks(pkg.graph).sort((a, b) => a.priority - b.priority)[0];
+  if (readyTask) {
+    return {
+      action: `Run ready task ${readyTask.id}.`,
+      command: `migration-guard task run --run latest --task ${readyTask.id}`,
+      reason: readyTask.title,
+      evidence: readyTask.issueId ? [readyTask.issueId] : undefined
+    };
+  }
+
+  if (pkg.graph.tasks.length > 0 && pkg.graph.tasks.every((task) => task.status === "done")) {
+    return {
+      action: "Generate the final migration report.",
+      command: "migration-guard report --run latest",
+      reason: "all tasks are done"
+    };
+  }
+
+  return {
+    action: "No runnable next action.",
+    reason: "no failed proposal, replan task, or ready task was found"
+  };
+}
+
+function latestRetryProposalFor(proposals: ProposedPatch[], sourceProposalId: string): ProposedPatch | undefined {
+  return proposals
+    .filter((proposal) => proposal.retryOfProposalId === sourceProposalId && proposal.applyState !== "rejected")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+}
+
+function nextActionForRetryProposal(
+  proposal: ProposedPatch,
+  gate: ProposalGateSummary,
+  batch?: ProposalBatchSummary
+): MigrationRunNextAction {
+  const evidence = [
+    proposal.patchPath,
+    proposal.replanBriefPath,
+    proposal.replanContextPath,
+    gate.reportPath,
+    batch?.reportPath
+  ].filter((item): item is string => Boolean(item));
+  if (proposal.applyState === "verified") {
+    return {
+      action: `Apply verified retry proposal ${proposal.id}.`,
+      command: `migration-guard action apply --run latest --proposal ${proposal.id} --rollback-on-fail`,
+      reason: `retry proposal for ${proposal.retryOfProposalId ?? gate.proposalId} is verified`,
+      evidence
+    };
+  }
+  if (proposal.applyState === "applied-with-failed-checks" || proposal.applyState === "rolled-back" || proposal.applyState === "rollback-failed") {
+    return {
+      action: `Replan retry proposal ${proposal.id}.`,
+      command: `migration-guard proposal replan --run latest --proposal ${proposal.id}`,
+      reason: `retry proposal state is ${proposal.applyState}`,
+      evidence
+    };
+  }
+  if (proposal.applyState === "applied") {
+    return {
+      action: `Review retry proposal ${proposal.id} result in the run report.`,
+      command: "migration-guard report --run latest",
+      reason: "retry proposal has been applied",
+      evidence
+    };
+  }
+  return {
+    action: `Verify retry proposal ${proposal.id}.`,
+    command: `migration-guard proposal verify --run latest --proposal ${proposal.id} --checks`,
+    reason: `retry proposal for ${proposal.retryOfProposalId ?? gate.proposalId} is ready`,
+    evidence
+  };
+}
+
+function renderNextActionTextLines(nextAction?: MigrationRunNextAction): string[] {
+  if (!nextAction) {
+    return ["Next action: unknown"];
+  }
+  return [
+    `Next action: ${nextAction.action}`,
+    nextAction.command ? `Next command: ${nextAction.command}` : undefined,
+    nextAction.reason ? `Next reason: ${nextAction.reason}` : undefined,
+    nextAction.retryCommand ? `Retry command: ${nextAction.retryCommand}` : undefined,
+    nextAction.evidence && nextAction.evidence.length > 0 ? `Next evidence: ${nextAction.evidence.join(", ")}` : undefined
+  ].filter((line): line is string => Boolean(line));
+}
+
+function renderNextActionMarkdownLines(nextAction: MigrationRunNextAction): string[] {
+  return [
+    `- Action: ${nextAction.action}`,
+    nextAction.command ? `- Command: \`${nextAction.command}\`` : undefined,
+    nextAction.reason ? `- Reason: ${nextAction.reason}` : undefined,
+    nextAction.retryCommand ? `- Retry command: \`${nextAction.retryCommand}\`` : undefined,
+    ...(nextAction.evidence?.length ? [
+      "- Evidence:",
+      ...nextAction.evidence.map((item) => `  - ${item}`)
+    ] : [])
+  ].filter((line): line is string => Boolean(line));
+}
+
 export function syncIssueStatuses(pkg: MigrationRunPackage): void {
   for (const issue of pkg.issues) {
     if (!issue.taskId) {
@@ -376,6 +623,12 @@ export function createProposalFailureIssue(
       firstFailedCheck?.kind ? `Check kind: ${firstFailedCheck.kind}` : undefined,
       firstFailedCheck?.phase ? `Check phase: ${firstFailedCheck.phase}` : undefined,
       firstFailedCheck?.failureCategory ? `Failure category: ${firstFailedCheck.failureCategory}` : undefined,
+      ...(report.behaviorDrift?.differences.length ? [
+        "",
+        "Behavior drift:",
+        `Compare report: ${report.behaviorDrift.compareReportPath}`,
+        ...report.behaviorDrift.differences.slice(0, 5).map((difference) => `- ${difference.severity} ${difference.area}/${difference.name}: ${difference.message}`)
+      ] : []),
       ...(firstFailedCheck?.remediationHints?.length ? [
         "",
         "Remediation hints:",
@@ -417,6 +670,12 @@ export function createProposalReplanTask(
       firstFailedCheck?.kind ? `Kind: ${firstFailedCheck.kind}` : undefined,
       firstFailedCheck?.phase ? `Phase: ${firstFailedCheck.phase}` : undefined,
       firstFailedCheck?.failureCategory ? `Failure category: ${firstFailedCheck.failureCategory}` : undefined,
+      ...(report.behaviorDrift?.differences.length ? [
+        "",
+        "Behavior drift:",
+        `Compare report: ${report.behaviorDrift.compareReportPath}`,
+        ...report.behaviorDrift.differences.slice(0, 5).map((difference) => `- ${difference.severity} ${difference.area}/${difference.name}: ${difference.message}`)
+      ] : []),
       ...(firstFailedCheck?.remediationHints?.length ? [
         "",
         "Remediation hints:",
@@ -567,7 +826,7 @@ async function readProposalSummaries(loaded: LoadedConfig, runId: string): Promi
 async function readRecentProposalGateSummaries(
   loaded: LoadedConfig,
   runId: string
-): Promise<Array<{ proposalId: string; createdAt: string; passed: boolean; checks: number; timeline: number; replanIssueId?: string; failureCategory?: string; remediationHint?: string }>> {
+): Promise<ProposalGateSummary[]> {
   const proposalsDir = path.join(migrationRunDir(loaded, runId), "proposals");
   if (!await pathExists(proposalsDir)) {
     return [];
@@ -589,28 +848,45 @@ async function readRecentProposalGateSummaries(
     }
   }
 
-  return reports
+  return Promise.all(reports
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     .slice(-10)
-    .map((report) => {
+    .map(async (report) => {
       const failed = report.checks.find((check) => !check.passed);
+      const behaviorComparePath = report.behaviorDiff?.compareReportPath ?? report.behaviorDrift?.compareReportPath;
+      const coverage = await decisionCoverageForCompareReportPath(loaded, runId, behaviorComparePath);
       return {
         proposalId: report.proposalId,
         createdAt: report.createdAt,
         passed: report.passed,
         checks: report.checks.length,
         timeline: report.timeline?.length ?? 0,
+        reportPath: report.outputPath,
         replanIssueId: report.replanIssueId,
+        replanTaskId: report.replanTaskId,
+        replanBriefPath: report.replanBriefPath,
+        replanContextPath: report.replanContextPath,
         failureCategory: failed?.failureCategory,
-        remediationHint: failed?.remediationHints?.[0]
+        remediationHint: failed?.remediationHints?.[0],
+        behaviorDriftCount: report.behaviorDrift?.differences.length,
+        firstBehaviorDrift: report.behaviorDrift?.differences[0]
+          ? `${report.behaviorDrift.differences[0].area}/${report.behaviorDrift.differences[0].name}: ${report.behaviorDrift.differences[0].message}`
+          : undefined,
+        behaviorComparePath,
+        behaviorDiffPath: report.behaviorDiff?.compareReportPath,
+        behaviorDiffPassed: report.behaviorDiff?.passed,
+        behaviorDiffErrors: report.behaviorDiff?.errorCount,
+        behaviorDiffWarnings: report.behaviorDiff?.warningCount,
+        behaviorDecisionSummary: coverage ? formatCoverageLine(coverage) : undefined,
+        behaviorDecisionPendingRisk: coverage?.pendingRisk
       };
-    });
+    }));
 }
 
 async function readRecentProposalBatchSummaries(
   loaded: LoadedConfig,
   runId: string
-): Promise<Array<{ id: string; createdAt: string; passed: boolean; gatePolicy?: string; executedCount: number; skippedCount: number; reportPath: string; firstFailedVerificationPath?: string; stopReason?: string; nextCommand?: string; skippedProposals: string[]; recommendedNextActions?: string[] }>> {
+): Promise<ProposalBatchSummary[]> {
   const batchesDir = path.join(migrationRunDir(loaded, runId), "proposal-batches");
   if (!await pathExists(batchesDir)) {
     return [];
