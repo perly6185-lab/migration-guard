@@ -1889,6 +1889,39 @@ node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json -
 - 默认 `actions handoff` 不创建 task。
 - `npm test` 覆盖 task/issue 创建和幂等复跑。
 
+## Phase 54: AI Repair Briefs for Readiness Failures
+
+目标：把 readiness replan task 转成 AI/human 可执行的 repair brief 和 JSON context，让下一步修复不需要重新猜 action check readiness 为什么失败。
+
+新增能力：
+
+- `actions handoff --repair-briefs`
+- repair brief / context 写到 `replans/readiness/<task-id>/`
+- handoff item 回写 `repairBriefPath` 和 `repairContextPath`
+- handoff summary 增加 `repairBriefCount`
+- repair context 包含 run、item、task、issue、paths、commands
+- repair brief 包含任务、证据、修复约束、命令和完成标准
+
+建议命令：
+
+```bash
+node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json --run latest --create-replans --repair-briefs
+node dist/cli.js actions handoff --config configs/md-fast.migration-guard.json --run latest --create-replans --repair-briefs --json
+```
+
+产物：
+
+- `replans/readiness/<task-id>/repair-brief.md`
+- `replans/readiness/<task-id>/repair-context.json`
+- `reports/action-check-readiness-handoff.json` 中的 repair brief/context paths
+
+完成标准：
+
+- readiness attention item 能生成 task-scoped repair brief。
+- JSON context 足以让 AI 理解失败原因和下一步命令。
+- repeated repair brief generation 是幂等的。
+- `npm test` 覆盖 brief/context 写出。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
