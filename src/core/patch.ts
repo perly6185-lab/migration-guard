@@ -1799,7 +1799,8 @@ function commandResultToProposalAttempt(
   startedAt: string,
   endedAt: string
 ): ProposalCheckAttempt {
-  const passed = result.exitCode === 0 && !result.timedOut && !result.error;
+  const noOp = result.exitCode === 0 && isNoOpCheckOutput(`${result.stdout}\n${result.stderr}`);
+  const passed = result.exitCode === 0 && !result.timedOut && !result.error && !noOp;
   const failureCategory = passed ? undefined : classifyCheckFailure(result);
   return {
     attempt,
@@ -1824,6 +1825,9 @@ function classifyCheckFailure(result: Awaited<ReturnType<typeof runShellCommand>
   if (result.timedOut) {
     return "timeout";
   }
+  if (result.exitCode === 0 && isNoOpCheckOutput(output)) {
+    return "no-op";
+  }
   if (isFlakeSuspectedOutput(output)) {
     return "flake-suspected";
   }
@@ -1843,6 +1847,16 @@ function isFlakeSuspectedOutput(output: string): boolean {
     "socket hang up",
     "fetch failed"
   ].some((pattern) => output.includes(pattern));
+}
+
+function isNoOpCheckOutput(output: string): boolean {
+  const normalized = output.toLowerCase();
+  return [
+    "none of the selected packages has a",
+    "no projects matched the filters",
+    "no projects matched the filters in",
+    "no matching projects found"
+  ].some((pattern) => normalized.includes(pattern));
 }
 
 function configuredRetryForCheckKind(loaded: LoadedConfig, kind: ProposalCheckKind) {
@@ -1952,6 +1966,9 @@ function createRemediationHints(
   } else if (failureCategory === "command-failed") {
     hints.push("Inspect stdout/stderr in the verification report and rerun the command from the target root.");
     hints.push("Keep the proposal rolled back until the failing command has a focused remediation plan.");
+  } else if (failureCategory === "no-op") {
+    hints.push("The command exited successfully but did not run a real check.");
+    hints.push("Replace it with a package script or direct command that actually executes for the selected target.");
   } else if (failureCategory === "error") {
     hints.push("Check the command path, cwd, shell availability and required environment variables.");
   }

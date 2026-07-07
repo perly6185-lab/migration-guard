@@ -116,6 +116,8 @@ Action probe proposals can inspect affected directories as well as individual
 files, which lets domain-scoped proposals use real package boundaries.
 `proposal verify --checks` temporarily applies generated-script proposals while
 checks run, then rolls them back and keeps the proposal unapplied.
+Proposal checks also fail on package-manager no-op output, such as a pnpm filter
+that exits successfully without running the requested script.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at

@@ -1632,6 +1632,37 @@ node dist/cli.js proposal verify --config configs/md-fast.migration-guard.json -
 - verify 后目标工作树恢复 clean。
 - apply gate 语义保持不变。
 
+## Phase 46: No-Op Check Detection
+
+目标：阻止 proposal gate 把“命令成功退出但没有实际运行检查”的输出误判为通过，并修正 MD MCP action 的推荐检查。
+
+新增能力：
+
+- proposal check failure category 增加 `no-op`
+- 识别 pnpm filter no-op 输出
+- no-op check 生成针对性的 remediation hints
+- `md-task-mcp-render` 改用真实 MCP render runtime smoke
+- 单测覆盖 exit 0 no-op 输出被判失败
+
+建议命令：
+
+```bash
+node dist/cli.js proposal verify --config configs/md-fast.migration-guard.json --run latest --proposal <proposal-id> --checks
+```
+
+产物：
+
+- verification report check `failureCategory: "no-op"`
+- replan issue/task 中的 no-op remediation hints
+- MD MCP action plan 中的 runtime smoke recommended check
+
+完成标准：
+
+- 旧 `pnpm --filter @md/mcp-server type-check` 空跑输出被 gate 拦下。
+- 新 MD MCP runtime smoke proposal verify-with-checks 通过。
+- verify 后目标 `md` 工作树保持 clean。
+- `npm test` 覆盖 no-op 分类和 MD MCP recommended check。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

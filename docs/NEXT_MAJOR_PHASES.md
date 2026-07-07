@@ -61,6 +61,7 @@ Progress:
 - Phase 43: `md-monorepo` emits a project-specific refactor task plan and action plan.
 - Phase 44: first `md` domain action proposal passes apply checks, behavior diff, and rollback.
 - Phase 45: `proposal verify --checks` temporarily applies generated-script proposals and rolls them back.
+- Phase 46: proposal gates fail package-manager no-op checks and MD MCP uses a real render runtime smoke.
 
 候选能力：
 

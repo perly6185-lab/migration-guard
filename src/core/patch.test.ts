@@ -166,6 +166,50 @@ test("applyProposedPatch can rollback automatically when checks fail", async () 
   }
 });
 
+test("verifyProposedPatch treats no-op successful checks as failed", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-no-op-check-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: dir });
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    const proposalDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "proposals", "patch-no-op");
+    const patchPath = path.join(proposalDir, "patch.diff");
+    const proposalPath = path.join(proposalDir, "proposal.json");
+    const generatedFile = "scripts/migration-guard/no-op-probe.mjs";
+    const proposal: ProposedPatch = {
+      version: 1,
+      id: "patch-no-op",
+      runId: pkg.run.id,
+      createdAt: "2026-07-07T00:00:00.000Z",
+      title: "Add no-op probe",
+      summary: "Adds a probe that reports a package-manager no-op.",
+      risk: "low",
+      patchPath,
+      affectedFiles: [],
+      generatedFiles: [generatedFile],
+      recommendedChecks: [`node ${generatedFile}`],
+      patchKind: "action-probe",
+      applyState: "proposed"
+    };
+
+    await mkdir(proposalDir, { recursive: true });
+    await writeFile(patchPath, createAddFilePatch(generatedFile, "console.log('None of the selected packages has a \"type-check\" script');\n"), "utf8");
+    await writeFile(proposalPath, `${JSON.stringify(proposal, null, 2)}\n`, "utf8");
+
+    const report = await verifyProposedPatch(loaded, pkg, proposal.id, { runChecks: true });
+    assert.equal(report.passed, false);
+    assert.equal(report.temporaryApply?.rolledBack, true);
+    assert.equal(report.checks[0]?.exitCode, 0);
+    assert.equal(report.checks[0]?.failureCategory, "no-op");
+    assert.ok(report.checks[0]?.remediationHints?.some((hint) => hint.includes("did not run a real check")));
+    assert.equal((await readProposal(proposalPath)).applyState, "verification-failed");
+    await assert.rejects(access(path.join(dir, generatedFile)));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("applyProposedPatch retries flake-suspected checks", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-flake-retry-"));
 

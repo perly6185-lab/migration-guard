@@ -80,6 +80,7 @@ test("createMdMonorepoRefactorTaskPlan covers md refactor domains and probes", (
   assert.ok(plan.tasks.some((task) => task.id === "md-task-core-renderer" && task.risk === "high"));
   assert.ok(plan.tasks.some((task) => task.id === "md-task-api-contracts" && task.requiredProbes.includes("md-api-contract")));
   assert.ok(plan.tasks.some((task) => task.id === "md-task-web-editor-shell" && task.requiredProbes.includes("md-web-static-contract")));
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-mcp-render" && task.recommendedChecks.some((check) => check.includes("buildRenderedOutput"))));
   assert.ok(plan.tasks.some((task) => task.id === "md-task-cross-package-verification" && task.recommendedChecks.includes("pnpm test")));
 });
 

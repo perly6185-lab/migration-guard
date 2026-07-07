@@ -430,9 +430,9 @@ export function createMdMonorepoRefactorTaskPlan(pkg: MigrationRunPackage, scan:
       risk: riskFor(["packages/mcp-server"], riskByPrefix, "medium"),
       owner: "ai",
       affectedFiles: ["packages/mcp-server/src", "packages/mcp-server/run.mjs"],
-      recommendedChecks: ["pnpm --filter @md/mcp-server type-check"],
+      recommendedChecks: ["pnpm --filter @md/mcp-server exec tsx -e \"(async () => { const { buildRenderedOutput } = await import('./src/render-article.ts'); const result = await buildRenderedOutput({ markdown: '# Hi' }); console.log(JSON.stringify({ hasHeading: result.html.includes('<h1'), words: result.readingTime.words })); if (!result.html.includes('<h1')) process.exit(1); })();\""],
       requiredProbes: ["md-renderer-behavior"],
-      acceptanceCriteria: ["MCP type-check passes", "renderer probe remains stable"],
+      acceptanceCriteria: ["MCP render runtime smoke passes", "renderer probe remains stable"],
       rollbackBoundary: "packages/mcp-server"
     },
     {
