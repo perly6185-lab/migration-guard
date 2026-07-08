@@ -26,9 +26,9 @@ test("refactor readiness holds before action and proposal evidence exists", asyn
 test("refactor readiness goes green with action, template, proposal, and batch evidence", async () => {
   const { loaded, pkg, runDir } = await makeFixture({ confidence: "high" });
   await writeActionPlan(runDir, pkg.run.id);
-  await writeProposal(runDir, makeProposal("patch-shared", "ts-structural-probe"));
-  await writeProposal(runDir, makeProposal("patch-renderer", "renderer-probe"));
-  await writeProposal(runDir, makeProposal("patch-api", "api-contract-probe"));
+  await writeProposal(runDir, makeProposal("patch-shared", "ts-structural-probe", "rolled-back"));
+  await writeProposal(runDir, makeProposal("patch-renderer", "renderer-probe", "rolled-back"));
+  await writeProposal(runDir, makeProposal("patch-api", "api-contract-probe", "rolled-back"));
   await writeBatchReport(runDir, pkg.run.id, ["patch-shared", "patch-renderer", "patch-api"]);
 
   const report = await assessRefactorReadiness(loaded, pkg, {
@@ -166,7 +166,11 @@ async function writeProposal(runDir: string, proposal: ProposedPatch): Promise<v
   await writeFile(path.join(dir, "proposal.json"), `${JSON.stringify(proposal, null, 2)}\n`, "utf8");
 }
 
-function makeProposal(id: string, template: NonNullable<ProposedPatch["templateSelection"]>["template"]): ProposedPatch {
+function makeProposal(
+  id: string,
+  template: NonNullable<ProposedPatch["templateSelection"]>["template"],
+  applyState: ProposedPatch["applyState"] = "proposed"
+): ProposedPatch {
   return {
     version: 1,
     artifactSchemaVersion: 1,
@@ -185,7 +189,7 @@ function makeProposal(id: string, template: NonNullable<ProposedPatch["templateS
       reason: "fixture"
     },
     patchKind: "action-probe",
-    applyState: "proposed"
+    applyState
   };
 }
 

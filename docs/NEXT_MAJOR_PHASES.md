@@ -48,7 +48,7 @@
 
 目标：强化 `baseline` / `verify` / `compare` 在真实项目里的行为守护能力，让 Migration Guard 更像迁移指挥系统的证据层。
 
-状态：Phase 37-75 已完成当前主线收敛，下一步继续真实 `md.git` validation lane，先让 readiness 从 `hold` 收敛到 `go`。
+状态：Phase 37-76 已完成当前主线收敛，真实 `md.git` validation lane 已让 readiness 从 `hold` 收敛到 `go`，下一步进入 scoped real refactor trial。
 
 Progress:
 
@@ -85,6 +85,7 @@ Progress:
 - Phase 73: CLI repair-loop acceptance covers failed proposal -> replan -> retry -> verify -> accept.
 - Phase 74: README quick path and Phase 70-74 release checklist consolidate current readiness.
 - Phase 75: `readiness` adds a large-batch refactor gate across action plan, check readiness, proposal floor, template coverage, passing batch evidence, unresolved failures, confidence, and target clean status.
+- Phase 76: real `md.git` run reached `readiness --strict: go` after a 3-proposal batch passed and all applied proposals rolled back cleanly.
 
 候选能力：
 
@@ -114,7 +115,7 @@ Next candidate:
 - Phase 67 added reviewed-plan confirmation for artifact migration apply.
 - Phase 68 added the Phase 57-68 PR split plan and real MD operator runbook.
 - Phase 69 added the final Phase 57-68 release checklist.
-- Next: continue the real `md.git` validation lane until `readiness --strict` returns `go`, then consider a scoped real refactor trial.
+- Next: start a scoped real refactor trial with behavior diff and a clean commit/rollback boundary before expanding batch size.
 
 ## Major Phase D: AI Collaboration Loop
 

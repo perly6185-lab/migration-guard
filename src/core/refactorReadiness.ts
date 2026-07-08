@@ -60,7 +60,7 @@ export async function assessRefactorReadiness(
   criteria.push(createRunProgressCriterion(pkg, actionPlan));
   criteria.push(createActionPlanCriterion(actionPlan, loaded, pkg));
   criteria.push(createActionCheckReadinessCriterion(actionPlan, loaded, pkg));
-  criteria.push(createProposalFloorCriterion(proposals, minProposalCount, runDir));
+  criteria.push(createProposalFloorCriterion(proposals, minProposalCount, runDir, latestPassingBatch));
   criteria.push(createTemplateCoverageCriterion(pkg, actionPlan, proposals));
   criteria.push(createPassingBatchCriterion(latestPassingBatch, batches, minBatchSize));
   criteria.push(createUnresolvedFailureCriterion(unresolvedProposals, latestFailedBatch, latestPassingBatch));
@@ -286,9 +286,13 @@ function createActionCheckReadinessCriterion(
 function createProposalFloorCriterion(
   proposals: ProposedPatch[],
   minProposalCount: number,
-  runDir: string
+  runDir: string,
+  latestPassingBatch: ProposalBatchReport | undefined
 ): RefactorReadinessCriterion {
   const candidates = proposals.filter((proposal) => CANDIDATE_STATES.has(proposal.applyState));
+  const passedBatchProposalIds = latestPassingBatch?.results
+    .filter((result) => result.passed)
+    .map((result) => result.proposalId) ?? [];
   if (candidates.length >= minProposalCount) {
     return {
       id: "proposal-floor",
@@ -298,11 +302,23 @@ function createProposalFloorCriterion(
       evidence: [path.join(runDir, "proposals")]
     };
   }
+  if (passedBatchProposalIds.length >= minProposalCount) {
+    return {
+      id: "proposal-floor",
+      title: "Enough ready proposals",
+      status: "passed",
+      summary: `${candidates.length} live candidate proposal(s); latest passing batch covers ${passedBatchProposalIds.length} proposal(s)`,
+      evidence: [
+        path.join(runDir, "proposals"),
+        latestPassingBatch?.outputPath
+      ].filter((item): item is string => Boolean(item))
+    };
+  }
   return {
     id: "proposal-floor",
     title: "Enough ready proposals",
     status: "blocked",
-    summary: `${candidates.length}/${minProposalCount} candidate proposal(s) are ready`,
+    summary: `${candidates.length}/${minProposalCount} candidate proposal(s) are ready; latest passing batch covers ${passedBatchProposalIds.length}`,
     evidence: [path.join(runDir, "proposals")],
     nextAction: "Generate more scoped proposals from the action plan before attempting a large batch."
   };
