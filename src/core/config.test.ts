@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { loadConfig } from "./config.js";
 import { pathExists } from "./files.js";
 import { collectArtifactGcReport } from "./artifactGc.js";
-import { collectArtifactMigrationReport } from "./artifactMigration.js";
+import { collectArtifactMigrationReport, renderArtifactMigrationReport } from "./artifactMigration.js";
 
 test("loadConfig lets environment variables override config variables", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-config-"));
@@ -199,8 +199,6 @@ test("artifact migration backfills proposal, batch, verification, and replan art
       createdAt: "2026-07-01T00:00:00.000Z",
       planId: "proposal-batch-old",
       passed: true,
-      executedCount: 0,
-      skippedCount: 0,
       results: [],
       outputPath: "proposal-batch-report-1.json"
     }), "utf8");
@@ -221,6 +219,8 @@ test("artifact migration backfills proposal, batch, verification, and replan art
 
     const dryRun = await collectArtifactMigrationReport(loaded);
     assert.equal(dryRun.applied, false);
+    assert.equal(dryRun.schema.frozenAtPhase, 72);
+    assert.ok(dryRun.schema.kinds.some((kind) => kind.kind === "proposal-replan-context"));
     assert.equal(dryRun.scannedCount, 5);
     assert.equal(dryRun.migratedCount, 5);
     assert.match(dryRun.planHash, /^[a-f0-9]{64}$/);
@@ -242,6 +242,8 @@ test("artifact migration backfills proposal, batch, verification, and replan art
 
     const batchReport = JSON.parse(await readFile(path.join(batchDir, "proposal-batch-report-1.json"), "utf8"));
     assert.equal(batchReport.artifactSchemaVersion, 1);
+    assert.equal(batchReport.executedCount, 0);
+    assert.equal(batchReport.skippedCount, 0);
     assert.equal(batchReport.excludedCount, 0);
     assert.deepEqual(batchReport.excluded, []);
     assert.deepEqual(batchReport.skipped, []);
@@ -251,6 +253,53 @@ test("artifact migration backfills proposal, batch, verification, and replan art
     assert.deepEqual(replanContext.proposal.sourceSnippets, []);
     assert.equal(replanContext.failure.latestFailedOutput.stderr, "old stderr");
     assert.ok(replanContext.acceptanceChecklist.length > 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("artifact migration freezes v1 schema and refuses unsupported future artifacts", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-artifact-freeze-"));
+  const configPath = path.join(dir, ".migration-guard.json");
+
+  try {
+    await writeFile(configPath, JSON.stringify({
+      schemaVersion: 1,
+      targetRoot: ".",
+      artifactsDir: ".migration-guard"
+    }), "utf8");
+    const loaded = await loadConfig(configPath);
+    const proposalDir = path.join(loaded.artifactsDir, "migration-runs", "run-future", "proposals", "patch-future");
+    await mkdir(proposalDir, { recursive: true });
+    await writeFile(path.join(proposalDir, "proposal.json"), JSON.stringify({
+      version: 1,
+      artifactSchemaVersion: 999,
+      id: "patch-future",
+      runId: "run-future",
+      createdAt: "2026-07-08T00:00:00.000Z",
+      title: "Future artifact",
+      summary: "Uses an unsupported schema marker.",
+      risk: "low",
+      patchPath: "patch.diff",
+      affectedFiles: [],
+      generatedFiles: [],
+      recommendedChecks: [],
+      applyState: "proposed"
+    }), "utf8");
+
+    const dryRun = await collectArtifactMigrationReport(loaded);
+    assert.equal(dryRun.scannedCount, 1);
+    assert.equal(dryRun.migratedCount, 0);
+    assert.equal(dryRun.unsupportedCount, 1);
+    assert.equal(dryRun.schema.currentArtifactSchemaVersion, 1);
+    assert.match(dryRun.entries[0]?.message ?? "", /unsupported artifactSchemaVersion 999/);
+    assert.match(renderArtifactMigrationReport(dryRun), /Unsupported:/);
+    assert.match(renderArtifactMigrationReport(dryRun), /Schema kinds: proposal/);
+
+    await assert.rejects(
+      () => collectArtifactMigrationReport(loaded, { apply: true }),
+      /unsupported artifact/
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
