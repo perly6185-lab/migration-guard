@@ -35,7 +35,7 @@ export async function writeTextFile(filePath: string, value: string): Promise<vo
 }
 
 export function toPosixPath(filePath: string): string {
-  return filePath.split(path.sep).join("/");
+  return filePath.replace(/\\/g, "/");
 }
 
 export function resolveMaybeRelative(baseDir: string, value: string): string {
