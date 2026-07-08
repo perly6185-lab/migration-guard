@@ -11,6 +11,19 @@ export interface MigrationGuardConfig {
   compare: ComparePolicy;
   proposalGate: ProposalGateConfig;
   variables?: Record<string, string>;
+  profiles?: Record<string, MigrationGuardConfigProfile>;
+}
+
+export interface MigrationGuardConfigProfile {
+  targetRoot?: string;
+  artifactsDir?: string;
+  ignore?: string[];
+  checks?: CheckConfig[];
+  probes?: BehaviorProbeConfig[];
+  output?: Partial<OutputConfig>;
+  compare?: Partial<ComparePolicy>;
+  proposalGate?: Partial<ProposalGateConfig>;
+  variables?: Record<string, string>;
 }
 
 export interface OutputConfig {
@@ -87,6 +100,7 @@ export interface LoadedConfig {
   baseDir: string;
   targetRoot: string;
   artifactsDir: string;
+  profile?: string;
   config: MigrationGuardConfig;
 }
 
@@ -507,6 +521,7 @@ export type MigrationActionPatchTemplate =
   | "renderer-probe"
   | "api-contract-probe"
   | "ui-smoke-probe"
+  | "ts-structural-probe"
   | "adapter-fixture-probe"
   | "normalization-probe";
 export type ProposalCheckKind = "unit-test" | "type-check" | "ui-probe" | "contract-probe" | "build" | "lint" | "other";
@@ -516,6 +531,11 @@ export type ProposalCheckFailureCategory = "command-failed" | "timeout" | "error
 export type ProposalGatePolicyMode = "fail-fast" | "collect-all";
 export type ProposalGateEventType = "patch-check" | "check" | "preview";
 export type ProposalGateEventStatus = "passed" | "failed" | "skipped";
+
+export interface MigrationActionTemplateSelection {
+  template: MigrationActionPatchTemplate;
+  reason: string;
+}
 
 export interface MigrationAction {
   id: string;
@@ -527,6 +547,7 @@ export interface MigrationAction {
   checkReadiness?: MigrationActionCheckReadiness[];
   patchMode: MigrationActionPatchMode;
   patchTemplate?: MigrationActionPatchTemplate;
+  templateSelection?: MigrationActionTemplateSelection;
   preview?: ProposalPreviewConfig;
   checkPlan?: ProposalCheckPlanItem[];
 }
@@ -547,11 +568,13 @@ export interface MigrationActionPlan {
 
 export interface ProposedPatch {
   version: 1;
+  artifactSchemaVersion?: 1;
   id: string;
   runId: string;
   taskId?: string;
   actionId?: string;
   retryOfProposalId?: string;
+  retrySourceFailureCategory?: ProposalCheckFailureCategory;
   replanIssueId?: string;
   replanTaskId?: string;
   replanBriefPath?: string;
@@ -565,6 +588,7 @@ export interface ProposedPatch {
   generatedFiles?: string[];
   recommendedChecks: string[];
   checkPlan?: ProposalCheckPlanItem[];
+  templateSelection?: MigrationActionTemplateSelection;
   preview?: ProposalPreviewConfig;
   patchKind?: "task-placeholder" | "action-probe" | "replan-retry";
   applyState:
@@ -575,9 +599,19 @@ export interface ProposedPatch {
     | "applied-with-failed-checks"
     | "rolled-back"
     | "rollback-failed"
-    | "rejected";
+    | "rejected"
+    | "ignored";
+  exclusion?: ProposalExclusionInfo;
   lastVerificationPath?: string;
   lastRollbackPath?: string;
+  lastAcceptancePath?: string;
+}
+
+export interface ProposalExclusionInfo {
+  state: Extract<ProposedPatch["applyState"], "rejected" | "ignored">;
+  reason?: string;
+  supersededBy?: string;
+  createdAt: string;
 }
 
 export interface ProposalPatchCheck {
@@ -712,6 +746,7 @@ export interface ProposalGateEvent {
 
 export interface ProposalVerificationReport {
   version: 1;
+  artifactSchemaVersion?: 1;
   id: string;
   runId: string;
   proposalId: string;
@@ -749,12 +784,24 @@ export interface ProposalBatchItem {
   }>;
 }
 
+export interface ProposalBatchExcludedItem {
+  proposalId: string;
+  title: string;
+  risk: "low" | "medium" | "high";
+  applyState: ProposedPatch["applyState"];
+  reason: string;
+  supersededBy?: string;
+}
+
 export interface ProposalBatchPlan {
   version: 1;
+  artifactSchemaVersion?: 1;
   id: string;
   runId: string;
   createdAt: string;
   proposals: ProposalBatchItem[];
+  excludedCount?: number;
+  excluded?: ProposalBatchExcludedItem[];
   outputPath: string;
 }
 
@@ -781,6 +828,7 @@ export interface ProposalBatchSkippedItem {
 
 export interface ProposalBatchReport {
   version: 1;
+  artifactSchemaVersion?: 1;
   id: string;
   runId: string;
   createdAt: string;
@@ -789,10 +837,12 @@ export interface ProposalBatchReport {
   passed: boolean;
   executedCount: number;
   skippedCount: number;
+  excludedCount?: number;
   firstFailedProposalId?: string;
   firstFailedVerificationPath?: string;
   results: ProposalBatchResult[];
   skipped: ProposalBatchSkippedItem[];
+  excluded?: ProposalBatchExcludedItem[];
   stopReason?: string;
   nextCommand?: string;
   recommendedNextActions?: string[];
@@ -809,5 +859,31 @@ export interface ProposalRollbackReport {
   passed: boolean;
   reverseCheck: ProposalPatchCheck;
   reverseApply?: ProposalCommandCheck;
+  outputPath: string;
+}
+
+export type ProposalRepairAcceptanceItemStatus = "accepted" | "needs-work";
+
+export interface ProposalRepairAcceptanceItem {
+  text: string;
+  status: ProposalRepairAcceptanceItemStatus;
+  evidence?: string;
+}
+
+export interface ProposalRepairAcceptanceReport {
+  version: 1;
+  artifactSchemaVersion?: 1;
+  id: string;
+  runId: string;
+  createdAt: string;
+  sourceProposalId: string;
+  retryProposalId: string;
+  accepted: boolean;
+  sourceVerificationPath?: string;
+  retryVerificationPath: string;
+  replanBriefPath?: string;
+  replanContextPath?: string;
+  checklist: ProposalRepairAcceptanceItem[];
+  notes?: string;
   outputPath: string;
 }

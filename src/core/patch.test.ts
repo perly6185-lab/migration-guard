@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyProposalBatch, applyProposedPatch, createAddFilePatch, createProposalBatchPlan, createProposalRetry, proposeActionPatch, renderProposalVerificationReport, replanProposal, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
+import { acceptProposalRepair, applyProposalBatch, applyProposedPatch, createAddFilePatch, createProposalBatchPlan, createProposalRetry, excludeProposal, listProposals, proposeActionPatch, renderProposalList, renderProposalVerificationReport, replanProposal, rollbackProposedPatch, verifyProposedPatch } from "./patch.js";
 import { syncIssues } from "./issueSync.js";
 import { renderRunReport, renderRunStatus, resolveRunNextAction, writeCiHandoffReport, writeRunReport } from "./migrationRun.js";
 import { createGitHubIssues } from "./githubIssueAdapter.js";
@@ -372,6 +372,38 @@ test("proposal batch plan and apply execute ready proposals in order", async () 
   }
 });
 
+test("proposal reject and ignore states exclude proposals from batch", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-batch-exclusion-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: dir });
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    await writeBatchProposal(loaded, pkg, "patch-ignore", "low", "scripts/migration-guard/ignore.mjs", "console.log(\"ignore\");\n");
+    await writeBatchProposal(loaded, pkg, "patch-reject", "low", "scripts/migration-guard/reject.mjs", "console.log(\"reject\");\n");
+    await writeBatchProposal(loaded, pkg, "patch-keep", "low", "scripts/migration-guard/keep.mjs", "console.log(\"keep\");\n");
+
+    const ignored = await excludeProposal(loaded, pkg, "patch-ignore", "ignored", "fixture probe superseded", "patch-keep");
+    const rejected = await excludeProposal(loaded, pkg, "patch-reject", "rejected", "wrong probe shape");
+    assert.equal(ignored.applyState, "ignored");
+    assert.equal(rejected.applyState, "rejected");
+    assert.equal(ignored.exclusion?.reason, "fixture probe superseded");
+    assert.equal(ignored.exclusion?.supersededBy, "patch-keep");
+
+    const plan = await createProposalBatchPlan(loaded, pkg, { limit: 5 });
+    assert.deepEqual(plan.proposals.map((proposal) => proposal.proposalId), ["patch-keep"]);
+    assert.equal(plan.excludedCount, 2);
+    assert.deepEqual(plan.excluded?.map((proposal) => proposal.proposalId).sort(), ["patch-ignore", "patch-reject"]);
+    assert.equal(plan.excluded?.find((proposal) => proposal.proposalId === "patch-ignore")?.supersededBy, "patch-keep");
+    assert.deepEqual((await listProposals(loaded, pkg, { state: "ignored" })).map((proposal) => proposal.id), ["patch-ignore"]);
+    assert.match(renderProposalList(await listProposals(loaded, pkg, { state: "ignored" })), /superseded-by:patch-keep/);
+    await assert.rejects(() => applyProposedPatch(loaded, pkg, "patch-ignore"), /ignored/);
+    await assert.rejects(() => verifyProposedPatch(loaded, pkg, "patch-reject"), /rejected/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("proposal batch apply reports stop reason and skipped proposals after failure", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-batch-failure-"));
 
@@ -409,7 +441,9 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
         }
       ]
     }, null, 2)}\n`, "utf8");
-    await writeBatchProposal(loaded, pkg, "patch-a-fail", "low", "scripts/migration-guard/a-fail.mjs", "console.error(\"a-fail\");\nprocess.exit(1);\n");
+    await mkdir(path.join(dir, "src"), { recursive: true });
+    await writeFile(path.join(dir, "src", "a.ts"), "export function a() {\n  return \"a\";\n}\n", "utf8");
+    await writeBatchProposal(loaded, pkg, "patch-a-fail", "low", "scripts/migration-guard/a-fail.mjs", "console.error(\"a-fail\");\nprocess.exit(1);\n", ["src/a.ts"]);
     await writeBatchProposal(loaded, pkg, "patch-b-skip", "low", "scripts/migration-guard/b-skip.mjs", "console.log(\"b-ok\");\n");
 
     const report = await applyProposalBatch(loaded, pkg, { limit: 2, runChecks: true });
@@ -450,16 +484,24 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.match(replanBrief, /Retry Commands/);
     assert.match(replanBrief, /Behavior Drift/);
     assert.match(replanBrief, /probe\/renderer-output/);
+    assert.match(replanBrief, /Source Snippet Index/);
+    assert.match(replanBrief, /AI Repair Acceptance Checklist/);
     const replanContext = JSON.parse(await readFile(replan.contextPath, "utf8")) as {
-      proposal?: { id?: string };
-      failure?: { firstFailedCheck?: { failureCategory?: string }; issueId?: string; taskId?: string; behaviorDrift?: { differences?: unknown[] } };
+      proposal?: { id?: string; sourceSnippets?: Array<{ file?: string; excerpt?: string }>; checkPlan?: unknown[] };
+      failure?: { firstFailedCheck?: { failureCategory?: string }; latestFailedOutput?: { stderr?: string }; issueId?: string; taskId?: string; behaviorDrift?: { differences?: unknown[] } };
+      acceptanceChecklist?: string[];
       commands?: { retryVerify?: string };
     };
     assert.equal(replanContext.proposal?.id, "patch-a-fail");
+    assert.equal(replanContext.proposal?.sourceSnippets?.[0]?.file, "src/a.ts");
+    assert.match(replanContext.proposal?.sourceSnippets?.[0]?.excerpt ?? "", /export function a/);
+    assert.equal(replanContext.proposal?.checkPlan?.length, 1);
     assert.equal(replanContext.failure?.firstFailedCheck?.failureCategory, "command-failed");
+    assert.match(replanContext.failure?.latestFailedOutput?.stderr ?? "", /a-fail/);
     assert.equal(replanContext.failure?.issueId, replan.report.replanIssueId);
     assert.equal(replanContext.failure?.taskId, replan.task.id);
     assert.equal(replanContext.failure?.behaviorDrift?.differences?.length, 2);
+    assert.ok(replanContext.acceptanceChecklist?.some((item) => item.includes("failure classification")));
     assert.match(replanContext.commands?.retryVerify ?? "", /proposal verify/);
     const nextAfterReplan = await resolveRunNextAction(loaded, pkg);
     assert.match(nextAfterReplan.action, /Create a retry proposal/);
@@ -468,6 +510,7 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     const retry = await createProposalRetry(loaded, pkg, "patch-a-fail");
     assert.equal(retry.reused, false);
     assert.equal(retry.proposal.retryOfProposalId, "patch-a-fail");
+    assert.equal(retry.proposal.retrySourceFailureCategory, "command-failed");
     assert.equal(retry.proposal.patchKind, "replan-retry");
     assert.equal(retry.proposal.replanBriefPath, replan.briefPath);
     assert.equal(retry.report.retryProposalId, retry.proposal.id);
@@ -483,9 +526,32 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.match(nextAfterRetry.action, /Verify retry proposal/);
     assert.match(nextAfterRetry.command ?? "", /proposal verify/);
     assert.ok(nextAfterRetry.evidence?.includes(retry.proposal.patchPath));
+    const retryProposalPath = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "proposals", retry.proposal.id, "proposal.json");
+    const retryProposalForVerify = JSON.parse(await readFile(retryProposalPath, "utf8")) as typeof retry.proposal;
+    retryProposalForVerify.recommendedChecks = ["node -e \"console.log('retry-ok')\""];
+    retryProposalForVerify.checkPlan = [{
+      command: "node -e \"console.log('retry-ok')\"",
+      kind: "unit-test",
+      phase: "pre-preview",
+      critical: true
+    }];
+    await writeFile(retryProposalPath, `${JSON.stringify(retryProposalForVerify, null, 2)}\n`, "utf8");
+    const retryVerification = await verifyProposedPatch(loaded, pkg, retry.proposal.id, { runChecks: true });
+    assert.equal(retryVerification.passed, true);
+    assert.equal(retryVerification.checks.length, 1);
+    const acceptance = await acceptProposalRepair(loaded, pkg, retry.proposal.id, { notes: "unit acceptance" });
+    assert.equal(acceptance.acceptanceReport.accepted, true);
+    assert.equal(acceptance.acceptanceReport.sourceProposalId, "patch-a-fail");
+    assert.equal(acceptance.acceptanceReport.retryProposalId, retry.proposal.id);
+    assert.equal(acceptance.acceptanceReport.retryVerificationPath, retryVerification.outputPath);
+    assert.ok(acceptance.acceptanceReport.checklist.some((item) => item.text.includes("Latest retry verification passed")));
+    await access(acceptance.acceptanceReport.outputPath);
+    const acceptedRetry = JSON.parse(await readFile(retryProposalPath, "utf8")) as { lastAcceptancePath?: string };
+    assert.equal(acceptedRetry.lastAcceptancePath, acceptance.acceptanceReport.outputPath);
     const runReport = await renderRunReport(loaded, pkg);
     assert.match(runReport, /## Next Action/);
-    assert.match(runReport, /Verify retry proposal/);
+    assert.match(runReport, /Recent Repair Acceptances/);
+    assert.match(runReport, /repair:accepted/);
     assert.match(runReport, /replan-brief/);
     assert.match(runReport, /behavior-drift:2/);
     const manualIssue: MigrationIssue = {
@@ -1173,6 +1239,112 @@ test("proposeActionPatch generated probes can inspect affected directories", asy
   }
 });
 
+test("ui smoke probes allow TypeScript support directories alongside Vue directories", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-ui-mixed-probe-"));
+
+  try {
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    const actionPlanDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "adapter");
+    await mkdir(actionPlanDir, { recursive: true });
+    await mkdir(path.join(dir, "apps", "web", "src", "components", "editor"), { recursive: true });
+    await mkdir(path.join(dir, "apps", "web", "src", "composables"), { recursive: true });
+    await mkdir(path.join(dir, "apps", "web", "src", "lib", "markdown"), { recursive: true });
+    await writeFile(path.join(dir, "apps", "web", "src", "components", "editor", "EditorPanel.vue"), "<template><main /></template>\n<script setup></script>\n", "utf8");
+    await writeFile(path.join(dir, "apps", "web", "src", "composables", "useEditorDocumentActions.ts"), "export function useEditorDocumentActions() {\n  return {};\n}\n", "utf8");
+    await writeFile(path.join(dir, "apps", "web", "src", "lib", "markdown", "headings.ts"), "export const headingLevels = [1, 2, 3];\n", "utf8");
+    await writeFile(path.join(actionPlanDir, "pnpm-vite-vue-action-plan.json"), `${JSON.stringify({
+      version: 1,
+      runId: pkg.run.id,
+      createdAt: "2026-07-08T00:00:00.000Z",
+      goal: pkg.run.goal,
+      actions: [
+        {
+          id: "action-md-web-editor-shell",
+          title: "Guard mixed web editor shell",
+          summary: "Add UI probe over Vue and TS support directories.",
+          risk: "high",
+          affectedFiles: [
+            "apps/web/src/components/editor",
+            "apps/web/src/composables",
+            "apps/web/src/lib/markdown"
+          ],
+          recommendedChecks: [],
+          patchMode: "manual-approval-required",
+          patchTemplate: "ui-smoke-probe"
+        }
+      ]
+    }, null, 2)}\n`, "utf8");
+
+    const proposal = await proposeActionPatch(loaded, pkg, "action-md-web-editor-shell");
+    const patch = await readFile(proposal.patchPath, "utf8");
+
+    assert.match(patch, /checkMode: vueFiles\.length > 0 \? "vue-sfc" : "ts-support"/);
+    assert.match(patch, /missing-module-signal/);
+    assert.match(patch, /missing-structure-signal/);
+    assert.match(patch, /missing-template/);
+    assert.match(patch, /missing-script/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("proposeActionPatch uses TS structural probes for shared package actions", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-shared-probe-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: dir });
+    const loaded = makeLoadedConfig(dir);
+    const pkg = makeRunPackage(dir);
+    const actionPlanDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "adapter");
+    const sharedDirs = [
+      "packages/shared/src/configs",
+      "packages/shared/src/types",
+      "packages/shared/src/editor",
+      "packages/shared/src/utils"
+    ];
+    await mkdir(actionPlanDir, { recursive: true });
+    for (const sharedDir of sharedDirs) {
+      await mkdir(path.join(dir, sharedDir), { recursive: true });
+    }
+    await writeFile(path.join(dir, "packages/shared/src/configs/index.ts"), "export const sharedConfig = { theme: \"default\" };\n", "utf8");
+    await writeFile(path.join(dir, "packages/shared/src/types/index.ts"), "export interface SharedDoc { id: string }\n", "utf8");
+    await writeFile(path.join(dir, "packages/shared/src/editor/index.ts"), "export function createEditorState() { return {}; }\n", "utf8");
+    await writeFile(path.join(dir, "packages/shared/src/utils/index.ts"), "export type SharedValue = string;\n", "utf8");
+    await writeFile(path.join(actionPlanDir, "pnpm-vite-vue-action-plan.json"), `${JSON.stringify({
+      version: 1,
+      runId: pkg.run.id,
+      createdAt: "2026-07-07T00:00:00.000Z",
+      goal: pkg.run.goal,
+      actions: [
+        {
+          id: "action-md-shared-contracts",
+          title: "Guard shared contracts",
+          summary: "Add TS structural probe for shared contracts.",
+          risk: "medium",
+          affectedFiles: sharedDirs,
+          recommendedChecks: [],
+          patchMode: "dry-run-only",
+          patchTemplate: "ts-structural-probe"
+        }
+      ]
+    }, null, 2)}\n`, "utf8");
+
+    const proposal = await proposeActionPatch(loaded, pkg, "action-md-shared-contracts");
+    const patch = await readFile(proposal.patchPath, "utf8");
+    assert.equal(proposal.templateSelection?.template, "ts-structural-probe");
+    assert.match(patch, /ts-structural-probe/);
+    assert.doesNotMatch(patch, /missing-template/);
+    assert.doesNotMatch(patch, /missing-script/);
+
+    const apply = await applyProposedPatch(loaded, pkg, proposal.id, { runChecks: true });
+    assert.equal(apply.report?.passed, true);
+    assert.match(apply.report?.checks[0]?.stdout ?? "", /has-typescript-module-signal/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("run status and report surface action check readiness risks", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-readiness-report-"));
 
@@ -1409,7 +1581,8 @@ async function writeBatchProposal(
   id: string,
   risk: ProposedPatch["risk"],
   generatedFile: string,
-  content: string
+  content: string,
+  affectedFiles: string[] = []
 ): Promise<void> {
   const proposalDir = path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "proposals", id);
   const patchPath = path.join(proposalDir, "patch.diff");
@@ -1422,7 +1595,7 @@ async function writeBatchProposal(
     summary: `Adds ${generatedFile}.`,
     risk,
     patchPath,
-    affectedFiles: [],
+    affectedFiles,
     generatedFiles: [generatedFile],
     recommendedChecks: [`node ${generatedFile}`],
     patchKind: "action-probe",

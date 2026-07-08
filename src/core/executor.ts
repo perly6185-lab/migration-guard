@@ -9,6 +9,7 @@ import { scanProject } from "./scan.js";
 import { updateTaskStatus, insertFailureTask, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
 import { appendEvidence, createFailureIssue, createId, migrationRunDir, saveRunPackage, setRunStatus, syncIssueStatuses, writeRunReport } from "./migrationRun.js";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
+import { selectProbeTemplate } from "./probeTemplateRegistry.js";
 import type { LoadedConfig, MigrationAction, MigrationActionCheckReadiness, MigrationIssue, MigrationTask, ScanSummary } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
@@ -430,7 +431,7 @@ export function createMdMonorepoRefactorTaskPlan(pkg: MigrationRunPackage, scan:
       risk: riskFor(["packages/mcp-server"], riskByPrefix, "medium"),
       owner: "ai",
       affectedFiles: ["packages/mcp-server/src", "packages/mcp-server/run.mjs"],
-      recommendedChecks: ["pnpm --filter @md/mcp-server exec tsx -e \"(async () => { const { buildRenderedOutput } = await import('./src/render-article.ts'); const result = await buildRenderedOutput({ markdown: '# Hi' }); console.log(JSON.stringify({ hasHeading: result.html.includes('<h1'), words: result.readingTime.words })); if (!result.html.includes('<h1')) process.exit(1); })();\""],
+      recommendedChecks: ["pnpm --filter @md/mcp-server exec tsx -e \"(async () => { const { buildRenderedOutput } = await import('./src/render-article.ts'); const result = await buildRenderedOutput({ markdown: '# Hi', codeBlockTheme: '' }); console.log(JSON.stringify({ hasHeading: result.html.includes('<h1'), words: result.readingTime.words, remoteCssFetch: false })); if (!result.html.includes('<h1')) process.exit(1); })();\""],
       requiredProbes: ["md-renderer-behavior"],
       acceptanceCriteria: ["MCP render runtime smoke passes", "renderer probe remains stable"],
       rollbackBoundary: "packages/mcp-server"
@@ -462,21 +463,32 @@ async function createMdMonorepoActions(plan: MdRefactorTaskPlan, targetRoot: str
   const packageScripts = await collectPackageScripts(targetRoot);
   return plan.tasks
     .filter((task) => task.owner !== "engine")
-    .map((task) => ({
-      id: `action-${task.id.replace(/^md-task-/, "md-")}`,
-      title: `Prepare ${task.title}`,
-      summary: [
-        `Create a probe/review proposal for ${task.domain} before source edits.`,
-        `Rollback boundary: ${task.rollbackBoundary}.`,
-        `Required probes: ${task.requiredProbes.join(", ") || "none"}.`
-      ].join(" "),
-      risk: task.risk,
-      affectedFiles: task.affectedFiles,
-      recommendedChecks: task.recommendedChecks,
-      checkReadiness: task.recommendedChecks.map((command) => evaluateActionCheckReadiness(command, packageScripts)),
-      patchMode: task.risk === "high" ? "manual-approval-required" : "dry-run-only",
-      patchTemplate: inferMdActionTemplate(task)
-    }));
+    .map((task) => {
+      const actionId = `action-${task.id.replace(/^md-task-/, "md-")}`;
+      const templateSelection = selectProbeTemplate({
+        id: actionId,
+        domain: task.domain,
+        affectedFiles: task.affectedFiles,
+        requiredProbes: task.requiredProbes
+      });
+      return {
+        id: actionId,
+        title: `Prepare ${task.title}`,
+        summary: [
+          `Create a probe/review proposal for ${task.domain} before source edits.`,
+          `Rollback boundary: ${task.rollbackBoundary}.`,
+          `Required probes: ${task.requiredProbes.join(", ") || "none"}.`,
+          `Probe template: ${templateSelection.template} (${templateSelection.reason}).`
+        ].join(" "),
+        risk: task.risk,
+        affectedFiles: task.affectedFiles,
+        recommendedChecks: task.recommendedChecks,
+        checkReadiness: task.recommendedChecks.map((command) => evaluateActionCheckReadiness(command, packageScripts)),
+        patchMode: task.risk === "high" ? "manual-approval-required" : "dry-run-only",
+        patchTemplate: templateSelection.template,
+        templateSelection
+      };
+    });
 }
 
 interface PackageScriptIndex {
@@ -607,17 +619,13 @@ function readScripts(packageJson: Record<string, unknown> | undefined): Record<s
   );
 }
 
-function inferMdActionTemplate(task: MdRefactorTaskPlanItem): MigrationAction["patchTemplate"] {
-  if (task.requiredProbes.includes("md-web-static-contract")) {
-    return "ui-smoke-probe";
-  }
-  if (task.requiredProbes.includes("md-api-contract")) {
-    return "api-contract-probe";
-  }
-  if (task.requiredProbes.includes("md-renderer-behavior")) {
-    return "renderer-probe";
-  }
-  return "adapter-fixture-probe";
+export function inferMdActionTemplate(task: MdRefactorTaskPlanItem): MigrationAction["patchTemplate"] {
+  return selectProbeTemplate({
+    id: `action-${task.id.replace(/^md-task-/, "md-")}`,
+    domain: task.domain,
+    affectedFiles: task.affectedFiles,
+    requiredProbes: task.requiredProbes
+  }).template;
 }
 
 function renderMdMonorepoTaskPlan(plan: MdRefactorTaskPlan): string {

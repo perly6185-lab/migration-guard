@@ -18,6 +18,7 @@ import type {
   MigrationTaskGraph,
   MigrationTaskStatus,
   ProposalBatchReport,
+  ProposalRepairAcceptanceReport,
   ProposalVerificationReport,
   ProposedPatch
 } from "../types.js";
@@ -184,13 +185,26 @@ interface ProposalBatchSummary {
   gatePolicy?: string;
   executedCount: number;
   skippedCount: number;
+  excludedCount: number;
   reportPath: string;
   firstFailedProposalId?: string;
   firstFailedVerificationPath?: string;
   stopReason?: string;
   nextCommand?: string;
   skippedProposals: string[];
+  excludedProposals: string[];
   recommendedNextActions?: string[];
+}
+
+interface ProposalRepairAcceptanceSummary {
+  id: string;
+  createdAt: string;
+  accepted: boolean;
+  sourceProposalId: string;
+  retryProposalId: string;
+  retryVerificationPath: string;
+  outputPath: string;
+  checklistCount: number;
 }
 
 export function migrationRunsDir(loaded: LoadedConfig): string {
@@ -363,11 +377,13 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
   const proposals = await readProposalSummaries(loaded, pkg.run.id);
   const proposalGates = await readRecentProposalGateSummaries(loaded, pkg.run.id);
   const proposalBatches = await readRecentProposalBatchSummaries(loaded, pkg.run.id);
+  const repairAcceptances = await readRecentProposalRepairAcceptanceSummaries(loaded, pkg.run.id);
   const actionCheckReadiness = await readActionCheckReadinessSummary(loaded, pkg);
   const nextAction = withActionCheckReadiness(
     selectRunNextAction(pkg, proposals, proposalGates, proposalBatches, actionCheckReadiness),
     actionCheckReadiness
   );
+  const latestBehaviorDecision = [...proposalGates].reverse().find((gate) => gate.behaviorDecisionSummary);
 
   return [
     `# Migration Run Report: ${pkg.run.id}`,
@@ -382,6 +398,7 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
     `- Target: ${pkg.run.targetRoot}`,
     `- Created: ${pkg.run.createdAt}`,
     `- Updated: ${pkg.run.updatedAt}`,
+    latestBehaviorDecision?.behaviorDecisionSummary ? `- Behavior decision gate: ${latestBehaviorDecision.behaviorDecisionSummary}` : undefined,
     "",
     "## Next Action",
     "",
@@ -417,10 +434,14 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
     "",
     graphErrors.length > 0 ? graphErrors.map((error) => `- ${error}`).join("\n") : "No graph errors.",
     "",
+    "## Evidence Graph",
+    "",
+    ...renderEvidenceGraphLines(proposals, proposalGates, proposalBatches, repairAcceptances),
+    "",
     "## Proposals",
     "",
     proposals.length > 0
-      ? proposals.map((proposal) => `- ${proposal.id} [${proposal.applyState}/${proposal.risk}] ${proposal.title}${proposal.retryOfProposalId ? ` retry-of:${proposal.retryOfProposalId}` : ""}`).join("\n")
+      ? proposals.map((proposal) => renderProposalCompactSummary(proposal, proposalGates, proposalBatches, repairAcceptances)).join("\n")
       : "No proposals.",
     "",
     "## Recent Proposal Gates",
@@ -449,15 +470,89 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
         batch.firstFailedVerificationPath ? `  first-failed-verification:${batch.firstFailedVerificationPath}` : undefined,
         batch.stopReason ? `  stop:${batch.stopReason}` : undefined,
         batch.nextCommand ? `  next:${batch.nextCommand}` : undefined,
-        batch.skippedProposals.length > 0 ? `  skipped:${batch.skippedProposals.join(", ")}` : undefined,
+        batch.skippedProposals.length > 0 ? `  failure-skipped:${batch.skippedProposals.join(", ")}` : undefined,
+        batch.excludedProposals.length > 0 ? `  excluded:${batch.excludedProposals.join(", ")}` : undefined,
+        batch.excludedCount > 0 ? `  excluded-count:${batch.excludedCount}` : undefined,
         ...(batch.recommendedNextActions ?? []).map((action) => `  recommended:${action}`)
       ].filter(Boolean).join("\n")).join("\n")
       : "No proposal batch reports.",
+    "",
+    "## Recent Repair Acceptances",
+    "",
+    repairAcceptances.length > 0
+      ? repairAcceptances.map((acceptance) => [
+        `- ${acceptance.createdAt} ${acceptance.id} ${acceptance.accepted ? "accepted" : "needs-work"} source:${acceptance.sourceProposalId} retry:${acceptance.retryProposalId}`,
+        `  retry-verification:${acceptance.retryVerificationPath}`,
+        `  checklist:${acceptance.checklistCount}`,
+        `  report:${acceptance.outputPath}`
+      ].join("\n")).join("\n")
+      : "No repair acceptance reports.",
     "",
     "## Evidence",
     "",
     ...evidence.slice(-20).map((event) => `- ${event.createdAt} [${event.type}] ${event.message}`)
   ].join("\n");
+}
+
+function renderEvidenceGraphLines(
+  proposals: ProposedPatch[],
+  gates: ProposalGateSummary[],
+  batches: ProposalBatchSummary[],
+  repairAcceptances: ProposalRepairAcceptanceSummary[] = []
+): string[] {
+  if (proposals.length === 0 && gates.length === 0 && batches.length === 0 && repairAcceptances.length === 0) {
+    return ["- No proposal evidence yet."];
+  }
+  const lines: string[] = [];
+  for (const batch of batches.slice(-5)) {
+    lines.push(`- batch:${batch.id} -> results:${batch.executedCount} failure-skipped:${batch.skippedCount} excluded:${batch.excludedCount} -> ${batch.passed ? "passed" : "next action required"}`);
+    if (batch.firstFailedProposalId) {
+      lines.push(`  failed-proposal:${batch.firstFailedProposalId}${batch.nextCommand ? ` next:${batch.nextCommand}` : ""}`);
+    }
+  }
+  for (const gate of gates.slice(-5)) {
+    lines.push(`- proposal:${gate.proposalId} -> gate:${gate.passed ? "passed" : "failed"} checks:${gate.checks}${gate.failureCategory ? ` failure:${gate.failureCategory}` : ""}${gate.behaviorDecisionStatus ? ` behavior:${gate.behaviorDecisionStatus}` : ""}`);
+    if (gate.replanIssueId || gate.replanTaskId) {
+      lines.push(`  replan:${gate.replanIssueId ?? "none"} task:${gate.replanTaskId ?? "none"}`);
+    }
+  }
+  for (const acceptance of repairAcceptances.slice(-5)) {
+    lines.push(`- repair:${acceptance.id} -> ${acceptance.accepted ? "accepted" : "needs-work"} source:${acceptance.sourceProposalId} retry:${acceptance.retryProposalId}`);
+  }
+  if (lines.length === 0) {
+    for (const proposal of proposals.slice(-5)) {
+      lines.push(`- proposal:${proposal.id} -> state:${proposal.applyState}${proposal.exclusion?.reason ? ` excluded:${proposal.exclusion.reason}` : ""}${proposal.retryOfProposalId ? ` retry-of:${proposal.retryOfProposalId}` : ""}`);
+    }
+  }
+  return lines;
+}
+
+function renderProposalCompactSummary(
+  proposal: ProposedPatch,
+  gates: ProposalGateSummary[],
+  batches: ProposalBatchSummary[],
+  repairAcceptances: ProposalRepairAcceptanceSummary[] = []
+): string {
+  const gate = [...gates].reverse().find((candidate) => candidate.proposalId === proposal.id);
+  const batch = [...batches].reverse().find((candidate) => {
+    return candidate.firstFailedProposalId === proposal.id
+      || candidate.skippedProposals.includes(proposal.id)
+      || candidate.excludedProposals.includes(proposal.id);
+  });
+  const details = [
+    proposal.retryOfProposalId ? `retry-of:${proposal.retryOfProposalId}` : undefined,
+    proposal.retrySourceFailureCategory ? `source-failure:${proposal.retrySourceFailureCategory}` : undefined,
+    proposal.templateSelection ? `template:${proposal.templateSelection.template}` : undefined,
+    proposal.exclusion?.reason ? `excluded:${proposal.exclusion.reason}` : undefined,
+    proposal.exclusion?.supersededBy ? `superseded-by:${proposal.exclusion.supersededBy}` : undefined,
+    gate ? `gate:${gate.passed ? "passed" : gate.failureCategory ?? "failed"}` : undefined,
+    gate?.behaviorDecisionStatus ? `behavior:${gate.behaviorDecisionStatus}` : undefined,
+    batch?.id ? `batch:${batch.id}` : undefined,
+    proposal.lastAcceptancePath ? `acceptance:${proposal.lastAcceptancePath}` : undefined,
+    repairAcceptances.some((acceptance) => acceptance.retryProposalId === proposal.id || acceptance.sourceProposalId === proposal.id) ? "repair:accepted" : undefined,
+    proposal.replanBriefPath ? `next:retry-from-brief` : undefined
+  ].filter(Boolean).join(" ");
+  return `- ${proposal.id} [${proposal.applyState}/${proposal.risk}] ${proposal.title}${details ? ` (${details})` : ""}`;
 }
 
 export async function writeRunReport(loaded: LoadedConfig, pkg: MigrationRunPackage, name = "latest-report.md"): Promise<string> {
@@ -685,7 +780,7 @@ function withActionCheckReadiness(
 
 function latestRetryProposalFor(proposals: ProposedPatch[], sourceProposalId: string): ProposedPatch | undefined {
   return proposals
-    .filter((proposal) => proposal.retryOfProposalId === sourceProposalId && proposal.applyState !== "rejected")
+    .filter((proposal) => proposal.retryOfProposalId === sourceProposalId && proposal.applyState !== "rejected" && proposal.applyState !== "ignored")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
 }
 
@@ -1572,11 +1667,56 @@ async function readRecentProposalBatchSummaries(
       gatePolicy: report.gatePolicy?.mode,
       executedCount: report.executedCount,
       skippedCount: report.skippedCount,
+      excludedCount: report.excludedCount ?? report.excluded?.length ?? 0,
       reportPath: report.outputPath,
       firstFailedVerificationPath: report.firstFailedVerificationPath,
       stopReason: report.stopReason,
       nextCommand: report.nextCommand,
       skippedProposals: report.skipped.map((item) => item.proposalId),
+      excludedProposals: (report.excluded ?? []).map((item) => item.proposalId),
       recommendedNextActions: report.recommendedNextActions
+    }));
+}
+
+async function readRecentProposalRepairAcceptanceSummaries(
+  loaded: LoadedConfig,
+  runId: string
+): Promise<ProposalRepairAcceptanceSummary[]> {
+  const replansDir = path.join(migrationRunDir(loaded, runId), "replans");
+  if (!await pathExists(replansDir)) {
+    return [];
+  }
+
+  const reports: ProposalRepairAcceptanceReport[] = [];
+  const replanEntries = await fs.readdir(replansDir, { withFileTypes: true });
+  for (const replanEntry of replanEntries) {
+    if (!replanEntry.isDirectory()) {
+      continue;
+    }
+    const acceptanceDir = path.join(replansDir, replanEntry.name, "acceptance");
+    if (!await pathExists(acceptanceDir)) {
+      continue;
+    }
+    const files = await fs.readdir(acceptanceDir, { withFileTypes: true });
+    for (const file of files) {
+      if (!file.isFile() || !file.name.startsWith("repair-acceptance-") || !file.name.endsWith(".json")) {
+        continue;
+      }
+      reports.push(await readJsonFile<ProposalRepairAcceptanceReport>(path.join(acceptanceDir, file.name)));
+    }
+  }
+
+  return reports
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .slice(-10)
+    .map((report) => ({
+      id: report.id,
+      createdAt: report.createdAt,
+      accepted: report.accepted,
+      sourceProposalId: report.sourceProposalId,
+      retryProposalId: report.retryProposalId,
+      retryVerificationPath: report.retryVerificationPath,
+      outputPath: report.outputPath,
+      checklistCount: report.checklist.length
     }));
 }

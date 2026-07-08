@@ -48,7 +48,7 @@
 
 目标：强化 `baseline` / `verify` / `compare` 在真实项目里的行为守护能力，让 Migration Guard 更像迁移指挥系统的证据层。
 
-状态：当前活跃主线。
+状态：Phase 37-63 已完成当前主线收敛，下一步进入 release hardening / artifact migration。
 
 Progress:
 
@@ -72,6 +72,13 @@ Progress:
 - Phase 54: `actions handoff --repair-briefs` writes AI repair briefs for readiness failures.
 - Phase 55: real `md` multi-domain proposal batch passed for MCP render, API contracts, and core renderer, then rolled back cleanly.
 - Phase 56: PR split and release notes summarize PR #1/#3/#4/#5, CI status, operator commands, and follow-up repair inputs.
+- Phase 57: shared TS actions use structural probes, MCP render smoke avoids remote CSS fetches, and proposed-only patches can be rejected or ignored before batch selection.
+- Phase 58: a real MD small-batch regression verifies shared TS, MCP render, proposal exclusion, rollback, and clean target state.
+- Phase 59: probe template selection is centralized in a registry with template selection reasons in action/proposal artifacts.
+- Phase 60: proposal lifecycle UX exposes rejected/ignored reasons, proposal list filters, superseded-by links, and batch exclusion reporting.
+- Phase 61: run reports include an evidence graph linking proposals, gates, batches, behavior decisions, replans, and next actions.
+- Phase 62: AI repair contexts include template selection, check readiness, source snippets, failed output summaries, and retry failure inheritance.
+- Phase 63: config profiles, schema guard, dry-run-first artifact GC, path tests, and README release-prep docs are in place.
 
 候选能力：
 
@@ -88,9 +95,26 @@ Progress:
 - report 能说明“为什么停、下一步做什么、依据是什么”。
 - PR CI 能在 GitHub 上报告 `npm test` 结果。
 
+Next focus:
+
+- Phase 64 added dry-run-first artifact schema migration for proposal, verification, batch, and replan context artifacts.
+- Expand artifact GC only after reports no longer reference the candidate evidence.
+- Keep GitHub operational hardening deferred until release readiness is stronger.
+
+Next candidate:
+
+- Phase 65 completed a medium real MD batch regression across shared TS, renderer, API, web static, and MCP render lanes. The first batch exposed a UI probe false positive on TS support directories; the fix passed a second 5-proposal batch and rolled back cleanly.
+- Phase 66 added checked repair acceptance reports for retry proposals and surfaces acceptance evidence in run reports.
+- Phase 67 added reviewed-plan confirmation for artifact migration apply.
+- Phase 68 added the Phase 57-68 PR split plan and real MD operator runbook.
+- Phase 69 added the final Phase 57-68 release checklist.
+- Next: commit/PR preparation according to `docs/PR_SPLIT_PLAN_57_68.md`.
+
 ## Major Phase D: AI Collaboration Loop
 
 目标：把 Migration Guard 的证据包变成 AI 修复工作的最小上下文输入。
+
+状态：Phase 62 已完成 proposal failure repair context 的第一轮强化；后续继续围绕任务级 repair prompts 和 acceptance automation。
 
 候选能力：
 

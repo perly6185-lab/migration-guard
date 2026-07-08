@@ -36,13 +36,18 @@ import { loadActionPlan, renderActionPlan } from "./core/actionPlan.js";
 import {
   applyProposalBatch,
   applyProposedPatch,
+  acceptProposalRepair,
   createProposalRetry,
   createProposalBatchPlan,
+  excludeProposal,
   getProposalStatus,
+  listProposals,
   proposeActionPatch,
   proposePatch,
   renderProposalBatchPlan,
   renderProposalBatchReport,
+  renderProposalList,
+  renderProposalRepairAcceptanceReport,
   renderProposalRollbackReport,
   renderProposalStatus,
   renderProposalVerificationReport,
@@ -51,7 +56,9 @@ import {
   verifyProposedPatch
 } from "./core/patch.js";
 import { runPreviewProbe } from "./core/preview.js";
-import type { CompareReport, DiffDecisionClassification, Difference, MigrationAutomationMode, MigrationRun, ProposalGatePolicy } from "./types.js";
+import { collectArtifactGcReport, renderArtifactGcReport } from "./core/artifactGc.js";
+import { collectArtifactMigrationReport, renderArtifactMigrationReport } from "./core/artifactMigration.js";
+import type { CompareReport, DiffDecisionClassification, Difference, MigrationAutomationMode, MigrationRun, ProposalGatePolicy, ProposedPatch } from "./types.js";
 
 interface ParsedArgs {
   command: string;
@@ -142,6 +149,9 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "preview":
       await commandPreview(args);
+      return;
+    case "artifacts":
+      await commandArtifacts(args);
       return;
     default:
       console.error(`Unknown command: ${args.command}`);
@@ -684,6 +694,20 @@ async function commandProposal(args: ParsedArgs): Promise<void> {
     throw new Error(`Unknown proposal batch command: ${batchAction}`);
   }
 
+  if (action === "list") {
+    const proposals = await listProposals(loaded, pkg, {
+      state: proposalStateOption(args),
+      actionId: stringOption(args, "action"),
+      risk: proposalRiskOption(args)
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(proposals, null, 2));
+    } else {
+      console.log(renderProposalList(proposals));
+    }
+    return;
+  }
+
   if (action === "verify") {
     if (!proposalId) {
       throw new Error("proposal verify requires --proposal <proposal-id>.");
@@ -762,6 +786,48 @@ async function commandProposal(args: ParsedArgs): Promise<void> {
       console.log(`Patch: ${result.proposal.patchPath}`);
       console.log(`Replan brief: ${result.proposal.replanBriefPath ?? "none"}`);
       console.log(`Replan context: ${result.proposal.replanContextPath ?? "none"}`);
+    }
+    return;
+  }
+
+  if (action === "accept") {
+    if (!proposalId) {
+      throw new Error("proposal accept requires --proposal <retry-proposal-id>.");
+    }
+    const result = await acceptProposalRepair(loaded, pkg, proposalId, {
+      notes: stringOption(args, "notes")
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(result.message);
+      console.log(renderProposalRepairAcceptanceReport(result.acceptanceReport));
+    }
+    if (!result.acceptanceReport.accepted) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (action === "reject" || action === "ignore") {
+    if (!proposalId) {
+      throw new Error(`proposal ${action} requires --proposal <proposal-id>.`);
+    }
+    const supersededBy = stringOption(args, "superseded-by");
+    if (supersededBy && action !== "ignore") {
+      throw new Error("--superseded-by is only supported with proposal ignore.");
+    }
+    const proposal = await excludeProposal(loaded, pkg, proposalId, action === "reject" ? "rejected" : "ignored", stringOption(args, "reason"), supersededBy);
+    if (args.options.json) {
+      console.log(JSON.stringify(proposal, null, 2));
+    } else {
+      console.log(`Marked proposal ${proposal.id} as ${proposal.applyState}.`);
+      if (proposal.exclusion?.reason) {
+        console.log(`Reason: ${proposal.exclusion.reason}`);
+      }
+      if (proposal.exclusion?.supersededBy) {
+        console.log(`Superseded by: ${proposal.exclusion.supersededBy}`);
+      }
     }
     return;
   }
@@ -870,6 +936,39 @@ async function commandPreview(args: ParsedArgs): Promise<void> {
   }
 }
 
+async function commandArtifacts(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "gc";
+  const loaded = await loadFromArgs(args);
+  if (action === "gc") {
+    const report = await collectArtifactGcReport(loaded, {
+      keepRuns: numberOption(args, "keep-runs"),
+      apply: Boolean(args.options.apply)
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderArtifactGcReport(report));
+    }
+    return;
+  }
+  if (action === "migrate") {
+    const report = await collectArtifactMigrationReport(loaded, {
+      apply: Boolean(args.options.apply),
+      applyConfirm: stringOption(args, "apply-confirm")
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderArtifactMigrationReport(report));
+    }
+    if (report.invalidCount > 0) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  throw new Error(`Unknown artifacts command: ${action}`);
+}
+
 async function loadOptionalSnapshot(filePath: string) {
   return await pathExists(filePath) ? loadSnapshot(filePath) : undefined;
 }
@@ -884,7 +983,7 @@ async function writeCompareArtifacts(artifactsDir: string, report: CompareReport
 }
 
 async function loadFromArgs(args: ParsedArgs) {
-  return loadConfig(stringOption(args, "config"));
+  return loadConfig(stringOption(args, "config"), process.cwd(), stringOption(args, "profile"));
 }
 
 function stringOption(args: ParsedArgs, name: string): string | undefined {
@@ -932,6 +1031,39 @@ function gatePolicyOption(args: ParsedArgs): ProposalGatePolicy | undefined {
     throw new Error(`Invalid --gate-policy: ${value}. Expected fail-fast or collect-all.`);
   }
   return { mode: value };
+}
+
+function proposalStateOption(args: ParsedArgs): ProposedPatch["applyState"] | undefined {
+  const value = stringOption(args, "state");
+  if (!value) {
+    return undefined;
+  }
+  const states: ProposedPatch["applyState"][] = [
+    "proposed",
+    "verified",
+    "verification-failed",
+    "applied",
+    "applied-with-failed-checks",
+    "rolled-back",
+    "rollback-failed",
+    "rejected",
+    "ignored"
+  ];
+  if (states.includes(value as ProposedPatch["applyState"])) {
+    return value as ProposedPatch["applyState"];
+  }
+  throw new Error(`Invalid --state: ${value}.`);
+}
+
+function proposalRiskOption(args: ParsedArgs): ProposedPatch["risk"] | undefined {
+  const value = stringOption(args, "risk");
+  if (!value) {
+    return undefined;
+  }
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+  throw new Error(`Invalid --risk: ${value}. Expected low, medium, or high.`);
 }
 
 async function resolveRunIdOption(loaded: Awaited<ReturnType<typeof loadFromArgs>>, args: ParsedArgs): Promise<string | undefined> {
@@ -1008,10 +1140,10 @@ function printHelp(): void {
 
 Usage:
   migration-guard init [--target <path>] [--force]
-  migration-guard scan [--config <path>] [--json]
-  migration-guard baseline [--config <path>]
-  migration-guard verify [--config <path>] [--baseline <path>]
-  migration-guard compare [--config <path>] [--baseline <path>] [--current <path>]
+  migration-guard scan [--config <path>] [--profile <name>] [--json]
+  migration-guard baseline [--config <path>] [--profile <name>]
+  migration-guard verify [--config <path>] [--profile <name>] [--baseline <path>]
+  migration-guard compare [--config <path>] [--profile <name>] [--baseline <path>] [--current <path>]
   migration-guard diff list [--run <id|latest>] [--compare <compare.json>] [--json]
   migration-guard diff decide [--run <id|latest>] --compare <compare.json> --area check|probe|scan --name <name> --as intentional|accidental|unknown --reason <text> [--approved-by <name>] [--proposal <id>] [--json]
   migration-guard plan [--config <path>]
@@ -1032,10 +1164,13 @@ Usage:
   migration-guard action propose [--run <id|latest>] --action <id> [--allow-no-op-risk]
   migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks] [--rollback-on-fail] [--gate-policy fail-fast|collect-all] [--behavior-diff]
   migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--gate-policy fail-fast|collect-all] [--json]
+  migration-guard proposal list [--run <id|latest>] [--state <state>] [--action <action-id>] [--risk low|medium|high] [--json]
   migration-guard proposal status [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal rollback [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal replan [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal retry [--run <id|latest>] --proposal <id> [--json]
+  migration-guard proposal accept [--run <id|latest>] --proposal <retry-id> [--notes <text>] [--json]
+  migration-guard proposal reject|ignore [--run <id|latest>] --proposal <id> [--reason <text>] [--superseded-by <proposal-id>] [--json]
   migration-guard proposal batch plan|apply [--run <id|latest>] [--limit <n>] [--skip-checks] [--gate-policy fail-fast|collect-all] [--behavior-diff] [--json]
   migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run|--live|--live-plan] [--repo owner/name] [--live-confirm <run-id>] [--live-plan-confirm <hash>] [--labels a,b] [--only-issue <issue-id>] [--max-live-mutations <n>]
   migration-guard ci verify --baseline <path> [--run <id|latest>]
@@ -1043,6 +1178,8 @@ Usage:
   migration-guard contract test --target <url> --contract <path>
   migration-guard dual-run --source <url> --target <url>
   migration-guard preview --command <command> [--url <url>] [--timeout-ms <ms>]
+  migration-guard artifacts gc [--config <path>] [--profile <name>] [--keep-runs <n>] [--apply] [--json]
+  migration-guard artifacts migrate [--config <path>] [--profile <name>] [--apply] [--apply-confirm <plan-hash>] [--json]
 
 Behavior consistency workflow:
   1. init      Create .migration-guard.json

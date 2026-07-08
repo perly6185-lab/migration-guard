@@ -59,6 +59,10 @@ Suggested next phase:
 
 - Phase 57: repair probe-template selection and proposal exclusion semantics, then rerun a smaller MD batch.
 
+Update:
+
+- Phase 57 implemented the shared TS structural probe, MCP render no-remote-CSS smoke, and proposal `reject` / `ignore` exclusion flow. See `docs/PHASE_57_REPORT.md`.
+
 ## 6. Verification
 
 GitHub PR checks:

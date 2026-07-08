@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createMdMonorepoRefactorTaskPlan, createPnpmViteVueActions, evaluateActionCheckReadiness } from "./executor.js";
+import { createMdMonorepoRefactorTaskPlan, createPnpmViteVueActions, evaluateActionCheckReadiness, inferMdActionTemplate } from "./executor.js";
+import { renderActionPlan } from "./actionPlan.js";
+import { getProbeTemplateDefinition, selectProbeTemplate } from "./probeTemplateRegistry.js";
 import { createTaskGraph, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 import type { ScanSummary } from "../types.js";
@@ -81,7 +83,50 @@ test("createMdMonorepoRefactorTaskPlan covers md refactor domains and probes", (
   assert.ok(plan.tasks.some((task) => task.id === "md-task-api-contracts" && task.requiredProbes.includes("md-api-contract")));
   assert.ok(plan.tasks.some((task) => task.id === "md-task-web-editor-shell" && task.requiredProbes.includes("md-web-static-contract")));
   assert.ok(plan.tasks.some((task) => task.id === "md-task-mcp-render" && task.recommendedChecks.some((check) => check.includes("buildRenderedOutput"))));
+  assert.ok(plan.tasks.some((task) => task.id === "md-task-mcp-render" && task.recommendedChecks.some((check) => check.includes("codeBlockTheme: ''"))));
+  assert.equal(inferMdActionTemplate(plan.tasks.find((task) => task.id === "md-task-shared-contracts")!), "ts-structural-probe");
   assert.ok(plan.tasks.some((task) => task.id === "md-task-cross-package-verification" && task.recommendedChecks.includes("pnpm test")));
+});
+
+test("probe template registry selects shared TS before UI smoke and renders reasons", () => {
+  const shared = selectProbeTemplate({
+    id: "action-md-shared-contracts",
+    domain: "packages/shared",
+    affectedFiles: ["packages/shared/src/types"],
+    requiredProbes: ["md-renderer-behavior", "md-web-static-contract"]
+  });
+  const web = selectProbeTemplate({
+    id: "action-md-web-editor-shell",
+    domain: "apps/web",
+    affectedFiles: ["apps/web/src/components/editor"],
+    requiredProbes: ["md-web-static-contract", "md-renderer-behavior"]
+  });
+
+  assert.equal(shared.template, "ts-structural-probe");
+  assert.match(shared.reason, /packages\/shared/);
+  assert.equal(web.template, "ui-smoke-probe");
+  assert.equal(getProbeTemplateDefinition("ui-smoke-probe").needsPreview, true);
+
+  const text = renderActionPlan({
+    version: 1,
+    runId: "run-1",
+    createdAt: "2026-07-08T00:00:00.000Z",
+    goal: "registry output",
+    actions: [
+      {
+        id: "action-md-shared-contracts",
+        title: "Guard shared contracts",
+        summary: "Shared package action.",
+        risk: "medium",
+        affectedFiles: ["packages/shared/src/types"],
+        recommendedChecks: [],
+        patchMode: "dry-run-only",
+        patchTemplate: shared.template,
+        templateSelection: shared
+      }
+    ]
+  });
+  assert.match(text, /template: ts-structural-probe \(packages\/shared actions use TS structural probes/);
 });
 
 test("evaluateActionCheckReadiness flags missing pnpm scripts before gates run", () => {
