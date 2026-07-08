@@ -2410,6 +2410,28 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - target repository 保持 clean。
 - 单元测试覆盖 rolled-back passing batch 作为 readiness proposal-floor evidence。
 
+## Phase 77: Scoped Real md.git Refactor Trial
+
+目标：在 `readiness --strict: go` 之后，执行第一条真实但小范围的 `md.git` 源码 refactor trial，并用 Migration Guard baseline / verify / compare 证明行为不变。
+
+交付内容：
+
+- target `md.git` branch: `migration-guard/phase-77-reading-time-refactor`
+- target commit: `26acf6b refactor(shared): clarify reading time ranges`
+- target PR: `https://github.com/perly6185-lab/md/pull/1`
+- baseline: `baseline-2026-07-08T06-02-01-478Z`
+- final verify: `run-2026-07-08T06-09-10-258Z`
+- compare: passed, no differences detected
+- `docs/PHASE_77_REPORT.md`
+
+完成标准：
+
+- 真实 target source 只改一个 shared utility 文件。
+- core test、packages type-check、renderer behavior probe、API contract probe 全通过。
+- baseline/verify compare 无差异。
+- target PR 已创建。
+- target working tree 保持 clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
