@@ -2329,6 +2329,26 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - 单元测试覆盖 schema freeze 和 unsupported artifact apply refusal。
 - target repository 保持 clean。
 
+## Phase 73: AI Repair Loop Practical Acceptance
+
+目标：把 AI repair loop 从 API/unit coverage 推进到 CLI practical acceptance，证明 operator 能用真实 CLI 从失败 proposal 走到 accepted repair。
+
+交付内容：
+
+- `src/core/repairLoopCli.test.ts`
+- controlled failed proposal CLI smoke
+- `proposal batch apply -> replan -> retry -> verify --checks -> accept -> report` 全链路验证
+- `docs/PHASE_73_REPORT.md`
+
+完成标准：
+
+- failed batch 能输出 command-failed evidence。
+- replan brief/context 包含 latest failed output 和 acceptance checklist。
+- retry proposal 继承 source failure category。
+- repaired retry proposal 能通过 checked verification。
+- `proposal accept` 写出 repair acceptance artifact。
+- run report 显示 `repair:accepted` evidence。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
