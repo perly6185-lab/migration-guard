@@ -2388,6 +2388,28 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - 单元测试覆盖 hold/go 两种路径。
 - target repository 保持 clean。
 
+## Phase 76: Real md.git Readiness To Go
+
+目标：把真实 `md.git` validation lane 从 readiness `hold` 推进到 `go`，并修正准入门禁对“passing batch 后已 rollback proposal”的证据识别。
+
+交付内容：
+
+- 真实 `md.git` run resume 到 completed
+- 9 个 action / 14 个 recommended checks 全 ready
+- 3 个 proposal 覆盖 shared TS、renderer、API contract
+- 3-proposal batch apply passed
+- 全部 applied proposal rollback passed
+- readiness 认可 passing batch covers 3 proposals
+- `docs/PHASE_76_REPORT.md`
+
+完成标准：
+
+- `readiness --strict` 返回 `go`。
+- passing batch executed 3 / skipped 0 / excluded 0。
+- required templates: `ts-structural-probe`、`renderer-probe`、`api-contract-probe`。
+- target repository 保持 clean。
+- 单元测试覆盖 rolled-back passing batch 作为 readiness proposal-floor evidence。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
