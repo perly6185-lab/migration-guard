@@ -2267,6 +2267,46 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - checklist 链接 PR split plan 和 operator runbook。
 - target repository 保持 clean。
 
+## Phase 70: Post-merge Real MD Soak
+
+目标：PR #7 合并到 `main` 后，在真实 `md` target 上重新跑 `md-fast` soak，证明 release train 合并后仍然稳定。
+
+交付内容：
+
+- post-merge `main` 本地验证
+- 新 md-fast run：`run-2026-07-08T02-53-51-908Z-whtxbc`
+- 5-proposal batch apply report
+- all-proposal rollback evidence
+- rolled-back proposal exclusion check
+- `docs/PHASE_70_REPORT.md`
+
+完成标准：
+
+- PR #7 merge commit 已同步到 `main`。
+- `npm test` 和 `git diff --check` 通过。
+- batch 覆盖 shared TS、renderer、UI、API、MCP render。
+- batch passed，executed 5，skipped 0。
+- rollback 后 target `md` repository clean。
+
+## Phase 71: CI / Cross-platform Hardening
+
+目标：把跨平台风险放进 CI gate，优先覆盖 Windows/Linux 路径、换行和 artifact path 归一化。
+
+交付内容：
+
+- GitHub CI 增加 Ubuntu / Windows matrix
+- `toPosixPath` 不再依赖当前 OS path separator
+- artifact migration 复用 shared path normalization
+- path separator 单测
+- `docs/PHASE_71_REPORT.md`
+
+完成标准：
+
+- 本地 Windows `npm test` 通过。
+- GitHub CI 在 Ubuntu 和 Windows 上都通过。
+- path helper 能处理 Windows、POSIX 和 mixed separator 输入。
+- target repository 保持 clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

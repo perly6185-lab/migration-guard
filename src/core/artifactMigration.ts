@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { pathExists, readJsonFile, writeJsonFile } from "./files.js";
+import { pathExists, readJsonFile, toPosixPath, writeJsonFile } from "./files.js";
 import { sha256 } from "./hash.js";
 import type { LoadedConfig } from "../types.js";
 
@@ -324,7 +324,7 @@ async function listMigrationArtifactFiles(migrationRunsDir: string): Promise<Art
   const files = await listJsonFiles(migrationRunsDir);
   return files
     .map((filePath) => {
-      const normalized = filePath.split(path.sep).join("/");
+      const normalized = toPosixPath(filePath);
       if (normalized.endsWith("/proposal.json") && normalized.includes("/proposals/")) {
         return { path: filePath, kind: "proposal" as const };
       }
