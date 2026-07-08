@@ -66,6 +66,11 @@ node dist/cli.js action apply --run latest --proposal <proposal-id> --rollback-o
 node dist/cli.js proposal rollback --run latest --proposal <proposal-id>
 node dist/cli.js proposal replan --run latest --proposal <proposal-id>
 node dist/cli.js proposal retry --run latest --proposal <failed-proposal-id>
+node dist/cli.js proposal accept --run latest --proposal <retry-proposal-id> --notes "verified repair"
+node dist/cli.js proposal list --run latest --state ignored
+node dist/cli.js proposal reject --run latest --proposal <proposal-id> --reason "wrong probe shape"
+node dist/cli.js proposal ignore --run latest --proposal <proposal-id> --reason "superseded by regenerated proposal"
+node dist/cli.js proposal ignore --run latest --proposal <proposal-id> --superseded-by <proposal-id>
 node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
 node dist/cli.js diff list --run latest --compare <compare.json>
@@ -88,6 +93,12 @@ gh pr checks 1
 Pull requests run GitHub Actions CI with Node 22, `npm ci`, and `npm test`.
 Use [docs/PR_MERGE_READINESS.md](docs/PR_MERGE_READINESS.md) as the final PR
 handoff checklist.
+For the real `md` validation workflow, use
+[docs/MD_OPERATOR_RUNBOOK.md](docs/MD_OPERATOR_RUNBOOK.md). For the current
+Phase 57-68 review split, use
+[docs/PR_SPLIT_PLAN_57_68.md](docs/PR_SPLIT_PLAN_57_68.md). For final
+release readiness, use
+[docs/RELEASE_CHECKLIST_57_68.md](docs/RELEASE_CHECKLIST_57_68.md).
 
 Proposal gates support two execution policies:
 
@@ -108,6 +119,13 @@ Migration Guard writes a focused replan brief and JSON context pack under
 the failed proposal from evidence instead of guessing. `proposal retry` then
 creates a linked retry proposal scaffold so the next verification/apply step is
 tracked as part of the same failure loop.
+After a retry proposal has a passing checked verification, `proposal accept`
+writes a repair acceptance report that links the source failure, retry proposal,
+retry verification and AI repair checklist.
+Proposal lifecycle UX includes `proposal list` filters by state/action/risk,
+stored rejected/ignored reasons, and `proposal ignore --superseded-by` links.
+Batch plans and reports distinguish proposals excluded before selection from
+proposals skipped after an earlier batch failure.
 When a latest compare report exists, failed proposal gates also reference
 specific check/probe behavior drift in the verification report, failure issue,
 replan brief, issue sync export, and run report.
@@ -129,6 +147,10 @@ Use `--adapter md-monorepo` to generate a project-specific refactor task plan
 and action candidates for `md` domains before allowing whole-repo source edits.
 Action probe proposals can inspect affected directories as well as individual
 files, which lets domain-scoped proposals use real package boundaries.
+Shared TypeScript-only `md` package actions use `ts-structural-probe` instead of
+the Vue-focused UI smoke probe.
+MCP render runtime smoke disables remote code-block CSS fetches while still
+exercising the real renderer path.
 `proposal verify --checks` temporarily applies generated-script proposals while
 checks run, then rolls them back and keeps the proposal unapplied.
 Proposal checks also fail on package-manager no-op output, such as a pnpm filter
@@ -148,6 +170,12 @@ Use `actions handoff --create-replans` to turn readiness attention items into
 deduplicated replan tasks and task issues inside the migration run.
 Use `actions handoff --create-replans --repair-briefs` to write AI/human repair
 briefs and JSON context for each readiness attention item.
+Use `proposal reject` or `proposal ignore` to exclude a proposed-only patch from
+future batch plans without trying to rollback a patch that was never applied.
+Run reports include an evidence graph that links proposals, gates, batches,
+behavior decisions, replans and next actions. Replan contexts include template
+selection, check readiness, source snippet indexes, failed stdout/stderr
+summaries and an AI repair acceptance checklist.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at
@@ -189,6 +217,59 @@ Proposal gate defaults can be configured:
 ```
 
 CLI `--gate-policy` options override config defaults for that command.
+
+Config profiles let one config carry local, CI, fast, and full lanes without
+copying the whole file. Pass `--profile <name>` on commands that load config, or
+set `MG_PROFILE=<name>`.
+
+```json
+{
+  "schemaVersion": 1,
+  "targetRoot": ".",
+  "artifactsDir": ".migration-guard",
+  "profiles": {
+    "local": {
+      "artifactsDir": ".migration-guard/local"
+    },
+    "ci": {
+      "artifactsDir": ".migration-guard/ci",
+      "proposalGate": {
+        "batchPolicy": "collect-all"
+      }
+    },
+    "fast": {
+      "checks": [
+        { "name": "test", "command": "npm test", "critical": true }
+      ]
+    },
+    "full": {
+      "checks": [
+        { "name": "test", "command": "npm test", "critical": true },
+        { "name": "build", "command": "npm run build", "critical": true }
+      ]
+    }
+  }
+}
+```
+
+Runtime artifacts can be reviewed and pruned with a dry-run-first GC command:
+
+```bash
+node dist/cli.js artifacts gc --keep-runs 5
+node dist/cli.js artifacts gc --keep-runs 5 --apply
+```
+
+Artifact schema migrations are also dry-run-first. Use them after upgrading
+Migration Guard when old proposal, verification, batch or replan artifacts need
+new compatibility fields:
+
+```bash
+node dist/cli.js artifacts migrate
+node dist/cli.js artifacts migrate --apply --apply-confirm <plan-hash>
+```
+
+Review the dry-run output first and copy its `planHash` into `--apply-confirm`
+only when the migration plan matches the artifacts you intend to update.
 
 ## Probe types
 
@@ -328,6 +409,9 @@ references in proposal gates.
 
 See [docs/PHASE_38_REPORT.md](docs/PHASE_38_REPORT.md) for proposal-scoped
 before/after behavior diff artifacts.
+
+See [docs/PHASE_57_REPORT.md](docs/PHASE_57_REPORT.md) for TS structural probe,
+MCP render smoke stabilization and proposal exclusion semantics.
 
 See [docs/NEXT_MAJOR_PHASES.md](docs/NEXT_MAJOR_PHASES.md) for the larger
 roadmap after the GitHub mutation smoke.

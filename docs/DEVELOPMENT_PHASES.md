@@ -1987,6 +1987,286 @@ PR split 结果：
 - 已合并 PR 的范围、merge commit 和 CI 状态可追踪。
 - Phase 55 发现的 shared probe / MCP flake / proposal exclusion 后续工作被保留。
 
+## Phase 57: Probe Template Repair and Proposal Exclusion
+
+目标：修复 Phase 55 真实 batch 暴露的 shared TS probe、MCP render remote CSS flake、proposal 排除语义三个问题，让下一轮 MD batch 不需要用 UI probe 或 rollback workaround。
+
+交付内容：
+
+- `ts-structural-probe` action patch template
+- `md-task-shared-contracts` 选择 TS structural probe
+- MCP render runtime smoke 传 `codeBlockTheme: ''`，避免远程 CSS fetch
+- proposal apply state 新增 `ignored`
+- `proposal reject` / `proposal ignore` CLI
+- batch plan/apply 排除 `rejected` 和 `ignored` proposal
+
+建议命令：
+
+```bash
+node dist/cli.js proposal reject --run latest --proposal <proposal-id> --reason "wrong probe shape"
+node dist/cli.js proposal ignore --run latest --proposal <proposal-id> --reason "superseded by regenerated proposal"
+node dist/cli.js proposal batch plan --run latest --limit 3
+```
+
+产物：
+
+- `docs/PHASE_57_REPORT.md`
+- proposal JSON 中的 `applyState: "rejected" | "ignored"`
+- evidence log 中的 proposal exclusion 事件
+
+完成标准：
+
+- shared TS action probe 不再检查 Vue `<template>` / `<script>`。
+- MCP render smoke 不再依赖远程 code-block CSS。
+- rejected / ignored proposal 不进入 batch。
+- 被排除的 proposal 不能继续 verify/apply/rollback。
+- `npm test` 覆盖以上路径。
+
+## Phase 58: Real MD Small Batch Regression
+
+目标：用真实 `md` 小批量回归证明 Phase 57 不只是单测修复，而是能修复真实 batch 流程。
+
+交付内容：
+
+- 使用 `configs/md-fast.migration-guard.json` 重新跑真实 `md` dry-run / resume。
+- 生成 shared contracts proposal，并确认使用 `ts-structural-probe`。
+- 生成 MCP render proposal，并确认不再触发远程 CSS fetch。
+- 人工 ignore/reject proposed-only proposal，并确认 batch plan 不选择它。
+- `docs/PHASE_58_REPORT.md`
+
+完成标准：
+
+- 至少 3 个 proposal 进入 batch。
+- 包含 shared TS proposal。
+- target `md` repository 最终 clean。
+- 没有 CDN flake。
+
+## Phase 59: Probe Template Registry
+
+目标：把 probe template 选择从分散的推断逻辑收敛到 registry，降低 shared TS 被误判成 UI probe 这类问题复发概率。
+
+交付内容：
+
+- `src/core/probeTemplateRegistry.ts`
+- `ui-smoke-probe`、`ts-structural-probe`、`renderer-probe`、`api-contract-probe` 等 registry definitions
+- action plan / proposal artifact 写入 `templateSelection`
+- `actions` 输出 template selection reason
+- `docs/PHASE_59_REPORT.md`
+
+完成标准：
+
+- shared TS action 选择 `ts-structural-probe`。
+- web static action 保持 `ui-smoke-probe`。
+- renderer action 选择 `renderer-probe`。
+- API action 选择 `api-contract-probe`。
+- `npm test` 覆盖 selection priority。
+
+## Phase 60: Proposal Lifecycle UX
+
+目标：让 reject / ignore 生命周期状态可查询、可筛选、可解释，operator 不需要翻 proposal artifact JSON。
+
+交付内容：
+
+- proposal `exclusion` metadata：state、reason、superseded-by、createdAt
+- `proposal list --state --action --risk --json`
+- `proposal status` 显示 exclusion reason / superseded-by
+- `proposal ignore --superseded-by <proposal-id>`
+- batch plan/report 显示 excluded proposal 数量和原因
+- `docs/PHASE_60_REPORT.md`
+
+完成标准：
+
+- rejected / ignored reason 可见。
+- superseded-by 替代关系可追踪。
+- batch plan 不选择 ignored/rejected proposal，并解释排除原因。
+- applied proposal 不能被误 ignore/reject。
+
+## Phase 61: Evidence Graph and Report Convergence
+
+目标：让 run report 串起 action、proposal、check、behavior diff、decision、issue、replan 和 batch 状态。
+
+交付内容：
+
+- run report `Evidence Graph` section
+- proposal compact summary
+- latest behavior decision summary 前置到 run summary
+- batch failure skip 与 lifecycle exclusion 分开显示
+- recent batch summary 显示 excluded-count
+- `docs/PHASE_61_REPORT.md`
+
+完成标准：
+
+- report 能解释 proposal 为什么生成、跑了什么、为什么停、下一步是什么。
+- failed batch 的 skipped proposal 区分失败跳过和 lifecycle 排除。
+- operator 可以从单个 run report 接手下一步。
+
+## Phase 62: AI Repair Loop Strengthening
+
+目标：让 proposal failure 的 AI repair context 更接近任务级输入，减少 AI 重新扫描和重新猜问题的成本。
+
+交付内容：
+
+- replan context 增加 template selection、check plan、check readiness、source snippets
+- failure context 增加 latest failed stdout/stderr summary
+- replan brief 增加 Source Snippet Index
+- replan brief 增加 AI Repair Acceptance Checklist
+- retry proposal 继承 source failure category 和 template selection
+- `docs/PHASE_62_REPORT.md`
+
+完成标准：
+
+- AI/human 可以从 replan brief/context 直接理解失败证据和修复边界。
+- retry proposal 回连原 proposal 的失败分类。
+- 单测覆盖 brief/context/retry inheritance。
+
+## Phase 63: Generalization and Release Prep Foundation
+
+目标：在 60-62 的 artifact shape 稳定前先完成不依赖它们的发布准备底座。
+
+交付内容：
+
+- config profiles：`fast` / `full` / `ci` / `local`
+- artifact GC dry-run-first CLI
+- config schema version guard
+- Windows/Linux path consistency tests
+- README quick path 更新
+- `docs/PHASE_63_REPORT.md`
+
+完成标准：
+
+- `--profile` / `MG_PROFILE` 可选择运行配置 lane。
+- `artifacts gc` 默认 dry-run，`--apply` 才删除旧 run artifacts。
+- unknown schema version fail fast。
+- artifact migration 和细粒度 GC 等待 proposal/report artifact shape 继续稳定后再做。
+
+## Phase 64: Artifact Schema Migration Foundation
+
+目标：给 60-62 稳定下来的 proposal / gate / batch / replan artifact 增加 schema migration 底座，保证旧 run 仍可读，新 artifact 有明确 schema marker。
+
+交付内容：
+
+- `src/core/artifactMigration.ts`
+- `artifacts migrate` dry-run-first CLI
+- new artifacts 写入 `artifactSchemaVersion: 1`
+- proposal / verification / batch / replan context backfill rules
+- md-fast artifact migration dry-run smoke
+- `docs/PHASE_64_REPORT.md`
+
+建议命令：
+
+```bash
+node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
+node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json --json
+node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json --apply --apply-confirm <plan-hash>
+```
+
+完成标准：
+
+- 默认 dry-run，不写回旧 artifact。
+- `--apply --apply-confirm <plan-hash>` 才补字段。
+- invalid JSON 会在 report 中显式计数。
+- 老 proposal / verification / batch / replan context shape 有单测覆盖。
+- target repository 不被 artifact migration 修改。
+
+## Phase 65: Real MD Medium Batch Regression
+
+目标：从小批量升级到真实 `md` medium batch，验证 59-64 的组合稳定性。
+
+交付内容：
+
+- 新 md-fast run：`run-2026-07-08T01-50-45-553Z-4kqioq`
+- 5-proposal medium batch
+- first-round failure evidence and replan artifacts
+- UI smoke probe mixed Vue/TS directory fix
+- second-round passing 5-proposal batch
+- rollback clean evidence
+- `docs/PHASE_65_REPORT.md`
+
+完成标准：
+
+- batch 覆盖 shared TS、renderer、API、web static、MCP render。
+- 至少 5 个 proposal 执行。
+- failed batch 能生成 replan brief/context。
+- rolled-back proposals 后续 batch plan 会被 excluded。
+- 修复后 second batch passed。
+- 所有 applied proposals rollback 后 target `md` repository clean。
+
+## Phase 66: AI Repair Acceptance Automation
+
+目标：把 AI repair checklist 变成可记录、可审查的 acceptance artifact，让 retry proposal 的修复验收进入证据链。
+
+交付内容：
+
+- `proposal accept --proposal <retry-proposal-id>`
+- repair acceptance report artifact
+- acceptance requires latest retry verification passed
+- acceptance requires at least one retry check
+- `proposal status` 显示 last acceptance
+- run report 显示 Recent Repair Acceptances
+- evidence graph / proposal compact summary 显示 repair acceptance
+- artifact migration 支持 `proposal-repair-acceptance`
+- `docs/PHASE_66_REPORT.md`
+
+完成标准：
+
+- retry proposal 没有通过 checked verification 时不能 accept。
+- acceptance report 串起 source failure、retry verification、replan context 和 checklist。
+- operator 可以从 run report 看到 repair acceptance evidence。
+
+## Phase 67: Artifact Migration Apply Confirmation
+
+目标：给 `artifacts migrate --apply` 增加 reviewed-plan confirmation，避免 release 前误写旧 evidence artifacts。
+
+交付内容：
+
+- migration dry-run report 增加 `planHash`
+- `--apply` 需要 `--apply-confirm <plan-hash>`
+- invalid JSON artifact 存在时拒绝 apply
+- CLI help / README / Phase 64 docs 更新
+- md-fast real CLI smoke 验证缺少 confirm 时拒绝 apply
+- `docs/PHASE_67_REPORT.md`
+
+完成标准：
+
+- dry-run 可审查 plan hash。
+- apply 没有匹配 confirm 时不写 artifact。
+- 单测覆盖 confirmation requirement。
+- target repository 保持 clean。
+
+## Phase 68: PR Split Plan and Operator Runbook
+
+目标：把 Phase 57-67 的长线改动拆成 reviewer 可理解的 PR 链，并把真实 `md` 操作路径收敛成专门 runbook。
+
+交付内容：
+
+- `docs/PR_SPLIT_PLAN_57_68.md`
+- `docs/MD_OPERATOR_RUNBOOK.md`
+- `docs/PHASE_68_REPORT.md`
+- README 增加 runbook / PR split plan 入口
+- NEXT_MAJOR_PHASES 更新 release hardening 状态
+
+完成标准：
+
+- PR split plan 能说明每个 PR 的 scope、依赖顺序、review focus 和 required checks。
+- operator runbook 能覆盖 md-fast run、proposal batch、failure replan/retry/accept、artifact maintenance 和 final clean check。
+- 详细 phase reports 仍作为 evidence 保留。
+
+## Phase 69: Final Release Checklist
+
+目标：把 Phase 57-68 的 release readiness 收成最终 checklist，作为开始拆 PR/提交前的最后交接文档。
+
+交付内容：
+
+- `docs/RELEASE_CHECKLIST_57_68.md`
+- `docs/PHASE_69_REPORT.md`
+- README 增加 release checklist 入口
+
+完成标准：
+
+- checklist 覆盖 release scope、required checks、PR gates、real MD evidence、artifact migration smoke、release boundaries 和 pre-PR rules。
+- checklist 链接 PR split plan 和 operator runbook。
+- target repository 保持 clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
