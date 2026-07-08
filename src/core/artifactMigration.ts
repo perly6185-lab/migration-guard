@@ -1,18 +1,19 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import {
+  ARTIFACT_SCHEMA_V1,
+  CURRENT_ARTIFACT_SCHEMA_VERSION,
+  missingFrozenArtifactFields,
+  unsupportedArtifactSchemaVersion,
+  type ArtifactSchemaKind,
+  type ArtifactSchemaRegistry
+} from "./artifactSchema.js";
 import { pathExists, readJsonFile, toPosixPath, writeJsonFile } from "./files.js";
 import { sha256 } from "./hash.js";
 import type { LoadedConfig } from "../types.js";
 
-export const CURRENT_ARTIFACT_SCHEMA_VERSION = 1;
-
-export type ArtifactMigrationKind =
-  | "proposal"
-  | "proposal-verification-report"
-  | "proposal-batch-plan"
-  | "proposal-batch-report"
-  | "proposal-replan-context"
-  | "proposal-repair-acceptance";
+export { CURRENT_ARTIFACT_SCHEMA_VERSION };
+export type ArtifactMigrationKind = ArtifactSchemaKind;
 export type ArtifactMigrationStatus = "up-to-date" | "would-migrate" | "migrated" | "unsupported" | "invalid-json";
 
 export interface ArtifactMigrationOptions {
@@ -31,6 +32,7 @@ export interface ArtifactMigrationEntry {
 export interface ArtifactMigrationReport {
   version: 1;
   artifactSchemaVersion: 1;
+  schema: ArtifactSchemaRegistry;
   artifactsDir: string;
   migrationRunsDir: string;
   applied: boolean;
@@ -86,7 +88,30 @@ export async function collectArtifactMigrationReport(
       continue;
     }
 
+    const unsupportedMessage = unsupportedArtifactSchemaVersion(value);
+    if (unsupportedMessage) {
+      plannedEntries.push({
+        candidate,
+        status: "unsupported",
+        changes: [],
+        message: unsupportedMessage
+      });
+      continue;
+    }
+
     const migration = migrateArtifactValue(candidate.kind, value);
+    const missingRequiredFields = missingFrozenArtifactFields(candidate.kind, migration.value);
+    if (missingRequiredFields.length > 0) {
+      plannedEntries.push({
+        candidate,
+        status: "unsupported",
+        changes: migration.changes,
+        migratedValue: migration.value,
+        message: `missing frozen v1 field(s): ${missingRequiredFields.join(", ")}`
+      });
+      continue;
+    }
+
     if (migration.changes.length === 0) {
       plannedEntries.push({
         candidate,
@@ -107,8 +132,12 @@ export async function collectArtifactMigrationReport(
   const planHash = createArtifactMigrationPlanHash(plannedEntries);
   const changedEntries = plannedEntries.filter((entry) => entry.status === "would-migrate");
   const invalidEntries = plannedEntries.filter((entry) => entry.status === "invalid-json");
+  const unsupportedEntries = plannedEntries.filter((entry) => entry.status === "unsupported");
   if (options.apply && invalidEntries.length > 0) {
     throw new Error(`Refusing to apply artifact migration with ${invalidEntries.length} invalid JSON artifact(s).`);
+  }
+  if (options.apply && unsupportedEntries.length > 0) {
+    throw new Error(`Refusing to apply artifact migration with ${unsupportedEntries.length} unsupported artifact(s).`);
   }
   if (options.apply && changedEntries.length > 0 && options.applyConfirm !== planHash) {
     throw new Error(`Artifact migration apply requires --apply-confirm ${planHash}. Re-run dry-run, review the plan, then apply with that hash.`);
@@ -132,6 +161,7 @@ export async function collectArtifactMigrationReport(
   return {
     version: 1,
     artifactSchemaVersion: CURRENT_ARTIFACT_SCHEMA_VERSION,
+    schema: ARTIFACT_SCHEMA_V1,
     artifactsDir,
     migrationRunsDir,
     applied: Boolean(options.apply),
@@ -152,6 +182,7 @@ export function renderArtifactMigrationReport(report: ArtifactMigrationReport): 
     `Migration runs: ${report.migrationRunsDir}`,
     `Mode: ${report.applied ? "apply" : "dry-run"}`,
     `Schema version: ${report.artifactSchemaVersion}`,
+    `Schema kinds: ${report.schema.kinds.map((kind) => kind.kind).join(", ")}`,
     `Plan hash: ${report.planHash}`,
     `Scanned: ${report.scannedCount}`,
     `Would migrate / migrated: ${report.migratedCount}`,
@@ -159,6 +190,15 @@ export function renderArtifactMigrationReport(report: ArtifactMigrationReport): 
     `Invalid: ${report.invalidCount}`,
     ""
   ];
+  const unsupported = report.entries.filter((entry) => entry.status === "unsupported");
+  if (unsupported.length > 0) {
+    lines.push("Unsupported:");
+    for (const entry of unsupported) {
+      lines.push(`- ${entry.kind}: ${entry.path}${entry.message ? ` (${entry.message})` : ""}`);
+    }
+    lines.push("");
+  }
+
   const changed = report.entries.filter((entry) => entry.status === "would-migrate" || entry.status === "migrated");
   if (changed.length === 0) {
     lines.push("Changes: none");
@@ -250,6 +290,14 @@ function migrateProposalVerificationReport(value: JsonObject): MigrationResult {
 function migrateProposalBatchReport(value: JsonObject): MigrationResult {
   const migrated = clone(value);
   const changes = ensureArtifactSchemaVersion(migrated);
+  if (migrated.executedCount === undefined) {
+    migrated.executedCount = Array.isArray(migrated.results) ? migrated.results.length : 0;
+    changes.push("backfilled executedCount");
+  }
+  if (migrated.skippedCount === undefined) {
+    migrated.skippedCount = Array.isArray(migrated.skipped) ? migrated.skipped.length : 0;
+    changes.push("backfilled skippedCount");
+  }
   if (!Array.isArray(migrated.skipped)) {
     migrated.skipped = [];
     changes.push("backfilled skipped as []");
