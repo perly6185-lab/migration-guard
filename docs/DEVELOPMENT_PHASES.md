@@ -2307,6 +2307,28 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - path helper 能处理 Windows、POSIX 和 mixed separator 输入。
 - target repository 保持 clean。
 
+## Phase 72: Artifact Schema v1 Freeze
+
+目标：把 artifact schema 从 migration backfill 底座推进到 frozen v1 registry，明确 proposal / gate / batch / replan / repair acceptance artifacts 的兼容边界。
+
+交付内容：
+
+- `src/core/artifactSchema.ts`
+- artifact schema v1 registry
+- artifact migration report 输出 schema registry
+- unsupported future schema detection
+- apply 遇到 unsupported artifact 时拒绝写回
+- 旧 batch report `executedCount` / `skippedCount` backfill
+- `docs/PHASE_72_REPORT.md`
+
+完成标准：
+
+- migration dry-run 能展示 frozen schema metadata。
+- 未来 `artifactSchemaVersion` 不会被当前版本 apply。
+- real md-fast artifact migration dry-run unsupported 0 / invalid 0。
+- 单元测试覆盖 schema freeze 和 unsupported artifact apply refusal。
+- target repository 保持 clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
