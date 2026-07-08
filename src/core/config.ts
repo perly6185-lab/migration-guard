@@ -1,6 +1,6 @@
 import path from "node:path";
 import { pathExists, readJsonFile, resolveMaybeRelative, writeJsonFile } from "./files.js";
-import type { LoadedConfig, MigrationGuardConfig } from "../types.js";
+import type { ComparePolicy, LoadedConfig, MigrationGuardConfig, MigrationGuardConfigProfile, OutputConfig, ProposalGateConfig } from "../types.js";
 
 export const CONFIG_FILE_NAME = ".migration-guard.json";
 
@@ -15,6 +15,12 @@ export const DEFAULT_IGNORE = [
   ".turbo",
   ".migration-guard"
 ];
+
+type RawMigrationGuardConfig = Omit<Partial<MigrationGuardConfig>, "output" | "compare" | "proposalGate"> & {
+  output?: Partial<OutputConfig>;
+  compare?: Partial<ComparePolicy>;
+  proposalGate?: Partial<ProposalGateConfig>;
+};
 
 export function createDefaultConfig(targetRoot = "."): MigrationGuardConfig {
   return {
@@ -78,7 +84,7 @@ export async function initConfigFile(configPath: string, targetRoot: string, for
   await writeJsonFile(configPath, createDefaultConfig(targetRoot));
 }
 
-export async function loadConfig(configPath?: string, startDir = process.cwd()): Promise<LoadedConfig> {
+export async function loadConfig(configPath?: string, startDir = process.cwd(), profileName?: string): Promise<LoadedConfig> {
   const resolvedConfigPath = configPath
     ? path.resolve(startDir, configPath)
     : await findConfigPath(startDir);
@@ -87,9 +93,11 @@ export async function loadConfig(configPath?: string, startDir = process.cwd()):
     throw new Error(`Could not find ${CONFIG_FILE_NAME}. Run "migration-guard init" first.`);
   }
 
-  const raw = await readJsonFile<Partial<MigrationGuardConfig>>(resolvedConfigPath);
+  const raw = await readJsonFile<RawMigrationGuardConfig>(resolvedConfigPath);
+  validateConfigSchema(raw, resolvedConfigPath);
   const baseDir = path.dirname(resolvedConfigPath);
-  const config = interpolateConfig(mergeWithDefaults(raw));
+  const selectedProfile = profileName ?? process.env.MG_PROFILE;
+  const config = interpolateConfig(mergeWithDefaults(applyConfigProfile(raw, selectedProfile, resolvedConfigPath)));
   const targetRoot = resolveMaybeRelative(baseDir, config.targetRoot);
   const artifactsDir = resolveMaybeRelative(baseDir, config.artifactsDir);
 
@@ -98,6 +106,7 @@ export async function loadConfig(configPath?: string, startDir = process.cwd()):
     baseDir,
     targetRoot,
     artifactsDir,
+    profile: selectedProfile,
     config
   };
 }
@@ -119,7 +128,7 @@ async function findConfigPath(startDir: string): Promise<string | undefined> {
   }
 }
 
-function mergeWithDefaults(raw: Partial<MigrationGuardConfig>): MigrationGuardConfig {
+function mergeWithDefaults(raw: RawMigrationGuardConfig): MigrationGuardConfig {
   const defaults = createDefaultConfig(raw.targetRoot ?? ".");
 
   return {
@@ -145,7 +154,63 @@ function mergeWithDefaults(raw: Partial<MigrationGuardConfig>): MigrationGuardCo
         ...raw.proposalGate?.retry
       }
     },
-    variables: raw.variables ?? defaults.variables
+    variables: raw.variables ?? defaults.variables,
+    profiles: raw.profiles
+  };
+}
+
+function validateConfigSchema(raw: RawMigrationGuardConfig, configPath: string): void {
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== 1) {
+    throw new Error(`Unsupported config schemaVersion ${String(raw.schemaVersion)} in ${configPath}. Expected 1.`);
+  }
+}
+
+function applyConfigProfile(
+  raw: RawMigrationGuardConfig,
+  profileName: string | undefined,
+  configPath: string
+): RawMigrationGuardConfig {
+  if (!profileName) {
+    return raw;
+  }
+
+  const profile = raw.profiles?.[profileName];
+  if (!profile) {
+    const known = Object.keys(raw.profiles ?? {}).sort().join(", ") || "none";
+    throw new Error(`Config profile not found: ${profileName}. Available profiles: ${known}. Config: ${configPath}`);
+  }
+
+  return mergeProfile(raw, profile);
+}
+
+function mergeProfile(
+  raw: RawMigrationGuardConfig,
+  profile: MigrationGuardConfigProfile
+): RawMigrationGuardConfig {
+  return {
+    ...raw,
+    ...profile,
+    output: {
+      ...raw.output,
+      ...profile.output
+    },
+    compare: {
+      ...raw.compare,
+      ...profile.compare
+    },
+    proposalGate: {
+      ...raw.proposalGate,
+      ...profile.proposalGate,
+      retry: {
+        ...raw.proposalGate?.retry,
+        ...profile.proposalGate?.retry
+      }
+    },
+    variables: {
+      ...raw.variables,
+      ...profile.variables
+    },
+    profiles: raw.profiles
   };
 }
 

@@ -7,6 +7,7 @@ import { decisionsForCompareReport } from "./diffDecision.js";
 import { renderCompareReport } from "./markdown.js";
 import { captureSnapshot } from "./snapshot.js";
 import { appendEvidence, createId, createProposalFailureIssue, createProposalReplanTask, migrationRunDir, saveRunPackage } from "./migrationRun.js";
+import { getProbeTemplateDefinition, selectProbeTemplateForAction } from "./probeTemplateRegistry.js";
 import type {
   LoadedConfig,
   MigrationAction,
@@ -16,6 +17,7 @@ import type {
   MigrationTask,
   ProposalBehaviorDiffReport,
   ProposalBehaviorDriftReference,
+  ProposalBatchExcludedItem,
   ProposalBatchPlan,
   ProposalBatchReport,
   ProposalBatchResult,
@@ -31,6 +33,7 @@ import type {
   ProposalPatchCheck,
   ProposalPreviewConfig,
   ProposalPreviewResult,
+  ProposalRepairAcceptanceReport,
   ProposalRollbackReport,
   ProposalTemporaryApply,
   ProposalVerificationReport,
@@ -65,6 +68,12 @@ export interface ProposalStatus {
   rollbackReports: string[];
 }
 
+export interface ProposalListFilters {
+  state?: ProposedPatch["applyState"];
+  actionId?: string;
+  risk?: ProposedPatch["risk"];
+}
+
 export interface ProposalReplanResult {
   message: string;
   proposal: ProposedPatch;
@@ -97,6 +106,7 @@ interface ProposalReplanArtifactPaths {
 
 interface ProposalReplanContext {
   version: 1;
+  artifactSchemaVersion?: 1;
   createdAt: string;
   run: {
     id: string;
@@ -113,6 +123,19 @@ interface ProposalReplanContext {
     affectedFiles: string[];
     generatedFiles: string[];
     recommendedChecks: string[];
+    templateSelection?: ProposedPatch["templateSelection"];
+    checkPlan?: ProposalCheckPlanItem[];
+    checkReadiness?: Array<{
+      command: string;
+      status: string;
+      reason: string;
+    }>;
+    sourceSnippets: Array<{
+      file: string;
+      startLine: number;
+      endLine: number;
+      excerpt: string;
+    }>;
   };
   failure: {
     issueId: string;
@@ -131,6 +154,10 @@ interface ProposalReplanContext {
       error?: string;
       remediationHints: string[];
     };
+    latestFailedOutput?: {
+      stdout: string;
+      stderr: string;
+    };
     behaviorDrift?: ProposalBehaviorDriftReference;
     behaviorDriftDecisions?: Array<{
       area: "check" | "probe";
@@ -140,6 +167,7 @@ interface ProposalReplanContext {
       reason?: string;
     }>;
   };
+  acceptanceChecklist: string[];
   commands: {
     status: string;
     retryVerify: string;
@@ -168,6 +196,7 @@ export async function proposePatch(loaded: LoadedConfig, pkg: MigrationRunPackag
   const checkPlan = createProposalCheckPlan(loaded, task.verificationCommands);
   const proposed: ProposedPatch = {
     version: 1,
+    artifactSchemaVersion: 1,
     id,
     runId: pkg.run.id,
     taskId,
@@ -220,8 +249,10 @@ export async function proposeActionPatch(
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "proposals", id);
   const patchPath = path.join(dir, "patch.diff");
   const generatedFile = createActionProbePath(action);
-  const template = inferPatchTemplate(action);
-  const preview = template === "ui-smoke-probe" ? await resolveActionPreview(loaded, action) : undefined;
+  const templateSelection = selectProbeTemplateForAction(action);
+  const template = templateSelection.template;
+  const templateDefinition = getProbeTemplateDefinition(template);
+  const preview = templateDefinition.needsPreview ? await resolveActionPreview(loaded, action) : undefined;
   if (await pathExists(path.join(pkg.run.targetRoot, generatedFile))) {
     throw new Error(`Generated probe already exists in target: ${generatedFile}`);
   }
@@ -232,6 +263,7 @@ export async function proposeActionPatch(
   const checkPlan = action.checkPlan ?? createProposalCheckPlan(loaded, recommendedChecks, preview ? [generatedFile] : []);
   const proposed: ProposedPatch = {
     version: 1,
+    artifactSchemaVersion: 1,
     id,
     runId: pkg.run.id,
     actionId: action.id,
@@ -244,6 +276,7 @@ export async function proposeActionPatch(
     generatedFiles: [generatedFile],
     recommendedChecks,
     checkPlan,
+    templateSelection,
     preview,
     patchKind: "action-probe",
     applyState: "proposed"
@@ -261,6 +294,7 @@ export async function proposeActionPatch(
       generatedFiles: proposed.generatedFiles,
       recommendedChecks,
       checkPlan: proposed.checkPlan,
+      templateSelection,
       preview
     }
   });
@@ -274,6 +308,7 @@ export async function verifyProposedPatch(
   options: { runChecks?: boolean; gatePolicy?: ProposalGatePolicy } = {}
 ): Promise<ProposalVerificationReport> {
   const proposal = await loadProposal(loaded, pkg, proposalId);
+  assertProposalIsNotExcluded(proposal, "verify");
   const patchContent = await fs.readFile(proposal.patchPath, "utf8");
   const patchCheck = await checkPatchApplicability(loaded, pkg, proposal, patchContent);
   const gatePolicy = resolveGatePolicy(loaded, options.gatePolicy);
@@ -311,6 +346,7 @@ export async function applyProposedPatch(
 ): Promise<ApplyProposedPatchResult> {
   const proposalPath = proposalJsonPath(loaded, pkg, proposalId);
   const proposal = await readJsonFile<ProposedPatch>(proposalPath);
+  assertProposalIsNotExcluded(proposal, "apply");
   const patchContent = await fs.readFile(proposal.patchPath, "utf8");
   const patchCheck = await checkPatchApplicability(loaded, pkg, proposal, patchContent);
   const gatePolicy = resolveGatePolicy(loaded, options.gatePolicy);
@@ -423,6 +459,7 @@ export async function rollbackProposedPatch(
   proposalId: string
 ): Promise<ProposalRollbackReport> {
   const proposal = await loadProposal(loaded, pkg, proposalId);
+  assertProposalIsNotExcluded(proposal, "rollback");
   const patchContent = await fs.readFile(proposal.patchPath, "utf8");
   const report = await rollbackPatch(loaded, pkg, proposal, patchContent);
   proposal.applyState = report.passed ? "rolled-back" : "rollback-failed";
@@ -446,6 +483,55 @@ export async function rollbackProposedPatch(
   }
 
   return report;
+}
+
+export interface ProposalRepairAcceptanceResult {
+  message: string;
+  sourceProposal: ProposedPatch;
+  retryProposal: ProposedPatch;
+  retryVerificationReport: ProposalVerificationReport;
+  acceptanceReport: ProposalRepairAcceptanceReport;
+}
+
+export async function excludeProposal(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposalId: string,
+  applyState: Extract<ProposedPatch["applyState"], "rejected" | "ignored">,
+  reason?: string,
+  supersededBy?: string
+): Promise<ProposedPatch> {
+  const proposal = await loadProposal(loaded, pkg, proposalId);
+  if (proposal.applyState === "applied" || proposal.applyState === "applied-with-failed-checks" || proposal.applyState === "rollback-failed") {
+    throw new Error(`Proposal ${proposal.id} is ${proposal.applyState}; rollback or resolve it before marking it ${applyState}.`);
+  }
+  if (supersededBy && supersededBy === proposal.id) {
+    throw new Error(`Proposal ${proposal.id} cannot be superseded by itself.`);
+  }
+
+  const trimmedReason = reason?.trim() || undefined;
+  proposal.applyState = applyState;
+  proposal.exclusion = {
+    state: applyState,
+    reason: trimmedReason,
+    supersededBy: supersededBy?.trim() || undefined,
+    createdAt: new Date().toISOString()
+  };
+  await writeJsonFile(proposalJsonPath(loaded, pkg, proposal.id), proposal);
+  await appendEvidence(loaded, pkg.run.id, {
+    runId: pkg.run.id,
+    taskId: proposal.taskId,
+    type: "proposal",
+    message: `Marked proposal ${proposal.id} as ${applyState}`,
+    data: {
+      proposalId: proposal.id,
+      actionId: proposal.actionId,
+      reason: trimmedReason,
+      supersededBy: proposal.exclusion.supersededBy
+    }
+  });
+  await saveRunPackage(loaded, pkg);
+  return proposal;
 }
 
 export async function replanProposal(
@@ -522,7 +608,7 @@ export async function createProposalRetry(
   }
 
   const existing = (await loadAllProposals(loaded, pkg))
-    .filter((proposal) => proposal.retryOfProposalId === sourceProposal.id && proposal.applyState !== "rejected")
+    .filter((proposal) => proposal.retryOfProposalId === sourceProposal.id && !isExcludedProposalState(proposal.applyState))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   if (existing) {
     report.retryProposalId = existing.id;
@@ -539,13 +625,16 @@ export async function createProposalRetry(
   const id = createId("retry");
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "proposals", id);
   const patchPath = path.join(dir, "patch.diff");
+  const sourceFailureCategory = report.checks.find((check) => !check.passed)?.failureCategory;
   const retryProposal: ProposedPatch = {
     version: 1,
+    artifactSchemaVersion: 1,
     id,
     runId: pkg.run.id,
     taskId: report.replanTaskId ?? sourceProposal.taskId,
     actionId: sourceProposal.actionId,
     retryOfProposalId: sourceProposal.id,
+    retrySourceFailureCategory: sourceFailureCategory,
     replanIssueId: report.replanIssueId,
     replanTaskId: report.replanTaskId,
     replanBriefPath: report.replanBriefPath,
@@ -559,6 +648,7 @@ export async function createProposalRetry(
     generatedFiles: sourceProposal.generatedFiles,
     recommendedChecks: sourceProposal.recommendedChecks,
     checkPlan: sourceProposal.checkPlan,
+    templateSelection: sourceProposal.templateSelection,
     preview: sourceProposal.preview,
     patchKind: "replan-retry",
     applyState: "proposed"
@@ -578,6 +668,7 @@ export async function createProposalRetry(
     data: {
       sourceProposalId: sourceProposal.id,
       retryProposalId: retryProposal.id,
+      sourceFailureCategory,
       replanBriefPath: report.replanBriefPath,
       replanContextPath: report.replanContextPath,
       patchPath
@@ -594,21 +685,105 @@ export async function createProposalRetry(
   };
 }
 
+export async function acceptProposalRepair(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  retryProposalId: string,
+  options: { notes?: string } = {}
+): Promise<ProposalRepairAcceptanceResult> {
+  const retryProposal = await loadProposal(loaded, pkg, retryProposalId);
+  if (!retryProposal.retryOfProposalId) {
+    throw new Error(`Proposal ${retryProposalId} is not a retry proposal.`);
+  }
+
+  const sourceProposal = await loadProposal(loaded, pkg, retryProposal.retryOfProposalId);
+  const retryVerificationPath = retryProposal.lastVerificationPath ?? await latestProposalVerificationPath(loaded, pkg, retryProposal.id);
+  if (!retryVerificationPath) {
+    throw new Error(`No verification report found for retry proposal ${retryProposal.id}.`);
+  }
+  const retryVerificationReport = await readJsonFile<ProposalVerificationReport>(retryVerificationPath);
+  if (!retryVerificationReport.passed) {
+    throw new Error(`Retry proposal ${retryProposal.id} latest verification has not passed.`);
+  }
+  if (retryVerificationReport.checks.length === 0) {
+    throw new Error(`Retry proposal ${retryProposal.id} latest verification did not run any checks.`);
+  }
+
+  const sourceVerificationPath = sourceProposal.lastVerificationPath ?? await latestProposalVerificationPath(loaded, pkg, sourceProposal.id);
+  const checklist = await createRepairAcceptanceItems(retryProposal, retryVerificationReport);
+  const id = createId("repair-acceptance");
+  const outputPath = path.join(migrationRunDir(loaded, pkg.run.id), "replans", sourceProposal.id, "acceptance", `${id}.json`);
+  const acceptanceReport: ProposalRepairAcceptanceReport = {
+    version: 1,
+    artifactSchemaVersion: 1,
+    id,
+    runId: pkg.run.id,
+    createdAt: new Date().toISOString(),
+    sourceProposalId: sourceProposal.id,
+    retryProposalId: retryProposal.id,
+    accepted: checklist.every((item) => item.status === "accepted"),
+    sourceVerificationPath,
+    retryVerificationPath,
+    replanBriefPath: retryProposal.replanBriefPath ?? sourceProposal.replanBriefPath,
+    replanContextPath: retryProposal.replanContextPath ?? sourceProposal.replanContextPath,
+    checklist,
+    notes: options.notes,
+    outputPath
+  };
+
+  await writeJsonFile(outputPath, acceptanceReport);
+  sourceProposal.lastAcceptancePath = outputPath;
+  retryProposal.lastAcceptancePath = outputPath;
+  await writeJsonFile(proposalJsonPath(loaded, pkg, sourceProposal.id), sourceProposal);
+  await writeJsonFile(proposalJsonPath(loaded, pkg, retryProposal.id), retryProposal);
+  await appendEvidence(loaded, pkg.run.id, {
+    runId: pkg.run.id,
+    taskId: retryProposal.taskId,
+    issueId: retryProposal.replanIssueId,
+    type: "proposal",
+    message: `Accepted repair ${retryProposal.id} for failed proposal ${sourceProposal.id}`,
+    data: {
+      sourceProposalId: sourceProposal.id,
+      retryProposalId: retryProposal.id,
+      outputPath,
+      retryVerificationPath,
+      accepted: acceptanceReport.accepted
+    }
+  });
+  await saveRunPackage(loaded, pkg);
+
+  return {
+    message: `Accepted repair ${retryProposal.id} for ${sourceProposal.id}.`,
+    sourceProposal,
+    retryProposal,
+    retryVerificationReport,
+    acceptanceReport
+  };
+}
+
 export async function createProposalBatchPlan(
   loaded: LoadedConfig,
   pkg: MigrationRunPackage,
   options: { limit?: number } = {}
 ): Promise<ProposalBatchPlan> {
-  const candidates = (await loadAllProposals(loaded, pkg))
-    .filter((proposal) => proposal.applyState === "proposed" || proposal.applyState === "verified")
+  const allProposals = await loadAllProposals(loaded, pkg);
+  const candidates = allProposals
+    .filter((proposal) => isBatchCandidateState(proposal.applyState))
     .sort(compareProposalsForBatch);
   const selected = typeof options.limit === "number" && options.limit > 0
     ? candidates.slice(0, options.limit)
     : candidates;
+  const selectedIds = new Set(selected.map((proposal) => proposal.id));
+  const excluded = allProposals
+    .filter((proposal) => !selectedIds.has(proposal.id))
+    .filter((proposal) => !isBatchCandidateState(proposal.applyState) || isExcludedProposalState(proposal.applyState))
+    .sort(compareProposalsForBatch)
+    .map(createProposalBatchExcludedItem);
   const id = createId("proposal-batch");
   const outputPath = path.join(migrationRunDir(loaded, pkg.run.id), "proposal-batches", id, "batch-plan.json");
   const plan: ProposalBatchPlan = {
     version: 1,
+    artifactSchemaVersion: 1,
     id,
     runId: pkg.run.id,
     createdAt: new Date().toISOString(),
@@ -623,6 +798,8 @@ export async function createProposalBatchPlan(
         command: check.command
       }))
     })),
+    excludedCount: excluded.length,
+    excluded,
     outputPath
   };
   await writeJsonFile(outputPath, plan);
@@ -632,7 +809,8 @@ export async function createProposalBatchPlan(
     message: `Created proposal batch plan ${plan.id} with ${plan.proposals.length} proposal(s)`,
     data: {
       outputPath: plan.outputPath,
-      proposalIds: plan.proposals.map((proposal) => proposal.proposalId)
+      proposalIds: plan.proposals.map((proposal) => proposal.proposalId),
+      excludedCount: plan.excludedCount
     }
   });
   return plan;
@@ -701,6 +879,7 @@ export async function applyProposalBatch(
   const failedResult = results.find((result) => !result.passed);
   const report: ProposalBatchReport = {
     version: 1,
+    artifactSchemaVersion: 1,
     id,
     runId: pkg.run.id,
     createdAt: new Date().toISOString(),
@@ -709,10 +888,12 @@ export async function applyProposalBatch(
     passed: results.length === plan.proposals.length && results.every((result) => result.passed),
     executedCount: results.length,
     skippedCount: skipped.length,
+    excludedCount: plan.excludedCount ?? 0,
     firstFailedProposalId: failedResult?.proposalId,
     firstFailedVerificationPath: failedResult?.verificationPath,
     results,
     skipped,
+    excluded: plan.excluded ?? [],
     stopReason,
     nextCommand: stopReason ? firstFailedProposalReplanCommand(results) : undefined,
     recommendedNextActions: createBatchRecommendedNextActions(failedResult),
@@ -748,6 +929,18 @@ export async function getProposalStatus(
     verificationReports: reports.filter((file) => path.basename(file).startsWith("verification-")).sort(),
     rollbackReports: reports.filter((file) => path.basename(file).startsWith("rollback-")).sort()
   };
+}
+
+export async function listProposals(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  filters: ProposalListFilters = {}
+): Promise<ProposedPatch[]> {
+  return (await loadAllProposals(loaded, pkg))
+    .filter((proposal) => !filters.state || proposal.applyState === filters.state)
+    .filter((proposal) => !filters.actionId || proposal.actionId === filters.actionId)
+    .filter((proposal) => !filters.risk || proposal.risk === filters.risk)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export function renderProposalVerificationReport(report: ProposalVerificationReport): string {
@@ -817,6 +1010,7 @@ export function renderProposalStatus(status: ProposalStatus): string {
     `Action: ${proposal.actionId ?? "none"}`,
     `Task: ${proposal.taskId ?? "none"}`,
     `Retry of: ${proposal.retryOfProposalId ?? "none"}`,
+    `Retry source failure: ${proposal.retrySourceFailureCategory ?? "none"}`,
     `Replan issue: ${proposal.replanIssueId ?? "none"}`,
     `Replan task: ${proposal.replanTaskId ?? "none"}`,
     `Replan brief: ${proposal.replanBriefPath ?? "none"}`,
@@ -825,21 +1019,43 @@ export function renderProposalStatus(status: ProposalStatus): string {
     `Recommended checks: ${proposal.recommendedChecks.join(", ") || "none"}`,
     `Check plan: ${(proposal.checkPlan ?? []).map((check) => `${check.kind}/${check.phase}`).join(", ") || "none"}`,
     `Preview: ${proposal.preview ? `${proposal.preview.command} -> ${proposal.preview.url}` : "none"}`,
+    `Exclusion reason: ${proposal.exclusion?.reason ?? "none"}`,
+    `Superseded by: ${proposal.exclusion?.supersededBy ?? "none"}`,
     `Last verification: ${proposal.lastVerificationPath ?? "none"}`,
     `Last rollback: ${proposal.lastRollbackPath ?? "none"}`,
+    `Last acceptance: ${proposal.lastAcceptancePath ?? "none"}`,
     `Verification reports: ${status.verificationReports.length}`,
     `Rollback reports: ${status.rollbackReports.length}`
   ].join("\n");
+}
+
+export function renderProposalList(proposals: ProposedPatch[]): string {
+  if (proposals.length === 0) {
+    return "No proposals.";
+  }
+  return proposals.map((proposal) => {
+    const details = [
+      proposal.actionId ? `action:${proposal.actionId}` : undefined,
+      proposal.retryOfProposalId ? `retry-of:${proposal.retryOfProposalId}` : undefined,
+      proposal.exclusion?.reason ? `reason:${proposal.exclusion.reason}` : undefined,
+      proposal.exclusion?.supersededBy ? `superseded-by:${proposal.exclusion.supersededBy}` : undefined
+    ].filter(Boolean).join(" ");
+    return `- ${proposal.id} [${proposal.applyState}/${proposal.risk}] ${proposal.title}${details ? ` (${details})` : ""}`;
+  }).join("\n");
 }
 
 export function renderProposalBatchPlan(plan: ProposalBatchPlan): string {
   const lines = [
     `Proposal batch: ${plan.id}`,
     `Run: ${plan.runId}`,
-    `Proposals: ${plan.proposals.length}`
+    `Proposals: ${plan.proposals.length}`,
+    `Excluded: ${plan.excludedCount ?? plan.excluded?.length ?? 0}`
   ];
   for (const item of plan.proposals) {
     lines.push(`- ${item.proposalId} [${item.applyState}/${item.risk}] ${item.title}`);
+  }
+  for (const item of plan.excluded ?? []) {
+    lines.push(`- excluded ${item.proposalId} [${item.applyState}/${item.risk}]: ${item.reason}${item.supersededBy ? ` (superseded by ${item.supersededBy})` : ""}`);
   }
   lines.push(`Wrote ${plan.outputPath}`);
   return lines.join("\n");
@@ -852,7 +1068,8 @@ export function renderProposalBatchReport(report: ProposalBatchReport): string {
     `Passed: ${report.passed ? "yes" : "no"}`,
     `Gate policy: ${report.gatePolicy?.mode ?? "unknown"}`,
     `Results: ${report.results.length}`,
-    `Skipped: ${report.skipped.length}`,
+    `Skipped after failure: ${report.skipped.length}`,
+    `Excluded before batch: ${report.excludedCount ?? report.excluded?.length ?? 0}`,
     `Executed: ${report.executedCount}`,
     `First failed: ${report.firstFailedProposalId ?? "none"}`
   ];
@@ -872,10 +1089,29 @@ export function renderProposalBatchReport(report: ProposalBatchReport): string {
     }
   }
   for (const item of report.skipped) {
-    lines.push(`- skipped ${item.proposalId}: ${item.reason}`);
+    lines.push(`- failure-skipped ${item.proposalId}: ${item.reason}`);
+  }
+  for (const item of report.excluded ?? []) {
+    lines.push(`- excluded ${item.proposalId} [${item.applyState}]: ${item.reason}${item.supersededBy ? ` (superseded by ${item.supersededBy})` : ""}`);
   }
   lines.push(`Wrote ${report.outputPath}`);
   return lines.join("\n");
+}
+
+export function renderProposalRepairAcceptanceReport(report: ProposalRepairAcceptanceReport): string {
+  return [
+    `Repair acceptance: ${report.id}`,
+    `Source proposal: ${report.sourceProposalId}`,
+    `Retry proposal: ${report.retryProposalId}`,
+    `Accepted: ${report.accepted ? "yes" : "no"}`,
+    `Retry verification: ${report.retryVerificationPath}`,
+    report.replanBriefPath ? `Replan brief: ${report.replanBriefPath}` : undefined,
+    report.replanContextPath ? `Replan context: ${report.replanContextPath}` : undefined,
+    report.notes ? `Notes: ${report.notes}` : undefined,
+    "Checklist:",
+    ...report.checklist.map((item) => `- ${item.status} ${item.text}${item.evidence ? ` (${item.evidence})` : ""}`),
+    `Wrote ${report.outputPath}`
+  ].filter((line): line is string => line !== undefined).join("\n");
 }
 
 async function writeProposalReplanArtifacts(
@@ -890,8 +1126,12 @@ async function writeProposalReplanArtifacts(
   const briefPath = path.join(dir, "replan-brief.md");
   const contextPath = path.join(dir, "replan-context.json");
   const firstFailedCheck = report.checks.find((check) => !check.passed);
+  const action = proposal.actionId
+    ? (await loadActionPlan(loaded, pkg).catch(() => undefined))?.actions.find((candidate) => candidate.id === proposal.actionId)
+    : undefined;
   const context: ProposalReplanContext = {
     version: 1,
+    artifactSchemaVersion: 1,
     createdAt: new Date().toISOString(),
     run: {
       id: pkg.run.id,
@@ -907,7 +1147,11 @@ async function writeProposalReplanArtifacts(
       patchPath: proposal.patchPath,
       affectedFiles: proposal.affectedFiles,
       generatedFiles: proposal.generatedFiles ?? [],
-      recommendedChecks: proposal.recommendedChecks
+      recommendedChecks: proposal.recommendedChecks,
+      templateSelection: proposal.templateSelection,
+      checkPlan: report.checkPlan ?? proposal.checkPlan,
+      checkReadiness: action?.checkReadiness,
+      sourceSnippets: await collectSourceSnippetIndex(pkg.run.targetRoot, proposal.affectedFiles)
     },
     failure: {
       issueId,
@@ -934,11 +1178,16 @@ async function writeProposalReplanArtifacts(
         error: firstFailedCheck.error,
         remediationHints: firstFailedCheck.remediationHints ?? []
       } : undefined,
+      latestFailedOutput: firstFailedCheck ? {
+        stdout: clipText(firstFailedCheck.stdout, 1200),
+        stderr: clipText(firstFailedCheck.stderr, 1200)
+      } : undefined,
       behaviorDrift: report.behaviorDrift,
       behaviorDriftDecisions: report.behaviorDrift
         ? await readBehaviorDriftDecisionSummaries(loaded, pkg.run.id, report.behaviorDrift)
         : undefined
     },
+    acceptanceChecklist: createAiRepairAcceptanceChecklist(proposal, report),
     commands: {
       status: "migration-guard status --run latest",
       retryVerify: `migration-guard proposal verify --run latest --proposal ${proposal.id} --checks`,
@@ -956,6 +1205,30 @@ async function writeProposalReplanArtifacts(
   await writeJsonFile(contextPath, context);
   await writeTextFile(briefPath, renderProposalReplanBrief(context));
   return { briefPath, contextPath };
+}
+
+async function createRepairAcceptanceItems(
+  retryProposal: ProposedPatch,
+  retryVerificationReport: ProposalVerificationReport
+): Promise<ProposalRepairAcceptanceReport["checklist"]> {
+  const context = retryProposal.replanContextPath && await pathExists(retryProposal.replanContextPath)
+    ? await readJsonFile<Partial<ProposalReplanContext>>(retryProposal.replanContextPath).catch(() => undefined)
+    : undefined;
+  const checklist = context?.acceptanceChecklist?.length
+    ? context.acceptanceChecklist
+    : createAiRepairAcceptanceChecklist(retryProposal, retryVerificationReport);
+  return [
+    ...checklist.map((text) => ({
+      text,
+      status: "accepted" as const,
+      evidence: retryVerificationReport.outputPath
+    })),
+    {
+      text: "Latest retry verification passed.",
+      status: retryVerificationReport.passed ? "accepted" as const : "needs-work" as const,
+      evidence: retryVerificationReport.outputPath
+    }
+  ];
 }
 
 async function readBehaviorDriftDecisionSummaries(
@@ -1009,8 +1282,14 @@ function renderProposalReplanBrief(context: ProposalReplanContext): string {
     `- Title: ${context.proposal.title}`,
     `- Risk: ${context.proposal.risk}`,
     `- Patch: ${context.proposal.patchPath}`,
+    context.proposal.templateSelection ? `- Probe template: ${context.proposal.templateSelection.template} (${context.proposal.templateSelection.reason})` : undefined,
     `- Affected files: ${context.proposal.affectedFiles.join(", ") || "none"}`,
     `- Generated files: ${context.proposal.generatedFiles.join(", ") || "none"}`,
+    `- Check plan: ${context.proposal.checkPlan?.map((check) => `${check.kind}/${check.phase}`).join(", ") || "none"}`,
+    ...(context.proposal.checkReadiness?.length ? [
+      "- Check readiness:",
+      ...context.proposal.checkReadiness.map((readiness) => `  - ${readiness.status}: ${readiness.command} (${readiness.reason})`)
+    ] : []),
     "",
     "## Failure Evidence",
     "",
@@ -1027,6 +1306,18 @@ function renderProposalReplanBrief(context: ProposalReplanContext): string {
       "## Remediation Hints",
       "",
       ...failed.remediationHints.map((hint) => `- ${hint}`)
+    ] : []),
+    ...(context.proposal.sourceSnippets.length ? [
+      "",
+      "## Source Snippet Index",
+      "",
+      ...context.proposal.sourceSnippets.map((snippet) => [
+        `### ${snippet.file}:${snippet.startLine}`,
+        "",
+        "```text",
+        snippet.excerpt,
+        "```"
+      ].join("\n"))
     ] : []),
     ...(context.failure.behaviorDrift?.differences.length ? [
       "",
@@ -1056,6 +1347,10 @@ function renderProposalReplanBrief(context: ProposalReplanContext): string {
     "",
     "Use this brief and the context JSON to create the smallest repair that addresses the failed gate. Do not broaden scope, weaken checks, or treat compile success alone as behavior proof.",
     "",
+    "## AI Repair Acceptance Checklist",
+    "",
+    ...context.acceptanceChecklist.map((item) => `- ${item}`),
+    "",
     "## Retry Commands",
     "",
     "```bash",
@@ -1084,6 +1379,103 @@ function renderProposalReplanBrief(context: ProposalReplanContext): string {
 
 function clipText(text: string, maxLength = 4000): string {
   return text.length > maxLength ? `${text.slice(0, maxLength)}\n...[truncated]` : text;
+}
+
+async function collectSourceSnippetIndex(
+  targetRoot: string,
+  affectedFiles: string[],
+  maxSnippets = 8
+): Promise<ProposalReplanContext["proposal"]["sourceSnippets"]> {
+  const snippets: ProposalReplanContext["proposal"]["sourceSnippets"] = [];
+  for (const affectedFile of affectedFiles) {
+    if (snippets.length >= maxSnippets) {
+      break;
+    }
+    const absolute = path.join(targetRoot, affectedFile);
+    if (!await pathExists(absolute)) {
+      continue;
+    }
+    const stat = await fs.stat(absolute);
+    if (stat.isFile()) {
+      const snippet = await readSourceSnippet(targetRoot, absolute);
+      if (snippet) {
+        snippets.push(snippet);
+      }
+      continue;
+    }
+    if (stat.isDirectory()) {
+      const files = await collectReadableSourceFiles(absolute);
+      for (const file of files) {
+        if (snippets.length >= maxSnippets) {
+          break;
+        }
+        const snippet = await readSourceSnippet(targetRoot, file);
+        if (snippet) {
+          snippets.push(snippet);
+        }
+      }
+    }
+  }
+  return snippets;
+}
+
+async function collectReadableSourceFiles(root: string): Promise<string[]> {
+  const readableExtensions = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx", ".vue"]);
+  const ignoredDirectories = new Set([".git", "node_modules", "dist", "build", "coverage", ".wxt", ".output"]);
+  const files: string[] = [];
+  const stack = [root];
+  while (stack.length > 0 && files.length < 25) {
+    const current = stack.pop()!;
+    const entries = await fs.readdir(current, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      const absolute = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredDirectories.has(entry.name)) {
+          stack.push(absolute);
+        }
+      } else if (entry.isFile() && readableExtensions.has(path.extname(entry.name))) {
+        files.push(absolute);
+      }
+    }
+  }
+  return files.sort();
+}
+
+async function readSourceSnippet(
+  targetRoot: string,
+  absolutePath: string,
+  maxLines = 80
+): Promise<ProposalReplanContext["proposal"]["sourceSnippets"][number] | undefined> {
+  const text = await fs.readFile(absolutePath, "utf8").catch(() => undefined);
+  if (!text) {
+    return undefined;
+  }
+  const lines = text.split(/\r?\n/).slice(0, maxLines);
+  return {
+    file: path.relative(targetRoot, absolutePath).replace(/\\/g, "/"),
+    startLine: 1,
+    endLine: lines.length,
+    excerpt: clipText(lines.join("\n"), 2000)
+  };
+}
+
+function createAiRepairAcceptanceChecklist(
+  proposal: ProposedPatch,
+  report: ProposalVerificationReport
+): string[] {
+  const failed = report.checks.find((check) => !check.passed);
+  return [
+    "Repair stays scoped to the source proposal's affected files or explains every additional file.",
+    proposal.templateSelection
+      ? `Probe template remains appropriate: ${proposal.templateSelection.template} (${proposal.templateSelection.reason}).`
+      : "Probe template selection is reviewed before changing generated probes.",
+    failed
+      ? `The failed check now passes without weakening or removing it: ${failed.command}.`
+      : "The failed gate is reproduced and the repaired proposal has a passing verification report.",
+    "Latest stdout/stderr evidence is addressed directly, not ignored.",
+    "Behavior diff is either clean or every risky difference is classified with a reason.",
+    "Retry proposal links back to the source proposal and preserves the failure classification."
+  ];
 }
 
 function createRetryProposalSummary(sourceProposal: ProposedPatch, report: ProposalVerificationReport): string {
@@ -1182,6 +1574,41 @@ async function loadAllProposals(loaded: LoadedConfig, pkg: MigrationRunPackage):
 function compareProposalsForBatch(a: ProposedPatch, b: ProposedPatch): number {
   const riskOrder = { low: 0, medium: 1, high: 2 };
   return riskOrder[a.risk] - riskOrder[b.risk] || a.createdAt.localeCompare(b.createdAt);
+}
+
+function createProposalBatchExcludedItem(proposal: ProposedPatch): ProposalBatchExcludedItem {
+  return {
+    proposalId: proposal.id,
+    title: proposal.title,
+    risk: proposal.risk,
+    applyState: proposal.applyState,
+    reason: proposal.exclusion?.reason ?? exclusionReasonForState(proposal.applyState),
+    supersededBy: proposal.exclusion?.supersededBy
+  };
+}
+
+function exclusionReasonForState(state: ProposedPatch["applyState"]): string {
+  switch (state) {
+    case "rejected":
+      return "proposal was rejected";
+    case "ignored":
+      return "proposal was ignored";
+    case "applied":
+      return "proposal is already applied";
+    case "applied-with-failed-checks":
+      return "proposal is applied with failed checks";
+    case "rolled-back":
+      return "proposal was rolled back";
+    case "rollback-failed":
+      return "proposal rollback failed";
+    case "verification-failed":
+      return "proposal verification failed";
+    case "proposed":
+    case "verified":
+      return "proposal was not selected by this batch limit";
+    default:
+      return `proposal state is ${state}`;
+  }
 }
 
 async function latestProposalVerificationPath(
@@ -1521,6 +1948,7 @@ async function writeProposalVerificationReport(
   const passed = patchCheck.passed && (temporaryApply?.passed ?? true) && (preview?.ready ?? true) && checks.every((check) => check.passed);
   const report: ProposalVerificationReport = {
     version: 1,
+    artifactSchemaVersion: 1,
     id: createId("proposal-verification"),
     runId: pkg.run.id,
     proposalId: proposal.id,
@@ -2293,8 +2721,10 @@ function createActionProbePath(action: MigrationAction): string {
 }
 
 function createActionProbeScript(goal: string, action: MigrationAction): string {
-  const template = inferPatchTemplate(action);
-  if (template === "ui-smoke-probe") {
+  const templateSelection = selectProbeTemplateForAction(action);
+  const template = templateSelection.template;
+  const definition = getProbeTemplateDefinition(template);
+  if (definition.scriptBuilder === "ui-smoke") {
     return createUiSmokeProbeScript(goal, action);
   }
 
@@ -2418,13 +2848,18 @@ function createUiSmokeProbeScript(goal: string, action: MigrationAction): string
     "  const absoluteFile = path.join(root, relativeFile);",
     "  const exists = existsSync(absoluteFile);",
     "  const inspectedFiles = exists ? collectReadableFiles(absoluteFile, relativeFile) : [];",
+    "  const vueFiles = inspectedFiles.filter((file) => path.extname(file) === \".vue\");",
     "  const text = inspectedFiles.map((file) => readUtf8(path.join(root, file))).join(\"\\n\");",
     "  return {",
     "    file: relativeFile,",
     "    exists,",
     "    inspectedFiles,",
+    "    vueFiles,",
+    "    checkMode: vueFiles.length > 0 ? \"vue-sfc\" : \"ts-support\",",
     "    hasTemplate: /<template[\\s>]/i.test(text),",
-    "    hasScript: /<script[\\s>]/i.test(text)",
+    "    hasScript: /<script[\\s>]/i.test(text),",
+    "    hasModuleSignal: /\\b(import|export)\\b/.test(text),",
+    "    hasStructureSignal: /\\b(interface|type|enum|class|function|const)\\b/.test(text)",
     "  };",
     "});",
     "",
@@ -2439,12 +2874,26 @@ function createUiSmokeProbeScript(goal: string, action: MigrationAction): string
     "for (const result of fileResults) {",
     "  if (!result.exists) {",
     "    failed.push(`missing:${result.file}`);",
+    "    continue;",
     "  }",
-    "  if (result.exists && !result.hasTemplate) {",
-    "    failed.push(`${result.file}:missing-template`);",
+    "  if (result.inspectedFiles.length === 0) {",
+    "    failed.push(`${result.file}:no-readable-files`);",
+    "    continue;",
     "  }",
-    "  if (result.exists && !result.hasScript) {",
-    "    failed.push(`${result.file}:missing-script`);",
+    "  if (result.checkMode === \"vue-sfc\") {",
+    "    if (!result.hasTemplate) {",
+    "      failed.push(`${result.file}:missing-template`);",
+    "    }",
+    "    if (!result.hasScript) {",
+    "      failed.push(`${result.file}:missing-script`);",
+    "    }",
+    "  } else {",
+    "    if (!result.hasModuleSignal) {",
+    "      failed.push(`${result.file}:missing-module-signal`);",
+    "    }",
+    "    if (!result.hasStructureSignal) {",
+    "      failed.push(`${result.file}:missing-structure-signal`);",
+    "    }",
     "  }",
     "}",
     "if (!runtimeResult.passed) {",
@@ -2559,54 +3008,7 @@ function createUiSmokeProbeScript(goal: string, action: MigrationAction): string
 }
 
 function createProbeChecks(template: MigrationActionPatchTemplate): Array<{ name: string; pattern: string }> {
-  switch (template) {
-    case "renderer-probe":
-      return [
-        { name: "has-renderer-signal", pattern: "/render|renderer|markdown|Marked|marked/i" },
-        { name: "has-export-signal", pattern: "/export\\s+/" }
-      ];
-    case "api-contract-probe":
-      return [
-        { name: "has-export-signal", pattern: "/export\\s+/" },
-        { name: "has-type-signal", pattern: "/interface|type|enum|schema/i" }
-      ];
-    case "ui-smoke-probe":
-      return [
-        { name: "has-template", pattern: "/<template[\\s>]/i" },
-        { name: "has-script", pattern: "/<script[\\s>]/i" }
-      ];
-    case "adapter-fixture-probe":
-      return [
-        { name: "has-package-json", pattern: "/\"scripts\"|\"dependencies\"|\"devDependencies\"/" },
-        { name: "has-workspace-or-package-signal", pattern: "/packages:|\"workspaces\"|\"packageManager\"/" }
-      ];
-    case "normalization-probe":
-      return [
-        { name: "has-script-signal", pattern: "/\"scripts\"/" },
-        { name: "has-test-or-build-script", pattern: "/\"(test|build|type-check|typecheck)\"/" }
-      ];
-    default:
-      return [{ name: "has-content", pattern: "/\\S/" }];
-  }
-}
-
-function inferPatchTemplate(action: MigrationAction): MigrationActionPatchTemplate {
-  if (action.patchTemplate) {
-    return action.patchTemplate;
-  }
-  if (action.id.includes("renderer")) {
-    return "renderer-probe";
-  }
-  if (action.id.includes("api")) {
-    return "api-contract-probe";
-  }
-  if (action.id.includes("fixture") || action.id.includes("adapter")) {
-    return "adapter-fixture-probe";
-  }
-  if (action.id.includes("normalize")) {
-    return "normalization-probe";
-  }
-  return "ui-smoke-probe";
+  return getProbeTemplateDefinition(template).checks;
 }
 
 function normalizePatchPath(filePath: string): string {
@@ -2619,6 +3021,21 @@ function normalizePatchPath(filePath: string): string {
 
 function sanitizeFileName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "migration-action";
+}
+
+function isBatchCandidateState(state: ProposedPatch["applyState"]): boolean {
+  return state === "proposed" || state === "verified";
+}
+
+function isExcludedProposalState(state: ProposedPatch["applyState"]): boolean {
+  return state === "rejected" || state === "ignored";
+}
+
+function assertProposalIsNotExcluded(proposal: ProposedPatch, action: string): void {
+  if (isExcludedProposalState(proposal.applyState)) {
+    const verb = action === "verify" ? "verified" : action === "apply" ? "applied" : "rolled back";
+    throw new Error(`Proposal ${proposal.id} is ${proposal.applyState}; it cannot be ${verb}.`);
+  }
 }
 
 function isPreApplyState(state: ProposedPatch["applyState"]): boolean {

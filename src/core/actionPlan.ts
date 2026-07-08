@@ -1,6 +1,7 @@
 import path from "node:path";
 import { pathExists, readJsonFile } from "./files.js";
 import { migrationRunDir } from "./migrationRun.js";
+import { selectProbeTemplateForAction } from "./probeTemplateRegistry.js";
 import type { LoadedConfig, MigrationActionPlan } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
@@ -34,8 +35,10 @@ export function renderActionPlan(plan: MigrationActionPlan): string {
   ];
 
   for (const action of plan.actions) {
+    const templateSelection = action.templateSelection ?? selectProbeTemplateForAction(action);
     lines.push(
       `- ${action.id} [${action.risk}/${action.patchMode}] ${action.title}`,
+      `  template: ${templateSelection.template} (${templateSelection.reason})`,
       `  files: ${action.affectedFiles.join(", ") || "none"}`,
       `  checks: ${action.recommendedChecks.join(", ") || "none"}`
     );
