@@ -29,12 +29,15 @@ Expected:
 node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "MD guarded migration" --dry-run --adapter md-monorepo --issue-provider local
 node dist/cli.js resume --config configs/md-fast.migration-guard.json --run <run-id> --auto
 node dist/cli.js actions --config configs/md-fast.migration-guard.json --run <run-id>
+node dist/cli.js readiness --config configs/md-fast.migration-guard.json --run <run-id>
 ```
 
 Check action readiness:
 
 - ready checks should be counted in `actions` output.
 - no-op-risk should be 0 before proposal generation unless intentionally accepted.
+- `readiness` should stay `hold` until action plan, proposals, template coverage
+  and passing batch evidence all exist.
 
 ## 4. Generate Proposals
 
@@ -59,6 +62,7 @@ Expected template coverage:
 ```bash
 node dist/cli.js proposal batch plan --config configs/md-fast.migration-guard.json --run <run-id> --limit 5
 node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run <run-id> --limit 5 --gate-policy fail-fast
+node dist/cli.js readiness --config configs/md-fast.migration-guard.json --run <run-id> --min-proposals 3 --min-batch-size 3 --strict
 ```
 
 If the batch passes, rollback each applied proposal after recording the report:

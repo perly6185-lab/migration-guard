@@ -28,6 +28,7 @@ For the real `md` validation lane:
 ```bash
 node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "MD guarded migration" --dry-run --adapter md-monorepo --issue-provider local
 node dist/cli.js resume --config configs/md-fast.migration-guard.json --run <run-id> --auto
+node dist/cli.js readiness --config configs/md-fast.migration-guard.json --run <run-id>
 node dist/cli.js proposal batch plan --config configs/md-fast.migration-guard.json --run <run-id> --limit 5
 node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run <run-id> --limit 5 --gate-policy fail-fast
 ```
@@ -106,6 +107,7 @@ node dist/cli.js proposal ignore --run latest --proposal <proposal-id> --reason 
 node dist/cli.js proposal ignore --run latest --proposal <proposal-id> --superseded-by <proposal-id>
 node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
+node dist/cli.js readiness --run latest --min-proposals 3 --min-batch-size 3 --strict
 node dist/cli.js diff list --run latest --compare <compare.json>
 node dist/cli.js diff decide --run latest --compare <compare.json> --area probe --name renderer --as intentional --reason "expected renderer behavior change"
 node dist/cli.js sync-issues --run latest --provider local
@@ -212,6 +214,10 @@ Run reports include an evidence graph that links proposals, gates, batches,
 behavior decisions, replans and next actions. Replan contexts include template
 selection, check readiness, source snippet indexes, failed stdout/stderr
 summaries and an AI repair acceptance checklist.
+`readiness` evaluates whether a run has enough clean evidence to enter a
+large-batch refactor. It requires a valid action plan, clear action check
+readiness, enough candidate proposals, required probe template coverage, a
+recent passing batch and a clean target repository before it returns `go`.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at
