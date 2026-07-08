@@ -887,3 +887,38 @@ export interface ProposalRepairAcceptanceReport {
   notes?: string;
   outputPath: string;
 }
+
+export type RefactorReadinessStatus = "go" | "hold";
+export type RefactorReadinessCriterionStatus = "passed" | "blocked" | "warning";
+
+export interface RefactorReadinessCriterion {
+  id: string;
+  title: string;
+  status: RefactorReadinessCriterionStatus;
+  summary: string;
+  evidence?: string[];
+  nextAction?: string;
+}
+
+export interface RefactorReadinessReport {
+  version: 1;
+  runId: string;
+  createdAt: string;
+  status: RefactorReadinessStatus;
+  mode: "large-batch-refactor";
+  minProposalCount: number;
+  minBatchSize: number;
+  summary: {
+    actionCount: number;
+    proposalCount: number;
+    batchCount: number;
+    latestPassingBatchId?: string;
+    targetClean?: boolean;
+    blockerCount: number;
+    warningCount: number;
+  };
+  criteria: RefactorReadinessCriterion[];
+  recommendedNextActions: string[];
+  outputPath?: string;
+  markdownPath?: string;
+}

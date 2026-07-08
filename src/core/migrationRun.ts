@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { renderMigrationPlan } from "./plan.js";
+import { assessRefactorReadiness } from "./refactorReadiness.js";
 import { scanProject } from "./scan.js";
 import { createEstimate, createTaskGraph, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
 import { decisionPolicyForCompareReportPath, formatPolicyLine } from "./diffDecision.js";
@@ -20,7 +21,8 @@ import type {
   ProposalBatchReport,
   ProposalRepairAcceptanceReport,
   ProposalVerificationReport,
-  ProposedPatch
+  ProposedPatch,
+  RefactorReadinessReport
 } from "../types.js";
 
 export interface CreateRunOptions {
@@ -379,6 +381,7 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
   const proposalBatches = await readRecentProposalBatchSummaries(loaded, pkg.run.id);
   const repairAcceptances = await readRecentProposalRepairAcceptanceSummaries(loaded, pkg.run.id);
   const actionCheckReadiness = await readActionCheckReadinessSummary(loaded, pkg);
+  const refactorReadiness = await assessRefactorReadiness(loaded, pkg);
   const nextAction = withActionCheckReadiness(
     selectRunNextAction(pkg, proposals, proposalGates, proposalBatches, actionCheckReadiness),
     actionCheckReadiness
@@ -403,6 +406,10 @@ export async function renderRunReport(loaded: LoadedConfig, pkg: MigrationRunPac
     "## Next Action",
     "",
     ...renderNextActionMarkdownLines(nextAction),
+    "",
+    "## Refactor Readiness",
+    "",
+    ...renderRefactorReadinessMarkdownLines(refactorReadiness),
     "",
     "## Action Check Readiness",
     "",
@@ -894,6 +901,33 @@ function renderActionCheckReadinessMarkdownLines(summary?: ActionCheckReadinessS
       ...summary.missingReadiness.slice(0, 5).map((finding) => `  - ${finding.actionId}: \`${finding.command}\` (${finding.reason})`)
     ] : [])
   ].filter((line): line is string => Boolean(line));
+}
+
+function renderRefactorReadinessMarkdownLines(report: RefactorReadinessReport): string[] {
+  const blocking = report.criteria.filter((criterion) => criterion.status === "blocked");
+  const warnings = report.criteria.filter((criterion) => criterion.status === "warning");
+  return [
+    `- Status: ${report.status}`,
+    `- Mode: ${report.mode}`,
+    `- Blockers: ${report.summary.blockerCount}`,
+    `- Warnings: ${report.summary.warningCount}`,
+    `- Proposals: ${report.summary.proposalCount}`,
+    `- Batches: ${report.summary.batchCount}`,
+    `- Latest passing batch: ${report.summary.latestPassingBatchId ?? "none"}`,
+    `- Target clean: ${report.summary.targetClean === undefined ? "not checked" : report.summary.targetClean ? "yes" : "no"}`,
+    ...(blocking.length > 0 ? [
+      "- Blocking criteria:",
+      ...blocking.slice(0, 6).map((criterion) => `  - ${criterion.id}: ${criterion.summary}`)
+    ] : []),
+    ...(warnings.length > 0 ? [
+      "- Warnings:",
+      ...warnings.slice(0, 4).map((criterion) => `  - ${criterion.id}: ${criterion.summary}`)
+    ] : []),
+    ...(report.recommendedNextActions.length > 0 ? [
+      "- Recommended next actions:",
+      ...report.recommendedNextActions.slice(0, 5).map((action) => `  - ${action}`)
+    ] : [])
+  ];
 }
 
 function createActionCheckReadinessHandoff(

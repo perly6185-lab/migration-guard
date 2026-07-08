@@ -2367,6 +2367,27 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - checklist 明确 Ubuntu/Windows CI、md clean、artifact schema 和 repair acceptance gates。
 - target repository 保持 clean。
 
+## Phase 75: Large Refactor Readiness Gate
+
+目标：在真实 `md.git` 项目继续推进前，先补齐“大批量/一次性重构是否可进入”的机器可审查准入门禁，避免只凭人工判断直接扩大变更面。
+
+交付内容：
+
+- `readiness` CLI 命令
+- large-batch refactor readiness JSON/Markdown artifact
+- run report `Refactor Readiness` 区块
+- `docs/PHASE_75_REPORT.md`
+- README / MD operator runbook 入口
+
+完成标准：
+
+- 缺少 action plan / proposals / passing batch 时返回 `hold`。
+- 目标仓库不 clean 时返回 `hold`。
+- md-monorepo 必须覆盖 `ts-structural-probe`、`renderer-probe`、`api-contract-probe`。
+- 至少 3 个 candidate proposal 和 3-proposal passing batch 才能满足默认准入。
+- 单元测试覆盖 hold/go 两种路径。
+- target repository 保持 clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
