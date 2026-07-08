@@ -13,6 +13,39 @@ project, target project and migration goal; the tool then analyzes, estimates,
 plans, executes, verifies, checkpoints, replans and reports until the migration
 converges. The current CLI is the safety core for that future system.
 
+## Quick path
+
+For local development on Migration Guard itself:
+
+```bash
+npm install
+npm test
+git diff --check
+```
+
+For the real `md` validation lane:
+
+```bash
+node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "MD guarded migration" --dry-run --adapter md-monorepo --issue-provider local
+node dist/cli.js resume --config configs/md-fast.migration-guard.json --run <run-id> --auto
+node dist/cli.js proposal batch plan --config configs/md-fast.migration-guard.json --run <run-id> --limit 5
+node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run <run-id> --limit 5 --gate-policy fail-fast
+```
+
+For failed proposal repair:
+
+```bash
+node dist/cli.js proposal replan --run <run-id> --proposal <failed-proposal-id>
+node dist/cli.js proposal retry --run <run-id> --proposal <failed-proposal-id>
+node dist/cli.js proposal verify --run <run-id> --proposal <retry-proposal-id> --checks
+node dist/cli.js proposal accept --run <run-id> --proposal <retry-proposal-id> --notes "verified repair"
+```
+
+Current release readiness is tracked in
+[docs/RELEASE_CHECKLIST_70_74.md](docs/RELEASE_CHECKLIST_70_74.md).
+For real `md` operations, use
+[docs/MD_OPERATOR_RUNBOOK.md](docs/MD_OPERATOR_RUNBOOK.md).
+
 ## Core idea
 
 Every migration step should answer:
@@ -90,7 +123,8 @@ node dist/cli.js actions handoff --run latest --json
 gh pr checks 1
 ```
 
-Pull requests run GitHub Actions CI with Node 22, `npm ci`, and `npm test`.
+Pull requests run GitHub Actions CI on Ubuntu and Windows with Node 22,
+`npm ci`, and `npm test`.
 Use [docs/PR_MERGE_READINESS.md](docs/PR_MERGE_READINESS.md) as the final PR
 handoff checklist.
 For the real `md` validation workflow, use
@@ -99,6 +133,8 @@ Phase 57-68 review split, use
 [docs/PR_SPLIT_PLAN_57_68.md](docs/PR_SPLIT_PLAN_57_68.md). For final
 release readiness, use
 [docs/RELEASE_CHECKLIST_57_68.md](docs/RELEASE_CHECKLIST_57_68.md).
+For the current post-merge release readiness baseline, use
+[docs/RELEASE_CHECKLIST_70_74.md](docs/RELEASE_CHECKLIST_70_74.md).
 
 Proposal gates support two execution policies:
 

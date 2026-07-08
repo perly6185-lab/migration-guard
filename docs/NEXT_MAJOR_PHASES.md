@@ -48,7 +48,7 @@
 
 目标：强化 `baseline` / `verify` / `compare` 在真实项目里的行为守护能力，让 Migration Guard 更像迁移指挥系统的证据层。
 
-状态：Phase 37-63 已完成当前主线收敛，下一步进入 release hardening / artifact migration。
+状态：Phase 37-74 已完成当前主线收敛，下一步进入 release/tag 准备或新的真实项目 validation lane。
 
 Progress:
 
@@ -79,6 +79,11 @@ Progress:
 - Phase 61: run reports include an evidence graph linking proposals, gates, batches, behavior decisions, replans, and next actions.
 - Phase 62: AI repair contexts include template selection, check readiness, source snippets, failed output summaries, and retry failure inheritance.
 - Phase 63: config profiles, schema guard, dry-run-first artifact GC, path tests, and README release-prep docs are in place.
+- Phase 70: post-merge real `md` soak passed a 5-proposal batch and rolled back cleanly.
+- Phase 71: CI now runs on Ubuntu and Windows with path normalization coverage.
+- Phase 72: artifact schema v1 is frozen through a registry and migration compatibility gate.
+- Phase 73: CLI repair-loop acceptance covers failed proposal -> replan -> retry -> verify -> accept.
+- Phase 74: README quick path and Phase 70-74 release checklist consolidate current readiness.
 
 候选能力：
 
@@ -108,7 +113,7 @@ Next candidate:
 - Phase 67 added reviewed-plan confirmation for artifact migration apply.
 - Phase 68 added the Phase 57-68 PR split plan and real MD operator runbook.
 - Phase 69 added the final Phase 57-68 release checklist.
-- Next: commit/PR preparation according to `docs/PR_SPLIT_PLAN_57_68.md`.
+- Next: release/tag preparation from `docs/RELEASE_CHECKLIST_70_74.md`, or a new real-project validation lane.
 
 ## Major Phase D: AI Collaboration Loop
 
