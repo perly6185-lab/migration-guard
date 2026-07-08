@@ -2349,6 +2349,24 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - `proposal accept` 写出 repair acceptance artifact。
 - run report 显示 `repair:accepted` evidence。
 
+## Phase 74: Release Readiness And Quick Path
+
+目标：把 Phase 70-73 的 post-merge hardening evidence 收束成当前 release checklist，并让 README 顶部提供可直接执行的快速路径。
+
+交付内容：
+
+- README `Quick path`
+- `docs/RELEASE_CHECKLIST_70_74.md`
+- `docs/PHASE_74_REPORT.md`
+- release boundaries / gates for 70-74
+
+完成标准：
+
+- README 顶部能引导本地验证、真实 `md` validation 和 repair loop。
+- 当前 release checklist 链接 Phase 70-74 evidence。
+- checklist 明确 Ubuntu/Windows CI、md clean、artifact schema 和 repair acceptance gates。
+- target repository 保持 clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
