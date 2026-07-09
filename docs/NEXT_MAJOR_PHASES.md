@@ -1,6 +1,6 @@
 # Next Major Phases
 
-生成日期：2026-07-06
+生成日期：2026-07-09
 
 ## Major Phase A: Real GitHub Mutation Closure
 
@@ -48,7 +48,7 @@
 
 目标：强化 `baseline` / `verify` / `compare` 在真实项目里的行为守护能力，让 Migration Guard 更像迁移指挥系统的证据层。
 
-状态：Phase 37-77 已完成当前主线收敛，真实 `md.git` validation lane 已让 readiness 从 `hold` 收敛到 `go`，并完成第一条 scoped real refactor target PR。
+状态：Phase 37-92 已完成当前主线收敛，真实 `md.git` validation lane 已完成三条不同风险域 scoped real refactor、第一条 small multi-lane batch merge validation、一条 6-file larger multi-lane batch merge validation、one-shot 前置 web/MCP guard coverage、第一轮 bounded one-shot refactor merge closure、one-shot evidence reporting 产品化、PR/commit closure metadata 归档、one-shot runbook generation，以及 one-shot status reporting。
 
 Progress:
 
@@ -87,6 +87,21 @@ Progress:
 - Phase 75: `readiness` adds a large-batch refactor gate across action plan, check readiness, proposal floor, template coverage, passing batch evidence, unresolved failures, confidence, and target clean status.
 - Phase 76: real `md.git` run reached `readiness --strict: go` after a 3-proposal batch passed and all applied proposals rolled back cleanly.
 - Phase 77: first scoped real `md.git` refactor PR opened after baseline/verify/compare proved no behavior differences.
+- Phase 78: real `md.git` PR #1 was merged and post-merge verify/compare on target `main` still showed no behavior differences.
+- Phase 79: second scoped real `md.git` refactor opened PR #2 in the API contract lane after baseline/verify/compare showed no behavior differences.
+- Phase 80: real `md.git` PR #2 was merged and post-merge verify/compare on target `main` still showed no behavior differences.
+- Phase 81: third scoped real `md.git` refactor opened PR #3 in the renderer/core lane after baseline/verify/compare showed no behavior differences.
+- Phase 82: real `md.git` PR #3 was merged and post-merge verify/compare on target `main` still showed no behavior differences.
+- Phase 83: first small multi-lane real `md.git` batch opened PR #4 across shared, API, and renderer lanes after fresh baseline/verify/compare showed no behavior differences.
+- Phase 84: real `md.git` PR #4 was merged and post-merge verify/compare on target `main` still showed no behavior differences.
+- Phase 85: larger multi-lane real `md.git` batch opened PR #5 across six shared/API/core files after fresh baseline/verify/compare showed no behavior differences.
+- Phase 86: real `md.git` PR #5 was merged and post-merge verify/compare on target `main` still showed no behavior differences.
+- Phase 87: `md-one-shot` guard lane adds critical web build/test/type-check coverage plus web static and MCP render probes; baseline/verify/compare passed with no differences.
+- Phase 88: first bounded one-shot real `md.git` refactor opened and merged PR #6 across API, web, core, MCP, and shared lanes; post-commit and post-merge `md-one-shot` verify/compare passed.
+- Phase 89: `one-shot report` turns latest baseline/run/compare, source-file budget, and target clean status into JSON/Markdown closure evidence; real `md-one-shot` post-merge evidence produced a `go` report.
+- Phase 90: one-shot reports now capture branch, PR URL, target commit, merge commit, merge time, budget, and notes; real Phase 88 evidence produced a metadata-complete `go` closure report.
+- Phase 91: `one-shot runbook` generates JSON/Markdown lifecycle checklists with baseline, verify, pre-PR report, PR merge, post-merge verify, and closure report command templates.
+- Phase 92: `one-shot status` reads the latest runbook plus post-runbook evidence and reports lifecycle progress, target cleanliness, and the next command to run.
 
 候选能力：
 
@@ -116,7 +131,7 @@ Next candidate:
 - Phase 67 added reviewed-plan confirmation for artifact migration apply.
 - Phase 68 added the Phase 57-68 PR split plan and real MD operator runbook.
 - Phase 69 added the final Phase 57-68 release checklist.
-- Next: review or merge `md.git` PR #1, then run a second scoped real refactor lane with behavior evidence before expanding batch size.
+- Next: add a one-shot session ledger so named windows can be opened, resumed, closed, and audited without relying only on latest artifact discovery.
 
 ## Major Phase D: AI Collaboration Loop
 
