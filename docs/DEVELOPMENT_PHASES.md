@@ -2693,6 +2693,27 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - 真实 `md-one-shot` post-merge evidence 生成 `go` report。
 - `npm test` 通过。
 
+## Phase 90: One-Shot Closure Metadata
+
+目标：把 `one-shot report` 从验证摘要推进成一次性重构 closure artifact，记录分支、PR、目标提交、merge commit、合并时间和预算说明。
+
+交付内容：
+
+- `one-shot report` 新增 closure metadata 选项：`--name`、`--branch`、`--base-branch`、`--pr-url`、`--target-commit`、`--merge-commit`、`--merged-at`、`--budget`、`--note`
+- 自动读取 target git branch 和 HEAD commit，支持 `--skip-git-metadata`
+- Markdown 新增 `Window` 区块
+- 新增 `closure-metadata` criterion 和 `summary.metadataComplete`
+- 真实 metadata-complete `md-one-shot` report: `one-shot-report-2026-07-09T09-46-13-376Z`
+- `docs/PHASE_90_REPORT.md`
+
+完成标准：
+
+- one-shot JSON/Markdown artifact 能记录 PR/branch/commit metadata。
+- metadata 不完整时报告 warning，不破坏旧流程。
+- metadata 完整时 `closure-metadata` criterion 通过。
+- 真实 Phase 88 closure evidence 生成 metadata-complete `go` report。
+- `npm test` 通过。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

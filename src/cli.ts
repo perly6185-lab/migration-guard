@@ -565,7 +565,19 @@ async function commandOneShot(args: ParsedArgs): Promise<void> {
     currentPath: stringOption(args, "current"),
     compareReportPath: stringOption(args, "compare"),
     maxSourceFileDelta: numberOption(args, "max-source-file-delta"),
-    checkTargetGit: !args.options["skip-target-git"]
+    checkTargetGit: !args.options["skip-target-git"],
+    detectGitMetadata: !args.options["skip-git-metadata"],
+    metadata: {
+      name: stringOption(args, "name"),
+      branch: stringOption(args, "branch"),
+      baseBranch: stringOption(args, "base-branch"),
+      prUrl: stringOption(args, "pr-url"),
+      targetCommit: stringOption(args, "target-commit"),
+      mergeCommit: stringOption(args, "merge-commit"),
+      mergedAt: stringOption(args, "merged-at"),
+      budget: stringOption(args, "budget"),
+      notes: stringListOption(args, "note")
+    }
   });
   const written = await writeOneShotReport(loaded, report);
   if (args.options.json) {
@@ -1081,6 +1093,14 @@ function labelsOption(args: ParsedArgs): string[] | undefined {
   return [...new Set(value.split(",").map((label) => label.trim()).filter(Boolean))];
 }
 
+function stringListOption(args: ParsedArgs, name: string): string[] | undefined {
+  const value = stringOption(args, name);
+  if (!value) {
+    return undefined;
+  }
+  return value.split("|").map((item) => item.trim()).filter(Boolean);
+}
+
 function gatePolicyOption(args: ParsedArgs): ProposalGatePolicy | undefined {
   const value = stringOption(args, "gate-policy");
   if (!value) {
@@ -1215,7 +1235,7 @@ Usage:
   migration-guard actions handoff [--run <id|latest>] [--create-replans] [--repair-briefs] [--json]
   migration-guard report [--run <id|latest>]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
-  migration-guard one-shot report [--baseline <path>] [--current <path>] [--compare <compare.json>] [--max-source-file-delta <n>] [--skip-target-git] [--strict] [--json]
+  migration-guard one-shot report [--baseline <path>] [--current <path>] [--compare <compare.json>] [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--pr-url <url>] [--target-commit <sha>] [--merge-commit <sha>] [--merged-at <iso>] [--budget <text>] [--note <text>] [--skip-target-git] [--skip-git-metadata] [--strict] [--json]
   migration-guard checkpoint create|list [--run <id|latest>]
   migration-guard resume [--run <id|latest>] [--auto]
   migration-guard rollback [--run <id|latest>] --checkpoint <id>

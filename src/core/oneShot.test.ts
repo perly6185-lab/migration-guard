@@ -37,6 +37,36 @@ test("one-shot report holds when source delta exceeds budget", async () => {
   assert.match(renderOneShotReport(report), /Reduce the one-shot scope/);
 });
 
+test("one-shot report captures closure metadata for PR evidence", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+
+  const report = await collectOneShotReport(loaded, {
+    maxSourceFileDelta: 1,
+    checkTargetGit: false,
+    detectGitMetadata: false,
+    metadata: {
+      name: "Phase 90 one-shot",
+      branch: "migration-guard/phase-90",
+      baseBranch: "main",
+      prUrl: "https://github.com/example/repo/pull/90",
+      targetCommit: "abc123",
+      mergeCommit: "def456",
+      mergedAt: "2026-07-09T10:00:00Z",
+      budget: "helper extraction only",
+      notes: ["post-merge evidence"]
+    }
+  });
+  const markdown = renderOneShotReport(report);
+
+  assert.equal(report.summary.metadataComplete, true);
+  assert.equal(report.metadata.prUrl, "https://github.com/example/repo/pull/90");
+  assert.ok(report.criteria.some((criterion) => criterion.id === "closure-metadata" && criterion.status === "passed"));
+  assert.match(markdown, /## Window/);
+  assert.match(markdown, /PR URL: https:\/\/github.com\/example\/repo\/pull\/90/);
+  assert.match(markdown, /Merge commit: def456/);
+  assert.match(markdown, /Budget: helper extraction only/);
+});
+
 async function makeFixture(options: { currentSourceFiles: number }): Promise<{
   loaded: LoadedConfig;
   baseline: Snapshot;

@@ -109,6 +109,7 @@ node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
 node dist/cli.js readiness --run latest --min-proposals 3 --min-batch-size 3 --strict
 node dist/cli.js one-shot report --max-source-file-delta 1 --strict
+node dist/cli.js one-shot report --max-source-file-delta 1 --pr-url <url> --target-commit <sha> --merge-commit <sha> --merged-at <iso> --budget "bounded helper cleanup" --strict
 node dist/cli.js diff list --run latest --compare <compare.json>
 node dist/cli.js diff decide --run latest --compare <compare.json> --area probe --name renderer --as intentional --reason "expected renderer behavior change"
 node dist/cli.js sync-issues --run latest --provider local
@@ -223,7 +224,9 @@ recent passing batch and a clean target repository before it returns `go`.
 baseline/run/compare artifacts, critical check and probe status, source-file
 delta budget and target git cleanliness. Use `--max-source-file-delta` to make
 the planned file-count budget explicit and `--strict` to fail the command when
-the report returns `hold`.
+the report returns `hold`. For final closure evidence, add `--pr-url`,
+`--target-commit`, `--merge-commit`, `--merged-at` and `--budget`; the report
+also auto-detects the target branch and current HEAD commit when possible.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at

@@ -13,6 +13,20 @@ export interface OneShotReportOptions {
   compareReportPath?: string;
   maxSourceFileDelta?: number;
   checkTargetGit?: boolean;
+  metadata?: OneShotWindowMetadata;
+  detectGitMetadata?: boolean;
+}
+
+export interface OneShotWindowMetadata {
+  name?: string;
+  branch?: string;
+  baseBranch?: string;
+  prUrl?: string;
+  targetCommit?: string;
+  mergeCommit?: string;
+  mergedAt?: string;
+  budget?: string;
+  notes?: string[];
 }
 
 export interface OneShotCriterion {
@@ -34,6 +48,7 @@ export interface OneShotReport {
   baselinePath: string;
   currentPath: string;
   compareReportPath?: string;
+  metadata: OneShotWindowMetadata;
   summary: {
     checkCount: number;
     passedChecks: number;
@@ -45,6 +60,7 @@ export interface OneShotReport {
     differenceCount: number;
     sourceFileDelta: number;
     maxSourceFileDelta: number;
+    metadataComplete: boolean;
     targetClean?: boolean;
     blockerCount: number;
     warningCount: number;
@@ -80,6 +96,8 @@ export async function collectOneShotReport(
     : await findLatestCompareReport(loaded, baseline.id, current.id);
   const compareReport = compareArtifact?.report ?? compareSnapshots(baseline, current, loaded.config.compare);
   const maxSourceFileDelta = options.maxSourceFileDelta ?? DEFAULT_MAX_SOURCE_FILE_DELTA;
+  const gitMetadata = options.detectGitMetadata === false ? {} : await readTargetGitMetadata(loaded);
+  const metadata = mergeOneShotMetadata(gitMetadata, options.metadata);
   const targetStatus = options.checkTargetGit === false ? undefined : await readTargetGitStatus(loaded);
   const criteria = createOneShotCriteria({
     baseline,
@@ -89,6 +107,7 @@ export async function collectOneShotReport(
     compareReport,
     compareReportPath: compareArtifact?.path,
     maxSourceFileDelta,
+    metadata,
     targetStatus
   });
   const blockerCount = criteria.filter((criterion) => criterion.status === "blocked").length;
@@ -106,6 +125,7 @@ export async function collectOneShotReport(
     baselinePath,
     currentPath,
     compareReportPath: compareArtifact?.path,
+    metadata,
     summary: {
       checkCount: current.checks.length,
       passedChecks: current.checks.filter((check) => check.status === "passed").length,
@@ -117,6 +137,7 @@ export async function collectOneShotReport(
       differenceCount: compareReport.differences.length,
       sourceFileDelta: current.scan.sourceFiles - baseline.scan.sourceFiles,
       maxSourceFileDelta,
+      metadataComplete: isMetadataComplete(metadata),
       targetClean: targetStatus?.clean,
       blockerCount,
       warningCount
@@ -159,9 +180,14 @@ export function renderOneShotReport(report: OneShotReport): string {
     `- Compare passed: ${report.summary.comparePassed ? "yes" : "no"}`,
     `- Differences: ${report.summary.differenceCount}`,
     `- Source file delta: ${report.summary.sourceFileDelta} (budget ${report.summary.maxSourceFileDelta})`,
+    `- Metadata complete: ${report.summary.metadataComplete ? "yes" : "no"}`,
     `- Target clean: ${report.summary.targetClean === undefined ? "not checked" : report.summary.targetClean ? "yes" : "no"}`,
     `- Blockers: ${report.summary.blockerCount}`,
     `- Warnings: ${report.summary.warningCount}`,
+    "",
+    "## Window",
+    "",
+    ...renderMetadataLines(report.metadata),
     "",
     "## Criteria",
     "",
@@ -206,6 +232,7 @@ function createOneShotCriteria(input: {
   compareReport: CompareReport;
   compareReportPath?: string;
   maxSourceFileDelta: number;
+  metadata: OneShotWindowMetadata;
   targetStatus?: TargetGitStatus;
 }): OneShotCriterion[] {
   return [
@@ -227,6 +254,7 @@ function createOneShotCriteria(input: {
     createProbeCriterion(input.current.probes),
     createCompareCriterion(input.compareReport, input.compareReportPath),
     createSourceFileBudgetCriterion(input.baseline, input.current, input.maxSourceFileDelta),
+    createClosureMetadataCriterion(input.metadata),
     createTargetCleanCriterion(input.targetStatus)
   ];
 }
@@ -350,6 +378,73 @@ function createTargetCleanCriterion(targetStatus?: TargetGitStatus): OneShotCrit
   };
 }
 
+function createClosureMetadataCriterion(metadata: OneShotWindowMetadata): OneShotCriterion {
+  if (isMetadataComplete(metadata)) {
+    return {
+      id: "closure-metadata",
+      title: "Closure metadata captured",
+      status: "passed",
+      summary: "branch, PR URL, target commit, merge commit, and merge time are captured",
+      evidence: [
+        metadata.branch ? `branch:${metadata.branch}` : undefined,
+        metadata.prUrl,
+        metadata.targetCommit ? `target:${metadata.targetCommit}` : undefined,
+        metadata.mergeCommit ? `merge:${metadata.mergeCommit}` : undefined,
+        metadata.mergedAt ? `merged:${metadata.mergedAt}` : undefined
+      ].filter((item): item is string => Boolean(item))
+    };
+  }
+  return {
+    id: "closure-metadata",
+    title: "Closure metadata captured",
+    status: "warning",
+    summary: `missing ${missingMetadataFields(metadata).join(", ")} metadata`,
+    nextAction: "Rerun one-shot report with --branch, --pr-url, --target-commit, --merge-commit, and --merged-at when producing final closure evidence."
+  };
+}
+
+function renderMetadataLines(metadata: OneShotWindowMetadata): string[] {
+  const lines = [
+    `- Name: ${metadata.name ?? "unspecified"}`,
+    `- Branch: ${metadata.branch ?? "unknown"}`,
+    `- Base branch: ${metadata.baseBranch ?? "unknown"}`,
+    `- PR URL: ${metadata.prUrl ?? "unknown"}`,
+    `- Target commit: ${metadata.targetCommit ?? "unknown"}`,
+    `- Merge commit: ${metadata.mergeCommit ?? "unknown"}`,
+    `- Merged at: ${metadata.mergedAt ?? "unknown"}`,
+    `- Budget: ${metadata.budget ?? "unspecified"}`
+  ];
+  if (metadata.notes && metadata.notes.length > 0) {
+    lines.push(...metadata.notes.map((note) => `- Note: ${note}`));
+  }
+  return lines;
+}
+
+function mergeOneShotMetadata(
+  detected: OneShotWindowMetadata,
+  provided: OneShotWindowMetadata | undefined
+): OneShotWindowMetadata {
+  return {
+    ...detected,
+    ...provided,
+    notes: provided?.notes ?? detected.notes
+  };
+}
+
+function isMetadataComplete(metadata: OneShotWindowMetadata): boolean {
+  return missingMetadataFields(metadata).length === 0;
+}
+
+function missingMetadataFields(metadata: OneShotWindowMetadata): string[] {
+  return [
+    !metadata.branch ? "branch" : undefined,
+    !metadata.prUrl ? "prUrl" : undefined,
+    !metadata.targetCommit ? "targetCommit" : undefined,
+    !metadata.mergeCommit ? "mergeCommit" : undefined,
+    !metadata.mergedAt ? "mergedAt" : undefined
+  ].filter((item): item is string => Boolean(item));
+}
+
 async function findLatestCompareReport(
   loaded: LoadedConfig,
   baselineId: string,
@@ -390,4 +485,28 @@ async function readTargetGitStatus(loaded: LoadedConfig): Promise<TargetGitStatu
     output,
     error: result.error
   };
+}
+
+async function readTargetGitMetadata(loaded: LoadedConfig): Promise<OneShotWindowMetadata> {
+  const [branch, head] = await Promise.all([
+    runGitMetadataCommand(loaded, "git branch --show-current"),
+    runGitMetadataCommand(loaded, "git rev-parse HEAD")
+  ]);
+  return {
+    branch,
+    targetCommit: head
+  };
+}
+
+async function runGitMetadataCommand(loaded: LoadedConfig, command: string): Promise<string | undefined> {
+  const result = await runShellCommand(command, {
+    cwd: loaded.targetRoot,
+    timeoutMs: 30000,
+    maxOutputBytes: loaded.config.output.maxOutputBytes
+  });
+  if (result.exitCode !== 0 || result.timedOut || result.error) {
+    return undefined;
+  }
+  const value = result.stdout.trim();
+  return value || undefined;
 }
