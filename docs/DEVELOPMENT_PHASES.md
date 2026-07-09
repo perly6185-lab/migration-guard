@@ -2432,6 +2432,217 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - target PR 已创建。
 - target working tree 保持 clean。
 
+## Phase 78: Real md.git PR Merge Validation
+
+目标：合并 Phase 77 创建的真实 `md.git` PR #1，并在 target `main` 上重新运行 Migration Guard verify/compare，确认合并后的主线仍无行为差异。
+
+交付内容：
+
+- target PR #1 merged
+- target merge commit: `1beecfa2c18b01aee081e1841c6198e4f307d1cb`
+- post-merge verify: `run-2026-07-08T06-16-00-221Z`
+- post-merge compare: passed, no differences detected
+- `docs/PHASE_78_REPORT.md`
+
+完成标准：
+
+- target `main` 与 `origin/main` 对齐且 clean。
+- core test、packages type-check、renderer behavior probe、API contract probe 全通过。
+- post-merge compare 无差异。
+- 真实 scoped refactor 从 readiness 到 target merge 完整闭环。
+
+## Phase 79: API Contract Scoped Real Refactor
+
+目标：执行第二条不同风险域的真实 `md.git` scoped refactor lane，在 API contract 覆盖的入口代码里做小范围行为保持重构，并用 baseline / verify / compare 证明无行为差异。
+
+交付内容：
+
+- target `md.git` branch: `migration-guard/phase-79-api-contract-refactor`
+- target commit: `e643bc3 refactor(api): name contract response constants`
+- target PR: `https://github.com/perly6185-lab/md/pull/2`
+- baseline: `baseline-2026-07-09T04-15-28-810Z`
+- final verify: `run-2026-07-09T04-20-37-913Z`
+- compare: passed, no differences detected
+- `docs/PHASE_79_REPORT.md`
+
+完成标准：
+
+- 真实 target source 只改一个 API entry 文件。
+- core test、packages type-check、renderer behavior probe、API contract probe 全通过。
+- baseline/verify compare 无差异。
+- target PR 已创建且 mergeable。
+- target working tree 保持 clean。
+
+## Phase 80: API Contract PR Merge Validation
+
+目标：合并 Phase 79 创建的真实 `md.git` PR #2，并在 target `main` 上重新运行 Migration Guard verify/compare，确认合并后的主线仍无行为差异。
+
+交付内容：
+
+- target PR #2 merged
+- target merge commit: `2a6920107a9f93f515d17e2585279a22febfb231`
+- post-merge verify: `run-2026-07-09T05-32-30-895Z`
+- post-merge compare: passed, no differences detected
+- `docs/PHASE_80_REPORT.md`
+
+完成标准：
+
+- target `main` 与 `origin/main` 对齐且 clean。
+- core test、packages type-check、renderer behavior probe、API contract probe 全通过。
+- post-merge compare 无差异。
+- 第二条 scoped real refactor 从 baseline 到 target merge 完整闭环。
+
+## Phase 81: Renderer Core Scoped Real Refactor
+
+目标：执行第三条不同风险域的真实 `md.git` scoped refactor lane，在 renderer/core 覆盖的核心渲染代码里做小范围行为保持重构，并用 baseline / verify / compare 证明无行为差异。
+
+交付内容：
+
+- target `md.git` branch: `migration-guard/phase-81-renderer-core-refactor`
+- target commit: `4e1471d refactor(core): name mac code sign markup`
+- target PR: `https://github.com/perly6185-lab/md/pull/3`
+- baseline: `baseline-2026-07-09T05-49-10-873Z`
+- final verify: `run-2026-07-09T05-52-29-891Z`
+- compare: passed, no differences detected
+- `docs/PHASE_81_REPORT.md`
+
+完成标准：
+
+- 真实 target source 只改一个 renderer/core 文件。
+- core test、packages type-check、renderer behavior probe、API contract probe 全通过。
+- baseline/verify compare 无差异。
+- target PR 已创建且 mergeable。
+- target working tree 保持 clean。
+
+## Phase 82: Renderer Core PR Merge Validation
+
+目标：合并 Phase 81 创建的真实 `md.git` PR #3，并在 target `main` 上重新运行 Migration Guard verify/compare，确认合并后的主线仍无行为差异。
+
+交付内容：
+
+- target PR #3 merged
+- target merge commit: `9a3a97ced785749a1489f1b28bb444f395a21eb8`
+- post-merge verify: `run-2026-07-09T06-02-24-444Z`
+- post-merge compare: passed, no differences detected
+- `docs/PHASE_82_REPORT.md`
+
+完成标准：
+
+- target `main` 与 `origin/main` 对齐且 clean。
+- core test、packages type-check、renderer behavior probe、API contract probe 全通过。
+- post-merge compare 无差异。
+- 第三条 scoped real refactor 从 baseline 到 target merge 完整闭环。
+
+## Phase 83: Small Multi-Lane Batch Rehearsal
+
+目标：第一次把 shared、API、renderer 三个风险域放进同一个小型真实 target batch，验证 multi-lane 组合改动仍能被 baseline / verify / compare 稳定守住。
+
+交付内容：
+
+- target `md.git` branch: `migration-guard/phase-83-small-multilane-batch`
+- target commit: `850aa49 refactor: rehearse small multi-lane batch`
+- target PR: `https://github.com/perly6185-lab/md/pull/4`
+- baseline: `baseline-2026-07-09T06-20-02-792Z`
+- final verify: `run-2026-07-09T06-24-21-720Z`
+- compare: passed, no differences detected
+- `docs/PHASE_83_REPORT.md`
+
+完成标准：
+
+- fresh baseline 在 clean target `main` 上采集。
+- 真实 target source 同时覆盖 shared、API、renderer 三个 lane。
+- batch 保持小范围：三个文件，每个 lane 一个低风险重构。
+- core test、packages type-check、renderer behavior probe、API contract probe 全通过。
+- baseline/verify compare 无差异。
+- target PR 已创建且 mergeable。
+- target working tree 保持 clean。
+
+## Phase 84: Small Multi-Lane Batch Merge Validation
+
+目标：合并 Phase 83 创建的真实 `md.git` PR #4，并在 target `main` 上重新运行 Migration Guard verify/compare，确认 shared、API、renderer 三个风险域组合改动合并后的主线仍无行为差异。
+
+交付内容：
+
+- target PR #4 merged
+- target merge commit: `e6a6b29a16a9f1bcd3c0a7a3e78e40892faf5e22`
+- post-merge verify: `run-2026-07-09T06-38-01-124Z`
+- post-merge compare: passed, no differences detected
+- `docs/PHASE_84_REPORT.md`
+
+完成标准：
+
+- target `main` 与 `origin/main` 对齐且 clean。
+- core test、packages type-check、renderer behavior probe、API contract probe 全通过。
+- post-merge compare 无差异。
+- 第一条 small multi-lane batch 从 fresh baseline 到 target merge 完整闭环。
+
+## Phase 85: Larger Multi-Lane Batch Rehearsal
+
+目标：从 3-file small multi-lane batch 扩大到 6-file larger multi-lane batch，在 shared、API、core 三个风险域中验证更接近一次性重构窗口的批量行为保持改动。
+
+交付内容：
+
+- target `md.git` branch: `migration-guard/phase-85-larger-multilane-batch`
+- target commit: `52168ab refactor: rehearse larger multi-lane batch`
+- target PR: `https://github.com/perly6185-lab/md/pull/5`
+- baseline: `baseline-2026-07-09T06-47-53-257Z`
+- final verify: `run-2026-07-09T06-53-10-141Z`
+- compare: passed, no differences detected
+- `docs/PHASE_85_REPORT.md`
+
+完成标准：
+
+- fresh baseline 在 clean target `main` 上采集。
+- 真实 target source 同时覆盖 shared、API、core 三个 lane。
+- batch 扩大到 6 个文件，但只包含低风险 helper/constant refactor。
+- core test、packages type-check、renderer behavior probe、API contract probe 全通过。
+- baseline/verify compare 无差异。
+- target PR 已创建且 mergeable。
+- target working tree 保持 clean。
+
+## Phase 86: Larger Multi-Lane Batch Merge Validation
+
+目标：合并 Phase 85 创建的真实 `md.git` PR #5，并在 target `main` 上重新运行 Migration Guard verify/compare，确认 6-file shared/API/core 组合改动合并后的主线仍无行为差异。
+
+交付内容：
+
+- target PR #5 merged
+- target merge commit: `d148efdf1477631ec70cd8a2326109a371826948`
+- post-merge verify: `run-2026-07-09T07-00-34-709Z`
+- post-merge compare: passed, no differences detected
+- `docs/PHASE_86_REPORT.md`
+
+完成标准：
+
+- target `main` 与 `origin/main` 对齐且 clean。
+- core test、packages type-check、renderer behavior probe、API contract probe 全通过。
+- post-merge compare 无差异。
+- larger multi-lane batch 从 fresh baseline 到 target merge 完整闭环。
+
+## Phase 87: One-Shot Guard Coverage
+
+目标：在打开一次性重构窗口前，补齐 `md.git` web/MCP 专项守护覆盖，并建立 `md-one-shot` full guard lane。
+
+交付内容：
+
+- 新增 MCP render contract probe：`scripts/probes/md-mcp-render-probe.mjs`
+- 新增 one-shot 配置：`configs/md-one-shot.migration-guard.json`
+- `configs/md-full.migration-guard.json` 增加 `md-mcp-render-contract`
+- `web-build` compare normalization 去除并行 subtask prelude 顺序噪声
+- one-shot baseline: `baseline-2026-07-09T07-45-17-196Z`
+- one-shot verify: `run-2026-07-09T07-46-16-727Z`
+- compare: passed, no differences detected
+- `docs/PHASE_87_REPORT.md`
+
+完成标准：
+
+- `md-one-shot` 覆盖 core test、web test、packages type-check、web type-check、web build。
+- `md-one-shot` 覆盖 renderer behavior、API contract、web static contract、MCP render contract。
+- MCP render probe 避免远程 CSS fetch，并验证 heading/alert/KaTeX/code/front matter/reading time。
+- one-shot baseline/verify 全部 checks/probes 通过。
+- one-shot compare 无差异。
+- target `main` 与 `origin/main` 对齐且 clean。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

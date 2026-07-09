@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "targetRoot": "${MG_TARGET_ROOT}",
-  "artifactsDir": "${MG_ARTIFACTS_DIR}/md-full",
+  "artifactsDir": "${MG_ARTIFACTS_DIR}/md-one-shot",
   "variables": {
     "MG_TARGET_ROOT": "../../migration-guard-targets/md",
     "MG_ARTIFACTS_DIR": "../.migration-guard/external-targets",
@@ -71,7 +71,7 @@
       "name": "web-build",
       "command": "pnpm web build",
       "timeoutMs": 600000,
-      "critical": false,
+      "critical": true,
       "normalize": {
         "trimWhitespace": true,
         "presets": ["vite", "paths", "timing"],
