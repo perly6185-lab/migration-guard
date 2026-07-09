@@ -17,6 +17,12 @@ export interface OneShotReportOptions {
   detectGitMetadata?: boolean;
 }
 
+export interface OneShotRunbookOptions {
+  maxSourceFileDelta?: number;
+  metadata?: OneShotWindowMetadata;
+  commandPrefix?: string;
+}
+
 export interface OneShotWindowMetadata {
   name?: string;
   branch?: string;
@@ -68,6 +74,29 @@ export interface OneShotReport {
   criteria: OneShotCriterion[];
   compareMarkdown: string;
   recommendedNextActions: string[];
+  outputPath?: string;
+  markdownPath?: string;
+}
+
+export interface OneShotRunbookStep {
+  id: string;
+  title: string;
+  status: "pending";
+  description: string;
+  command?: string;
+  completionCriteria: string[];
+}
+
+export interface OneShotRunbook {
+  version: 1;
+  id: string;
+  createdAt: string;
+  targetRoot: string;
+  artifactsDir: string;
+  configPath: string;
+  maxSourceFileDelta: number;
+  metadata: OneShotWindowMetadata;
+  steps: OneShotRunbookStep[];
   outputPath?: string;
   markdownPath?: string;
 }
@@ -166,6 +195,144 @@ export async function writeOneShotReport(loaded: LoadedConfig, report: OneShotRe
   return withPaths;
 }
 
+export function createOneShotRunbook(
+  loaded: LoadedConfig,
+  options: OneShotRunbookOptions = {}
+): OneShotRunbook {
+  const maxSourceFileDelta = options.maxSourceFileDelta ?? DEFAULT_MAX_SOURCE_FILE_DELTA;
+  const commandPrefix = options.commandPrefix ?? "node dist/cli.js";
+  const configArg = `--config ${quoteShellArg(loaded.path)}`;
+  const sourceBudgetArg = `--max-source-file-delta ${maxSourceFileDelta}`;
+  const metadata = options.metadata ?? {};
+  const metadataArgs = createMetadataCommandArgs(metadata);
+  const reportCommand = `${commandPrefix} one-shot report ${configArg} ${sourceBudgetArg}${metadataArgs ? ` ${metadataArgs}` : ""} --strict`;
+  const closureReportCommand = `${commandPrefix} one-shot report ${configArg} ${sourceBudgetArg} --pr-url <pr-url> --target-commit <target-commit> --merge-commit <merge-commit> --merged-at <iso-time> --budget <budget> --strict`;
+
+  return {
+    version: 1,
+    id: `one-shot-runbook-${new Date().toISOString().replace(/[:.]/g, "-")}`,
+    createdAt: new Date().toISOString(),
+    targetRoot: loaded.targetRoot,
+    artifactsDir: loaded.artifactsDir,
+    configPath: loaded.path,
+    maxSourceFileDelta,
+    metadata,
+    steps: [
+      {
+        id: "target-prep",
+        title: "Prepare target branch",
+        status: "pending",
+        description: "Start from a clean target repository and create or select the one-shot working branch.",
+        command: "git status --short --branch",
+        completionCriteria: [
+          "target working tree is clean",
+          "base branch is current",
+          "one-shot branch name and budget are agreed"
+        ]
+      },
+      {
+        id: "baseline",
+        title: "Capture fresh baseline",
+        status: "pending",
+        description: "Capture the behavior baseline before one-shot edits.",
+        command: `${commandPrefix} baseline ${configArg}`,
+        completionCriteria: [
+          "latest baseline artifact exists",
+          "all configured baseline checks and probes pass"
+        ]
+      },
+      {
+        id: "edit-window",
+        title: "Apply bounded edits",
+        status: "pending",
+        description: "Apply only the planned one-shot changes within the file/risk budget.",
+        completionCriteria: [
+          `absolute source file count delta stays within ${maxSourceFileDelta}`,
+          "changes match the declared budget",
+          "no unrelated dependency, config, or behavior changes are mixed in"
+        ]
+      },
+      {
+        id: "post-edit-verify",
+        title: "Run post-edit verification",
+        status: "pending",
+        description: "Run the full one-shot guard lane and compare against the fresh baseline.",
+        command: `${commandPrefix} verify ${configArg}`,
+        completionCriteria: [
+          "critical checks pass",
+          "behavior probes pass",
+          "compare artifact is written"
+        ]
+      },
+      {
+        id: "pre-pr-report",
+        title: "Generate pre-PR one-shot report",
+        status: "pending",
+        description: "Summarize post-edit evidence before opening or updating the PR.",
+        command: reportCommand,
+        completionCriteria: [
+          "one-shot report status is go",
+          "source-file delta is within budget",
+          "target repository is clean after commit"
+        ]
+      },
+      {
+        id: "pr-merge",
+        title: "Open and merge PR",
+        status: "pending",
+        description: "Open the one-shot PR, review the generated evidence, merge, and record closure metadata.",
+        completionCriteria: [
+          "PR URL is known",
+          "target commit is known",
+          "merge commit is known",
+          "merge timestamp is known"
+        ]
+      },
+      {
+        id: "post-merge-verify",
+        title: "Run post-merge verification",
+        status: "pending",
+        description: "Fast-forward the target main branch and rerun the full one-shot guard lane.",
+        command: `${commandPrefix} verify ${configArg}`,
+        completionCriteria: [
+          "target main is aligned with origin/main",
+          "critical checks pass",
+          "behavior probes pass",
+          "post-merge compare passes"
+        ]
+      },
+      {
+        id: "closure-report",
+        title: "Generate final closure report",
+        status: "pending",
+        description: "Write the final one-shot report with complete PR and merge metadata.",
+        command: closureReportCommand,
+        completionCriteria: [
+          "one-shot report status is go",
+          "metadata complete is yes",
+          "closure-metadata criterion passes"
+        ]
+      }
+    ]
+  };
+}
+
+export async function writeOneShotRunbook(loaded: LoadedConfig, runbook: OneShotRunbook): Promise<OneShotRunbook> {
+  const dir = path.join(loaded.artifactsDir, "one-shot");
+  const jsonPath = path.join(dir, `${runbook.id}.json`);
+  const markdownPath = path.join(dir, `${runbook.id}.md`);
+  const withPaths = {
+    ...runbook,
+    outputPath: jsonPath,
+    markdownPath
+  };
+
+  await ensureDir(dir);
+  await writeJsonFile(jsonPath, withPaths);
+  await writeTextFile(markdownPath, renderOneShotRunbook(withPaths));
+  return withPaths;
+}
+
 export function renderOneShotReport(report: OneShotReport): string {
   const lines = [
     `# One-Shot Report: ${report.id}`,
@@ -218,6 +385,47 @@ export function renderOneShotReport(report: OneShotReport): string {
     }
     if (report.compareReportPath) {
       lines.push(`- Compare JSON: ${report.compareReportPath}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function renderOneShotRunbook(runbook: OneShotRunbook): string {
+  const lines = [
+    `# One-Shot Runbook: ${runbook.id}`,
+    "",
+    `- Target: ${runbook.targetRoot}`,
+    `- Config: ${runbook.configPath}`,
+    `- Artifacts: ${runbook.artifactsDir}`,
+    `- Source file delta budget: ${runbook.maxSourceFileDelta}`,
+    "",
+    "## Window",
+    "",
+    ...renderMetadataLines(runbook.metadata),
+    "",
+    "## Steps",
+    "",
+    ...runbook.steps.flatMap((step, index) => [
+      `### ${index + 1}. ${step.title}`,
+      "",
+      `- Status: ${step.status}`,
+      `- ID: ${step.id}`,
+      `- Description: ${step.description}`,
+      step.command ? `- Command: \`${step.command}\`` : undefined,
+      "- Completion criteria:",
+      ...step.completionCriteria.map((criterion) => `  - ${criterion}`),
+      ""
+    ].filter((line): line is string => Boolean(line)))
+  ];
+
+  if (runbook.outputPath || runbook.markdownPath) {
+    lines.push("## Artifacts", "");
+    if (runbook.outputPath) {
+      lines.push(`- JSON: ${runbook.outputPath}`);
+    }
+    if (runbook.markdownPath) {
+      lines.push(`- Markdown: ${runbook.markdownPath}`);
     }
   }
 
@@ -418,6 +626,27 @@ function renderMetadataLines(metadata: OneShotWindowMetadata): string[] {
     lines.push(...metadata.notes.map((note) => `- Note: ${note}`));
   }
   return lines;
+}
+
+function createMetadataCommandArgs(metadata: OneShotWindowMetadata): string {
+  return [
+    metadata.name ? `--name ${quoteShellArg(metadata.name)}` : undefined,
+    metadata.branch ? `--branch ${quoteShellArg(metadata.branch)}` : undefined,
+    metadata.baseBranch ? `--base-branch ${quoteShellArg(metadata.baseBranch)}` : undefined,
+    metadata.prUrl ? `--pr-url ${quoteShellArg(metadata.prUrl)}` : undefined,
+    metadata.targetCommit ? `--target-commit ${quoteShellArg(metadata.targetCommit)}` : undefined,
+    metadata.mergeCommit ? `--merge-commit ${quoteShellArg(metadata.mergeCommit)}` : undefined,
+    metadata.mergedAt ? `--merged-at ${quoteShellArg(metadata.mergedAt)}` : undefined,
+    metadata.budget ? `--budget ${quoteShellArg(metadata.budget)}` : undefined,
+    ...(metadata.notes ?? []).map((note) => `--note ${quoteShellArg(note)}`)
+  ].filter((item): item is string => Boolean(item)).join(" ");
+}
+
+function quoteShellArg(value: string): string {
+  if (/^[A-Za-z0-9_./:=@-]+$/.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/(["\\$`])/g, "\\$1")}"`;
 }
 
 function mergeOneShotMetadata(

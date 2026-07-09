@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { collectOneShotReport, renderOneShotReport } from "./oneShot.js";
+import { collectOneShotReport, createOneShotRunbook, renderOneShotReport, renderOneShotRunbook } from "./oneShot.js";
 import type { CheckResult, CommandProbeResult, CompareReport, LoadedConfig, ScanSummary, Snapshot } from "../types.js";
 
 test("one-shot report goes green when latest evidence passes and source delta is budgeted", async () => {
@@ -65,6 +65,31 @@ test("one-shot report captures closure metadata for PR evidence", async () => {
   assert.match(markdown, /PR URL: https:\/\/github.com\/example\/repo\/pull\/90/);
   assert.match(markdown, /Merge commit: def456/);
   assert.match(markdown, /Budget: helper extraction only/);
+});
+
+test("one-shot runbook renders reusable closure steps and commands", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+
+  const runbook = createOneShotRunbook(loaded, {
+    maxSourceFileDelta: 2,
+    commandPrefix: "mg",
+    metadata: {
+      name: "Platform window",
+      branch: "migration-guard/platform-window",
+      baseBranch: "main",
+      budget: "two source files"
+    }
+  });
+  const markdown = renderOneShotRunbook(runbook);
+
+  assert.equal(runbook.maxSourceFileDelta, 2);
+  assert.equal(runbook.steps.length, 8);
+  assert.ok(runbook.steps.some((step) => step.id === "baseline" && step.command?.includes("mg baseline")));
+  assert.ok(runbook.steps.some((step) => step.id === "closure-report" && step.command?.includes("--merge-commit <merge-commit>")));
+  assert.match(markdown, /One-Shot Runbook/);
+  assert.match(markdown, /Platform window/);
+  assert.match(markdown, /two source files/);
+  assert.match(markdown, /post-merge verification/i);
 });
 
 async function makeFixture(options: { currentSourceFiles: number }): Promise<{

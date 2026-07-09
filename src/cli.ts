@@ -64,8 +64,11 @@ import {
   writeRefactorReadinessReport
 } from "./core/refactorReadiness.js";
 import {
+  createOneShotRunbook,
   collectOneShotReport,
+  renderOneShotRunbook,
   renderOneShotReport,
+  writeOneShotRunbook,
   writeOneShotReport
 } from "./core/oneShot.js";
 import type { CompareReport, DiffDecisionClassification, Difference, MigrationAutomationMode, MigrationRun, ProposalGatePolicy, ProposedPatch } from "./types.js";
@@ -556,6 +559,21 @@ async function commandReadiness(args: ParsedArgs): Promise<void> {
 
 async function commandOneShot(args: ParsedArgs): Promise<void> {
   const action = args.positionals[0] ?? "report";
+  if (action === "runbook") {
+    const loaded = await loadFromArgs(args);
+    const runbook = createOneShotRunbook(loaded, {
+      maxSourceFileDelta: numberOption(args, "max-source-file-delta"),
+      commandPrefix: stringOption(args, "command-prefix"),
+      metadata: oneShotMetadataFromArgs(args)
+    });
+    const written = await writeOneShotRunbook(loaded, runbook);
+    if (args.options.json) {
+      console.log(JSON.stringify(written, null, 2));
+    } else {
+      console.log(renderOneShotRunbook(written));
+    }
+    return;
+  }
   if (action !== "report") {
     throw new Error(`Unknown one-shot action: ${action}`);
   }
@@ -567,17 +585,7 @@ async function commandOneShot(args: ParsedArgs): Promise<void> {
     maxSourceFileDelta: numberOption(args, "max-source-file-delta"),
     checkTargetGit: !args.options["skip-target-git"],
     detectGitMetadata: !args.options["skip-git-metadata"],
-    metadata: {
-      name: stringOption(args, "name"),
-      branch: stringOption(args, "branch"),
-      baseBranch: stringOption(args, "base-branch"),
-      prUrl: stringOption(args, "pr-url"),
-      targetCommit: stringOption(args, "target-commit"),
-      mergeCommit: stringOption(args, "merge-commit"),
-      mergedAt: stringOption(args, "merged-at"),
-      budget: stringOption(args, "budget"),
-      notes: stringListOption(args, "note")
-    }
+    metadata: oneShotMetadataFromArgs(args)
   });
   const written = await writeOneShotReport(loaded, report);
   if (args.options.json) {
@@ -588,6 +596,20 @@ async function commandOneShot(args: ParsedArgs): Promise<void> {
   if (args.options.strict && written.status !== "go") {
     process.exitCode = 1;
   }
+}
+
+function oneShotMetadataFromArgs(args: ParsedArgs) {
+  return {
+    name: stringOption(args, "name"),
+    branch: stringOption(args, "branch"),
+    baseBranch: stringOption(args, "base-branch"),
+    prUrl: stringOption(args, "pr-url"),
+    targetCommit: stringOption(args, "target-commit"),
+    mergeCommit: stringOption(args, "merge-commit"),
+    mergedAt: stringOption(args, "merged-at"),
+    budget: stringOption(args, "budget"),
+    notes: stringListOption(args, "note")
+  };
 }
 
 async function commandCheckpoint(args: ParsedArgs): Promise<void> {
@@ -1235,6 +1257,7 @@ Usage:
   migration-guard actions handoff [--run <id|latest>] [--create-replans] [--repair-briefs] [--json]
   migration-guard report [--run <id|latest>]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
+  migration-guard one-shot runbook [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--json]
   migration-guard one-shot report [--baseline <path>] [--current <path>] [--compare <compare.json>] [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--pr-url <url>] [--target-commit <sha>] [--merge-commit <sha>] [--merged-at <iso>] [--budget <text>] [--note <text>] [--skip-target-git] [--skip-git-metadata] [--strict] [--json]
   migration-guard checkpoint create|list [--run <id|latest>]
   migration-guard resume [--run <id|latest>] [--auto]

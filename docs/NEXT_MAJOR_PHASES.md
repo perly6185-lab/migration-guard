@@ -48,7 +48,7 @@
 
 目标：强化 `baseline` / `verify` / `compare` 在真实项目里的行为守护能力，让 Migration Guard 更像迁移指挥系统的证据层。
 
-状态：Phase 37-90 已完成当前主线收敛，真实 `md.git` validation lane 已完成三条不同风险域 scoped real refactor、第一条 small multi-lane batch merge validation、一条 6-file larger multi-lane batch merge validation、one-shot 前置 web/MCP guard coverage、第一轮 bounded one-shot refactor merge closure、one-shot evidence reporting 产品化，以及 PR/commit closure metadata 归档。
+状态：Phase 37-91 已完成当前主线收敛，真实 `md.git` validation lane 已完成三条不同风险域 scoped real refactor、第一条 small multi-lane batch merge validation、一条 6-file larger multi-lane batch merge validation、one-shot 前置 web/MCP guard coverage、第一轮 bounded one-shot refactor merge closure、one-shot evidence reporting 产品化、PR/commit closure metadata 归档，以及 one-shot runbook generation。
 
 Progress:
 
@@ -100,6 +100,7 @@ Progress:
 - Phase 88: first bounded one-shot real `md.git` refactor opened and merged PR #6 across API, web, core, MCP, and shared lanes; post-commit and post-merge `md-one-shot` verify/compare passed.
 - Phase 89: `one-shot report` turns latest baseline/run/compare, source-file budget, and target clean status into JSON/Markdown closure evidence; real `md-one-shot` post-merge evidence produced a `go` report.
 - Phase 90: one-shot reports now capture branch, PR URL, target commit, merge commit, merge time, budget, and notes; real Phase 88 evidence produced a metadata-complete `go` closure report.
+- Phase 91: `one-shot runbook` generates JSON/Markdown lifecycle checklists with baseline, verify, pre-PR report, PR merge, post-merge verify, and closure report command templates.
 
 候选能力：
 
@@ -129,7 +130,7 @@ Next candidate:
 - Phase 67 added reviewed-plan confirmation for artifact migration apply.
 - Phase 68 added the Phase 57-68 PR split plan and real MD operator runbook.
 - Phase 69 added the final Phase 57-68 release checklist.
-- Next: generate a reusable one-shot runbook/checklist from the report so baseline, verify, compare, PR metadata capture, post-merge verify, and closure reporting are guided by one command.
+- Next: add `one-shot status` so the latest runbook can show which lifecycle artifacts already exist and which step remains.
 
 ## Major Phase D: AI Collaboration Loop
 

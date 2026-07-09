@@ -2714,6 +2714,26 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - 真实 Phase 88 closure evidence 生成 metadata-complete `go` report。
 - `npm test` 通过。
 
+## Phase 91: One-Shot Runbook Generation
+
+目标：新增一次性重构 runbook artifact，让工具在开窗前生成 baseline、bounded edit、verify、PR、post-merge verify、closure report 的步骤和命令模板。
+
+交付内容：
+
+- 新增 CLI：`migration-guard one-shot runbook`
+- 新增模型：`OneShotRunbook`、`OneShotRunbookStep`
+- runbook 覆盖 target prep、baseline、edit window、post-edit verify、pre-PR report、PR merge、post-merge verify、closure report
+- 真实 `md-one-shot` runbook: `one-shot-runbook-2026-07-09T09-56-00-015Z`
+- `docs/PHASE_91_REPORT.md`
+
+完成标准：
+
+- CLI 能写出 one-shot runbook JSON/Markdown artifact。
+- runbook 包含完整 one-shot 生命周期步骤。
+- runbook 包含 baseline、verify、report、closure report 命令模板。
+- 真实 `md-one-shot` 配置能生成 runbook。
+- `npm test` 通过。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
