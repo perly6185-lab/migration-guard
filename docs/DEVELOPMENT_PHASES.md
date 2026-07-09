@@ -2671,6 +2671,28 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - `md-one-shot` post-merge checks/probes 全部通过。
 - `md-one-shot` post-merge compare 通过。
 
+## Phase 89: One-Shot Evidence Reporting
+
+目标：把 one-shot closure evidence 产品化，让工具自动汇总 latest baseline、latest run、compare、source-file budget 和 target clean 状态。
+
+交付内容：
+
+- 新增 CLI：`migration-guard one-shot report`
+- 新增核心模块：`src/core/oneShot.ts`
+- 新增测试：`src/core/oneShot.test.ts`
+- README 增加 one-shot reporting 入口
+- 真实 `md-one-shot` report: `one-shot-report-2026-07-09T09-35-28-773Z`
+- `docs/PHASE_89_REPORT.md`
+
+完成标准：
+
+- CLI 能写出 one-shot JSON/Markdown artifact。
+- critical checks、behavior probes、compare passed、source-file delta、target clean 均进入报告。
+- `--max-source-file-delta` 让 one-shot 文件预算显式可审。
+- `--strict` 能让 hold 报告返回非零退出码。
+- 真实 `md-one-shot` post-merge evidence 生成 `go` report。
+- `npm test` 通过。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

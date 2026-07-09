@@ -63,6 +63,11 @@ import {
   renderRefactorReadinessReport,
   writeRefactorReadinessReport
 } from "./core/refactorReadiness.js";
+import {
+  collectOneShotReport,
+  renderOneShotReport,
+  writeOneShotReport
+} from "./core/oneShot.js";
 import type { CompareReport, DiffDecisionClassification, Difference, MigrationAutomationMode, MigrationRun, ProposalGatePolicy, ProposedPatch } from "./types.js";
 
 interface ParsedArgs {
@@ -124,6 +129,9 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "readiness":
       await commandReadiness(args);
+      return;
+    case "one-shot":
+      await commandOneShot(args);
       return;
     case "checkpoint":
       await commandCheckpoint(args);
@@ -540,6 +548,30 @@ async function commandReadiness(args: ParsedArgs): Promise<void> {
     console.log(JSON.stringify(written, null, 2));
   } else {
     console.log(renderRefactorReadinessReport(written));
+  }
+  if (args.options.strict && written.status !== "go") {
+    process.exitCode = 1;
+  }
+}
+
+async function commandOneShot(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "report";
+  if (action !== "report") {
+    throw new Error(`Unknown one-shot action: ${action}`);
+  }
+  const loaded = await loadFromArgs(args);
+  const report = await collectOneShotReport(loaded, {
+    baselinePath: stringOption(args, "baseline"),
+    currentPath: stringOption(args, "current"),
+    compareReportPath: stringOption(args, "compare"),
+    maxSourceFileDelta: numberOption(args, "max-source-file-delta"),
+    checkTargetGit: !args.options["skip-target-git"]
+  });
+  const written = await writeOneShotReport(loaded, report);
+  if (args.options.json) {
+    console.log(JSON.stringify(written, null, 2));
+  } else {
+    console.log(renderOneShotReport(written));
   }
   if (args.options.strict && written.status !== "go") {
     process.exitCode = 1;
@@ -1183,6 +1215,7 @@ Usage:
   migration-guard actions handoff [--run <id|latest>] [--create-replans] [--repair-briefs] [--json]
   migration-guard report [--run <id|latest>]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
+  migration-guard one-shot report [--baseline <path>] [--current <path>] [--compare <compare.json>] [--max-source-file-delta <n>] [--skip-target-git] [--strict] [--json]
   migration-guard checkpoint create|list [--run <id|latest>]
   migration-guard resume [--run <id|latest>] [--auto]
   migration-guard rollback [--run <id|latest>] --checkpoint <id>

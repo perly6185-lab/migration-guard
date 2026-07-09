@@ -108,6 +108,7 @@ node dist/cli.js proposal ignore --run latest --proposal <proposal-id> --superse
 node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
 node dist/cli.js readiness --run latest --min-proposals 3 --min-batch-size 3 --strict
+node dist/cli.js one-shot report --max-source-file-delta 1 --strict
 node dist/cli.js diff list --run latest --compare <compare.json>
 node dist/cli.js diff decide --run latest --compare <compare.json> --area probe --name renderer --as intentional --reason "expected renderer behavior change"
 node dist/cli.js sync-issues --run latest --provider local
@@ -218,6 +219,11 @@ summaries and an AI repair acceptance checklist.
 large-batch refactor. It requires a valid action plan, clear action check
 readiness, enough candidate proposals, required probe template coverage, a
 recent passing batch and a clean target repository before it returns `go`.
+`one-shot report` summarizes a bounded one-shot closure from the latest
+baseline/run/compare artifacts, critical check and probe status, source-file
+delta budget and target git cleanliness. Use `--max-source-file-delta` to make
+the planned file-count budget explicit and `--strict` to fail the command when
+the report returns `hold`.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at
