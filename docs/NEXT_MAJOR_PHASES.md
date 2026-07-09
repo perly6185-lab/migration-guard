@@ -48,7 +48,7 @@
 
 目标：强化 `baseline` / `verify` / `compare` 在真实项目里的行为守护能力，让 Migration Guard 更像迁移指挥系统的证据层。
 
-状态：Phase 37-87 已完成当前主线收敛，真实 `md.git` validation lane 已完成三条不同风险域 scoped real refactor、第一条 small multi-lane batch merge validation、一条 6-file larger multi-lane batch merge validation，并补齐 one-shot 前置的 web/MCP guard coverage。
+状态：Phase 37-88 已完成当前主线收敛，真实 `md.git` validation lane 已完成三条不同风险域 scoped real refactor、第一条 small multi-lane batch merge validation、一条 6-file larger multi-lane batch merge validation、one-shot 前置 web/MCP guard coverage，以及第一轮 bounded one-shot refactor merge closure。
 
 Progress:
 
@@ -97,6 +97,7 @@ Progress:
 - Phase 85: larger multi-lane real `md.git` batch opened PR #5 across six shared/API/core files after fresh baseline/verify/compare showed no behavior differences.
 - Phase 86: real `md.git` PR #5 was merged and post-merge verify/compare on target `main` still showed no behavior differences.
 - Phase 87: `md-one-shot` guard lane adds critical web build/test/type-check coverage plus web static and MCP render probes; baseline/verify/compare passed with no differences.
+- Phase 88: first bounded one-shot real `md.git` refactor opened and merged PR #6 across API, web, core, MCP, and shared lanes; post-commit and post-merge `md-one-shot` verify/compare passed.
 
 候选能力：
 
@@ -126,7 +127,7 @@ Next candidate:
 - Phase 67 added reviewed-plan confirmation for artifact migration apply.
 - Phase 68 added the Phase 57-68 PR split plan and real MD operator runbook.
 - Phase 69 added the final Phase 57-68 release checklist.
-- Next: define the tightly bounded one-shot refactor budget and hard gates using `configs/md-one-shot.migration-guard.json`.
+- Next: decide whether Phase 89 should run one more bounded one-shot confidence window or productize one-shot readiness/reporting in Migration Guard itself.
 
 ## Major Phase D: AI Collaboration Loop
 

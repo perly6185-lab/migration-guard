@@ -2643,6 +2643,34 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - one-shot compare 无差异。
 - target `main` 与 `origin/main` 对齐且 clean。
 
+## Phase 88: Bounded One-Shot Refactor Closure
+
+目标：执行第一轮严格限额的真实 `md.git` one-shot refactor window，并用 `md-one-shot` full guard lane 完成 post-commit 与 post-merge 行为验证。
+
+交付内容：
+
+- target `md.git` branch: `migration-guard/phase-88-one-shot-refactor`
+- target commit: `3a82a8e refactor: run bounded one-shot cleanup`
+- target PR: `https://github.com/perly6185-lab/md/pull/6`
+- target merge commit: `2c02450be494f2b45d3a3c748294a25e1bda0817`
+- baseline: `baseline-2026-07-09T07-54-27-690Z`
+- post-commit verify: `run-2026-07-09T09-18-57-291Z`
+- post-commit compare: passed
+- post-merge verify: `run-2026-07-09T09-23-45-122Z`
+- post-merge compare: passed
+- `docs/PHASE_88_REPORT.md`
+
+完成标准：
+
+- one-shot 改动保持在低风险 helper extraction / duplicate cleanup 预算内。
+- 真实 target source 覆盖 API、web、core、MCP、shared lane。
+- `md-one-shot` post-commit checks/probes 全部通过。
+- `md-one-shot` post-commit compare 通过。
+- target PR 已创建并合并。
+- target `main` 与 `origin/main` 对齐且 clean。
+- `md-one-shot` post-merge checks/probes 全部通过。
+- `md-one-shot` post-merge compare 通过。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：
