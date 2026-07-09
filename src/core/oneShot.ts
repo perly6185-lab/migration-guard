@@ -23,6 +23,11 @@ export interface OneShotRunbookOptions {
   commandPrefix?: string;
 }
 
+export interface OneShotStatusOptions {
+  runbookPath?: string;
+  checkTargetGit?: boolean;
+}
+
 export interface OneShotWindowMetadata {
   name?: string;
   branch?: string;
@@ -99,6 +104,45 @@ export interface OneShotRunbook {
   steps: OneShotRunbookStep[];
   outputPath?: string;
   markdownPath?: string;
+}
+
+export interface OneShotStatusStep {
+  id: string;
+  title: string;
+  status: "passed" | "ready" | "pending" | "blocked";
+  summary: string;
+  command?: string;
+  evidence?: string[];
+  nextAction?: string;
+}
+
+export interface OneShotStatusReport {
+  version: 1;
+  id: string;
+  createdAt: string;
+  status: "go" | "hold";
+  runbookId?: string;
+  runbookPath?: string;
+  latestBaselinePath?: string;
+  latestRunPath?: string;
+  latestComparePath?: string;
+  latestReportPath?: string;
+  latestClosureReportPath?: string;
+  targetClean?: boolean;
+  summary: {
+    stepCount: number;
+    passedSteps: number;
+    readySteps: number;
+    blockedSteps: number;
+    pendingSteps: number;
+  };
+  steps: OneShotStatusStep[];
+  nextAction?: {
+    stepId: string;
+    title: string;
+    command?: string;
+    reason: string;
+  };
 }
 
 interface TargetGitStatus {
@@ -333,6 +377,70 @@ export async function writeOneShotRunbook(loaded: LoadedConfig, runbook: OneShot
   return withPaths;
 }
 
+export async function collectOneShotStatus(
+  loaded: LoadedConfig,
+  options: OneShotStatusOptions = {}
+): Promise<OneShotStatusReport> {
+  const runbookArtifact = options.runbookPath
+    ? {
+        path: path.resolve(loaded.baseDir, options.runbookPath),
+        value: await readJsonFile<OneShotRunbook>(path.resolve(loaded.baseDir, options.runbookPath))
+      }
+    : await readLatestOneShotArtifact<OneShotRunbook>(loaded, "one-shot-runbook-");
+  const evidenceSince = runbookArtifact?.value.createdAt;
+  const latestReport = await readLatestOneShotArtifact<OneShotReport>(loaded, "one-shot-report-", evidenceSince);
+  const latestClosureReport = await readLatestClosureReport(loaded, evidenceSince);
+  const latestBaseline = await readOptionalSnapshotArtifact(latestBaselinePath(loaded), evidenceSince);
+  const latestRun = await readOptionalSnapshotArtifact(latestRunPath(loaded), evidenceSince);
+  const latestCompare = await readLatestCompareArtifact(loaded, evidenceSince);
+  const targetStatus = options.checkTargetGit === false ? undefined : await readTargetGitStatus(loaded);
+  const runbook = runbookArtifact?.value;
+  const steps = createOneShotStatusSteps({
+    runbook,
+    latestBaselinePath: latestBaseline.path,
+    latestRunPath: latestRun.path,
+    latestComparePath: latestCompare?.path,
+    latestReport,
+    latestClosureReport,
+    targetStatus
+  });
+  const nextStep = steps.find((step) => step.status === "blocked")
+    ?? steps.find((step) => step.status === "ready")
+    ?? steps.find((step) => step.status === "pending");
+  const blockedSteps = steps.filter((step) => step.status === "blocked").length;
+
+  return {
+    version: 1,
+    id: `one-shot-status-${new Date().toISOString().replace(/[:.]/g, "-")}`,
+    createdAt: new Date().toISOString(),
+    status: blockedSteps === 0 && steps.every((step) => step.status === "passed") ? "go" : "hold",
+    runbookId: runbook?.id,
+    runbookPath: runbookArtifact?.path,
+    latestBaselinePath: latestBaseline.path,
+    latestRunPath: latestRun.path,
+    latestComparePath: latestCompare?.path,
+    latestReportPath: latestReport?.path,
+    latestClosureReportPath: latestClosureReport?.path,
+    targetClean: targetStatus?.clean,
+    summary: {
+      stepCount: steps.length,
+      passedSteps: steps.filter((step) => step.status === "passed").length,
+      readySteps: steps.filter((step) => step.status === "ready").length,
+      blockedSteps,
+      pendingSteps: steps.filter((step) => step.status === "pending").length
+    },
+    steps,
+    nextAction: nextStep
+      ? {
+          stepId: nextStep.id,
+          title: nextStep.title,
+          command: nextStep.command,
+          reason: nextStep.nextAction ?? nextStep.summary
+        }
+      : undefined
+  };
+}
+
 export function renderOneShotReport(report: OneShotReport): string {
   const lines = [
     `# One-Shot Report: ${report.id}`,
@@ -430,6 +538,142 @@ export function renderOneShotRunbook(runbook: OneShotRunbook): string {
   }
 
   return lines.join("\n");
+}
+
+export function renderOneShotStatus(report: OneShotStatusReport): string {
+  return [
+    `# One-Shot Status: ${report.id}`,
+    "",
+    `- Status: ${report.status}`,
+    `- Runbook: ${report.runbookId ?? "none"}`,
+    `- Target clean: ${report.targetClean === undefined ? "not checked" : report.targetClean ? "yes" : "no"}`,
+    `- Steps: ${report.summary.passedSteps}/${report.summary.stepCount} passed, ${report.summary.readySteps} ready, ${report.summary.blockedSteps} blocked, ${report.summary.pendingSteps} pending`,
+    "",
+    "## Steps",
+    "",
+    ...report.steps.flatMap((step) => [
+      `- ${step.status} ${step.id}: ${step.summary}`,
+      ...(step.evidence ?? []).map((item) => `  evidence: ${item}`),
+      step.command ? `  command: ${step.command}` : undefined,
+      step.nextAction ? `  next: ${step.nextAction}` : undefined
+    ].filter((line): line is string => Boolean(line))),
+    "",
+    "## Next Action",
+    "",
+    report.nextAction
+      ? [
+          `- Step: ${report.nextAction.stepId}`,
+          `- Title: ${report.nextAction.title}`,
+          report.nextAction.command ? `- Command: ${report.nextAction.command}` : undefined,
+          `- Reason: ${report.nextAction.reason}`
+        ].filter((line): line is string => Boolean(line)).join("\n")
+      : "- none",
+    "",
+    "## Artifacts",
+    "",
+    `- Runbook: ${report.runbookPath ?? "none"}`,
+    `- Latest baseline: ${report.latestBaselinePath ?? "none"}`,
+    `- Latest run: ${report.latestRunPath ?? "none"}`,
+    `- Latest compare: ${report.latestComparePath ?? "none"}`,
+    `- Latest report: ${report.latestReportPath ?? "none"}`,
+    `- Latest closure report: ${report.latestClosureReportPath ?? "none"}`
+  ].join("\n");
+}
+
+function createOneShotStatusSteps(input: {
+  runbook?: OneShotRunbook;
+  latestBaselinePath?: string;
+  latestRunPath?: string;
+  latestComparePath?: string;
+  latestReport?: { path: string; value: OneShotReport };
+  latestClosureReport?: { path: string; value: OneShotReport };
+  targetStatus?: TargetGitStatus;
+}): OneShotStatusStep[] {
+  const byStep = new Map((input.runbook?.steps ?? []).map((step) => [step.id, step]));
+  const commandFor = (id: string) => byStep.get(id)?.command;
+  const targetClean = input.targetStatus?.clean;
+  const reportGo = input.latestReport?.value.status === "go";
+  const closureGo = input.latestClosureReport?.value.status === "go" && input.latestClosureReport.value.summary.metadataComplete;
+
+  return [
+    {
+      id: "target-prep",
+      title: "Prepare target branch",
+      status: targetClean === false ? "blocked" : targetClean === true ? "passed" : "pending",
+      summary: targetClean === false
+        ? "target repository is not clean"
+        : targetClean === true
+          ? "target repository is clean"
+          : "target git status was not checked",
+      command: commandFor("target-prep") ?? "git status --short --branch",
+      evidence: input.targetStatus?.output ? [input.targetStatus.output] : undefined,
+      nextAction: targetClean === false ? "Clean, commit, or rollback target changes before continuing." : undefined
+    },
+    {
+      id: "baseline",
+      title: "Capture fresh baseline",
+      status: input.latestBaselinePath ? "passed" : targetClean === false ? "blocked" : "ready",
+      summary: input.latestBaselinePath ? "latest baseline exists" : "baseline has not been captured",
+      command: commandFor("baseline"),
+      evidence: input.latestBaselinePath ? [input.latestBaselinePath] : undefined,
+      nextAction: input.latestBaselinePath ? undefined : "Run the baseline command from the one-shot runbook."
+    },
+    {
+      id: "edit-window",
+      title: "Apply bounded edits",
+      status: input.latestBaselinePath ? input.latestRunPath ? "passed" : "ready" : "pending",
+      summary: input.latestRunPath ? "verification run exists after edits" : input.latestBaselinePath ? "baseline exists; bounded edits can proceed" : "waiting for baseline",
+      command: commandFor("edit-window"),
+      nextAction: input.latestBaselinePath && !input.latestRunPath ? "Apply bounded edits within the declared budget, then verify." : undefined
+    },
+    {
+      id: "post-edit-verify",
+      title: "Run post-edit verification",
+      status: input.latestRunPath ? "passed" : input.latestBaselinePath ? "ready" : "pending",
+      summary: input.latestRunPath ? "latest verification run exists" : "verification run is missing",
+      command: commandFor("post-edit-verify"),
+      evidence: input.latestRunPath ? [input.latestRunPath] : undefined,
+      nextAction: input.latestRunPath ? undefined : "Run the verify command from the one-shot runbook."
+    },
+    {
+      id: "pre-pr-report",
+      title: "Generate pre-PR one-shot report",
+      status: reportGo ? "passed" : input.latestRunPath && input.latestComparePath ? "ready" : "pending",
+      summary: reportGo ? "latest one-shot report is go" : "pre-PR report is missing or not go",
+      command: commandFor("pre-pr-report"),
+      evidence: input.latestReport?.path ? [input.latestReport.path] : undefined,
+      nextAction: reportGo ? undefined : "Generate a one-shot report and resolve any hold criteria."
+    },
+    {
+      id: "pr-merge",
+      title: "Open and merge PR",
+      status: input.latestClosureReport?.value.metadata.prUrl && input.latestClosureReport.value.metadata.mergeCommit ? "passed" : reportGo ? "ready" : "pending",
+      summary: input.latestClosureReport?.value.metadata.prUrl && input.latestClosureReport.value.metadata.mergeCommit
+        ? "PR and merge metadata are present"
+        : "PR merge metadata is not complete",
+      command: commandFor("pr-merge"),
+      nextAction: reportGo && !(input.latestClosureReport?.value.metadata.prUrl && input.latestClosureReport.value.metadata.mergeCommit)
+        ? "Open or merge the PR, then collect PR URL, target commit, merge commit, and merge time."
+        : undefined
+    },
+    {
+      id: "post-merge-verify",
+      title: "Run post-merge verification",
+      status: input.latestClosureReport ? "passed" : reportGo ? "ready" : "pending",
+      summary: input.latestClosureReport ? "closure report evidence exists" : "post-merge verification has not been closed",
+      command: commandFor("post-merge-verify"),
+      nextAction: input.latestClosureReport ? undefined : "After merge, fast-forward the target main branch and rerun verify."
+    },
+    {
+      id: "closure-report",
+      title: "Generate final closure report",
+      status: closureGo ? "passed" : input.latestRunPath && input.latestComparePath ? "ready" : "pending",
+      summary: closureGo ? "metadata-complete closure report is go" : "final closure report is missing or incomplete",
+      command: commandFor("closure-report"),
+      evidence: input.latestClosureReport?.path ? [input.latestClosureReport.path] : undefined,
+      nextAction: closureGo ? undefined : "Generate the final one-shot report with PR and merge metadata."
+    }
+  ];
 }
 
 function createOneShotCriteria(input: {
@@ -696,6 +940,108 @@ async function findLatestCompareReport(
     const report = await readJsonFile<CompareReport>(candidate.filePath).catch(() => undefined);
     if (report?.baselineId === baselineId && report.currentId === currentId) {
       return { path: candidate.filePath, report };
+    }
+  }
+  return undefined;
+}
+
+async function readOptionalSnapshotArtifact(filePath: string, minCreatedAt?: string): Promise<{ path?: string }> {
+  if (!await pathExists(filePath)) {
+    return {};
+  }
+  if (!minCreatedAt) {
+    return { path: filePath };
+  }
+  const snapshot = await readJsonFile<Snapshot>(filePath).catch(() => undefined);
+  return snapshot && snapshot.createdAt >= minCreatedAt ? { path: filePath } : {};
+}
+
+async function readLatestOneShotArtifact<T>(
+  loaded: LoadedConfig,
+  prefix: string,
+  minCreatedAt?: string
+): Promise<{ path: string; value: T } | undefined> {
+  const dir = path.join(loaded.artifactsDir, "one-shot");
+  if (!await pathExists(dir)) {
+    return undefined;
+  }
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const candidates = await Promise.all(entries
+    .filter((entry) => entry.isFile() && entry.name.startsWith(prefix) && entry.name.endsWith(".json"))
+    .map(async (entry) => {
+      const filePath = path.join(dir, entry.name);
+      const stat = await fs.stat(filePath);
+      return { filePath, mtimeMs: stat.mtimeMs };
+    }));
+  for (const candidate of candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)) {
+    const value = await readJsonFile<T & { createdAt?: string }>(candidate.filePath).catch(() => undefined);
+    if (!value) {
+      continue;
+    }
+    if (!minCreatedAt || (value.createdAt && value.createdAt >= minCreatedAt)) {
+      return {
+        path: candidate.filePath,
+        value
+      };
+    }
+  }
+  return undefined;
+}
+
+async function readLatestClosureReport(
+  loaded: LoadedConfig,
+  minCreatedAt?: string
+): Promise<{ path: string; value: OneShotReport } | undefined> {
+  const dir = path.join(loaded.artifactsDir, "one-shot");
+  if (!await pathExists(dir)) {
+    return undefined;
+  }
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const candidates = await Promise.all(entries
+    .filter((entry) => entry.isFile() && entry.name.startsWith("one-shot-report-") && entry.name.endsWith(".json"))
+    .map(async (entry) => {
+      const filePath = path.join(dir, entry.name);
+      const stat = await fs.stat(filePath);
+      return { filePath, mtimeMs: stat.mtimeMs };
+    }));
+  for (const candidate of candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)) {
+    const report = await readJsonFile<OneShotReport>(candidate.filePath).catch(() => undefined);
+    if (report?.summary.metadataComplete && (!minCreatedAt || report.createdAt >= minCreatedAt)) {
+      return {
+        path: candidate.filePath,
+        value: report
+      };
+    }
+  }
+  return undefined;
+}
+
+async function readLatestCompareArtifact(
+  loaded: LoadedConfig,
+  minCreatedAt?: string
+): Promise<{ path: string; value: CompareReport } | undefined> {
+  const compareDir = path.join(loaded.artifactsDir, "compare");
+  if (!await pathExists(compareDir)) {
+    return undefined;
+  }
+  const entries = await fs.readdir(compareDir, { withFileTypes: true });
+  const candidates = await Promise.all(entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map(async (entry) => {
+      const filePath = path.join(compareDir, entry.name);
+      const stat = await fs.stat(filePath);
+      return { filePath, mtimeMs: stat.mtimeMs };
+    }));
+  for (const candidate of candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)) {
+    const value = await readJsonFile<CompareReport>(candidate.filePath).catch(() => undefined);
+    if (!value) {
+      continue;
+    }
+    if (!minCreatedAt || value.createdAt >= minCreatedAt) {
+      return {
+        path: candidate.filePath,
+        value
+      };
     }
   }
   return undefined;

@@ -2734,6 +2734,28 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - 真实 `md-one-shot` 配置能生成 runbook。
 - `npm test` 通过。
 
+## Phase 92: One-Shot Status Reporting
+
+目标：新增一次性重构 status view，让工具读取最新 runbook 和其后的 evidence artifacts，回答当前 one-shot window 做到哪一步、下一步该执行什么命令。
+
+交付内容：
+
+- 新增 CLI：`migration-guard one-shot status`
+- 新增模型：`OneShotStatusReport`、`OneShotStatusStep`
+- status 覆盖 target prep、baseline、edit window、post-edit verify、pre-PR report、PR merge、post-merge verify、closure report
+- evidence 只统计 runbook 创建时间之后的 artifacts，避免旧 one-shot evidence 污染新窗口状态
+- 真实 `md-one-shot` status: latest runbook target prep passed，baseline ready
+- `docs/PHASE_92_REPORT.md`
+
+完成标准：
+
+- CLI 能读取 latest runbook 并输出 one-shot lifecycle progress。
+- status 能区分 passed、ready、blocked、pending。
+- status 能给出单一 next action 和可执行命令。
+- 新 runbook 不会被旧 baseline/run/compare/report artifact 误判为完成。
+- 真实 `md-one-shot` 配置能返回正确下一步。
+- `npm test` 通过。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

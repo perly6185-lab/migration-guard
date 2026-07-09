@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { collectOneShotReport, createOneShotRunbook, renderOneShotReport, renderOneShotRunbook } from "./oneShot.js";
+import { collectOneShotReport, collectOneShotStatus, createOneShotRunbook, renderOneShotReport, renderOneShotRunbook, renderOneShotStatus } from "./oneShot.js";
 import type { CheckResult, CommandProbeResult, CompareReport, LoadedConfig, ScanSummary, Snapshot } from "../types.js";
 
 test("one-shot report goes green when latest evidence passes and source delta is budgeted", async () => {
@@ -90,6 +90,53 @@ test("one-shot runbook renders reusable closure steps and commands", async () =>
   assert.match(markdown, /Platform window/);
   assert.match(markdown, /two source files/);
   assert.match(markdown, /post-merge verification/i);
+});
+
+test("one-shot status points to pre-PR report after verify evidence exists", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+  const runbook = createOneShotRunbook(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg"
+  });
+  runbook.createdAt = "2026-07-08T00:00:00.000Z";
+  const oneShotDir = path.join(loaded.artifactsDir, "one-shot");
+  await mkdir(oneShotDir, { recursive: true });
+  await writeFile(path.join(oneShotDir, `${runbook.id}.json`), `${JSON.stringify(runbook, null, 2)}\n`, "utf8");
+
+  const status = await collectOneShotStatus(loaded, {
+    checkTargetGit: false
+  });
+  const markdown = renderOneShotStatus(status);
+
+  assert.equal(status.runbookId, runbook.id);
+  assert.equal(status.nextAction?.stepId, "pre-pr-report");
+  assert.ok(status.steps.some((step) => step.id === "baseline" && step.status === "passed"));
+  assert.ok(status.steps.some((step) => step.id === "post-edit-verify" && step.status === "passed"));
+  assert.match(markdown, /pre-pr-report/);
+  assert.match(markdown, /Generate a one-shot report/);
+});
+
+test("one-shot status ignores evidence older than the selected runbook", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+  const runbook = createOneShotRunbook(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg"
+  });
+  runbook.createdAt = "2026-07-10T00:00:00.000Z";
+  const oneShotDir = path.join(loaded.artifactsDir, "one-shot");
+  await mkdir(oneShotDir, { recursive: true });
+  await writeFile(path.join(oneShotDir, `${runbook.id}.json`), `${JSON.stringify(runbook, null, 2)}\n`, "utf8");
+
+  const status = await collectOneShotStatus(loaded, {
+    checkTargetGit: false
+  });
+
+  assert.equal(status.latestBaselinePath, undefined);
+  assert.equal(status.latestRunPath, undefined);
+  assert.equal(status.latestComparePath, undefined);
+  assert.equal(status.nextAction?.stepId, "baseline");
+  assert.ok(status.steps.some((step) => step.id === "baseline" && step.status === "ready"));
+  assert.ok(status.steps.some((step) => step.id === "post-edit-verify" && step.status === "pending"));
 });
 
 async function makeFixture(options: { currentSourceFiles: number }): Promise<{

@@ -65,8 +65,10 @@ import {
 } from "./core/refactorReadiness.js";
 import {
   createOneShotRunbook,
+  collectOneShotStatus,
   collectOneShotReport,
   renderOneShotRunbook,
+  renderOneShotStatus,
   renderOneShotReport,
   writeOneShotRunbook,
   writeOneShotReport
@@ -571,6 +573,22 @@ async function commandOneShot(args: ParsedArgs): Promise<void> {
       console.log(JSON.stringify(written, null, 2));
     } else {
       console.log(renderOneShotRunbook(written));
+    }
+    return;
+  }
+  if (action === "status") {
+    const loaded = await loadFromArgs(args);
+    const status = await collectOneShotStatus(loaded, {
+      runbookPath: stringOption(args, "runbook"),
+      checkTargetGit: !args.options["skip-target-git"]
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(status, null, 2));
+    } else {
+      console.log(renderOneShotStatus(status));
+    }
+    if (args.options.strict && status.status !== "go") {
+      process.exitCode = 1;
     }
     return;
   }
@@ -1258,6 +1276,7 @@ Usage:
   migration-guard report [--run <id|latest>]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot runbook [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--json]
+  migration-guard one-shot status [--runbook <path>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot report [--baseline <path>] [--current <path>] [--compare <compare.json>] [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--pr-url <url>] [--target-commit <sha>] [--merge-commit <sha>] [--merged-at <iso>] [--budget <text>] [--note <text>] [--skip-target-git] [--skip-git-metadata] [--strict] [--json]
   migration-guard checkpoint create|list [--run <id|latest>]
   migration-guard resume [--run <id|latest>] [--auto]

@@ -109,6 +109,7 @@ node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
 node dist/cli.js readiness --run latest --min-proposals 3 --min-batch-size 3 --strict
 node dist/cli.js one-shot runbook --max-source-file-delta 1 --budget "bounded helper cleanup"
+node dist/cli.js one-shot status
 node dist/cli.js one-shot report --max-source-file-delta 1 --strict
 node dist/cli.js one-shot report --max-source-file-delta 1 --pr-url <url> --target-commit <sha> --merge-commit <sha> --merged-at <iso> --budget "bounded helper cleanup" --strict
 node dist/cli.js diff list --run latest --compare <compare.json>
@@ -223,14 +224,18 @@ readiness, enough candidate proposals, required probe template coverage, a
 recent passing batch and a clean target repository before it returns `go`.
 `one-shot runbook` writes a reusable JSON/Markdown checklist for a bounded
 one-shot window, including baseline, verify, pre-PR report, PR merge,
-post-merge verify and final closure report command templates. `one-shot report`
-summarizes a bounded one-shot closure from the latest baseline/run/compare
-artifacts, critical check and probe status, source-file delta budget and target
-git cleanliness. Use `--max-source-file-delta` to make the planned file-count
-budget explicit and `--strict` to fail the command when the report returns
-`hold`. For final closure evidence, add `--pr-url`, `--target-commit`,
-`--merge-commit`, `--merged-at` and `--budget`; the report also auto-detects
-the target branch and current HEAD commit when possible.
+post-merge verify and final closure report command templates. `one-shot status`
+reads the latest runbook and reports which lifecycle steps have passed, which
+step is ready, and the next command to run. It only counts evidence created
+after the selected runbook, so old closure artifacts cannot make a new window
+look complete. `one-shot report` summarizes a bounded one-shot closure from the
+latest baseline/run/compare artifacts, critical check and probe status,
+source-file delta budget and target git cleanliness. Use
+`--max-source-file-delta` to make the planned file-count budget explicit and
+`--strict` to fail the command when the report returns `hold`. For final closure
+evidence, add `--pr-url`, `--target-commit`, `--merge-commit`, `--merged-at` and
+`--budget`; the report also auto-detects the target branch and current HEAD
+commit when possible.
 Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at
