@@ -195,6 +195,18 @@ export interface OneShotSession {
   markdownPath?: string;
 }
 
+export interface OneShotSessionNextAction {
+  version: 1;
+  id: string;
+  createdAt: string;
+  sessionId: string;
+  sessionPath?: string;
+  state: OneShotSessionState;
+  runbookId: string;
+  status: OneShotStatusReport["status"];
+  nextAction?: OneShotStatusReport["nextAction"];
+}
+
 interface TargetGitStatus {
   clean: boolean;
   output: string;
@@ -539,6 +551,28 @@ export async function readOneShotSession(
   return (await readOneShotSessionArtifact(loaded, options.sessionPath)).value;
 }
 
+export async function collectOneShotSessionNextAction(
+  loaded: LoadedConfig,
+  options: OneShotSessionOptions = {}
+): Promise<OneShotSessionNextAction> {
+  const session = await syncOneShotSession(loaded, options);
+  const status = await collectOneShotStatus(loaded, {
+    runbookPath: session.runbookPath,
+    checkTargetGit: options.checkTargetGit
+  });
+  return {
+    version: 1,
+    id: `one-shot-next-${new Date().toISOString().replace(/[:.]/g, "-")}`,
+    createdAt: new Date().toISOString(),
+    sessionId: session.id,
+    sessionPath: session.outputPath,
+    state: session.state,
+    runbookId: session.runbookId,
+    status: status.status,
+    nextAction: status.nextAction
+  };
+}
+
 export async function collectOneShotStatus(
   loaded: LoadedConfig,
   options: OneShotStatusOptions = {}
@@ -749,6 +783,32 @@ export function renderOneShotSession(session: OneShotSession): string {
   }
 
   return lines.join("\n");
+}
+
+export function renderOneShotSessionNextAction(action: OneShotSessionNextAction): string {
+  return [
+    `# One-Shot Session Next: ${action.id}`,
+    "",
+    `- Session: ${action.sessionId}`,
+    `- State: ${action.state}`,
+    `- Runbook: ${action.runbookId}`,
+    `- Status: ${action.status}`,
+    "",
+    "## Next Action",
+    "",
+    action.nextAction
+      ? [
+          `- Step: ${action.nextAction.stepId}`,
+          `- Title: ${action.nextAction.title}`,
+          action.nextAction.command ? `- Command: ${action.nextAction.command}` : undefined,
+          `- Reason: ${action.nextAction.reason}`
+        ].filter((line): line is string => Boolean(line)).join("\n")
+      : "- none",
+    "",
+    "## Artifacts",
+    "",
+    `- Session: ${action.sessionPath ?? "none"}`
+  ].join("\n");
 }
 
 export function renderOneShotStatus(report: OneShotStatusReport): string {

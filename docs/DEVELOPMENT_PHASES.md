@@ -2778,6 +2778,25 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - 单元测试覆盖 session open 和 closure sync。
 - `npm test` 通过。
 
+## Phase 95: One-Shot Session Next Action
+
+目标：让 session ledger 不只展示状态，还能直接告诉操作者当前唯一下一条可执行命令，支持从 active session 继续 baseline、verify、pre-PR report 或 closure report。
+
+交付内容：
+
+- 新增 CLI：`migration-guard one-shot session next`
+- 新增模型：`OneShotSessionNextAction`
+- 新增渲染：`renderOneShotSessionNextAction`
+- `session next` 默认同步 session evidence，再基于 runbook status 输出 step、title、command 和 reason
+- `docs/PHASE_95_REPORT.md`
+
+完成标准：
+
+- `one-shot session next` 能输出当前 runnable command。
+- closed session 返回 `none` next action。
+- 单元测试覆盖新开窗口的 baseline next action。
+- `npm test` 通过。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

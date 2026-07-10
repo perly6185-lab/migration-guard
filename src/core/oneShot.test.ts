@@ -6,12 +6,14 @@ import os from "node:os";
 import path from "node:path";
 import {
   collectOneShotReport,
+  collectOneShotSessionNextAction,
   collectOneShotStatus,
   createOneShotRunbook,
   openOneShotSession,
   renderOneShotReport,
   renderOneShotRunbook,
   renderOneShotSession,
+  renderOneShotSessionNextAction,
   renderOneShotStatus,
   syncOneShotSession,
   writeOneShotReport,
@@ -174,6 +176,30 @@ test("one-shot session open writes a persistent ledger with runbook evidence", a
   assert.match(markdown, /One-Shot Session/);
   assert.match(markdown, /Ledger window/);
   assert.match(markdown, /Runbook:/);
+});
+
+test("one-shot session next reports the current runnable command", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+  const session = await openOneShotSession(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg",
+    metadata: {
+      name: "Next action window"
+    }
+  });
+
+  const nextAction = await collectOneShotSessionNextAction(loaded, {
+    sessionPath: session.outputPath,
+    checkTargetGit: false
+  });
+  const markdown = renderOneShotSessionNextAction(nextAction);
+
+  assert.equal(nextAction.sessionId, session.id);
+  assert.equal(nextAction.state, "open");
+  assert.equal(nextAction.nextAction?.stepId, "baseline");
+  assert.match(nextAction.nextAction?.command ?? "", /mg baseline/);
+  assert.match(markdown, /One-Shot Session Next/);
+  assert.match(markdown, /Capture fresh baseline/);
 });
 
 test("one-shot session sync records closure evidence and closes the ledger", async () => {

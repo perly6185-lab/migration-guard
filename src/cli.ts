@@ -65,11 +65,13 @@ import {
 } from "./core/refactorReadiness.js";
 import {
   createOneShotRunbook,
+  collectOneShotSessionNextAction,
   collectOneShotStatus,
   collectOneShotReport,
   openOneShotSession,
   renderOneShotRunbook,
   renderOneShotSession,
+  renderOneShotSessionNextAction,
   renderOneShotStatus,
   renderOneShotReport,
   readOneShotSession,
@@ -653,6 +655,22 @@ async function commandOneShotSession(args: ParsedArgs): Promise<void> {
       console.log(renderOneShotSession(session));
     }
     if (args.options.strict && session.state !== "closed") {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (action === "next") {
+    const nextAction = await collectOneShotSessionNextAction(loaded, {
+      sessionPath: stringOption(args, "session"),
+      checkTargetGit: !args.options["skip-target-git"]
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(nextAction, null, 2));
+    } else {
+      console.log(renderOneShotSessionNextAction(nextAction));
+    }
+    if (args.options.strict && nextAction.nextAction) {
       process.exitCode = 1;
     }
     return;
@@ -1339,7 +1357,7 @@ Usage:
   migration-guard report [--run <id|latest>]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot runbook [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--json]
-  migration-guard one-shot session open|status|sync [--session <path>] [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--skip-target-git] [--no-sync] [--strict] [--json]
+  migration-guard one-shot session open|status|sync|next [--session <path>] [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--skip-target-git] [--no-sync] [--strict] [--json]
   migration-guard one-shot status [--runbook <path>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot report [--baseline <path>] [--current <path>] [--compare <compare.json>] [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--pr-url <url>] [--target-commit <sha>] [--merge-commit <sha>] [--merged-at <iso>] [--budget <text>] [--note <text>] [--skip-target-git] [--skip-git-metadata] [--strict] [--json]
   migration-guard checkpoint create|list [--run <id|latest>]
