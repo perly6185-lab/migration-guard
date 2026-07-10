@@ -28,6 +28,13 @@ export interface OneShotStatusOptions {
   checkTargetGit?: boolean;
 }
 
+export type OneShotSessionOpenOptions = OneShotRunbookOptions;
+
+export interface OneShotSessionOptions {
+  sessionPath?: string;
+  checkTargetGit?: boolean;
+}
+
 export interface OneShotWindowMetadata {
   name?: string;
   branch?: string;
@@ -145,6 +152,49 @@ export interface OneShotStatusReport {
   };
 }
 
+export type OneShotSessionState = "open" | "active" | "pre-pr" | "merged" | "closed";
+
+export interface OneShotSessionEvidence {
+  runbookPath?: string;
+  baselinePath?: string;
+  prePrRunPath?: string;
+  prePrComparePath?: string;
+  prePrReportPath?: string;
+  prUrl?: string;
+  targetCommit?: string;
+  mergeCommit?: string;
+  mergedAt?: string;
+  postMergeRunPath?: string;
+  postMergeComparePath?: string;
+  closureReportPath?: string;
+}
+
+export interface OneShotSessionEvent {
+  id: string;
+  type: "opened" | "synced";
+  createdAt: string;
+  message: string;
+}
+
+export interface OneShotSession {
+  version: 1;
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  state: OneShotSessionState;
+  targetRoot: string;
+  artifactsDir: string;
+  configPath: string;
+  runbookId: string;
+  runbookPath: string;
+  maxSourceFileDelta: number;
+  metadata: OneShotWindowMetadata;
+  evidence: OneShotSessionEvidence;
+  events: OneShotSessionEvent[];
+  outputPath?: string;
+  markdownPath?: string;
+}
+
 interface TargetGitStatus {
   clean: boolean;
   output: string;
@@ -152,6 +202,8 @@ interface TargetGitStatus {
 }
 
 const DEFAULT_MAX_SOURCE_FILE_DELTA = 0;
+const ONE_SHOT_DIR = "one-shot";
+const ONE_SHOT_SESSION_PREFIX = "one-shot-session-";
 
 export async function collectOneShotReport(
   loaded: LoadedConfig,
@@ -362,7 +414,7 @@ export function createOneShotRunbook(
 }
 
 export async function writeOneShotRunbook(loaded: LoadedConfig, runbook: OneShotRunbook): Promise<OneShotRunbook> {
-  const dir = path.join(loaded.artifactsDir, "one-shot");
+  const dir = path.join(loaded.artifactsDir, ONE_SHOT_DIR);
   const jsonPath = path.join(dir, `${runbook.id}.json`);
   const markdownPath = path.join(dir, `${runbook.id}.md`);
   const withPaths = {
@@ -375,6 +427,116 @@ export async function writeOneShotRunbook(loaded: LoadedConfig, runbook: OneShot
   await writeJsonFile(jsonPath, withPaths);
   await writeTextFile(markdownPath, renderOneShotRunbook(withPaths));
   return withPaths;
+}
+
+export async function openOneShotSession(
+  loaded: LoadedConfig,
+  options: OneShotSessionOpenOptions = {}
+): Promise<OneShotSession> {
+  const runbook = await writeOneShotRunbook(loaded, createOneShotRunbook(loaded, options));
+  const now = new Date().toISOString();
+  return writeOneShotSession(loaded, {
+    version: 1,
+    id: `${ONE_SHOT_SESSION_PREFIX}${now.replace(/[:.]/g, "-")}`,
+    createdAt: now,
+    updatedAt: now,
+    state: "open",
+    targetRoot: loaded.targetRoot,
+    artifactsDir: loaded.artifactsDir,
+    configPath: loaded.path,
+    runbookId: runbook.id,
+    runbookPath: runbook.outputPath ?? path.join(loaded.artifactsDir, ONE_SHOT_DIR, `${runbook.id}.json`),
+    maxSourceFileDelta: runbook.maxSourceFileDelta,
+    metadata: runbook.metadata,
+    evidence: {
+      runbookPath: runbook.outputPath
+    },
+    events: [
+      {
+        id: `one-shot-event-${now.replace(/[:.]/g, "-")}`,
+        type: "opened",
+        createdAt: now,
+        message: `Opened one-shot session from ${runbook.id}.`
+      }
+    ]
+  });
+}
+
+export async function writeOneShotSession(loaded: LoadedConfig, session: OneShotSession): Promise<OneShotSession> {
+  const dir = path.join(loaded.artifactsDir, ONE_SHOT_DIR);
+  const jsonPath = session.outputPath ?? path.join(dir, `${session.id}.json`);
+  const markdownPath = session.markdownPath ?? path.join(dir, `${session.id}.md`);
+  const withPaths = {
+    ...session,
+    outputPath: jsonPath,
+    markdownPath
+  };
+
+  await ensureDir(dir);
+  await writeJsonFile(jsonPath, withPaths);
+  await writeTextFile(markdownPath, renderOneShotSession(withPaths));
+  return withPaths;
+}
+
+export async function syncOneShotSession(
+  loaded: LoadedConfig,
+  options: OneShotSessionOptions = {}
+): Promise<OneShotSession> {
+  const sessionArtifact = await readOneShotSessionArtifact(loaded, options.sessionPath);
+  const session = sessionArtifact.value;
+  const runbook = await readJsonFile<OneShotRunbook>(session.runbookPath);
+  const status = await collectOneShotStatus(loaded, {
+    runbookPath: session.runbookPath,
+    checkTargetGit: options.checkTargetGit
+  });
+  const latestReport = await readLatestOneShotArtifact<OneShotReport>(loaded, "one-shot-report-", runbook.createdAt);
+  const latestClosureReport = await readLatestClosureReport(loaded, runbook.createdAt);
+  const metadata = mergeOneShotMetadata(session.metadata, latestClosureReport?.value.metadata);
+  const nextState = latestClosureReport?.value.status === "go" && latestClosureReport.value.summary.metadataComplete
+    ? "closed"
+    : deriveOneShotSessionState(status);
+  const now = new Date().toISOString();
+  const evidence: OneShotSessionEvidence = {
+    ...session.evidence,
+    runbookPath: session.runbookPath,
+    baselinePath: status.latestBaselinePath ?? session.evidence.baselinePath,
+    prePrRunPath: latestClosureReport ? session.evidence.prePrRunPath : status.latestRunPath ?? session.evidence.prePrRunPath,
+    prePrComparePath: latestClosureReport ? session.evidence.prePrComparePath : status.latestComparePath ?? session.evidence.prePrComparePath,
+    prePrReportPath: latestReport && latestReport.path !== latestClosureReport?.path
+      ? latestReport.path
+      : session.evidence.prePrReportPath,
+    prUrl: metadata.prUrl,
+    targetCommit: metadata.targetCommit,
+    mergeCommit: metadata.mergeCommit,
+    mergedAt: metadata.mergedAt,
+    postMergeRunPath: latestClosureReport ? status.latestRunPath ?? session.evidence.postMergeRunPath : session.evidence.postMergeRunPath,
+    postMergeComparePath: latestClosureReport ? status.latestComparePath ?? session.evidence.postMergeComparePath : session.evidence.postMergeComparePath,
+    closureReportPath: latestClosureReport?.path ?? session.evidence.closureReportPath
+  };
+
+  return writeOneShotSession(loaded, {
+    ...session,
+    updatedAt: now,
+    state: nextState,
+    metadata,
+    evidence,
+    events: [
+      ...session.events,
+      {
+        id: `one-shot-event-${now.replace(/[:.]/g, "-")}`,
+        type: "synced",
+        createdAt: now,
+        message: `Synced session evidence; state is ${nextState}.`
+      }
+    ]
+  });
+}
+
+export async function readOneShotSession(
+  loaded: LoadedConfig,
+  options: OneShotSessionOptions = {}
+): Promise<OneShotSession> {
+  return (await readOneShotSessionArtifact(loaded, options.sessionPath)).value;
 }
 
 export async function collectOneShotStatus(
@@ -534,6 +696,55 @@ export function renderOneShotRunbook(runbook: OneShotRunbook): string {
     }
     if (runbook.markdownPath) {
       lines.push(`- Markdown: ${runbook.markdownPath}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function renderOneShotSession(session: OneShotSession): string {
+  const evidence = session.evidence;
+  const lines = [
+    `# One-Shot Session: ${session.id}`,
+    "",
+    `- State: ${session.state}`,
+    `- Runbook: ${session.runbookId}`,
+    `- Target: ${session.targetRoot}`,
+    `- Config: ${session.configPath}`,
+    `- Source file delta budget: ${session.maxSourceFileDelta}`,
+    `- Updated at: ${session.updatedAt}`,
+    "",
+    "## Window",
+    "",
+    ...renderMetadataLines(session.metadata),
+    "",
+    "## Evidence",
+    "",
+    `- Runbook: ${evidence.runbookPath ?? session.runbookPath}`,
+    `- Baseline: ${evidence.baselinePath ?? "none"}`,
+    `- Pre-PR run: ${evidence.prePrRunPath ?? "none"}`,
+    `- Pre-PR compare: ${evidence.prePrComparePath ?? "none"}`,
+    `- Pre-PR report: ${evidence.prePrReportPath ?? "none"}`,
+    `- PR URL: ${evidence.prUrl ?? "none"}`,
+    `- Target commit: ${evidence.targetCommit ?? "none"}`,
+    `- Merge commit: ${evidence.mergeCommit ?? "none"}`,
+    `- Merged at: ${evidence.mergedAt ?? "none"}`,
+    `- Post-merge run: ${evidence.postMergeRunPath ?? "none"}`,
+    `- Post-merge compare: ${evidence.postMergeComparePath ?? "none"}`,
+    `- Closure report: ${evidence.closureReportPath ?? "none"}`,
+    "",
+    "## Events",
+    "",
+    ...session.events.map((event) => `- ${event.createdAt} ${event.type}: ${event.message}`)
+  ];
+
+  if (session.outputPath || session.markdownPath) {
+    lines.push("", "## Artifacts", "");
+    if (session.outputPath) {
+      lines.push(`- JSON: ${session.outputPath}`);
+    }
+    if (session.markdownPath) {
+      lines.push(`- Markdown: ${session.markdownPath}`);
     }
   }
 
@@ -954,6 +1165,46 @@ async function readOptionalSnapshotArtifact(filePath: string, minCreatedAt?: str
   }
   const snapshot = await readJsonFile<Snapshot>(filePath).catch(() => undefined);
   return snapshot && snapshot.createdAt >= minCreatedAt ? { path: filePath } : {};
+}
+
+async function readOneShotSessionArtifact(
+  loaded: LoadedConfig,
+  sessionPath?: string
+): Promise<{ path: string; value: OneShotSession }> {
+  if (sessionPath) {
+    const resolved = path.resolve(loaded.baseDir, sessionPath);
+    return {
+      path: resolved,
+      value: await readJsonFile<OneShotSession>(resolved)
+    };
+  }
+  const latest = await readLatestOneShotArtifact<OneShotSession>(loaded, ONE_SHOT_SESSION_PREFIX);
+  if (!latest) {
+    throw new Error("No one-shot session found. Run migration-guard one-shot session open first.");
+  }
+  return latest;
+}
+
+function deriveOneShotSessionState(status: OneShotStatusReport): OneShotSessionState {
+  if (status.status === "go") {
+    return "closed";
+  }
+  const stepStatus = (id: string) => status.steps.find((step) => step.id === id)?.status;
+  if (stepStatus("pr-merge") === "passed") {
+    return "merged";
+  }
+  if (stepStatus("pre-pr-report") === "passed") {
+    return "pre-pr";
+  }
+  if (
+    stepStatus("baseline") === "passed"
+    || stepStatus("edit-window") === "passed"
+    || stepStatus("edit-window") === "ready"
+    || stepStatus("post-edit-verify") === "passed"
+  ) {
+    return "active";
+  }
+  return "open";
 }
 
 async function readLatestOneShotArtifact<T>(

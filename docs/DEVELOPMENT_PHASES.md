@@ -2756,6 +2756,28 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - 真实 `md-one-shot` 配置能返回正确下一步。
 - `npm test` 通过。
 
+## Phase 93: One-Shot Session Ledger
+
+目标：把一次性重构窗口从“latest artifact 推断”推进到“显式 session ledger”，让一个 window 持久记录 runbook、baseline、pre-PR、PR/merge、post-merge 和 closure evidence 链接与生命周期状态。
+
+交付内容：
+
+- 新增 CLI：`migration-guard one-shot session open`
+- 新增 CLI：`migration-guard one-shot session status`
+- 新增 CLI：`migration-guard one-shot session sync`
+- 新增模型：`OneShotSession`、`OneShotSessionEvidence`、`OneShotSessionEvent`
+- session 状态覆盖 `open`、`active`、`pre-pr`、`merged`、`closed`
+- session JSON/Markdown artifact 与 runbook 一起写入 `<artifactsDir>/one-shot/`
+- `docs/PHASE_93_REPORT.md`
+
+完成标准：
+
+- `one-shot session open` 能创建 runbook 并写入 session ledger。
+- `one-shot session status` / `sync` 能刷新 evidence 链接和 lifecycle state。
+- metadata-complete closure report 能让 session 进入 `closed`。
+- 单元测试覆盖 session open 和 closure sync。
+- `npm test` 通过。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

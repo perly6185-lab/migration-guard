@@ -4,7 +4,20 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { collectOneShotReport, collectOneShotStatus, createOneShotRunbook, renderOneShotReport, renderOneShotRunbook, renderOneShotStatus } from "./oneShot.js";
+import {
+  collectOneShotReport,
+  collectOneShotStatus,
+  createOneShotRunbook,
+  openOneShotSession,
+  renderOneShotReport,
+  renderOneShotRunbook,
+  renderOneShotSession,
+  renderOneShotStatus,
+  syncOneShotSession,
+  writeOneShotReport,
+  writeOneShotRunbook,
+  writeOneShotSession
+} from "./oneShot.js";
 import type { CheckResult, CommandProbeResult, CompareReport, LoadedConfig, ScanSummary, Snapshot } from "../types.js";
 
 test("one-shot report goes green when latest evidence passes and source delta is budgeted", async () => {
@@ -137,6 +150,96 @@ test("one-shot status ignores evidence older than the selected runbook", async (
   assert.equal(status.nextAction?.stepId, "baseline");
   assert.ok(status.steps.some((step) => step.id === "baseline" && step.status === "ready"));
   assert.ok(status.steps.some((step) => step.id === "post-edit-verify" && step.status === "pending"));
+});
+
+test("one-shot session open writes a persistent ledger with runbook evidence", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+
+  const session = await openOneShotSession(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg",
+    metadata: {
+      name: "Ledger window",
+      branch: "migration-guard/ledger-window",
+      budget: "single session smoke"
+    }
+  });
+  const markdown = renderOneShotSession(session);
+
+  assert.equal(session.state, "open");
+  assert.equal(session.maxSourceFileDelta, 1);
+  assert.ok(session.runbookPath.endsWith(".json"));
+  assert.equal(session.evidence.runbookPath, session.runbookPath);
+  assert.ok(session.events.some((event) => event.type === "opened"));
+  assert.match(markdown, /One-Shot Session/);
+  assert.match(markdown, /Ledger window/);
+  assert.match(markdown, /Runbook:/);
+});
+
+test("one-shot session sync records closure evidence and closes the ledger", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+  const runbook = createOneShotRunbook(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg",
+    metadata: {
+      name: "Closure ledger",
+      branch: "migration-guard/closure-ledger",
+      budget: "single closure smoke"
+    }
+  });
+  runbook.createdAt = "2026-07-08T00:00:00.000Z";
+  const writtenRunbook = await writeOneShotRunbook(loaded, runbook);
+  const openedAt = "2026-07-08T00:00:01.000Z";
+  const session = await writeOneShotSession(loaded, {
+    version: 1,
+    id: "one-shot-session-fixture",
+    createdAt: openedAt,
+    updatedAt: openedAt,
+    state: "open",
+    targetRoot: loaded.targetRoot,
+    artifactsDir: loaded.artifactsDir,
+    configPath: loaded.path,
+    runbookId: writtenRunbook.id,
+    runbookPath: writtenRunbook.outputPath as string,
+    maxSourceFileDelta: 1,
+    metadata: writtenRunbook.metadata,
+    evidence: {
+      runbookPath: writtenRunbook.outputPath
+    },
+    events: [
+      {
+        id: "one-shot-event-fixture",
+        type: "opened",
+        createdAt: openedAt,
+        message: "Opened fixture session."
+      }
+    ]
+  });
+  const report = await collectOneShotReport(loaded, {
+    maxSourceFileDelta: 1,
+    checkTargetGit: false,
+    detectGitMetadata: false,
+    metadata: {
+      branch: "main",
+      prUrl: "https://github.com/example/repo/pull/93",
+      targetCommit: "abc123",
+      mergeCommit: "def456",
+      mergedAt: "2026-07-10T00:00:00Z"
+    }
+  });
+  await writeOneShotReport(loaded, report);
+
+  const synced = await syncOneShotSession(loaded, {
+    sessionPath: session.outputPath,
+    checkTargetGit: false
+  });
+
+  assert.equal(synced.state, "closed");
+  assert.equal(synced.evidence.baselinePath?.endsWith("latest-baseline.json"), true);
+  assert.equal(synced.evidence.closureReportPath?.endsWith(".json"), true);
+  assert.equal(synced.evidence.prUrl, "https://github.com/example/repo/pull/93");
+  assert.equal(synced.evidence.mergeCommit, "def456");
+  assert.ok(synced.events.some((event) => event.type === "synced"));
 });
 
 async function makeFixture(options: { currentSourceFiles: number }): Promise<{

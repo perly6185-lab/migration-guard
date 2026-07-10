@@ -109,6 +109,8 @@ node dist/cli.js proposal batch plan --run latest --limit 3
 node dist/cli.js proposal batch apply --run latest --limit 3 --gate-policy fail-fast
 node dist/cli.js readiness --run latest --min-proposals 3 --min-batch-size 3 --strict
 node dist/cli.js one-shot runbook --max-source-file-delta 1 --budget "bounded helper cleanup"
+node dist/cli.js one-shot session open --max-source-file-delta 1 --budget "bounded helper cleanup"
+node dist/cli.js one-shot session status
 node dist/cli.js one-shot status
 node dist/cli.js one-shot report --max-source-file-delta 1 --strict
 node dist/cli.js one-shot report --max-source-file-delta 1 --pr-url <url> --target-commit <sha> --merge-commit <sha> --merged-at <iso> --budget "bounded helper cleanup" --strict
@@ -228,8 +230,12 @@ post-merge verify and final closure report command templates. `one-shot status`
 reads the latest runbook and reports which lifecycle steps have passed, which
 step is ready, and the next command to run. It only counts evidence created
 after the selected runbook, so old closure artifacts cannot make a new window
-look complete. `one-shot report` summarizes a bounded one-shot closure from the
-latest baseline/run/compare artifacts, critical check and probe status,
+look complete. `one-shot session open` writes a persistent session ledger
+alongside its runbook, and `one-shot session status` / `sync` refresh that
+ledger with baseline, pre-PR, PR/merge, post-merge and closure evidence links
+so a window has explicit lifecycle state instead of relying only on latest
+artifact discovery. `one-shot report` summarizes a bounded one-shot closure from
+the latest baseline/run/compare artifacts, critical check and probe status,
 source-file delta budget and target git cleanliness. Use
 `--max-source-file-delta` to make the planned file-count budget explicit and
 `--strict` to fail the command when the report returns `hold`. For final closure
