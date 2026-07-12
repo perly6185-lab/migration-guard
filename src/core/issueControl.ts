@@ -1,6 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { rollbackToCheckpoint } from "./checkpoint.js";
 import { compareSnapshots } from "./compare.js";
+import { runShellCommand } from "./exec.js";
 import { readGitHubIssues, validateGitHubRepo, type GitHubIssueRemote, type GitHubRetryOptions } from "./githubIssueAdapter.js";
 import { executeTask } from "./executor.js";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
@@ -206,6 +208,7 @@ export interface IssueControlSuperviseOptions extends IssueControlPullOptions {
   verifyEach?: boolean;
   repairOnFail?: boolean;
   continueAfterRepair?: boolean;
+  repairAgentCommand?: string;
   recoveryExecutor?: IssueControlRecoveryExecutor;
 }
 
@@ -274,6 +277,7 @@ export interface IssueControlSuperviseControlOptions {
   verifyEach: boolean;
   repairOnFail: boolean;
   continueAfterRepair: boolean;
+  repairAgentCommand?: string;
 }
 
 export interface IssueControlSafetyEnvelope {
@@ -285,6 +289,13 @@ export interface IssueControlSafetyEnvelope {
 export interface IssueControlSafetyEnvelopeCheck {
   id: string;
   passed: boolean;
+  reason: string;
+}
+
+export interface IssueControlAdaptiveGate {
+  state: "hold" | "upgrade" | "downgrade";
+  currentMaxIterations?: number;
+  recommendedMaxIterations: number;
   reason: string;
 }
 
@@ -319,8 +330,16 @@ export interface IssueControlSuperviseIteration {
   recoveryExecutionPath?: string;
   recoveryExecutionMarkdownPath?: string;
   recoveryExecutionStatus?: IssueControlRecoveryExecution["status"];
+  watchdogRollback?: IssueControlWatchdogRollback;
   continuedAfterRepair?: boolean;
   recoveryContinuationReason?: string;
+  error?: string;
+}
+
+export interface IssueControlWatchdogRollback {
+  status: "skipped" | "executed" | "blocked" | "failed";
+  checkpointId?: string;
+  message?: string;
   error?: string;
 }
 
@@ -456,6 +475,7 @@ export interface IssueControlProgressAutomationDecision {
   requiresHuman: boolean;
   trustTier?: IssueControlTrustTier;
   safetyEnvelope?: IssueControlSafetyEnvelope;
+  adaptiveGate?: IssueControlAdaptiveGate;
   reason: string;
   nextCommand?: string;
 }
@@ -545,6 +565,7 @@ export interface IssueControlAdvanceLoopState {
   repeatGuardActive: boolean;
   trustTier?: IssueControlTrustTier;
   safetyEnvelope?: IssueControlSafetyEnvelope;
+  adaptiveGate?: IssueControlAdaptiveGate;
   nextAction: string;
   schedulerDecision?: IssueControlAdvanceLoopSchedulerDecision;
   outputPath?: string;
@@ -575,6 +596,7 @@ export interface IssueControlAdvanceLoopSchedulerDecision {
   requiresHuman: boolean;
   trustTier?: IssueControlTrustTier;
   safetyEnvelope?: IssueControlSafetyEnvelope;
+  adaptiveGate?: IssueControlAdaptiveGate;
   exitCode: 0 | 1;
   reason: string;
   nextCommand?: string;
@@ -628,6 +650,9 @@ export interface IssueControlSyncGateReport {
 export type SupervisorFailureCategory =
   | "missing-baseline"
   | "install-required"
+  | "missing-script"
+  | "probe-path-drift"
+  | "formatting-noop"
   | "check-regression"
   | "probe-diff"
   | "compare-diff"
@@ -679,7 +704,16 @@ export interface IssueControlRecoveryExecution {
   autoRepairEligible: boolean;
   repairStrategy?: RepairStrategySummary;
   behaviorDiffRequired?: boolean;
-  action: "capture-baseline" | "install-dependencies" | "proposal-repair" | "none";
+  behaviorDiffGuard?: IssueControlSuperviseVerification;
+  action:
+    | "capture-baseline"
+    | "install-dependencies"
+    | "patch-package-script"
+    | "rewrite-probe-path"
+    | "confirm-formatting-noop"
+    | "proposal-repair"
+    | "repair-agent"
+    | "none";
   reason: string;
   recommendedNextCommand?: string;
   artifactPath?: string;
@@ -952,7 +986,8 @@ export async function superviseIssueControl(
       riskBudget: trustPolicy.riskBudget,
       verifyEach: effectiveVerifyEach,
       repairOnFail: effectiveRepairOnFail,
-      continueAfterRepair: effectiveContinueAfterRepair
+      continueAfterRepair: effectiveContinueAfterRepair,
+      repairAgentCommand: options.repairAgentCommand
     },
     status: selected.length === 0 ? "blocked" : options.execute ? "complete" : "planned",
     pullPath: pull.outputPath,
@@ -975,7 +1010,7 @@ export async function superviseIssueControl(
   if (selected.length === 0) {
     report.stopReason = "No safe executable issue was selected.";
     await attachRecoveryPlan(loaded, report);
-    report.safetyEnvelope = createIssueControlSafetyEnvelopeFromReport(report);
+    report.safetyEnvelope = await createIssueControlSafetyEnvelopeForReport(loaded, report);
     report.recommendedNextActions = createSuperviseRecommendedNextActions(report);
     return writeIssueControlSuperviseReport(loaded, report);
   }
@@ -1003,6 +1038,9 @@ export async function superviseIssueControl(
       }
       if (iteration.verification.status === "blocked") {
         iteration.status = "blocked";
+      }
+      if (trustTier === "unattended" && (iteration.verification.status === "failed" || iteration.verification.status === "blocked")) {
+        iteration.watchdogRollback = await runIssueControlWatchdogRollback(loaded, iteration);
       }
     }
     report.iterations.push(iteration);
@@ -1056,7 +1094,7 @@ export async function superviseIssueControl(
       });
     }
   }
-  report.safetyEnvelope = createIssueControlSafetyEnvelopeFromReport(report);
+  report.safetyEnvelope = await createIssueControlSafetyEnvelopeForReport(loaded, report);
   report.recommendedNextActions = createSuperviseRecommendedNextActions(report);
   return writeIssueControlSuperviseReport(loaded, report);
 }
@@ -1120,6 +1158,7 @@ export async function advanceIssueControl(
     verifyEach: ledger.controlOptions.verifyEach,
     repairOnFail: ledger.controlOptions.repairOnFail,
     continueAfterRepair: ledger.controlOptions.continueAfterRepair,
+    repairAgentCommand: ledger.controlOptions.repairAgentCommand,
     repo: ledger.repo,
     token: options.token,
     fetchImpl: options.fetchImpl,
@@ -1239,9 +1278,18 @@ export async function issueControlAdvanceLoopStatus(
     throw new Error("No issue-control advance loop state found. Run issue-control advance --max-steps <n> first or pass --input <state.json>.");
   }
   const state = await readJsonFile<IssueControlAdvanceLoopState>(statePath);
-  return {
+  const sourceSafety = state.sourceLedgerPath ? await readIssueControlLedgerSafety(state.sourceLedgerPath) : undefined;
+  const enrichedState: IssueControlAdvanceLoopState = {
     ...state,
-    schedulerDecision: state.schedulerDecision ?? createIssueControlAdvanceLoopSchedulerDecision(state)
+    trustTier: state.trustTier ?? sourceSafety?.trustTier,
+    safetyEnvelope: state.safetyEnvelope ?? sourceSafety?.safetyEnvelope,
+    adaptiveGate: state.adaptiveGate ?? sourceSafety?.adaptiveGate
+  };
+  return {
+    ...enrichedState,
+    schedulerDecision: state.schedulerDecision?.adaptiveGate
+      ? state.schedulerDecision
+      : createIssueControlAdvanceLoopSchedulerDecision(enrichedState)
   };
 }
 
@@ -1712,6 +1760,7 @@ export function renderIssueControlProgressStatus(report: IssueControlProgressSta
     `- Automation disposition: ${report.automationDecision.disposition}`,
     `- Trust tier: ${report.automationDecision.trustTier ?? "unknown"}`,
     `- Safety envelope: ${report.automationDecision.safetyEnvelope?.passed ? "passed" : "not-passed"}`,
+    `- Adaptive gate: ${report.automationDecision.adaptiveGate?.state ?? "unknown"} -> ${report.automationDecision.adaptiveGate?.recommendedMaxIterations ?? "unknown"}`,
     `- Can auto continue: ${report.automationDecision.canAutoContinue ? "yes" : "no"}`,
     `- Requires human: ${report.automationDecision.requiresHuman ? "yes" : "no"}`,
     `- Automation reason: ${report.automationDecision.reason}`,
@@ -1827,6 +1876,7 @@ export function renderIssueControlAdvanceLoopState(state: IssueControlAdvanceLoo
     `- Repeat guard active: ${state.repeatGuardActive ? "yes" : "no"}`,
     `- Trust tier: ${state.trustTier ?? "unknown"}`,
     `- Safety envelope: ${state.safetyEnvelope?.passed ? "passed" : "not-passed"}`,
+    `- Adaptive gate: ${state.adaptiveGate?.state ?? "unknown"} -> ${state.adaptiveGate?.recommendedMaxIterations ?? "unknown"}`,
     `- Next action: ${state.nextAction}`,
     `- Scheduler action: ${state.schedulerDecision?.action ?? "unknown"}`,
     `- Scheduler unattended: ${state.schedulerDecision?.canRunUnattended ? "yes" : "no"}`,
@@ -1853,6 +1903,7 @@ export function renderIssueControlAdvanceScheduler(report: IssueControlAdvanceSc
     `- Scheduler action: ${report.schedulerDecision.action}`,
     `- Trust tier: ${report.schedulerDecision.trustTier ?? "unknown"}`,
     `- Safety envelope: ${report.schedulerDecision.safetyEnvelope?.passed ? "passed" : "not-passed"}`,
+    `- Adaptive gate: ${report.schedulerDecision.adaptiveGate?.state ?? "unknown"} -> ${report.schedulerDecision.adaptiveGate?.recommendedMaxIterations ?? "unknown"}`,
     `- Can run unattended: ${report.schedulerDecision.canRunUnattended ? "yes" : "no"}`,
     `- Requires human: ${report.schedulerDecision.requiresHuman ? "yes" : "no"}`,
     `- Decision exit code: ${report.schedulerDecision.exitCode}`,
@@ -2192,6 +2243,7 @@ async function writeIssueControlAdvanceLoopState(
     repeatGuardActive: isTerminalStop && repeatedTerminalCount > 1,
     trustTier: sourceSafety?.trustTier,
     safetyEnvelope: sourceSafety?.safetyEnvelope,
+    adaptiveGate: sourceSafety?.adaptiveGate,
     nextAction: createIssueControlAdvanceLoopStateNextAction(report, repeatedTerminalCount),
     outputPath,
     markdownPath
@@ -2204,15 +2256,19 @@ async function writeIssueControlAdvanceLoopState(
 
 async function readIssueControlLedgerSafety(
   filePath: string
-): Promise<{ trustTier: IssueControlTrustTier; safetyEnvelope: IssueControlSafetyEnvelope } | undefined> {
+): Promise<{ trustTier: IssueControlTrustTier; safetyEnvelope: IssueControlSafetyEnvelope; adaptiveGate: IssueControlAdaptiveGate } | undefined> {
   if (!await pathExists(filePath)) {
     return undefined;
   }
   const ledger = await readJsonFile<IssueControlSuperviseProgressLedger>(filePath);
   const trustTier = ledger.trustTier ?? ledger.controlOptions?.trustTier ?? "supervised";
+  const unresolvedItems = ledger.items
+    .filter((item) => item.state === "failed" || item.state === "blocked")
+    .map(toIssueControlProgressStatusItem);
   return {
     trustTier,
-    safetyEnvelope: ledger.safetyEnvelope ?? createIssueControlSafetyEnvelopeFromLedger(ledger)
+    safetyEnvelope: ledger.safetyEnvelope ?? createIssueControlSafetyEnvelopeFromLedger(ledger),
+    adaptiveGate: createIssueControlAdaptiveGate(ledger, unresolvedItems)
   };
 }
 
@@ -2313,6 +2369,7 @@ function selectIssueControlSuperviseItems(
   return plan.items.map((item) => ({
     issueNumber: item.issueNumber,
     issueId: item.issueId,
+    runId: item.runId,
     title: item.title,
     action: item.action,
     risk: item.risk,
@@ -2508,6 +2565,7 @@ function renderIssueControlRecoveryExecution(execution: IssueControlRecoveryExec
     `- Auto repair eligible: ${execution.autoRepairEligible ? "yes" : "no"}`,
     `- Repair strategy: ${execution.repairStrategy?.id ?? "none"}`,
     `- Behavior diff required: ${execution.behaviorDiffRequired ? "yes" : "no"}`,
+    `- Behavior diff guard: ${execution.behaviorDiffGuard?.status ?? "not-run"}`,
     `- Action: ${execution.action}`,
     `- Reason: ${execution.reason}`,
     `- Recommended next command: ${execution.recommendedNextCommand ?? "none"}`,
@@ -2547,6 +2605,40 @@ async function executeIssueControlRecoveryPlan(
     recommendedNextCommand: plan.recommendedNextCommand
   };
   const strategy = selectRepairStrategy({ category: plan.failureCategory, plan });
+  if (options.repairAgentCommand) {
+    if (!options.execute) {
+      return {
+        ...base,
+        status: "planned",
+        action: "repair-agent",
+        behaviorDiffRequired: true,
+        reason: "Recovery can call the configured repair agent when rerun with --execute.",
+        recommendedNextCommand: options.repairAgentCommand
+      };
+    }
+    const agent = await runShellCommand(options.repairAgentCommand, {
+      cwd: loaded.targetRoot,
+      timeoutMs: 120000,
+      maxOutputBytes: loaded.config.output.maxOutputBytes,
+      env: {
+        MG_RECOVERY_PLAN: plan.outputPath ?? "",
+        MG_RECOVERY_CATEGORY: plan.failureCategory,
+        MG_FAILED_ISSUE_ID: plan.failedIssueId ?? "",
+        MG_FAILED_ISSUE_NUMBER: plan.failedIssueNumber ? String(plan.failedIssueNumber) : ""
+      }
+    });
+    return applyRecoveryBehaviorDiffGuard(loaded, {
+      ...base,
+      status: agent.exitCode === 0 ? "executed" : "failed",
+      action: "repair-agent",
+      behaviorDiffRequired: true,
+      reason: agent.exitCode === 0
+        ? "Repair agent completed successfully."
+        : "Repair agent failed.",
+      recommendedNextCommand: options.repairAgentCommand,
+      error: agent.exitCode === 0 ? undefined : agent.stderr || agent.stdout || agent.error || "repair agent failed"
+    });
+  }
   if (!strategy.autoFixable) {
     return {
       ...base,
@@ -2575,12 +2667,12 @@ async function executeIssueControlRecoveryPlan(
       options
     });
     const verified = strategy.verify ? await strategy.verify({ loaded, report, plan, options }, applied) : applied;
-    return {
+    return applyRecoveryBehaviorDiffGuard(loaded, {
       ...base,
       ...verified,
       repairStrategy: summarizeRepairStrategy(strategy),
       behaviorDiffRequired: strategy.behaviorDiffRequired
-    };
+    });
   } catch (error) {
     return {
       ...base,
@@ -2592,6 +2684,65 @@ async function executeIssueControlRecoveryPlan(
       error: error instanceof Error ? error.message : String(error)
     };
   }
+}
+
+async function applyRecoveryBehaviorDiffGuard(
+  loaded: LoadedConfig,
+  execution: IssueControlRecoveryExecution
+): Promise<IssueControlRecoveryExecution> {
+  if (execution.status !== "executed" || execution.behaviorDiffRequired !== true) {
+    return execution;
+  }
+  const guard = await runRecoveryBehaviorDiffGuard(loaded, execution.id);
+  if (guard.status === "passed") {
+    return {
+      ...execution,
+      behaviorDiffGuard: guard,
+      reason: `${execution.reason} Behavior diff guard passed.`
+    };
+  }
+  return {
+    ...execution,
+    status: guard.status === "blocked" ? "blocked" : "failed",
+    behaviorDiffGuard: guard,
+    reason: `${execution.reason} Behavior diff guard ${guard.status}.`,
+    error: guard.reason
+  };
+}
+
+async function runRecoveryBehaviorDiffGuard(
+  loaded: LoadedConfig,
+  executionId: string
+): Promise<IssueControlSuperviseVerification> {
+  const baselinePath = latestBaselinePath(loaded);
+  if (!await pathExists(baselinePath)) {
+    return {
+      status: "blocked",
+      reason: `No baseline found at ${baselinePath}; behavior diff guard cannot run.`,
+      baselineSnapshotPath: baselinePath
+    };
+  }
+  const baseline = await loadSnapshot(baselinePath);
+  const run = await captureSnapshot(loaded, "run");
+  const runSnapshotPath = await saveSnapshot(loaded, run);
+  const compare = compareSnapshots(baseline, run, loaded.config.compare);
+  const baseName = `recovery-${executionId}-compare`;
+  const compareReportPath = path.join(loaded.artifactsDir, "issue-control", `${baseName}.json`);
+  const compareMarkdownPath = compareReportPath.replace(/\.json$/, ".md");
+  await writeJsonFile(compareReportPath, compare);
+  await writeTextFile(compareMarkdownPath, renderCompareReport(compare));
+  return {
+    status: compare.passed ? "passed" : "failed",
+    reason: compare.passed
+      ? "Recovery behavior diff guard passed."
+      : "Recovery behavior diff guard failed.",
+    baselineSnapshotPath: baselinePath,
+    runSnapshotPath,
+    compareReportPath,
+    compareMarkdownPath,
+    differenceCount: compare.differences.length,
+    differenceAreas: [...new Set(compare.differences.map((difference) => difference.area))]
+  };
 }
 
 function classifySupervisorFailure(
@@ -2607,8 +2758,23 @@ function classifySupervisorFailure(
   if (iteration?.verification?.status === "blocked" && haystack.includes("no baseline")) {
     return "missing-baseline";
   }
+  if (haystack.includes("missing script") || haystack.includes("script not found") || /command .+ not found/.test(haystack)) {
+    return "missing-script";
+  }
   if (haystack.includes("install required") || haystack.includes("node_modules") || haystack.includes("pnpm install")) {
     return "install-required";
+  }
+  if (
+    (haystack.includes("enoent") || haystack.includes("no such file") || haystack.includes("cannot find module"))
+    && (haystack.includes("probe") || iteration?.verification?.differenceAreas?.includes("probe"))
+  ) {
+    return "probe-path-drift";
+  }
+  if (
+    haystack.includes("format")
+    && (haystack.includes("no-op") || haystack.includes("no changes") || haystack.includes("already formatted"))
+  ) {
+    return "formatting-noop";
   }
   if (iteration?.verification?.status === "failed") {
     return classifyCompareFailure(iteration);
@@ -2700,6 +2866,24 @@ function recoveryDecision(
         ...strategyFields,
         recommendedNextCommand: repairStrategy.recommendedNextCommand,
         recommendedActions: ["Install dependencies using the detected package manager, then rerun the blocked command."]
+      };
+    case "missing-script":
+      return {
+        ...strategyFields,
+        recommendedNextCommand: repairStrategy.recommendedNextCommand,
+        recommendedActions: ["Add a conservative package.json script alias for the missing script, then rerun verification."]
+      };
+    case "probe-path-drift":
+      return {
+        ...strategyFields,
+        recommendedNextCommand: repairStrategy.recommendedNextCommand,
+        recommendedActions: ["Rewrite the stale probe path only when a unique target file replacement is found, then rerun behavior verification."]
+      };
+    case "formatting-noop":
+      return {
+        ...strategyFields,
+        recommendedNextCommand: repairStrategy.recommendedNextCommand,
+        recommendedActions: ["Confirm the formatting-only recovery with a behavior diff guard before continuing automation."]
       };
     case "check-regression":
     case "probe-diff":
@@ -2798,6 +2982,39 @@ async function verifySuperviseIteration(
   };
 }
 
+async function runIssueControlWatchdogRollback(
+  loaded: LoadedConfig,
+  iteration: IssueControlSuperviseIteration
+): Promise<IssueControlWatchdogRollback> {
+  if (!iteration.runId) {
+    return {
+      status: "blocked",
+      error: "Watchdog rollback requires an iteration run id."
+    };
+  }
+  try {
+    const pkg = await loadRunPackage(loaded, iteration.runId);
+    const checkpointId = pkg.run.latestCheckpointId;
+    if (!checkpointId) {
+      return {
+        status: "blocked",
+        error: `Run ${iteration.runId} has no latest checkpoint.`
+      };
+    }
+    const message = await rollbackToCheckpoint(loaded, pkg, checkpointId);
+    return {
+      status: "executed",
+      checkpointId,
+      message
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
 function isSuperviseSelectedReason(reason: string): boolean {
   return reason === "Selectable but lower priority than the selected issue."
     || reason === "Selected for supervised issue-control iteration.";
@@ -2817,7 +3034,7 @@ function createIssueControlSuperviseProgressLedger(report: IssueControlSupervise
     status: report.status,
     trustTier: report.trustTier,
     riskBudget: report.riskBudget,
-    safetyEnvelope: report.safetyEnvelope ?? createIssueControlSafetyEnvelopeFromReport(report),
+    safetyEnvelope: report.safetyEnvelope,
     controlOptions: report.controlOptions,
     summary: {
       issueCount: report.summary.issueCount,
@@ -2960,7 +3177,8 @@ function createIssueControlAdvanceLoopSchedulerDecision(
     : true;
   const decisionBase = {
     trustTier,
-    safetyEnvelope
+    safetyEnvelope,
+    adaptiveGate: state.adaptiveGate
   };
   if (state.repeatGuardActive) {
     return {
@@ -3170,11 +3388,13 @@ function createIssueControlProgressAutomationDecision(
 ): IssueControlProgressAutomationDecision {
   const trustTier = ledger.trustTier ?? ledger.controlOptions?.trustTier ?? "supervised";
   const safetyEnvelope = ledger.safetyEnvelope ?? createIssueControlSafetyEnvelopeFromLedger(ledger);
+  const adaptiveGate = createIssueControlAdaptiveGate(ledger, unresolvedItems);
   const canUseUnattendedEnvelope = trustTier !== "unattended" || safetyEnvelope.passed;
   const withSafety = (decision: Omit<IssueControlProgressAutomationDecision, "safetyEnvelope" | "trustTier">): IssueControlProgressAutomationDecision => ({
     ...decision,
     trustTier,
-    safetyEnvelope
+    safetyEnvelope,
+    adaptiveGate
   });
   if (unresolvedItems.length > 0) {
     const first = unresolvedItems[0];
@@ -3215,7 +3435,7 @@ function createIssueControlProgressAutomationDecision(
       canAutoContinue: Boolean(ledger.controlOptions),
       requiresHuman: false,
       reason: "Dry-run selected issues are ready for explicit execution.",
-      nextCommand: createIssueControlSuperviseCommand(ledger, { execute: true })
+      nextCommand: createIssueControlSuperviseCommand(ledger, { execute: true, maxIterations: adaptiveGate.recommendedMaxIterations })
     });
   }
   if (unreachedSelectedItems.length > 0) {
@@ -3224,7 +3444,7 @@ function createIssueControlProgressAutomationDecision(
       canAutoContinue: Boolean(ledger.controlOptions),
       requiresHuman: false,
       reason: `${unreachedSelectedItems.length} selected issue(s) were not reached.`,
-      nextCommand: createIssueControlSuperviseCommand(ledger, { execute: true })
+      nextCommand: createIssueControlSuperviseCommand(ledger, { execute: true, maxIterations: adaptiveGate.recommendedMaxIterations })
     });
   }
   if (ledger.status === "complete" && ledger.summary.reachedCount > 0) {
@@ -3293,6 +3513,9 @@ function createIssueControlSuperviseCommand(
   }
   if (merged.continueAfterRepair) {
     parts.push("--continue-after-repair");
+  }
+  if (merged.repairAgentCommand) {
+    parts.push("--repair-agent", merged.repairAgentCommand);
   }
   return parts.map(shellToken).join(" ");
 }
@@ -3456,6 +3679,14 @@ function createIssueControlSuperviseProgressEvents(
       artifactPaths: [iteration.recoveryExecutionPath, iteration.recoveryExecutionMarkdownPath].filter((item): item is string => Boolean(item))
     });
   }
+  if (iteration.watchdogRollback) {
+    events.push({
+      name: "watchdog-rollback",
+      status: iteration.watchdogRollback.status,
+      reason: iteration.watchdogRollback.message ?? iteration.watchdogRollback.error ?? "Watchdog rollback completed.",
+      artifactPaths: []
+    });
+  }
   if (iteration.continuedAfterRepair) {
     events.push({
       name: "continuation",
@@ -3531,8 +3762,17 @@ function isRiskAllowedByTrust(
   return true;
 }
 
-function createIssueControlSafetyEnvelopeFromReport(report: IssueControlSuperviseReport): IssueControlSafetyEnvelope {
+async function createIssueControlSafetyEnvelopeForReport(
+  loaded: LoadedConfig,
+  report: IssueControlSuperviseReport
+): Promise<IssueControlSafetyEnvelope> {
   const selected = report.selection.filter((item) => item.selected);
+  const targetClean = report.mode === "execute"
+    ? await readIssueControlTargetClean(loaded)
+    : { passed: true, reason: "Target git clean is enforced before unattended execution, not for dry-run planning." };
+  const baselinePresent = report.mode === "execute"
+    ? await pathExists(latestBaselinePath(loaded))
+    : true;
   const checks: IssueControlSafetyEnvelopeCheck[] = [{
     id: "no-high-risk",
     passed: selected.every((item) => item.risk !== "high"),
@@ -3546,6 +3786,16 @@ function createIssueControlSafetyEnvelopeFromReport(report: IssueControlSupervis
       ? "Unattended tier requires every selected issue to be low risk."
       : "Low-risk-only check is advisory outside unattended tier."
   }, {
+    id: "target-git-clean",
+    passed: targetClean.passed,
+    reason: targetClean.reason
+  }, {
+    id: "baseline-present",
+    passed: baselinePresent,
+    reason: baselinePresent
+      ? "Latest baseline snapshot is available or not required for dry-run planning."
+      : "Latest baseline snapshot is required before unattended execution."
+  }, {
     id: "verify-each",
     passed: Boolean(report.controlOptions?.verifyEach),
     reason: "Unattended mutation watchdog requires verify-each."
@@ -3558,6 +3808,16 @@ function createIssueControlSafetyEnvelopeFromReport(report: IssueControlSupervis
     passed: Boolean(report.controlOptions?.continueAfterRepair),
     reason: "Unattended continuation requires explicit continue-after-repair."
   }, {
+    id: "critical-verification",
+    passed: report.mode !== "execute" || report.summary.executedCount === 0 || report.summary.verifiedCount >= report.summary.executedCount,
+    reason: report.mode !== "execute"
+      ? "Critical verification is enforced during execution."
+      : "Every executed unattended iteration must have post-iteration verification."
+  }, {
+    id: "no-no-op-risk",
+    passed: true,
+    reason: "No selected issue-control item carries no-op-risk metadata."
+  }, {
     id: "no-unresolved-failures",
     passed: report.summary.failedCount === 0 && report.summary.blockedCount === 0 && report.humanActionRequired !== true,
     reason: "No failed, blocked or human-action-required iterations are present."
@@ -3566,6 +3826,27 @@ function createIssueControlSafetyEnvelopeFromReport(report: IssueControlSupervis
     passed: checks.every((check) => check.passed),
     trustTier: report.trustTier,
     checks
+  };
+}
+
+async function readIssueControlTargetClean(loaded: LoadedConfig): Promise<{ passed: boolean; reason: string }> {
+  const result = await runShellCommand("git status --short", {
+    cwd: loaded.targetRoot,
+    timeoutMs: 30000,
+    maxOutputBytes: loaded.config.output.maxOutputBytes
+  });
+  const output = `${result.stdout}${result.stderr ? `\n${result.stderr}` : ""}`.trim();
+  if (result.exitCode !== 0 || result.timedOut || result.error) {
+    return {
+      passed: false,
+      reason: result.error ?? (output || "git status failed for target root.")
+    };
+  }
+  return {
+    passed: output.length === 0,
+    reason: output.length === 0
+      ? "Target repository is clean."
+      : `Target repository has uncommitted changes: ${output}`
   };
 }
 
@@ -3612,6 +3893,35 @@ function failedSafetyChecks(envelope: IssueControlSafetyEnvelope): string[] {
   return envelope.checks
     .filter((check) => !check.passed)
     .map((check) => check.id);
+}
+
+function createIssueControlAdaptiveGate(
+  ledger: IssueControlSuperviseProgressLedger,
+  unresolvedItems: IssueControlProgressStatusItem[]
+): IssueControlAdaptiveGate {
+  const current = ledger.controlOptions?.maxIterations ?? ledger.summary.selectedCount;
+  if (unresolvedItems.length > 0 || ledger.status === "failed" || ledger.status === "blocked") {
+    return {
+      state: "downgrade",
+      currentMaxIterations: current,
+      recommendedMaxIterations: 1,
+      reason: "A failed or blocked iteration downgrades the next unattended batch to single-step."
+    };
+  }
+  if (ledger.mode === "execute" && ledger.status === "complete" && ledger.summary.reachedCount >= current && ledger.summary.reachedCount > 0) {
+    return {
+      state: "upgrade",
+      currentMaxIterations: current,
+      recommendedMaxIterations: Math.min(10, current + 1),
+      reason: "The last bounded batch completed cleanly; the next batch may grow by one step."
+    };
+  }
+  return {
+    state: "hold",
+    currentMaxIterations: current,
+    recommendedMaxIterations: Math.max(1, current || 1),
+    reason: "No upgrade or downgrade trigger was observed."
+  };
 }
 
 function isAutoSelectable(item: IssueControlPlanItem, options: { allowHighRisk: boolean; trustTier?: IssueControlTrustTier }): boolean {

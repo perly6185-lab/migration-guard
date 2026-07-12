@@ -7,8 +7,11 @@ import { loadConfig } from "./config.js";
 import {
   collectDashboard,
   collectDashboardBlockers,
+  collectRunsList,
   renderDashboard,
   renderDashboardBlockers,
+  renderRunsList,
+  writeRunsListReport,
   writeDashboardReport
 } from "./dashboard.js";
 import { loadMigrationRunIndex, saveRunPackage, type MigrationRunPackage } from "./migrationRun.js";
@@ -65,6 +68,16 @@ test("dashboard aggregates run index, ready tasks, proposals, progress and block
     assert.equal(blockers.runId, "run-dashboard");
     assert.ok(blockers.blockerCount > 0);
     assert.match(renderDashboardBlockers(blockers), /proposal:patch-dashboard/);
+
+    const runs = await collectRunsList(loaded);
+    assert.equal(runs.source, "index");
+    assert.equal(runs.runCount, 1);
+    assert.equal(runs.runs[0]?.runId, "run-dashboard");
+    assert.equal(runs.runs[0]?.readinessStatus, "hold");
+    assert.ok((runs.runs[0]?.blockedCount ?? 0) > 0);
+    assert.match(renderRunsList(runs), /Migration Guard Runs/);
+    const writtenRuns = await writeRunsListReport(loaded, runs);
+    assert.match(writtenRuns.outputPath ?? "", /runs-list-/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

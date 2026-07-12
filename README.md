@@ -80,6 +80,8 @@ Autonomous migration runtime commands:
 ```bash
 node dist/cli.js run --goal "Webpack to Vite" --dry-run --adapter js-vite
 node dist/cli.js status --run latest
+node dist/cli.js runs list
+node dist/cli.js serve
 node dist/cli.js tasks --run latest
 node dist/cli.js issues --run latest
 node dist/cli.js checkpoint create --run latest
@@ -136,6 +138,7 @@ node dist/cli.js issue-control auto --config configs/md2-fast.migration-guard.js
 node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --max-iterations 3
 node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --execute --max-iterations 3
 node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --execute --verify-each --max-iterations 3
+node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --execute --repair-on-fail --repair-agent "<cmd>" --max-iterations 3
 node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --trust-tier unattended --execute --max-iterations 3
 node dist/cli.js issue-control progress --config configs/md2-fast.migration-guard.json
 node dist/cli.js issue-control advance --config configs/md2-fast.migration-guard.json
@@ -297,6 +300,10 @@ mutating issues. Live mutations are capped by `--max-live-mutations` and GitHub
 are written to summary artifacts. Each live plan includes a stable `planHash`;
 real live sync requires `--live-plan-confirm <plan-hash>` so mutations are bound
 to a reviewed plan.
+`runs list` writes a run-index backed JSON/Markdown inventory across migration
+runs, including readiness, failed and blocked counts. `serve` starts a local
+read-only board over the same artifacts and exposes guarded buttons only for
+readiness, verification snapshot capture and issue-control dry-run.
 `issue-control dashboard` writes a single JSON/Markdown control view over the
 latest run, run-index, ready tasks, stuck proposals, readiness, progress ledger
 and target git status. `issue-control blockers` extracts the global blocker
@@ -336,7 +343,15 @@ requirements and the next recommended command.
 When `--repair-on-fail` is used with `--execute`, eligible proposal repair
 recoveries also write `issue-control-recovery-execution-*.json|md` and attempt
 the bounded proposal repair lane. Deterministic strategies can also capture a
-missing baseline or install dependencies when the category is auto-fixable.
+missing baseline, install dependencies, patch a conservative missing package
+script alias, rewrite a drifted probe path when the replacement basename is
+unique, or confirm a formatting-only no-op when the category is auto-fixable.
+Add `--repair-agent <cmd>` to delegate the recovery to an external command; it
+receives `MG_RECOVERY_PLAN`, `MG_RECOVERY_CATEGORY`, `MG_FAILED_ISSUE_ID` and
+`MG_FAILED_ISSUE_NUMBER`. Any executed recovery that requires behavior-diff
+evidence captures a run snapshot and compare report after the repair; missing
+baseline or compare failure downgrades the recovery execution to blocked or
+failed.
 Non-eligible categories still stop as blocked. Add `--continue-after-repair`
 only when the supervisor should continue
 remaining selected issues after an eligible recovery execution returns
@@ -347,6 +362,9 @@ selected issues without pulling GitHub or executing work. The status report also
 includes `automationDecision`, which classifies whether the lane is blocked,
 ready to execute, ready to continue, ready to sync or complete, and includes a
 bounded next command when one can be reconstructed from the supervise options.
+It also includes an adaptive gate: failed or blocked batches downgrade the next
+batch to one issue, clean completed execute batches may grow by one, and all
+other states hold the current bound.
 Use `issue-control advance` to turn that decision into a planned advance report;
 add `--execute` only when the decision is eligible and the next supervised cycle
 should actually run. Advance calls the internal supervisor path instead of
@@ -364,7 +382,10 @@ as `review-plan`, `run-advance-loop`, `sync-issues` or `stop-for-recovery`,
 plus `canRunUnattended`, `requiresHuman`, `exitCode` and an optional next
 command. `run-advance-loop` is emitted when a loop only paused at the max-step
 guard and another bounded loop may continue. For `trust-tier unattended`,
-`canRunUnattended` is true only when the safety envelope is green.
+`canRunUnattended` is true only when the safety envelope is green: clean target
+repo, baseline available for execution, low-risk selected set, required
+verify/repair/continue watchdog flags, critical verification coverage, no
+no-op-risk and no unresolved failures.
 Use `issue-control advance-scheduler` to convert that state decision into an
 audited scheduler report; even with `--execute`, it only dispatches the
 internal bounded advance loop when the decision is `run-advance-loop` and the

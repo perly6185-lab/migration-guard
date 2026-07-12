@@ -131,6 +131,34 @@ export interface DashboardBlockersReport {
   markdownPath?: string;
 }
 
+export interface RunsListReport {
+  version: 1;
+  id: string;
+  createdAt: string;
+  source: "index" | "scan";
+  latestRunId?: string;
+  runCount: number;
+  runs: RunsListItem[];
+  outputPath?: string;
+  markdownPath?: string;
+}
+
+export interface RunsListItem {
+  runId: string;
+  goal: string;
+  status: string;
+  mode: string;
+  updatedAt: string;
+  latestCheckpointId?: string;
+  taskSummary: Record<string, number>;
+  issueSummary: Record<string, number>;
+  failedCount: number;
+  blockedCount: number;
+  readinessStatus?: RefactorReadinessReport["status"];
+  readinessBlockers?: number;
+  readinessWarnings?: number;
+}
+
 const STUCK_PROPOSAL_STATES = new Set<ProposedPatch["applyState"]>([
   "verification-failed",
   "applied",
@@ -274,6 +302,61 @@ export async function writeDashboardBlockersReport(
   return withPaths;
 }
 
+export async function collectRunsList(loaded: LoadedConfig): Promise<RunsListReport> {
+  const runs = await loadDashboardRunIndex(loaded);
+  const items: RunsListItem[] = [];
+  for (const run of runs.items) {
+    const pkg = await loadRunPackage(loaded, run.runId).catch(() => undefined);
+    const readiness = pkg
+      ? await assessRefactorReadiness(loaded, pkg, { checkTargetGit: false }).catch(() => undefined)
+      : undefined;
+    const failedCount = (run.taskSummary.failed ?? 0) + (run.issueSummary.failed ?? 0);
+    const blockedCount = (run.taskSummary.blocked ?? 0) + (run.issueSummary.blocked ?? 0) + (readiness?.summary.blockerCount ?? 0);
+    items.push({
+      runId: run.runId,
+      goal: run.goal,
+      status: run.status,
+      mode: run.mode,
+      updatedAt: run.updatedAt,
+      latestCheckpointId: run.latestCheckpointId,
+      taskSummary: run.taskSummary,
+      issueSummary: run.issueSummary,
+      failedCount,
+      blockedCount,
+      readinessStatus: readiness?.status,
+      readinessBlockers: readiness?.summary.blockerCount,
+      readinessWarnings: readiness?.summary.warningCount
+    });
+  }
+  const now = new Date().toISOString();
+  return {
+    version: 1,
+    id: `runs-list-${now.replace(/[:.]/g, "-")}`,
+    createdAt: now,
+    source: runs.source,
+    latestRunId: runs.latestRunId,
+    runCount: runs.runCount,
+    runs: items
+  };
+}
+
+export async function writeRunsListReport(
+  loaded: LoadedConfig,
+  report: RunsListReport
+): Promise<RunsListReport> {
+  const dir = path.join(loaded.artifactsDir, "reports");
+  const jsonPath = path.join(dir, `${report.id}.json`);
+  const markdownPath = path.join(dir, `${report.id}.md`);
+  const withPaths = {
+    ...report,
+    outputPath: jsonPath,
+    markdownPath
+  };
+  await writeJsonFile(jsonPath, withPaths);
+  await writeTextFile(markdownPath, renderRunsList(withPaths));
+  return withPaths;
+}
+
 export function renderDashboard(report: DashboardReport): string {
   return [
     `# Migration Guard Dashboard: ${report.runId}`,
@@ -353,6 +436,40 @@ export function renderDashboardBlockers(report: DashboardBlockersReport): string
     "",
     ...(report.recommendedNextActions.length > 0
       ? report.recommendedNextActions.map((action) => `- ${action}`)
+      : ["- none"]),
+    "",
+    "## Artifacts",
+    "",
+    `- JSON: ${report.outputPath ?? "none"}`,
+    `- Markdown: ${report.markdownPath ?? "none"}`
+  ].join("\n");
+}
+
+export function renderRunsList(report: RunsListReport): string {
+  return [
+    `# Migration Guard Runs: ${report.id}`,
+    "",
+    `- Source: ${report.source}`,
+    `- Latest run: ${report.latestRunId ?? "none"}`,
+    `- Runs: ${report.runCount}`,
+    "",
+    "## Runs",
+    "",
+    ...(report.runs.length > 0
+      ? [
+        "| Run | Status | Readiness | Failed | Blocked | Checkpoint | Updated | Goal |",
+        "| --- | --- | --- | ---: | ---: | --- | --- | --- |",
+        ...report.runs.map((run) => [
+          `| ${run.runId}`,
+          run.status,
+          run.readinessStatus ?? "unknown",
+          run.failedCount,
+          run.blockedCount,
+          run.latestCheckpointId ?? "none",
+          run.updatedAt,
+          `${escapeCell(run.goal)} |`
+        ].join(" | "))
+      ]
       : ["- none"]),
     "",
     "## Artifacts",

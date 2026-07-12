@@ -1,8 +1,10 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { promisify } from "node:util";
 import { loadConfig } from "./config.js";
 import {
   advanceIssueControl,
@@ -22,6 +24,8 @@ import {
 } from "./issueControl.js";
 import { readJsonFile, writeJsonFile } from "./files.js";
 import { captureSnapshot, saveSnapshot } from "./snapshot.js";
+
+const execFileAsync = promisify(execFile);
 
 test("issue-control pull reads GitHub issues from configured md2 repo", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-issue-control-"));
@@ -692,6 +696,8 @@ test("issue-control supervise dry-run plans multiple safe iterations", async () 
     assert.equal(progress.unresolvedItems.length, 0);
     assert.equal(progress.automationDecision.disposition, "ready-to-execute");
     assert.equal(progress.automationDecision.canAutoContinue, true);
+    assert.equal(progress.automationDecision.adaptiveGate?.state, "hold");
+    assert.equal(progress.automationDecision.adaptiveGate?.recommendedMaxIterations, 2);
     assert.match(progress.automationDecision.nextCommand ?? "", /issue-control supervise/);
     assert.match(progress.automationDecision.nextCommand ?? "", /--config/);
     assert.match(progress.automationDecision.nextCommand ?? "", /--execute/);
@@ -719,6 +725,7 @@ test("issue-control supervise dry-run plans multiple safe iterations", async () 
       lastLoopPath?: string;
       repeatedTerminalCount: number;
       repeatGuardActive: boolean;
+      adaptiveGate?: { state: string; recommendedMaxIterations: number };
       schedulerDecision?: { action: string; canRunUnattended: boolean; requiresHuman: boolean; exitCode: number };
     }>(advanceLoop.loopStatePath ?? "");
     assert.equal(loopState.status, "planned");
@@ -726,6 +733,8 @@ test("issue-control supervise dry-run plans multiple safe iterations", async () 
     assert.equal(loopState.lastLoopPath, advanceLoop.outputPath);
     assert.equal(loopState.repeatedTerminalCount, 0);
     assert.equal(loopState.repeatGuardActive, false);
+    assert.equal(loopState.adaptiveGate?.state, "hold");
+    assert.equal(loopState.adaptiveGate?.recommendedMaxIterations, 2);
     assert.equal(loopState.schedulerDecision?.action, "review-plan");
     assert.equal(loopState.schedulerDecision?.canRunUnattended, false);
     assert.equal(loopState.schedulerDecision?.requiresHuman, true);
@@ -1081,6 +1090,117 @@ test("issue-control supervise verify-each blocks when baseline is missing", asyn
   }
 });
 
+test("issue-control supervise unattended watchdog rolls back after behavior diff failure", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-issue-supervise-watchdog-"));
+  const configPath = path.join(dir, ".migration-guard.json");
+  const targetRoot = path.join(dir, "target");
+  try {
+    await mkdir(targetRoot, { recursive: true });
+    await git(targetRoot, "init");
+    await writeFile(path.join(targetRoot, "stable.txt"), "stable\n", "utf8");
+    await git(targetRoot, "add", "stable.txt");
+    await git(targetRoot, "-c", "user.name=Migration Guard", "-c", "user.email=guard@example.test", "commit", "-m", "base");
+    const driftFlag = path.join(dir, "drift.flag").replace(/\\/g, "/");
+    await writeFile(configPath, JSON.stringify({
+      schemaVersion: 1,
+      targetRoot,
+      artifactsDir: ".migration-guard",
+      issueSync: {
+        githubRepo: "perly6185-lab/md2"
+      },
+      checks: [{
+        name: "nondeterministic",
+        command: `"${process.execPath}" -e "const fs=require('fs');const p='${driftFlag}';if(fs.existsSync(p)) process.exit(1);fs.writeFileSync(p,'x')"`
+      }],
+      probes: []
+    }), "utf8");
+    const loaded = await loadConfig(configPath);
+    await saveSnapshot(loaded, await captureSnapshot(loaded, "baseline"));
+    const runId = "run-md2";
+    const now = "2026-07-11T00:00:00.000Z";
+    await writeJsonFile(path.join(loaded.artifactsDir, "migration-runs", runId, "run.json"), {
+      version: 1,
+      id: runId,
+      goal: "issue-control unattended watchdog test",
+      sourceRoot: targetRoot,
+      targetRoot,
+      artifactsDir: path.join(loaded.artifactsDir, "migration-runs", runId),
+      status: "planned",
+      mode: "dry-run",
+      issueProvider: "github",
+      createdAt: now,
+      updatedAt: now,
+      estimate: {
+        sourceFiles: 1,
+        testFiles: 0,
+        taskCount: 1,
+        riskLevel: "low",
+        confidence: "high",
+        estimatedVerificationRounds: 1,
+        notes: [],
+        updatedAt: now
+      }
+    });
+    await writeJsonFile(path.join(loaded.artifactsDir, "migration-runs", runId, "task-graph.json"), {
+      version: 1,
+      runId,
+      createdAt: now,
+      updatedAt: now,
+      tasks: [{
+        id: "task-one",
+        title: "Manual tracked change",
+        description: "Track a manual code-change task.",
+        type: "code-change",
+        status: "ready",
+        priority: 1,
+        risk: "low",
+        owner: "ai",
+        dependsOn: [],
+        affectedFiles: ["stable.txt"],
+        verificationCommands: [],
+        acceptanceCriteria: [],
+        createdAt: now,
+        updatedAt: now
+      }]
+    });
+    await writeJsonFile(path.join(loaded.artifactsDir, "migration-runs", runId, "issues.json"), []);
+    const mockFetch: typeof fetch = async () => new Response(JSON.stringify([{
+      number: 30,
+      title: "Ready task with watchdog",
+      body: [
+        "mg_run_id: run-md2",
+        "mg_issue_id: issue-watchdog",
+        "mg_issue_type: task",
+        "mg_status: ready",
+        "mg_risk: low",
+        "mg_task_id: task-one"
+      ].join("\n"),
+      state: "open",
+      labels: []
+    }]), { status: 200, headers: { "content-type": "application/json" } });
+
+    const report = await superviseIssueControl(loaded, {
+      fetchImpl: mockFetch,
+      execute: true,
+      trustTier: "unattended",
+      maxIterations: 1
+    });
+
+    assert.equal(report.trustTier, "unattended");
+    assert.equal(report.status, "failed");
+    assert.equal(report.iterations[0]?.verification?.status, "failed");
+    assert.equal(
+      report.iterations[0]?.watchdogRollback?.status,
+      "executed",
+      JSON.stringify(report.iterations[0]?.watchdogRollback)
+    );
+    assert.match(report.iterations[0]?.watchdogRollback?.checkpointId ?? "", /^cp-/);
+    assert.match(report.iterations[0]?.watchdogRollback?.message ?? "", /Rolled back checkpoint/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("issue-control supervise recovery plan classifies probe diff", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-issue-supervise-compare-diff-"));
   const configPath = path.join(dir, ".migration-guard.json");
@@ -1321,6 +1441,66 @@ test("issue-control supervise repair-on-fail attempts eligible proposal recovery
   }
 });
 
+test("issue-control supervise repair-agent execution is guarded by behavior diff", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-issue-supervise-repair-agent-"));
+  const configPath = path.join(dir, ".migration-guard.json");
+  const targetRoot = path.join(dir, "target");
+  try {
+    await writeFile(configPath, JSON.stringify({
+      schemaVersion: 1,
+      targetRoot,
+      artifactsDir: ".migration-guard",
+      issueSync: {
+        githubRepo: "perly6185-lab/md2"
+      },
+      checks: [],
+      probes: []
+    }), "utf8");
+    const loaded = await loadConfig(configPath);
+    await mkdir(targetRoot, { recursive: true });
+    await writeFile(path.join(targetRoot, "stable.txt"), "stable\n", "utf8");
+    await saveSnapshot(loaded, await captureSnapshot(loaded, "baseline"));
+    const mockFetch: typeof fetch = async () => new Response(JSON.stringify([{
+      number: 11,
+      title: "Proposal gate failed: patch-one",
+      body: [
+        "mg_run_id: run-missing",
+        "mg_issue_id: issue-proposal-agent",
+        "mg_issue_type: failure",
+        "mg_status: failed",
+        "mg_risk: medium"
+      ].join("\n"),
+      state: "open",
+      labels: []
+    }]), { status: 200, headers: { "content-type": "application/json" } });
+
+    const report = await superviseIssueControl(loaded, {
+      fetchImpl: mockFetch,
+      execute: true,
+      repairOnFail: true,
+      repairAgentCommand: `"${process.execPath}" -e "process.exit(0)"`,
+      maxIterations: 1
+    });
+
+    assert.equal(report.failureCategory, "proposal-repair-needed");
+    assert.match(report.recoveryExecutionPath ?? "", /issue-control-recovery-execution-/);
+    assert.equal(report.recoveryExecutionStatus, "executed");
+    const execution = await readJsonFile<{
+      action: string;
+      behaviorDiffRequired: boolean;
+      behaviorDiffGuard?: { status: string; compareReportPath?: string };
+      error?: string;
+    }>(report.recoveryExecutionPath ?? "");
+    assert.equal(execution.action, "repair-agent");
+    assert.equal(execution.behaviorDiffRequired, true);
+    assert.equal(execution.behaviorDiffGuard?.status, "passed");
+    assert.match(execution.behaviorDiffGuard?.compareReportPath ?? "", /recovery-.*-compare\.json/);
+    assert.equal(execution.error, undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("issue-control supervise stops after executed repair unless continuation is explicit", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-issue-supervise-repair-stop-"));
   const configPath = path.join(dir, ".migration-guard.json");
@@ -1501,6 +1681,8 @@ test("issue-control supervise does not continue after failed repair execution", 
     assert.equal(progress.automationDecision.disposition, "blocked");
     assert.equal(progress.automationDecision.canAutoContinue, false);
     assert.equal(progress.automationDecision.requiresHuman, true);
+    assert.equal(progress.automationDecision.adaptiveGate?.state, "downgrade");
+    assert.equal(progress.automationDecision.adaptiveGate?.recommendedMaxIterations, 1);
     assert.equal(progress.unresolvedItems[0]?.issueId, "issue-proposal-failure");
     assert.equal(progress.unreachedSelectedItems[0]?.issueId, "issue-next-task");
     assert.match(progress.nextActions.join("\n"), /not reached/);
@@ -1525,11 +1707,14 @@ test("issue-control supervise does not continue after failed repair execution", 
       sourceLedgerPath?: string;
       repeatedTerminalCount: number;
       repeatGuardActive: boolean;
+      adaptiveGate?: { state: string; recommendedMaxIterations: number };
     }>(advanceLoop.loopStatePath ?? "");
     assert.equal(loopState.status, "blocked");
     assert.equal(loopState.sourceLedgerPath, report.progressLedgerPath);
     assert.equal(loopState.repeatedTerminalCount, 1);
     assert.equal(loopState.repeatGuardActive, false);
+    assert.equal(loopState.adaptiveGate?.state, "downgrade");
+    assert.equal(loopState.adaptiveGate?.recommendedMaxIterations, 1);
     const repeatedLoop = await advanceIssueControlLoop(loaded, {
       input: report.progressLedgerPath,
       execute: true,
@@ -1636,6 +1821,45 @@ test("issue-control advance-status treats max-step guard as unattended continuat
     }), "utf8");
     const loaded = await loadConfig(configPath);
     const statePath = path.join(loaded.artifactsDir, "issue-control", "issue-control-advance-loop-state.json");
+    const ledgerPath = path.join(loaded.artifactsDir, "issue-control", "issue-control-supervise-progress-old.json");
+    await writeJsonFile(ledgerPath, {
+      version: 1,
+      id: "issue-control-supervise-progress-old",
+      createdAt: "2026-07-11T00:00:00.000Z",
+      sourceSuperviseId: "issue-control-supervise-old",
+      provider: "github",
+      repo: "perly6185-lab/md2",
+      mode: "execute",
+      status: "complete",
+      trustTier: "supervised",
+      riskBudget: 9,
+      controlOptions: {
+        maxIterations: 3,
+        verifyEach: true,
+        repairOnFail: true,
+        continueAfterRepair: true
+      },
+      summary: {
+        issueCount: 3,
+        selectedCount: 3,
+        reachedCount: 3,
+        unreachedSelectedCount: 0,
+        recoveredCount: 0,
+        continuedCount: 0,
+        unresolvedCount: 0
+      },
+      items: [{
+        issueNumber: 1,
+        issueId: "issue-one",
+        title: "Issue one",
+        action: "execute-task",
+        selected: true,
+        reached: true,
+        state: "executed",
+        reason: "done",
+        artifactPaths: []
+      }]
+    });
     await writeJsonFile(statePath, {
       version: 1,
       id: "issue-control-advance-loop-state",
@@ -1644,7 +1868,7 @@ test("issue-control advance-status treats max-step guard as unattended continuat
       maxSteps: 3,
       status: "complete",
       stopReason: "Reached max steps 3.",
-      sourceLedgerPath: path.join(loaded.artifactsDir, "issue-control", "issue-control-supervise-progress-old.json"),
+      sourceLedgerPath: ledgerPath,
       lastLoopId: "issue-control-advance-loop-old",
       repeatedTerminalCount: 0,
       repeatGuardActive: false,
@@ -1658,6 +1882,9 @@ test("issue-control advance-status treats max-step guard as unattended continuat
     assert.equal(status.schedulerDecision?.canRunUnattended, true);
     assert.equal(status.schedulerDecision?.requiresHuman, false);
     assert.equal(status.schedulerDecision?.exitCode, 0);
+    assert.equal(status.adaptiveGate?.state, "upgrade");
+    assert.equal(status.adaptiveGate?.recommendedMaxIterations, 4);
+    assert.equal(status.schedulerDecision?.adaptiveGate?.state, "upgrade");
     assert.match(status.schedulerDecision?.nextCommand ?? "", /--max-steps 3/);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -2190,4 +2417,8 @@ function issueControlContinuationFetch(): typeof fetch {
     state: "open",
     labels: []
   }]), { status: 200, headers: { "content-type": "application/json" } });
+}
+
+async function git(cwd: string, ...args: string[]): Promise<void> {
+  await execFileAsync("git", args, { cwd });
 }

@@ -62,6 +62,45 @@ test("rollback precheck blocks new untracked files before reset", async () => {
   }
 });
 
+test("rollback handles an empty checkpoint patch without applying file changes", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-checkpoint-empty-"));
+  try {
+    const repo = await setupGitRepo(dir);
+    const loaded = await loadCheckpointConfig(dir);
+    const pkg = createCheckpointRunPackage(dir, repo, "run-checkpoint-empty");
+    await saveRunPackage(loaded, pkg);
+    const checkpoint = await createCheckpoint(loaded, pkg, undefined, "clean checkpoint");
+
+    const message = await rollbackToCheckpoint(loaded, pkg, checkpoint.id, { strategy: "patch" });
+
+    assert.match(message, /Checkpoint patch is empty/);
+    assert.equal(normalizeNewlines(await readFile(path.join(repo, "src.txt"), "utf8")), "base\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("patch rollback strategy reports conflict before applying", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-checkpoint-conflict-"));
+  try {
+    const repo = await setupGitRepo(dir);
+    const loaded = await loadCheckpointConfig(dir);
+    const pkg = createCheckpointRunPackage(dir, repo, "run-checkpoint-conflict");
+    await saveRunPackage(loaded, pkg);
+    await writeFile(path.join(repo, "src.txt"), "checkpoint dirty\n", "utf8");
+    const checkpoint = await createCheckpoint(loaded, pkg, undefined, "dirty checkpoint");
+    await writeFile(path.join(repo, "src.txt"), "conflicting dirty\n", "utf8");
+
+    await assert.rejects(
+      rollbackToCheckpoint(loaded, pkg, checkpoint.id, { strategy: "patch" }),
+      /Rollback check failed/
+    );
+    assert.equal(normalizeNewlines(await readFile(path.join(repo, "src.txt"), "utf8")), "conflicting dirty\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("reset rollback restores tracked dirty state captured by checkpoint", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-checkpoint-dirty-"));
   try {

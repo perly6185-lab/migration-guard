@@ -100,11 +100,15 @@ import {
 import {
   collectDashboard,
   collectDashboardBlockers,
+  collectRunsList,
   renderDashboard,
   renderDashboardBlockers,
+  renderRunsList,
   writeDashboardBlockersReport,
-  writeDashboardReport
+  writeDashboardReport,
+  writeRunsListReport
 } from "./core/dashboard.js";
+import { startUiServer } from "./core/uiServer.js";
 import {
   createOneShotRunbook,
   collectOneShotSessionNextAction,
@@ -172,6 +176,12 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "issues":
       await commandIssues(args);
+      return;
+    case "runs":
+      await commandRuns(args);
+      return;
+    case "serve":
+      await commandServe(args);
       return;
     case "tasks":
       await commandTasks(args);
@@ -525,6 +535,32 @@ async function commandIssues(args: ParsedArgs): Promise<void> {
     return;
   }
   console.log(renderIssues(pkg.issues));
+}
+
+async function commandRuns(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "list";
+  if (action !== "list") {
+    throw new Error(`Unknown runs command: ${action}`);
+  }
+  const loaded = await loadFromArgs(args);
+  const report = await writeRunsListReport(loaded, await collectRunsList(loaded));
+  if (args.options.json) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+  console.log(renderRunsList(report));
+  console.log(`\nJSON: ${report.outputPath}`);
+  console.log(`Markdown: ${report.markdownPath}`);
+}
+
+async function commandServe(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const handle = await startUiServer(loaded, {
+    host: stringOption(args, "host") ?? "127.0.0.1",
+    port: nonNegativeIntegerOption(args, "port") ?? 8787
+  });
+  console.log(`Migration Guard UI: ${handle.url}`);
+  console.log("Press Ctrl+C to stop.");
 }
 
 async function commandTasks(args: ParsedArgs): Promise<void> {
@@ -1281,7 +1317,8 @@ async function commandIssueControl(args: ParsedArgs): Promise<void> {
       editCommand: stringOption(args, "edit-command"),
       verifyEach: Boolean(args.options["verify-each"]),
       repairOnFail: Boolean(args.options["repair-on-fail"]),
-      continueAfterRepair: Boolean(args.options["continue-after-repair"])
+      continueAfterRepair: Boolean(args.options["continue-after-repair"]),
+      repairAgentCommand: stringOption(args, "repair-agent")
     });
     if (args.options.json) {
       console.log(JSON.stringify(report, null, 2));
@@ -1780,6 +1817,8 @@ Usage:
   migration-guard ai-brief [--config <path>] [--baseline <path>] [--current <path>] [--output <path>]
   migration-guard run [--source <path>] [--target <path>] --goal <text> [--init-only|--dry-run|--auto]
   migration-guard status [--run <id|latest>]
+  migration-guard runs list [--json]
+  migration-guard serve [--host <host>] [--port <port>]
   migration-guard issues [--run <id|latest>] [--json]
   migration-guard tasks [--run <id|latest>] [--json]
   migration-guard actions [--run <id|latest>] [--json]
@@ -1814,7 +1853,7 @@ Usage:
   migration-guard issue-control pull|plan [--provider github] [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--input <pull.json>] [--json]
   migration-guard issue-control run --input <plan.json> [--only-issue <mg_issue_id>] [--execute] [--run <id|latest>] [--edit-command <cmd>] [--json]
   migration-guard issue-control auto [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--execute] [--max-iterations 1] [--allow-high-risk] [--trust-tier manual|supervised|unattended] [--edit-command <cmd>] [--json]
-  migration-guard issue-control supervise [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--execute] [--verify-each] [--repair-on-fail] [--continue-after-repair] [--max-iterations <n>] [--allow-high-risk] [--trust-tier manual|supervised|unattended] [--edit-command <cmd>] [--json]
+  migration-guard issue-control supervise [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--execute] [--verify-each] [--repair-on-fail] [--continue-after-repair] [--repair-agent <cmd>] [--max-iterations <n>] [--allow-high-risk] [--trust-tier manual|supervised|unattended] [--edit-command <cmd>] [--json]
   migration-guard issue-control progress [--input <progress.json>] [--json]
   migration-guard issue-control advance [--input <progress.json>] [--execute] [--max-steps <n>] [--force] [--json]
   migration-guard issue-control advance-status [--input <state.json>] [--json]
