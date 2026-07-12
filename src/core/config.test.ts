@@ -52,11 +52,17 @@ test("loadConfig applies named profiles after base config defaults", async () =>
       variables: {
         BASE: "base"
       },
+      issueSync: {
+        githubRepo: "owner/base"
+      },
       profiles: {
         ci: {
           artifactsDir: ".migration-guard/ci",
           output: {
             maxOutputBytes: 2000
+          },
+          issueSync: {
+            githubRepo: "owner/ci"
           },
           proposalGate: {
             batchPolicy: "collect-all"
@@ -77,6 +83,7 @@ test("loadConfig applies named profiles after base config defaults", async () =>
     assert.equal(loaded.config.output.maxOutputBytes, 2000);
     assert.equal(loaded.config.proposalGate.defaultPolicy, "collect-all");
     assert.equal(loaded.config.proposalGate.batchPolicy, "collect-all");
+    assert.equal(loaded.config.issueSync?.githubRepo, "owner/ci");
     assert.equal(loaded.config.variables?.BASE, "profile");
     assert.equal(loaded.config.variables?.EXTRA, "yes");
   } finally {

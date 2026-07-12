@@ -4,6 +4,12 @@
 
 目标仓库：https://github.com/perly6185-lab/md
 
+> 2026-07-11 更新：本文是历史验证报告，证明 Migration Guard 曾对
+> `perly6185-lab/md` 完成真实项目闭环验证。当前重构执行需求已矫正为
+> `md` 作为源仓库、`md2` 作为目标仓库和 issue 控制面。最新执行入口见
+> [MD_OPERATOR_RUNBOOK.md](MD_OPERATOR_RUNBOOK.md) 和
+> [MD2_REFACTOR_ORCHESTRATION.md](MD2_REFACTOR_ORCHESTRATION.md)。
+
 本地目标路径：
 
 ```text

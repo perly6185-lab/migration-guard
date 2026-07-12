@@ -23,14 +23,14 @@ npm test
 git diff --check
 ```
 
-For the real `md` validation lane:
+For the real `md -> md2` refactor lane:
 
 ```bash
-node dist/cli.js run --config configs/md-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md --goal "MD guarded migration" --dry-run --adapter md-monorepo --issue-provider local
-node dist/cli.js resume --config configs/md-fast.migration-guard.json --run <run-id> --auto
-node dist/cli.js readiness --config configs/md-fast.migration-guard.json --run <run-id>
-node dist/cli.js proposal batch plan --config configs/md-fast.migration-guard.json --run <run-id> --limit 5
-node dist/cli.js proposal batch apply --config configs/md-fast.migration-guard.json --run <run-id> --limit 5 --gate-policy fail-fast
+node dist/cli.js run --config configs/md2-fast.migration-guard.json --source D:/learn/migration-guard-targets/md --target D:/learn/migration-guard-targets/md2 --goal "Refactor md into md2 with guarded behavior parity" --dry-run --adapter md-monorepo --issue-provider github
+node dist/cli.js resume --config configs/md2-fast.migration-guard.json --run <run-id> --auto
+node dist/cli.js sync-issues --config configs/md2-fast.migration-guard.json --run <run-id> --provider github --dry-run --labels team:migration,source:md,target:md2
+node dist/cli.js sync-issues --config configs/md2-fast.migration-guard.json --run <run-id> --provider github --live-plan --labels team:migration,source:md,target:md2
+node dist/cli.js readiness --config configs/md2-fast.migration-guard.json --run <run-id>
 ```
 
 For failed proposal repair:
@@ -39,13 +39,15 @@ For failed proposal repair:
 node dist/cli.js proposal replan --run <run-id> --proposal <failed-proposal-id>
 node dist/cli.js proposal retry --run <run-id> --proposal <failed-proposal-id>
 node dist/cli.js proposal verify --run <run-id> --proposal <retry-proposal-id> --checks
+node dist/cli.js proposal repair --run <run-id> --proposal <failed-proposal-id> --checks --accept
 node dist/cli.js proposal accept --run <run-id> --proposal <retry-proposal-id> --notes "verified repair"
 ```
 
 Current release readiness is tracked in
 [docs/RELEASE_CHECKLIST_70_74.md](docs/RELEASE_CHECKLIST_70_74.md).
-For real `md` operations, use
-[docs/MD_OPERATOR_RUNBOOK.md](docs/MD_OPERATOR_RUNBOOK.md).
+For real `md -> md2` operations, use
+[docs/MD_OPERATOR_RUNBOOK.md](docs/MD_OPERATOR_RUNBOOK.md) and
+[docs/MD2_REFACTOR_ORCHESTRATION.md](docs/MD2_REFACTOR_ORCHESTRATION.md).
 
 ## Core idea
 
@@ -100,6 +102,7 @@ node dist/cli.js action apply --run latest --proposal <proposal-id> --rollback-o
 node dist/cli.js proposal rollback --run latest --proposal <proposal-id>
 node dist/cli.js proposal replan --run latest --proposal <proposal-id>
 node dist/cli.js proposal retry --run latest --proposal <failed-proposal-id>
+node dist/cli.js proposal repair --run latest --proposal <failed-proposal-id> --checks --accept
 node dist/cli.js proposal accept --run latest --proposal <retry-proposal-id> --notes "verified repair"
 node dist/cli.js proposal list --run latest --state ignored
 node dist/cli.js proposal reject --run latest --proposal <proposal-id> --reason "wrong probe shape"
@@ -111,6 +114,7 @@ node dist/cli.js readiness --run latest --min-proposals 3 --min-batch-size 3 --s
 node dist/cli.js one-shot runbook --max-source-file-delta 1 --budget "bounded helper cleanup"
 node dist/cli.js one-shot session open --max-source-file-delta 1 --budget "bounded helper cleanup"
 node dist/cli.js one-shot session next
+node dist/cli.js one-shot session run
 node dist/cli.js one-shot session status
 node dist/cli.js one-shot status
 node dist/cli.js one-shot report --max-source-file-delta 1 --strict
@@ -121,6 +125,25 @@ node dist/cli.js sync-issues --run latest --provider local
 node dist/cli.js sync-issues --run latest --provider github --dry-run
 node dist/cli.js sync-issues --run latest --provider github --live-plan --repo owner/name
 node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --live-plan-confirm <plan-hash> --only-issue <issue-id> --max-live-mutations 1 --labels team:migration
+node dist/cli.js issue-control pull --config configs/md2-fast.migration-guard.json --labels team:migration
+node dist/cli.js issue-control plan --config configs/md2-fast.migration-guard.json --labels team:migration
+node dist/cli.js issue-control run --config configs/md2-fast.migration-guard.json --input <plan.json>
+node dist/cli.js issue-control run --config configs/md2-fast.migration-guard.json --input <plan.json> --only-issue <mg_issue_id> --execute
+node dist/cli.js issue-control auto --config configs/md2-fast.migration-guard.json --labels team:migration
+node dist/cli.js issue-control auto --config configs/md2-fast.migration-guard.json --labels team:migration --execute --max-iterations 1
+node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --max-iterations 3
+node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --execute --max-iterations 3
+node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --execute --verify-each --max-iterations 3
+node dist/cli.js issue-control progress --config configs/md2-fast.migration-guard.json
+node dist/cli.js issue-control advance --config configs/md2-fast.migration-guard.json
+node dist/cli.js issue-control advance --config configs/md2-fast.migration-guard.json --execute --max-steps 3
+node dist/cli.js issue-control advance-status --config configs/md2-fast.migration-guard.json
+node dist/cli.js issue-control advance-scheduler --config configs/md2-fast.migration-guard.json
+node scripts/scheduler/run-advance-scheduler.mjs --config configs/md2-fast.migration-guard.json --once
+node dist/cli.js issue-control sync-gate --config configs/md2-fast.migration-guard.json --labels team:migration,source:md,target:md2
+node dist/cli.js issue-control bootstrap --config configs/md2-fast.migration-guard.json
+node dist/cli.js issue-control bootstrap --config configs/md2-fast.migration-guard.json --execute
+node dist/cli.js issue-control bootstrap --config configs/md2-fast.migration-guard.json --execute --verify --labels team:migration
 node dist/cli.js ci verify --baseline .migration-guard/latest-baseline.json --run latest
 ```
 
@@ -164,6 +187,9 @@ Migration Guard writes a focused replan brief and JSON context pack under
 the failed proposal from evidence instead of guessing. `proposal retry` then
 creates a linked retry proposal scaffold so the next verification/apply step is
 tracked as part of the same failure loop.
+`proposal repair` is the idempotent repair-loop entry point: it creates or
+reuses the replan and retry proposal, can run retry checks, and can accept the
+repair when the checked retry verification passes.
 After a retry proposal has a passing checked verification, `proposal accept`
 writes a repair acceptance report that links the source failure, retry proposal,
 retry verification and AI repair checklist.
@@ -237,9 +263,15 @@ ledger with baseline, pre-PR, PR/merge, post-merge and closure evidence links
 so a window has explicit lifecycle state instead of relying only on latest
 artifact discovery. `one-shot session next` prints the current runnable lifecycle
 command, such as baseline, verify, pre-PR report or closure report, from the
-active session. `one-shot report` summarizes a bounded one-shot closure from
-the latest baseline/run/compare artifacts, critical check and probe status,
-source-file delta budget and target git cleanliness. Use
+active session. `one-shot session run` automatically executes safe lifecycle
+steps such as baseline, verify, report and sync until it reaches an external
+edit/PR boundary or a failing gate. Pass `--edit-command` and `--pr-command` to
+connect external code-change and PR/merge agents; the edit hook is followed by
+post-edit verification, while the PR hook must print closure metadata as JSON
+and is followed by post-merge verification plus a final closure report.
+`one-shot report` summarizes a bounded one-shot closure from the latest
+baseline/run/compare artifacts, critical check and probe status, source-file
+delta budget and target git cleanliness. Use
 `--max-source-file-delta` to make the planned file-count budget explicit and
 `--strict` to fail the command when the report returns `hold`. For final closure
 evidence, add `--pr-url`, `--target-commit`, `--merge-commit`, `--merged-at` and
@@ -249,11 +281,12 @@ Issue sync exports include the same gate and batch context so local/provider
 neutral issue exports can be handed to a team or external tracker.
 GitHub dry-run exports also write a PR comment preview at
 `issue-sync/github-pr-comment.md`.
-GitHub live issue sync requires explicit `--live`, `--repo owner/name`,
-`--live-confirm <run-id>`, and `GITHUB_TOKEN`; tokens are never written to
-artifacts. Existing open GitHub issues are updated when their body contains the
-same `mg_issue_id`; unchanged issue bodies are skipped by SHA-256 body hash;
-otherwise a new issue is created. Live runs also write
+GitHub live issue sync requires explicit `--live`, a GitHub repo from either
+`--repo owner/name` or config `issueSync.githubRepo`, `--live-confirm <run-id>`,
+and `GITHUB_TOKEN`; tokens are never written to artifacts. Existing open GitHub
+issues are updated when their body contains the same `mg_issue_id`; unchanged
+issue bodies are skipped by SHA-256 body hash; otherwise a new issue is created.
+Live runs also write
 `issue-sync/github-live-plan.json` before any create/update mutation. Use
 `--live-plan` for a read-only GitHub lookup that writes the same plan without
 mutating issues. Live mutations are capped by `--max-live-mutations` and GitHub
@@ -261,6 +294,77 @@ mutating issues. Live mutations are capped by `--max-live-mutations` and GitHub
 are written to summary artifacts. Each live plan includes a stable `planHash`;
 real live sync requires `--live-plan-confirm <plan-hash>` so mutations are bound
 to a reviewed plan.
+`issue-control pull` reads GitHub issues from `--repo owner/name` or config
+`issueSync.githubRepo` and writes read-only control-plane artifacts.
+`issue-control plan` maps those remote issues into guarded actions such as
+target bootstrap, proposal repair, task execution handoff, risk classification,
+or external review. It does not mutate GitHub and does not edit the target
+repository.
+`issue-control run` is dry-run by default. In Phase 99, real execution requires
+`--execute --only-issue <mg_issue_id>` and supports one selected executable item
+at a time.
+`issue-control auto` chains pull, plan and a single selected run. Phase 100
+allows only `--max-iterations 1`; high-risk items are skipped unless
+`--allow-high-risk` is passed.
+`issue-control supervise` is the bounded multi-issue supervisor. It pulls and
+plans once, selects up to `--max-iterations` safe executable md2 issues, runs
+each through the existing single-issue runner, and writes
+`issue-control-supervise-*.json|md` plus a machine-readable progress ledger at
+`issue-control-supervise-progress-*.json|md`. Dry-run is the default.
+`--execute` still uses one issue per iteration, stops on the first failed or
+blocked iteration, and does not commit, install dependencies or mutate GitHub.
+Add `--verify-each`
+to capture a run snapshot and compare it with `latest-baseline.json` after each
+executed iteration. Missing baseline or compare failure stops the supervisor
+and records the verification artifact on that iteration. `--repair-on-fail` is
+reserved for recovery planning: on blocked/failed supervisor runs the tool
+writes `issue-control-recovery-plan-*.json|md` with a failure category,
+evidence paths, auto-repair eligibility and the next recommended command.
+When `--repair-on-fail` is used with `--execute`, eligible proposal repair
+recoveries also write `issue-control-recovery-execution-*.json|md` and attempt
+the bounded proposal repair lane. Non-eligible categories still stop as
+blocked. Add `--continue-after-repair` only when the supervisor should continue
+remaining selected issues after an eligible recovery execution returns
+`executed`; planned, blocked or failed recovery executions still stop.
+Use `issue-control progress` to read the latest progress ledger, write
+`issue-control-progress-status-*.json|md`, and surface unresolved or unreached
+selected issues without pulling GitHub or executing work. The status report also
+includes `automationDecision`, which classifies whether the lane is blocked,
+ready to execute, ready to continue, ready to sync or complete, and includes a
+bounded next command when one can be reconstructed from the supervise options.
+Use `issue-control advance` to turn that decision into a planned advance report;
+add `--execute` only when the decision is eligible and the next supervised cycle
+should actually run. Advance calls the internal supervisor path instead of
+executing arbitrary shell text. Add `--max-steps <n>` with `--execute` to run a
+bounded advance loop; the loop stops on failed/blocked steps, completed
+supervision or the max-step guard. Loop mode also refreshes
+`issue-control/issue-control-advance-loop-state.json|md`; if a later execute
+loop starts from the same failed/blocked progress ledger, the repeat guard
+blocks before re-running the supervisor. Use `--force` only to override that
+guard after reviewing the evidence. Use `issue-control advance-status` to read
+that fixed state without pulling GitHub, running supervisor, or writing a new
+advance report; it exits non-zero when the latest loop is failed, blocked or
+repeat-guard active. Its JSON includes `schedulerDecision` with an action such
+as `review-plan`, `run-advance-loop`, `sync-issues` or `stop-for-recovery`,
+plus `canRunUnattended`, `requiresHuman`, `exitCode` and an optional next
+command. `run-advance-loop` is emitted when a loop only paused at the max-step
+guard and another bounded unattended loop may continue.
+Use `issue-control advance-scheduler` to convert that state decision into an
+audited scheduler report; even with `--execute`, it only dispatches the
+internal bounded advance loop when the decision is `run-advance-loop`. External
+schedulers can call `scripts/scheduler/run-advance-scheduler.mjs` to poll the
+JSON decision and write a local scheduler run log. Use `issue-control
+sync-gate` after scheduler completion to produce a reviewed
+`sync-issues --live-plan` handoff; the gate does not call `sync-issues` or
+mutate GitHub.
+`issue-control bootstrap` creates a controlled md -> md2 import manifest and,
+with `--execute`, copies allowed source files into an empty clean md2 target
+while excluding git metadata, dependencies, build output, Migration Guard
+artifacts and environment files. Add `--verify` to run the post-bootstrap
+closure: package/install readiness checks, baseline snapshot, verification
+snapshot, compare report and issue-control auto dry-run. The verify step does
+not install dependencies, commit changes or mutate GitHub; missing
+`node_modules` is reported as `blocked: install required`.
 
 Proposal gate defaults can be configured:
 
@@ -296,6 +400,9 @@ set `MG_PROFILE=<name>`.
   "schemaVersion": 1,
   "targetRoot": ".",
   "artifactsDir": ".migration-guard",
+  "issueSync": {
+    "githubRepo": "owner/target-repo"
+  },
   "profiles": {
     "local": {
       "artifactsDir": ".migration-guard/local"
@@ -485,8 +592,42 @@ MCP render smoke stabilization and proposal exclusion semantics.
 See [docs/NEXT_MAJOR_PHASES.md](docs/NEXT_MAJOR_PHASES.md) for the larger
 roadmap after the GitHub mutation smoke.
 
+See [docs/MD2_REFACTOR_ORCHESTRATION.md](docs/MD2_REFACTOR_ORCHESTRATION.md)
+for the corrected `perly6185-lab/md` to `perly6185-lab/md2` refactor control
+model and issue sync plan.
+
 See [docs/MD_REAL_WORLD_VALIDATION_PLAN.md](docs/MD_REAL_WORLD_VALIDATION_PLAN.md)
-for the next real-world validation plan using `perly6185-lab/md`.
+for the historical real-world validation plan using `perly6185-lab/md`.
 
 See [docs/MD_REAL_WORLD_VALIDATION_REPORT.md](docs/MD_REAL_WORLD_VALIDATION_REPORT.md)
 for the completed real-world validation report.
+
+See [docs/PHASE_96_REPORT.md](docs/PHASE_96_REPORT.md) for the autonomous
+one-shot runner, edit/PR hooks and idempotent proposal repair entry.
+
+See [docs/PHASE_97_REPORT.md](docs/PHASE_97_REPORT.md) for the corrected
+`md -> md2` issue-controlled refactor lane.
+
+See [docs/PHASE_98_REPORT.md](docs/PHASE_98_REPORT.md) for md2
+issue-control pull and guarded execution planning.
+
+See [docs/PHASE_99_REPORT.md](docs/PHASE_99_REPORT.md) for the first
+single-issue issue-control runner.
+
+See [docs/PHASE_100_REPORT.md](docs/PHASE_100_REPORT.md) for the single-step
+issue-control auto loop.
+
+See [docs/PHASE_101_REPORT.md](docs/PHASE_101_REPORT.md) for controlled
+bootstrap from the source `md` checkout into the empty `md2` target.
+
+See [docs/PHASE_117_REPORT.md](docs/PHASE_117_REPORT.md) for the productized
+advance scheduler entry point.
+
+See [docs/PHASE_118_REPORT.md](docs/PHASE_118_REPORT.md) for the external
+scheduler poller script.
+
+See [docs/PHASE_119_REPORT.md](docs/PHASE_119_REPORT.md) for the real
+`md2-fast` scheduler dry-run drill.
+
+See [docs/PHASE_120_REPORT.md](docs/PHASE_120_REPORT.md) for the issue sync
+closure gate and reviewed live-plan handoff.

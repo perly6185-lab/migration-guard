@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "targetRoot": "${MG_TARGET_ROOT}",
+  "artifactsDir": "${MG_ARTIFACTS_DIR}/md2-fast",
+  "variables": {
+    "MG_SOURCE_ROOT": "../../migration-guard-targets/md",
+    "MG_TARGET_ROOT": "../../migration-guard-targets/md2",
+    "MG_ARTIFACTS_DIR": "../.migration-guard/external-targets",
+    "MG_REPO_ROOT": "../../migration-guard"
+  },
+  "issueSync": {
+    "githubRepo": "perly6185-lab/md2"
+  },
+  "ignore": [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".next",
+    ".nuxt",
+    ".turbo",
+    ".migration-guard",
+    ".wxt",
+    ".output"
+  ],
+  "checks": [
+    {
+      "name": "core-test",
+      "command": "pnpm --filter @md/core test",
+      "timeoutMs": 180000,
+      "critical": true,
+      "normalize": {
+        "trimWhitespace": true,
+        "presets": ["vitest", "paths", "timing"]
+      }
+    },
+    {
+      "name": "packages-type-check",
+      "command": "pnpm type-check:packages",
+      "timeoutMs": 240000,
+      "critical": true,
+      "normalize": {
+        "trimWhitespace": true,
+        "presets": ["paths", "timing"],
+        "replace": [
+          {
+            "pattern": "(apps/api|packages/shared|packages/core) type-check(?:\\$ tsc --noEmit|: Done)",
+            "replacement": "<type-check-step>"
+          }
+        ]
+      }
+    }
+  ],
+  "probes": [
+    {
+      "type": "command",
+      "name": "md-renderer-behavior",
+      "command": "pnpm exec tsx ${MG_REPO_ROOT}/scripts/probes/md-behavior-probe.mjs",
+      "timeoutMs": 120000,
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "json": {
+          "sortKeys": true
+        }
+      }
+    },
+    {
+      "type": "command",
+      "name": "md-api-contract",
+      "command": "pnpm exec tsx ${MG_REPO_ROOT}/scripts/probes/md-api-contract-probe.mjs",
+      "timeoutMs": 120000,
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "json": {
+          "sortKeys": true
+        }
+      }
+    }
+  ],
+  "output": {
+    "maxOutputBytes": 524288
+  },
+  "compare": {
+    "failOnCheckRegression": true,
+    "failOnProbeDiff": true
+  },
+  "proposalGate": {
+    "defaultPolicy": "collect-all",
+    "batchPolicy": "fail-fast",
+    "retry": {
+      "unit-test": {
+        "maxAttempts": 2,
+        "delayMs": 1000,
+        "retryOn": ["flake-suspected"]
+      },
+      "ui-probe": {
+        "maxAttempts": 2,
+        "delayMs": 1000,
+        "retryOn": ["flake-suspected", "timeout"]
+      }
+    }
+  }
+}

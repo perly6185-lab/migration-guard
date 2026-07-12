@@ -32,6 +32,32 @@ import {
 } from "./core/diffDecision.js";
 import { getReadyTasks, validateTaskGraph } from "./core/taskGraph.js";
 import { syncIssues } from "./core/issueSync.js";
+import {
+  loadIssueControlPullReport,
+  loadIssueControlPlanReport,
+  advanceIssueControlScheduler,
+  issueControlAdvanceLoopStatus,
+  issueControlSyncGate,
+  advanceIssueControlLoop,
+  advanceIssueControl,
+  autoIssueControl,
+  issueControlProgressStatus,
+  pullIssueControl,
+  renderIssueControlAuto,
+  renderIssueControlAdvance,
+  renderIssueControlAdvanceLoop,
+  renderIssueControlAdvanceScheduler,
+  renderIssueControlAdvanceLoopState,
+  renderIssueControlSyncGate,
+  renderIssueControlPlan,
+  renderIssueControlProgressStatus,
+  renderIssueControlPull,
+  renderIssueControlRun,
+  renderIssueControlSupervise,
+  runIssueControlPlan,
+  superviseIssueControl,
+  writeIssueControlPlan
+} from "./core/issueControl.js";
 import { loadActionPlan, renderActionPlan } from "./core/actionPlan.js";
 import {
   applyProposalBatch,
@@ -51,6 +77,7 @@ import {
   renderProposalRollbackReport,
   renderProposalStatus,
   renderProposalVerificationReport,
+  repairProposal,
   replanProposal,
   rollbackProposedPatch,
   verifyProposedPatch
@@ -58,6 +85,12 @@ import {
 import { runPreviewProbe } from "./core/preview.js";
 import { collectArtifactGcReport, renderArtifactGcReport } from "./core/artifactGc.js";
 import { collectArtifactMigrationReport, renderArtifactMigrationReport } from "./core/artifactMigration.js";
+import {
+  bootstrapMd2Target,
+  renderBootstrapMd2Manifest,
+  renderBootstrapMd2VerifyReport,
+  verifyBootstrapMd2Target
+} from "./core/bootstrap.js";
 import {
   assessRefactorReadiness,
   renderRefactorReadinessReport,
@@ -72,9 +105,11 @@ import {
   renderOneShotRunbook,
   renderOneShotSession,
   renderOneShotSessionNextAction,
+  renderOneShotSessionRunReport,
   renderOneShotStatus,
   renderOneShotReport,
   readOneShotSession,
+  runOneShotSession,
   syncOneShotSession,
   writeOneShotRunbook,
   writeOneShotReport
@@ -164,6 +199,9 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "sync-issues":
       await commandSyncIssues(args);
+      return;
+    case "issue-control":
+      await commandIssueControl(args);
       return;
     case "ci":
       await commandCi(args);
@@ -676,6 +714,29 @@ async function commandOneShotSession(args: ParsedArgs): Promise<void> {
     return;
   }
 
+  if (action === "run") {
+    const report = await runOneShotSession(loaded, {
+      sessionPath: stringOption(args, "session"),
+      checkTargetGit: !args.options["skip-target-git"],
+      maxSteps: numberOption(args, "max-steps"),
+      maxSourceFileDelta: numberOption(args, "max-source-file-delta"),
+      detectGitMetadata: !args.options["skip-git-metadata"],
+      metadata: oneShotMetadataFromArgs(args),
+      editCommand: stringOption(args, "edit-command"),
+      prCommand: stringOption(args, "pr-command"),
+      externalStepTimeoutMs: numberOption(args, "external-step-timeout-ms")
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderOneShotSessionRunReport(report));
+    }
+    if (args.options.strict && report.status !== "complete") {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   if (action === "status") {
     const session = args.options["no-sync"]
       ? await readOneShotSession(loaded, { sessionPath: stringOption(args, "session") })
@@ -982,6 +1043,32 @@ async function commandProposal(args: ParsedArgs): Promise<void> {
     return;
   }
 
+  if (action === "repair") {
+    if (!proposalId) {
+      throw new Error("proposal repair requires --proposal <failed-proposal-id>.");
+    }
+    const result = await repairProposal(loaded, pkg, proposalId, {
+      runChecks: Boolean(args.options.checks),
+      accept: Boolean(args.options.accept),
+      notes: stringOption(args, "notes"),
+      gatePolicy: gatePolicyOption(args)
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(result.message);
+      console.log(`Retry proposal: ${result.retry.proposal.id}`);
+      console.log(`Patch: ${result.retry.proposal.patchPath}`);
+      console.log(`Verification: ${result.verification?.outputPath ?? "none"}`);
+      console.log(`Acceptance: ${result.acceptance?.acceptanceReport.outputPath ?? "none"}`);
+      console.log(`Next action: ${result.nextAction}`);
+    }
+    if ((args.options.checks && !result.verification?.passed) || (args.options.accept && !result.acceptance?.acceptanceReport.accepted)) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   if (action === "accept") {
     if (!proposalId) {
       throw new Error("proposal accept requires --proposal <retry-proposal-id>.");
@@ -1052,6 +1139,271 @@ async function commandSyncIssues(args: ParsedArgs): Promise<void> {
     return;
   }
   console.log(`Wrote ${outputPath}`);
+}
+
+async function commandIssueControl(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "pull";
+  const loaded = await loadFromArgs(args);
+  if (action === "pull") {
+    const report = await pullIssueControl(loaded, {
+      repo: stringOption(args, "repo"),
+      state: issueStateOption(args),
+      labels: labelsOption(args)
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderIssueControlPull(report));
+      console.log(`\nJSON: ${report.outputPath}`);
+      console.log(`Markdown: ${report.markdownPath}`);
+    }
+    return;
+  }
+  if (action === "plan") {
+    const pullReport = stringOption(args, "input")
+      ? await loadIssueControlPullReport(path.resolve(process.cwd(), stringOption(args, "input") as string))
+      : await pullIssueControl(loaded, {
+        repo: stringOption(args, "repo"),
+        state: issueStateOption(args),
+        labels: labelsOption(args)
+      });
+    const plan = await writeIssueControlPlan(loaded, pullReport);
+    if (args.options.json) {
+      console.log(JSON.stringify(plan, null, 2));
+    } else {
+      console.log(renderIssueControlPlan(plan));
+      console.log(`\nJSON: ${plan.outputPath}`);
+      console.log(`Markdown: ${plan.markdownPath}`);
+    }
+    return;
+  }
+  if (action === "run") {
+    const input = stringOption(args, "input");
+    if (!input) {
+      throw new Error("issue-control run requires --input <plan.json>.");
+    }
+    const plan = await loadIssueControlPlanReport(path.resolve(process.cwd(), input));
+    const report = await runIssueControlPlan(loaded, plan, {
+      execute: Boolean(args.options.execute),
+      onlyIssue: stringOption(args, "only-issue"),
+      runId: stringOption(args, "run"),
+      maxItems: nonNegativeIntegerOption(args, "max-items"),
+      editCommand: stringOption(args, "edit-command")
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderIssueControlRun(report));
+      console.log(`\nJSON: ${report.outputPath}`);
+      console.log(`Markdown: ${report.markdownPath}`);
+    }
+    if (report.status === "failed" || report.status === "blocked") {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (action === "auto") {
+    const report = await autoIssueControl(loaded, {
+      repo: stringOption(args, "repo"),
+      state: issueStateOption(args),
+      labels: labelsOption(args),
+      execute: Boolean(args.options.execute),
+      maxIterations: nonNegativeIntegerOption(args, "max-iterations"),
+      allowHighRisk: Boolean(args.options["allow-high-risk"]),
+      runId: stringOption(args, "run"),
+      editCommand: stringOption(args, "edit-command")
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderIssueControlAuto(report));
+      console.log(`\nJSON: ${report.outputPath}`);
+      console.log(`Markdown: ${report.markdownPath}`);
+    }
+    if (report.status === "failed" || report.status === "blocked") {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (action === "supervise") {
+    const report = await superviseIssueControl(loaded, {
+      repo: stringOption(args, "repo"),
+      state: issueStateOption(args),
+      labels: labelsOption(args),
+      execute: Boolean(args.options.execute),
+      maxIterations: nonNegativeIntegerOption(args, "max-iterations"),
+      allowHighRisk: Boolean(args.options["allow-high-risk"]),
+      runId: stringOption(args, "run"),
+      editCommand: stringOption(args, "edit-command"),
+      verifyEach: Boolean(args.options["verify-each"]),
+      repairOnFail: Boolean(args.options["repair-on-fail"]),
+      continueAfterRepair: Boolean(args.options["continue-after-repair"])
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderIssueControlSupervise(report));
+      console.log(`\nJSON: ${report.outputPath}`);
+      console.log(`Markdown: ${report.markdownPath}`);
+    }
+    if (report.status === "failed" || report.status === "blocked") {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (action === "progress") {
+    const report = await issueControlProgressStatus(loaded, {
+      input: stringOption(args, "input")
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderIssueControlProgressStatus(report));
+      console.log(`\nJSON: ${report.outputPath}`);
+      console.log(`Markdown: ${report.markdownPath}`);
+    }
+    if (report.status === "failed" || report.status === "blocked" || report.summary.unresolvedCount > 0) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (action === "advance") {
+    const maxSteps = nonNegativeIntegerOption(args, "max-steps");
+    if (maxSteps && maxSteps > 1) {
+      const report = await advanceIssueControlLoop(loaded, {
+        input: stringOption(args, "input"),
+        execute: Boolean(args.options.execute),
+        maxSteps,
+        ignoreRepeatGuard: Boolean(args.options.force)
+      });
+      if (args.options.json) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        console.log(renderIssueControlAdvanceLoop(report));
+        console.log(`\nJSON: ${report.outputPath}`);
+        console.log(`Markdown: ${report.markdownPath}`);
+      }
+      if (report.status === "failed" || report.status === "blocked") {
+        process.exitCode = 1;
+      }
+      return;
+    }
+    const report = await advanceIssueControl(loaded, {
+      input: stringOption(args, "input"),
+      execute: Boolean(args.options.execute)
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderIssueControlAdvance(report));
+      console.log(`\nJSON: ${report.outputPath}`);
+      console.log(`Markdown: ${report.markdownPath}`);
+    }
+    if (report.status === "failed" || report.status === "blocked") {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (action === "advance-status") {
+    const state = await issueControlAdvanceLoopStatus(loaded, {
+      input: stringOption(args, "input")
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(state, null, 2));
+    } else {
+      console.log(renderIssueControlAdvanceLoopState(state));
+    }
+    if (state.schedulerDecision?.exitCode) {
+      process.exitCode = state.schedulerDecision.exitCode;
+    }
+    return;
+  }
+  if (action === "advance-scheduler") {
+    const report = await advanceIssueControlScheduler(loaded, {
+      input: stringOption(args, "input"),
+      execute: Boolean(args.options.execute)
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderIssueControlAdvanceScheduler(report));
+      console.log(`\nJSON: ${report.outputPath}`);
+      console.log(`Markdown: ${report.markdownPath}`);
+    }
+    if (report.status === "failed" || report.status === "blocked") {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (action === "sync-gate") {
+    const report = await issueControlSyncGate(loaded, {
+      input: stringOption(args, "input"),
+      runId: stringOption(args, "run"),
+      labels: labelsOption(args)
+    });
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderIssueControlSyncGate(report));
+      console.log(`\nJSON: ${report.outputPath}`);
+      console.log(`Markdown: ${report.markdownPath}`);
+    }
+    if (report.status === "blocked") {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (action === "bootstrap") {
+    const sourceRoot = resolvePathFromOptionOrConfig(loaded, stringOption(args, "source"), "MG_SOURCE_ROOT");
+    const shouldRunBootstrapImport = Boolean(sourceRoot) && (!args.options.verify || args.options.execute);
+    if (!sourceRoot && (!args.options.verify || args.options.execute)) {
+      throw new Error("issue-control bootstrap requires --source <path> or config variable MG_SOURCE_ROOT.");
+    }
+    const targetRoot = stringOption(args, "target")
+      ? path.resolve(process.cwd(), stringOption(args, "target") as string)
+      : loaded.targetRoot;
+    const manifest = shouldRunBootstrapImport && sourceRoot
+      ? await bootstrapMd2Target(loaded, {
+        sourceRoot,
+        targetRoot,
+        execute: Boolean(args.options.execute)
+      })
+      : undefined;
+    const verify = args.options.verify
+      ? await verifyBootstrapMd2Target(loaded, {
+        sourceRoot,
+        targetRoot,
+        runIssueAuto: !args.options["skip-issue-auto"],
+        issueAuto: {
+          repo: stringOption(args, "repo"),
+          state: issueStateOption(args),
+          labels: labelsOption(args)
+        }
+      })
+      : undefined;
+    if (args.options.json) {
+      console.log(JSON.stringify(verify ? { manifest, verify } : manifest, null, 2));
+    } else {
+      if (manifest) {
+        console.log(renderBootstrapMd2Manifest(manifest));
+        console.log(`\nJSON: ${manifest.outputPath}`);
+        console.log(`Markdown: ${manifest.markdownPath}`);
+      }
+      if (verify) {
+        if (manifest) {
+          console.log("");
+        }
+        console.log(renderBootstrapMd2VerifyReport(verify));
+        console.log(`\nVerify JSON: ${verify.outputPath}`);
+        console.log(`Verify Markdown: ${verify.markdownPath}`);
+      }
+    }
+    if (verify && verify.status !== "passed") {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  throw new Error(`Unknown issue-control command: ${action}`);
 }
 
 async function commandCi(args: ParsedArgs): Promise<void> {
@@ -1183,6 +1535,18 @@ function stringOption(args: ParsedArgs, name: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function resolvePathFromOptionOrConfig(
+  loaded: Awaited<ReturnType<typeof loadFromArgs>>,
+  optionValue: string | undefined,
+  variableName: string
+): string | undefined {
+  const value = optionValue ?? loaded.config.variables?.[variableName];
+  if (!value) {
+    return undefined;
+  }
+  return path.isAbsolute(value) ? path.normalize(value) : path.resolve(loaded.baseDir, value);
+}
+
 function numberOption(args: ParsedArgs, name: string): number | undefined {
   const value = stringOption(args, name);
   if (value === undefined) {
@@ -1212,6 +1576,17 @@ function labelsOption(args: ParsedArgs): string[] | undefined {
     return undefined;
   }
   return [...new Set(value.split(",").map((label) => label.trim()).filter(Boolean))];
+}
+
+function issueStateOption(args: ParsedArgs): "open" | "closed" | "all" | undefined {
+  const value = stringOption(args, "state");
+  if (!value) {
+    return undefined;
+  }
+  if (["open", "closed", "all"].includes(value)) {
+    return value as "open" | "closed" | "all";
+  }
+  throw new Error(`Unsupported issue state: ${value}`);
 }
 
 function stringListOption(args: ParsedArgs, name: string): string[] | undefined {
@@ -1357,7 +1732,7 @@ Usage:
   migration-guard report [--run <id|latest>]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot runbook [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--json]
-  migration-guard one-shot session open|status|sync|next [--session <path>] [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--skip-target-git] [--no-sync] [--strict] [--json]
+  migration-guard one-shot session open|status|sync|next|run [--session <path>] [--max-source-file-delta <n>] [--max-steps <n>] [--edit-command <cmd>] [--pr-command <cmd>] [--external-step-timeout-ms <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--skip-target-git] [--no-sync] [--strict] [--json]
   migration-guard one-shot status [--runbook <path>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot report [--baseline <path>] [--current <path>] [--compare <compare.json>] [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--pr-url <url>] [--target-commit <sha>] [--merge-commit <sha>] [--merged-at <iso>] [--budget <text>] [--note <text>] [--skip-target-git] [--skip-git-metadata] [--strict] [--json]
   migration-guard checkpoint create|list [--run <id|latest>]
@@ -1374,10 +1749,21 @@ Usage:
   migration-guard proposal rollback [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal replan [--run <id|latest>] --proposal <id> [--json]
   migration-guard proposal retry [--run <id|latest>] --proposal <id> [--json]
+  migration-guard proposal repair [--run <id|latest>] --proposal <id> [--checks] [--accept] [--notes <text>] [--json]
   migration-guard proposal accept [--run <id|latest>] --proposal <retry-id> [--notes <text>] [--json]
   migration-guard proposal reject|ignore [--run <id|latest>] --proposal <id> [--reason <text>] [--superseded-by <proposal-id>] [--json]
   migration-guard proposal batch plan|apply [--run <id|latest>] [--limit <n>] [--skip-checks] [--gate-policy fail-fast|collect-all] [--behavior-diff] [--json]
-  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run|--live|--live-plan] [--repo owner/name] [--live-confirm <run-id>] [--live-plan-confirm <hash>] [--labels a,b] [--only-issue <issue-id>] [--max-live-mutations <n>]
+  migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run|--live|--live-plan] [--repo owner/name | config issueSync.githubRepo] [--live-confirm <run-id>] [--live-plan-confirm <hash>] [--labels a,b] [--only-issue <issue-id>] [--max-live-mutations <n>]
+  migration-guard issue-control pull|plan [--provider github] [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--input <pull.json>] [--json]
+  migration-guard issue-control run --input <plan.json> [--only-issue <mg_issue_id>] [--execute] [--run <id|latest>] [--edit-command <cmd>] [--json]
+  migration-guard issue-control auto [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--execute] [--max-iterations 1] [--allow-high-risk] [--edit-command <cmd>] [--json]
+  migration-guard issue-control supervise [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--execute] [--verify-each] [--repair-on-fail] [--continue-after-repair] [--max-iterations <n>] [--allow-high-risk] [--edit-command <cmd>] [--json]
+  migration-guard issue-control progress [--input <progress.json>] [--json]
+  migration-guard issue-control advance [--input <progress.json>] [--execute] [--max-steps <n>] [--force] [--json]
+  migration-guard issue-control advance-status [--input <state.json>] [--json]
+  migration-guard issue-control advance-scheduler [--input <state.json>] [--execute] [--json]
+  migration-guard issue-control sync-gate [--input <state.json>] [--run <id|latest>] [--labels a,b] [--json]
+  migration-guard issue-control bootstrap [--source <path>|config MG_SOURCE_ROOT] [--target <path>|config targetRoot] [--execute] [--verify] [--skip-issue-auto] [--json]
   migration-guard ci verify --baseline <path> [--run <id|latest>]
   migration-guard contract capture --source <url>
   migration-guard contract test --target <url> --contract <path>

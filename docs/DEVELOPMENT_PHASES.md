@@ -2797,6 +2797,937 @@ node dist/cli.js artifacts migrate --config configs/md-fast.migration-guard.json
 - 单元测试覆盖新开窗口的 baseline next action。
 - `npm test` 通过。
 
+## Phase 96: Autonomous One-Shot Runner and Repair Entry
+
+目标：把 one-shot session 从“提示下一步”推进到“安全步骤可自动执行、外部 agent 可接管 edit/PR 边界、失败 proposal 可通过一个 repair 入口自愈”。
+
+交付内容：
+
+- 新增 CLI：`migration-guard one-shot session run`
+- `session run` 自动执行 baseline、verify、compare、report、session sync
+- `--edit-command` 接入外部代码变更 agent，并在 hook 成功后自动执行 post-edit verify/compare
+- `--pr-command` 接入外部 PR/merge provider，并在 hook 成功后自动执行 post-merge verify/compare 与 closure report
+- 新增 CLI：`migration-guard proposal repair`
+- `proposal repair` 幂等串联 replan、retry、verify 和 accept
+- 新增报告：`docs/PHASE_96_REPORT.md`
+
+完成标准：
+
+- 没有 edit/PR hook 时 runner 安全停在外部边界。
+- 有 edit/PR hook 时 runner 能闭合 one-shot session。
+- 失败 proposal 能通过单个 repair 入口生成 retry、验证并接受修复。
+- `npm test` 通过。
+
+## Phase 97: MD2 Issue-Controlled Refactor Lane
+
+目标：矫正真实项目重构边界，把 `perly6185-lab/md.git` 固定为源仓库，把
+`perly6185-lab/md2` 固定为目标仓库和 GitHub issue 控制面，避免源仓库能力、
+目标仓库变更和 Migration Guard 自身 issue 混淆。
+
+交付内容：
+
+- 新增配置：`configs/md2-fast.migration-guard.json`
+- 新增配置：`configs/md2-full.migration-guard.json`
+- 新增配置：`configs/md2-one-shot.migration-guard.json`
+- 新增配置能力：`issueSync.githubRepo`
+- `sync-issues` 可从配置读取 GitHub repo，仍保留 live-confirm 和
+  live-plan-confirm 安全闸门
+- 新增文档：`docs/MD2_REFACTOR_ORCHESTRATION.md`
+- 更新 `docs/MD_OPERATOR_RUNBOOK.md` 为 `md -> md2` 操作入口
+- 新增报告：`docs/PHASE_97_REPORT.md`
+
+完成标准：
+
+- `md2-*` 配置的 `targetRoot` 指向本地 `md2` checkout。
+- `md2-*` 配置的 `issueSync.githubRepo` 指向 `perly6185-lab/md2`。
+- README 和 runbook 的主命令使用 `--source .../md --target .../md2`。
+- dry-run/live-plan issue sync 默认进入 `perly6185-lab/md2`。
+- 无配置时 GitHub live/live-plan 仍要求显式 repo。
+- `npm test` 通过。
+
+## Phase 98: MD2 Issue-Control Pull And Plan
+
+目标：让工具不仅能把本地 Migration Guard issue 同步到 `md2`，也能从
+`md2` GitHub Issues 读取控制面，并生成本地可审计执行计划。
+
+交付内容：
+
+- 新增 CLI：`migration-guard issue-control pull`
+- 新增 CLI：`migration-guard issue-control plan`
+- 新增 GitHub read adapter：读取 open/closed/all issues，过滤 PR
+- 解析 `mg_run_id`、`mg_issue_id`、`mg_task_id`、`mg_issue_type`、
+  `mg_status`、`mg_risk`、`mg_owner`
+- 支持从 `issueSync.githubRepo` 默认读取 `perly6185-lab/md2`
+- 生成 `issue-control` JSON/Markdown artifacts
+- plan 映射为 `bootstrap-target`、`repair-proposal`、`execute-task`、
+  `classify-risk`、`review-external`、`track`
+- 新增报告：`docs/PHASE_98_REPORT.md`
+
+完成标准：
+
+- `issue-control pull` 只发 GET，不触发 GitHub mutation。
+- 无 `--repo` 时可使用配置 `issueSync.githubRepo`。
+- 无 repo 配置时拒绝执行。
+- pull artifact 能记录远端 issue 和解析出的 Migration Guard metadata。
+- plan artifact 能给出 guarded action 和推荐命令。
+- 单元测试覆盖 pull、plan 和缺 repo 失败。
+- `npm test` 通过。
+
+## Phase 99: Single-Issue Issue-Control Runner
+
+目标：把 Phase 98 的 issue-control plan 接到受控执行层，形成
+`md2 issue -> plan item -> dry-run -> single issue execute -> local report`
+的最小闭环。
+
+交付内容：
+
+- 新增 CLI：`migration-guard issue-control run`
+- 默认 dry-run，只写执行计划报告，不执行任务
+- 真执行必须显式传入 `--execute --only-issue <mg_issue_id>`
+- Phase 99 限制 `--max-items 1`
+- 支持执行 `execute-task`
+- 支持执行 `repair-proposal`
+- 支持识别 `bootstrap-target`，执行时要求 `--edit-command`
+- `classify-risk`、`review-external`、`track` 保持 blocked/skipped，不自动改代码
+- 生成 `issue-control-run-*.json` 和 `.md`
+- 新增报告：`docs/PHASE_99_REPORT.md`
+
+完成标准：
+
+- `issue-control run --input <plan.json>` 能 dry-run 并输出推荐执行命令。
+- `issue-control run --execute --only-issue <id>` 能执行一个 selected item。
+- `--execute` 未指定 `--only-issue` 时拒绝。
+- `--max-items` 大于 1 时拒绝。
+- 执行结果记录 status、command、result/error、recommended next action。
+- 单元测试覆盖 dry-run、单项 task 执行和安全拒绝。
+- `npm test` 通过。
+
+## Phase 100: Single-Step Issue-Control Auto Loop
+
+目标：把 pull、plan 和 run 串成单步自动循环，让工具能从 `md2` issue 控制面
+自动选择一个安全可执行项并执行或 dry-run。
+
+交付内容：
+
+- 新增 CLI：`migration-guard issue-control auto`
+- auto 内部串联 `pullIssueControl -> writeIssueControlPlan -> runIssueControlPlan`
+- Phase 100 限制 `--max-iterations 1`
+- 默认 dry-run，不执行任务
+- `--execute --max-iterations 1` 执行一个自动选中的安全项
+- 高风险 item 默认跳过，`--allow-high-risk` 才允许选择
+- 自动选择优先级：`bootstrap-target -> repair-proposal -> execute-task`
+- 不自动选择 `classify-risk`、`review-external`、`track`
+- 生成 `issue-control-auto-*.json` 和 `.md`
+- 新增报告：`docs/PHASE_100_REPORT.md`
+
+完成标准：
+
+- auto dry-run 会读取 issue、生成 plan、生成 run dry-run 和 auto report。
+- auto execute 只执行一个 low/medium risk item。
+- high risk 默认跳过。
+- 无安全 executable item 时生成 blocked auto report。
+- `--max-iterations` 大于 1 时拒绝。
+- 单元测试覆盖 dry-run、execute 和 blocked。
+- `npm test` 通过。
+
+## Phase 101: Controlled MD2 Bootstrap From Source
+
+目标：在 `md2` 是空仓库时，提供受控的 `md -> md2` 初始导入能力，让目标仓库
+进入可安装、可 baseline/verify 的状态。
+
+交付内容：
+
+- 新增 CLI：`migration-guard issue-control bootstrap`
+- 默认 dry-run，只生成 bootstrap manifest
+- `--execute` 才复制文件
+- source 默认可从配置变量 `MG_SOURCE_ROOT` 读取
+- target 默认使用配置 `targetRoot`
+- 拒绝 source 和 target 相同
+- 拒绝 target 位于 source 内部
+- 要求 target 是 git repository
+- 要求 target 工作区干净
+- 排除 `.git`、`node_modules`、`dist`、`build`、`coverage`、
+  `.migration-guard`、`.wxt`、`.output`、`.turbo`、`.env*`
+- 生成 `bootstrap/md2-bootstrap-*.json` 和 `.md`
+- 新增报告：`docs/PHASE_101_REPORT.md`
+
+完成标准：
+
+- dry-run 不复制文件，只记录 planned/skipped。
+- execute 复制允许文件。
+- 排除敏感和生成文件。
+- dirty target 拒绝执行。
+- unsafe roots 拒绝执行。
+- manifest 记录 target git status before/after。
+- 单元测试覆盖 dry-run、execute、拒绝路径。
+- `npm test` 通过。
+
+## Phase 102: Bootstrap Post-Verify Closure
+
+目标：让 `md -> md2` 初始导入后具备无人值守的验证闭环，明确区分“可继续”
+和“需要先安装依赖/修复环境”的状态。
+
+交付内容：
+
+- `issue-control bootstrap --verify`
+- `issue-control bootstrap --execute --verify`
+- 验证 `package.json`、pnpm 证据、pnpm 命令、`node_modules`
+- 缺少 `package.json` 时生成 blocked report
+- 缺少 `node_modules` 时生成 `blocked: install required`
+- ready 后自动捕获 baseline snapshot
+- ready 后自动捕获 run snapshot
+- 自动生成 compare JSON/Markdown
+- compare 通过后可触发 issue-control auto dry-run
+- 不自动安装依赖
+- 不自动 commit
+- 不 live sync 或 mutate GitHub
+- 生成 `bootstrap/md2-bootstrap-verify-*.json` 和 `.md`
+- 新增报告：`docs/PHASE_102_REPORT.md`
+
+完成标准：
+
+- 未导入 target 时 verify blocked 且写报告。
+- 未安装依赖时 verify blocked 且提示 install required。
+- ready target 可生成 baseline/run/compare artifact。
+- CLI 支持 `--skip-issue-auto` 以便只做本地闭环验证。
+- issue-control auto 仅以 dry-run 方式接入 bootstrap verify。
+- 单元测试覆盖 blocked 和 passed 分支。
+- `npm test` 通过。
+
+## Phase 103: Issue-Control Supervisor Loop
+
+目标：在不放大执行权限的前提下，让工具能够按 md2 issue 队列进行多步无人值守
+编排，形成“选择 -> 执行 -> 记录 -> 遇阻停止”的总控闭环。
+
+交付内容：
+
+- 新增 CLI：`migration-guard issue-control supervise`
+- 默认 dry-run
+- 支持 `--execute`
+- 支持 `--max-iterations <n>`，Phase 103 上限为 10
+- 支持 `--allow-high-risk`
+- 支持 `--edit-command` 传给 bootstrap-target 执行项
+- 一次 pull/plan 后选择多个安全 executable issues
+- 每个 selected issue 仍通过既有单 issue runner 执行
+- dry-run 记录多个 planned iterations
+- execute 按顺序执行，遇到 failed/blocked 立即停止
+- 高风险 issue 默认跳过
+- 无安全 executable issue 时生成 blocked supervisor report
+- 生成 `issue-control/issue-control-supervise-*.json` 和 `.md`
+- 新增报告：`docs/PHASE_103_REPORT.md`
+
+安全边界：
+
+- 不自动安装依赖
+- 不自动 commit
+- 不 live sync 或 mutate GitHub
+- 不绕过 Phase 99 的单 issue 执行边界
+- 不在失败后无限循环重试
+
+完成标准：
+
+- dry-run 可一次规划多个安全 issue。
+- execute 可顺序执行多个 ready task issue。
+- 无安全 issue 时 blocked。
+- failed/blocked iteration 会停止 supervisor。
+- 单元测试覆盖 dry-run、execute 和 blocked。
+- `npm test` 通过。
+
+## Phase 104: Supervisor Verify-Each Gate
+
+目标：让 supervisor 不只负责多 issue 编排，还能在每个执行成功的 iteration 后
+自动验证行为证据，失败时停止队列，避免无人值守连续扩大问题。
+
+交付内容：
+
+- `issue-control supervise --verify-each`
+- `issue-control supervise --repair-on-fail` 安全预留
+- 每个 executed iteration 后捕获 run snapshot
+- 使用 `latest-baseline.json` 作为 compare 基线
+- 生成 per-iteration compare JSON/Markdown
+- iteration report 记录 verification status
+- supervisor summary 记录 verifiedCount
+- 缺少 baseline 时 verification blocked 并停止
+- compare failed 时 iteration failed 并停止
+- dry-run 不触发 verification
+- `--repair-on-fail` 当前不执行修复，只生成 blocked safety gate
+
+安全边界：
+
+- 不自动安装依赖
+- 不自动 commit
+- 不 live sync 或 mutate GitHub
+- 不在没有 baseline 时继续执行下一轮
+- 不自动执行 repair，直到修复分类策略完成
+
+完成标准：
+
+- execute + verify-each 可生成 run snapshot 和 compare artifact。
+- 缺 baseline 时 supervisor blocked。
+- compare failure 会停止 supervisor。
+- dry-run 仍然只规划，不验证。
+- 单元测试覆盖 verify passed 和 missing-baseline blocked。
+- `npm test` 通过。
+
+## Phase 105: Supervisor Failure Classification And Recovery Plan
+
+目标：让 supervisor 在失败或阻塞时产出结构化恢复计划，回答“为什么停、证据
+在哪里、下一步怎么恢复、是否可以自动修复”。
+
+交付内容：
+
+- 新增 `SupervisorFailureCategory`
+- 新增 `IssueControlRecoveryPlan`
+- supervisor failed/blocked 自动写 recovery plan
+- supervisor report 挂载：
+  - `failureCategory`
+  - `recoveryPlanPath`
+  - `recoveryPlanMarkdownPath`
+  - `autoRepairEligible`
+  - `humanActionRequired`
+- recovery plan 记录 failed iteration、issue、action、evidence paths
+- 分类覆盖：
+  - `missing-baseline`
+  - `install-required`
+  - `check-regression`
+  - `probe-diff`
+  - `compare-diff`
+  - `task-execution-failed`
+  - `proposal-repair-needed`
+  - `bootstrap-blocked`
+  - `github-read-blocked`
+  - `human-approval-required`
+  - `unknown`
+- `--repair-on-fail` 在 Phase 105 只生成恢复计划，不执行修复
+- 生成 `issue-control/issue-control-recovery-plan-*.json` 和 `.md`
+- 新增报告：`docs/PHASE_105_REPORT.md`
+
+安全边界：
+
+- 不自动安装依赖
+- 不自动 commit
+- 不 live sync 或 mutate GitHub
+- 不自动执行 repair
+- recovery plan 只规划恢复，不修改目标
+
+完成标准：
+
+- missing baseline 分类为 `missing-baseline`。
+- probe diff 分类为 `probe-diff`。
+- task execution failure 分类为 `task-execution-failed`。
+- supervisor report 能挂 recovery plan。
+- recovery plan 包含 evidence paths 和 recommended command。
+- 单元测试覆盖核心分类。
+- `npm test` 通过。
+
+## Phase 106: Controlled Recovery Execution
+
+目标：让 `--repair-on-fail` 从只生成 recovery plan 升级为受控执行恢复动作，
+但只对明确 eligible 的恢复类型动手。
+
+交付内容：
+
+- 新增 `IssueControlRecoveryExecution`
+- supervisor report 挂载：
+  - `recoveryExecutionPath`
+  - `recoveryExecutionMarkdownPath`
+  - `recoveryExecutionStatus`
+- `--repair-on-fail` 不再提前阻断正常 iteration
+- 正常成功的 supervise run 不生成 recovery execution
+- failed/blocked 后先生成 recovery plan
+- 非 eligible recovery 生成 blocked recovery execution
+- `proposal-repair-needed` eligible recovery 可尝试 proposal repair
+- recovery execution 记录 mode、status、action、reason、artifactPath
+- 生成 `issue-control/issue-control-recovery-execution-*.json` 和 `.md`
+- 新增报告：`docs/PHASE_106_REPORT.md`
+
+安全边界：
+
+- 默认不执行 recovery
+- 必须显式 `--repair-on-fail --execute`
+- 仅执行 `proposal-repair-needed`
+- 不自动安装依赖
+- 不自动 commit
+- 不 live sync 或 mutate GitHub
+- 非 eligible 分类仍然 blocked
+
+完成标准：
+
+- `--repair-on-fail` 不影响成功 iteration。
+- missing baseline 等非 eligible 类型生成 blocked recovery execution。
+- proposal repair eligible 类型会尝试受控 recovery execution。
+- recovery execution artifact 可审计。
+- 单元测试覆盖 success no-op、non-eligible blocked、eligible proposal recovery。
+- `npm test` 通过。
+
+## Phase 107: Continue After Repair
+
+目标：让无人值守 supervise lane 在受控恢复成功后可以继续执行剩余安全 issue，
+但默认仍保持失败/阻断即停止。
+
+交付内容：
+
+- 新增 `issue-control supervise --continue-after-repair`
+- 新增 `IssueControlSuperviseOptions.continueAfterRepair`
+- failed/blocked iteration 内联生成 recovery plan 和可选 recovery execution
+- iteration 级别记录：
+  - `recoveryPlanPath`
+  - `recoveryExecutionPath`
+  - `recoveryExecutionStatus`
+  - `continuedAfterRepair`
+  - `recoveryContinuationReason`
+- report 级别记录：
+  - `continuedAfterRepair`
+  - `continuedAfterRepairCount`
+- 只有 recovery execution status 为 `executed` 时才继续
+- `planned`、`blocked`、`failed` recovery execution 仍停止
+- 新增报告：`docs/PHASE_107_REPORT.md`
+
+安全边界：
+
+- 默认不继续，必须显式 `--continue-after-repair`
+- 必须先满足 `--repair-on-fail --execute` 的恢复执行边界
+- 不扩大可自动恢复类型
+- 不自动安装依赖
+- 不自动 commit
+- 不 live sync 或 mutate GitHub
+- 续跑后的失败 iteration 保留完整恢复 artifact，支持回溯
+
+完成标准：
+
+- recovery executed 但未传 `--continue-after-repair` 时仍停住。
+- 显式传入后，只有 executed recovery 会继续到下一条 selected issue。
+- failed recovery execution 不继续。
+- supervise markdown 展示 iteration recovery/continue 状态。
+- README/runbook/orchestration 文档说明续跑边界。
+- `npm test` 通过。
+
+## Phase 108: Supervise Progress Ledger
+
+目标：把 issue-control supervise 从“最终报告”增强为“可回放的进度账本”，
+让无人值守执行具备全局、局部、细节、回溯和自愈证据索引。
+
+交付内容：
+
+- 新增 `IssueControlSuperviseProgressLedger`
+- 新增 `IssueControlSuperviseProgressItem`
+- 新增 `IssueControlSuperviseProgressEvent`
+- supervise report 挂载：
+  - `progressLedgerPath`
+  - `progressLedgerMarkdownPath`
+- 每次 supervise 额外写出：
+  - `issue-control/issue-control-supervise-progress-*.json`
+  - `issue-control/issue-control-supervise-progress-*.md`
+- ledger 记录全局摘要：
+  - selected/reached/unreached selected
+  - recovered/continued/unresolved
+- ledger 记录每个 issue 的局部状态：
+  - selected、planned、executed、verified、recovered、continued、failed、blocked、skipped
+- ledger 记录事件链：
+  - selection
+  - iteration
+  - verification
+  - recovery-plan
+  - recovery-execution
+  - continuation
+- README、runbook、md2 orchestration 文档补充 progress ledger 入口
+- 新增报告：`docs/PHASE_108_REPORT.md`
+
+安全边界：
+
+- 只新增审计与进度 artifact，不新增执行动作
+- 不扩大自动恢复类型
+- 不自动安装依赖
+- 不自动 commit
+- 不 live sync 或 mutate GitHub
+- 不改变 Phase 107 的 continuation gate
+
+完成标准：
+
+- supervise dry-run/execute 都生成 progress ledger。
+- ledger 能区分 selected 但未 reached 的 issue。
+- ledger 能记录恢复后继续的 recovery/continuation 状态。
+- supervise markdown 链接 progress ledger。
+- 单元测试覆盖普通 supervise、continue-after-repair、recovery failed stop。
+- `npm test` 通过。
+
+## Phase 109: Issue-Control Progress Status
+
+目标：把 Phase 108 的 progress ledger 从“可审计 artifact”推进到“可操作状态入口”，
+让无人值守调度器和操作者能直接读取当前 unresolved/unreached 状态和下一步建议。
+
+交付内容：
+
+- 新增 CLI：`migration-guard issue-control progress`
+- 默认读取最新 `issue-control-supervise-progress-*.json`
+- 支持 `--input <progress.json>` 固定读取指定 ledger
+- 新增 `IssueControlProgressStatusReport`
+- 新增 `issueControlProgressStatus`
+- 新增 `renderIssueControlProgressStatus`
+- 生成：
+  - `issue-control/issue-control-progress-status-*.json`
+  - `issue-control/issue-control-progress-status-*.md`
+- status report 记录：
+  - source ledger path
+  - global progress summary
+  - unresolved items
+  - unreached selected items
+  - next actions
+- CLI 对 failed/blocked/unresolved 状态返回非零 exit code
+- README、runbook、md2 orchestration 文档补充 progress status 入口
+- 新增报告：`docs/PHASE_109_REPORT.md`
+
+安全边界：
+
+- 只读取 progress ledger
+- 不重新 pull GitHub issues
+- 不执行 issue-control run/supervise
+- 不执行 recovery
+- 不安装依赖
+- 不 commit
+- 不 live sync 或 mutate GitHub
+
+完成标准：
+
+- `issue-control progress` 能从 latest ledger 生成 status report。
+- `--input <progress.json>` 能读取指定 ledger。
+- dry-run ledger 给出 execute 下一步建议。
+- failed recovery ledger 能暴露 unresolved 和 unreached selected issues。
+- `npm test` 通过。
+
+## Phase 110: Progress Automation Decision
+
+目标：把 `issue-control progress` 从“状态查看”推进到“调度器可读的自动化判定”，
+为无人值守中段提供明确的 blocked/continue/execute/sync/complete 信号。
+
+交付内容：
+
+- supervise report 记录 `controlOptions`
+- progress ledger 继承 `controlOptions`
+- progress status report 新增 `automationDecision`
+- `automationDecision` 包含：
+  - `disposition`
+  - `canAutoContinue`
+  - `requiresHuman`
+  - `reason`
+  - `nextCommand`
+- 支持的 disposition：
+  - `ready-to-execute`
+  - `ready-to-continue`
+  - `ready-to-sync`
+  - `blocked`
+  - `complete`
+  - `review`
+- dry-run 且无 unresolved 时重建 `issue-control supervise --execute`
+- execute 后有 unreached selected issue 时重建继续执行的 supervise 命令
+- unresolved/blocked 时明确 `canAutoContinue: false`
+- README、runbook、md2 orchestration 文档补充 automation decision 说明
+- 新增报告：`docs/PHASE_110_REPORT.md`
+
+安全边界：
+
+- 只新增判定字段和推荐命令
+- 不自动执行 nextCommand
+- 不重新 pull GitHub issues
+- 不执行 recovery
+- 不安装依赖
+- 不 commit
+- 不 live sync 或 mutate GitHub
+
+完成标准：
+
+- dry-run progress status 返回 `ready-to-execute` 和可审计 supervise 命令。
+- failed/unresolved progress status 返回 `blocked`、`requiresHuman: true`。
+- 自动化判定在 Markdown status 中可见。
+- `npm test` 通过。
+
+## Phase 111: Controlled Issue-Control Advance
+
+目标：把 Phase 110 的自动化判定推进到“受控前进”入口，让无人值守调度器可以
+先生成 advance 计划，再在显式授权下运行下一轮 supervisor。
+
+交付内容：
+
+- 新增 CLI：`migration-guard issue-control advance`
+- 默认 dry-run，只生成 advance report
+- 显式 `--execute` 时才触发下一轮 supervisor
+- 新增 `IssueControlAdvanceReport`
+- 新增 `advanceIssueControl`
+- 新增 `renderIssueControlAdvance`
+- 生成：
+  - `issue-control/issue-control-advance-*.json`
+  - `issue-control/issue-control-advance-*.md`
+- advance 读取最新或指定 progress ledger/status
+- advance 只在 `automationDecision.canAutoContinue` 为 true 且存在 `controlOptions` 时执行
+- execute 分支调用内部 `superviseIssueControl`，不执行任意 shell command
+- blocked/unresolved 自动化判定下返回 blocked，不执行 supervise
+- README、runbook、md2 orchestration 文档补充 advance 入口
+- 新增报告：`docs/PHASE_111_REPORT.md`
+
+安全边界：
+
+- 默认不执行下一轮
+- 必须显式 `--execute`
+- 不执行 `nextCommand` 字符串
+- 不安装依赖
+- 不 commit
+- 不 live sync 或 mutate GitHub
+- 仍受 supervise 的 safe selection、verify、repair 和 continuation gates 约束
+
+完成标准：
+
+- dry-run advance 只生成 planned advance report。
+- eligible advance `--execute` 会启动下一轮 supervise 并挂载 supervise artifact。
+- blocked/unresolved advance 即使 `--execute` 也不启动 supervise。
+- 单元测试覆盖 planned、execute dispatch、blocked refusal。
+- `npm test` 通过。
+
+## Phase 112: Advance Loop Guard
+
+目标：把 `issue-control advance` 从单步推进增强为受上限保护的连续推进，
+让无人值守中段可以显式执行多步，但始终有 max-step、blocked 和 failed 停止闸。
+
+交付内容：
+
+- `issue-control advance` 新增 `--max-steps <n>`
+- 新增 `IssueControlAdvanceLoopReport`
+- 新增 `IssueControlAdvanceLoopStep`
+- 新增 `advanceIssueControlLoop`
+- 新增 `renderIssueControlAdvanceLoop`
+- 生成：
+  - `issue-control/issue-control-advance-loop-*.json`
+  - `issue-control/issue-control-advance-loop-*.md`
+- 默认单步行为保持不变
+- `--max-steps > 1` 时生成 loop report
+- dry-run loop 只计划第一步，不执行 supervisor
+- execute loop 每一步都复用 `advanceIssueControl`
+- loop 在以下条件停止：
+  - step failed
+  - step blocked
+  - supervise complete
+  - 达到 max steps
+- README、runbook、md2 orchestration 文档补充 loop guard 入口
+- 新增报告：`docs/PHASE_112_REPORT.md`
+
+安全边界：
+
+- loop 必须显式 `--execute --max-steps <n>` 才连续推进
+- `--max-steps` 上限为 10
+- 不执行任意 shell command
+- 不安装依赖
+- 不 commit
+- 不 live sync 或 mutate GitHub
+- 每一步仍受 advance 和 supervise 原有安全闸约束
+
+完成标准：
+
+- dry-run loop 只生成 planned 单步。
+- execute loop 能在 failed step 后停止。
+- blocked loop 不启动 supervise。
+- 单元测试覆盖 dry-run loop、execute failed stop、blocked stop。
+- `npm test` 通过。
+
+## Phase 113: Advance Loop State and Repeat Guard
+
+目标：让无人值守的 `issue-control advance --execute --max-steps` 具备跨命令
+记忆，避免同一个 failed/blocked progress ledger 被外部调度器反复推进。
+
+交付内容：
+
+- `IssueControlAdvanceLoopReport` 增加：
+  - `sourceLedgerPath`
+  - `repeatGuard`
+  - `loopStatePath`
+  - `loopStateMarkdownPath`
+- `IssueControlAdvanceLoopStep` 增加 `sourceLedgerPath`
+- 新增 `IssueControlAdvanceLoopState`
+- 新增固定状态文件：
+  - `issue-control/issue-control-advance-loop-state.json`
+  - `issue-control/issue-control-advance-loop-state.md`
+- loop 启动前读取上次 state
+- 当 execute loop 再次指向同一个 failed/blocked ledger 时，repeat guard
+  直接生成 blocked loop report，不再启动 supervisor
+- 新增 `issue-control advance --force`，用于人工复核后的显式覆盖
+- README、runbook、md2 orchestration 文档补充 state 和 repeat guard 说明
+- 新增报告：`docs/PHASE_113_REPORT.md`
+
+安全边界：
+
+- repeat guard 只影响 loop execute 模式，不改变默认单步 advance
+- guard 命中时不执行 supervisor
+- `--force` 只绕过重复保护，不扩大原有 supervise/advance 执行能力
+- 不执行任意 shell command
+- 不安装依赖
+- 不 commit
+- 不 live sync 或 mutate GitHub
+
+完成标准：
+
+- dry-run loop 写入固定 state。
+- blocked loop 首次停止时记录 repeatedTerminalCount。
+- 同一 ledger 第二次 execute loop 被 repeat guard 拦截。
+- `ignoreRepeatGuard`/`--force` 可以显式覆盖 repeat guard。
+- `npm test` 通过。
+
+## Phase 114: Advance Loop Status
+
+目标：为无人值守调度器提供只读状态入口，直接读取最新 advance loop state，
+不用解析历史 loop report，也不会误触发下一轮 supervisor。
+
+交付内容：
+
+- 新增 `IssueControlAdvanceLoopStatusOptions`
+- 新增 `issueControlAdvanceLoopStatus`
+- CLI 新增：
+  - `migration-guard issue-control advance-status`
+  - `migration-guard issue-control advance-status --input <state.json>`
+  - `migration-guard issue-control advance-status --json`
+- 复用 `renderIssueControlAdvanceLoopState`
+- 当最新状态为 failed、blocked 或 repeat guard active 时，CLI 返回非零退出码
+- README、runbook、md2 orchestration 文档补充只读 status 入口
+- 新增报告：`docs/PHASE_114_REPORT.md`
+
+安全边界：
+
+- status 不拉取 GitHub
+- status 不启动 supervisor
+- status 不执行 advance
+- status 不写新的推进 report
+- status 不安装依赖、不 commit、不 mutate GitHub
+
+完成标准：
+
+- 默认读取固定 `issue-control-advance-loop-state.json`
+- 支持 `--input <state.json>` 读取显式 state
+- 单元测试覆盖默认读取和显式读取
+- `npm test` 通过
+
+## Phase 115: Advance Status Scheduler Decision
+
+目标：让 `issue-control advance-status --json` 直接输出可供无人值守调度器
+消费的决策字段，避免外部脚本重新解释 raw status、repeat guard 和 exit code。
+
+交付内容：
+
+- 新增 `IssueControlAdvanceLoopSchedulerAction`
+- 新增 `IssueControlAdvanceLoopSchedulerDecision`
+- `IssueControlAdvanceLoopState` 增加 `schedulerDecision`
+- 写入固定 loop state 时固化 scheduler decision
+- 读取旧 state 时自动补齐 scheduler decision
+- `renderIssueControlAdvanceLoopState` 展示 scheduler action、unattended、
+  human、exit code、reason 和 next command
+- `advance-status` CLI 退出码改为使用 `schedulerDecision.exitCode`
+- README、runbook、md2 orchestration 文档补充 scheduler decision 字段
+- 新增报告：`docs/PHASE_115_REPORT.md`
+
+安全边界：
+
+- scheduler decision 是只读派生策略，不启动 supervisor
+- 不执行 `nextCommand`
+- 不拉取 GitHub
+- 不安装依赖
+- 不 commit
+- 不 live sync 或 mutate GitHub
+
+完成标准：
+
+- planned loop state 输出 `review-plan`
+- blocked/repeat-guard state 输出 `stop-for-recovery`
+- `advance-status` 默认读取和显式读取都返回 scheduler decision
+- 单元测试覆盖 scheduler decision 字段
+- `npm test` 通过
+
+## Phase 116: Max-Step Continuation Decision
+
+目标：修正调度语义：advance loop 达到 `--max-steps` 上限时，只表示本轮
+受保护地暂停，不一定代表全局完成。无人值守调度器应能识别这类状态并继续
+下一轮 bounded loop。
+
+交付内容：
+
+- 新增 max-step pause 判定
+- `IssueControlAdvanceLoopSchedulerDecision` 开始实际返回
+  `run-advance-loop`
+- 当 state 为 `complete` 且 `stopReason` 是 `Reached max steps <n>.` 时：
+  - `schedulerDecision.action = run-advance-loop`
+  - `schedulerDecision.canRunUnattended = true`
+  - `schedulerDecision.requiresHuman = false`
+  - `schedulerDecision.nextCommand` 指向下一轮 bounded advance loop
+- 固定 state 的 `nextAction` 也区分 max-step pause 与真正 sync/complete
+- README、runbook、md2 orchestration 文档补充 `run-advance-loop` 语义
+- 新增报告：`docs/PHASE_116_REPORT.md`
+
+安全边界：
+
+- `run-advance-loop` 只是决策输出，不自动执行命令
+- 下一轮仍必须走 `issue-control advance --execute --max-steps <n>`
+- 每轮仍受 max-step 上限、repeat guard、blocked/failed gates 约束
+- 不拉取 GitHub之外的额外状态
+- 不安装依赖
+- 不 commit
+- 不 live sync 或 mutate GitHub
+
+完成标准：
+
+- 旧 state 不含 scheduler decision 时，status 读取能补齐 `run-advance-loop`
+- max-step pause 不再被误分类为 `sync-issues`
+- 单元测试覆盖 max-step continuation
+- `npm test` 通过
+
+## Phase 117: Advance Scheduler Productization
+
+目标：把已经形成的 `issue-control advance-scheduler` 正式产品化，让外部调度器
+可以调用一个受审计入口，而不是解释状态后自行拼接执行命令。
+
+交付内容：
+
+- 正式支持 CLI：
+  - `migration-guard issue-control advance-scheduler`
+  - `migration-guard issue-control advance-scheduler --execute`
+  - `migration-guard issue-control advance-scheduler --json`
+- 新增/完善 `IssueControlAdvanceSchedulerReport`
+- 生成：
+  - `issue-control/issue-control-advance-scheduler-*.json`
+  - `issue-control/issue-control-advance-scheduler-*.md`
+- 只有 `schedulerDecision.action = run-advance-loop` 时才允许执行内部 bounded
+  advance loop
+- `review-plan`、`sync-issues`、`stop-for-recovery` 都写报告并拒绝执行 loop
+- README、runbook、md2 orchestration 文档补充 scheduler 入口
+- 新增报告：`docs/PHASE_117_REPORT.md`
+
+安全边界：
+
+- 默认 dry-run
+- 必须显式 `--execute` 才可能调度下一轮
+- 不执行 `schedulerDecision.nextCommand` 字符串
+- 不安装依赖
+- 不 commit
+- 不 live sync 或 mutate GitHub
+
+完成标准：
+
+- dry-run scheduler 只写 planned report。
+- blocked/recovery scheduler 不执行 loop。
+- execute scheduler 只通过内部 `advanceIssueControlLoop` 进入 bounded loop。
+- 单元测试覆盖 planned、blocked 和 execute dispatch。
+- `npm test` 通过。
+
+## Phase 118: Scheduler Poller Script
+
+目标：提供一个最小外部调度脚本，读取 `advance-status --json` 的决策字段，
+只在状态允许时调用产品化 scheduler。
+
+交付内容：
+
+- 新增脚本：`scripts/scheduler/run-advance-scheduler.mjs`
+- 支持：
+  - `--config <path>`
+  - `--input <state.json>`
+  - `--once`
+  - `--max-cycles <n>`
+  - `--sleep-ms <n>`
+  - `--execute`
+- 脚本读取 `schedulerDecision`
+- 只有 `action = run-advance-loop` 且 `canRunUnattended = true` 时才调用
+  `issue-control advance-scheduler`
+- 生成：
+  - `issue-control/issue-control-scheduler-run-*.json`
+  - `issue-control/issue-control-scheduler-run-*.md`
+- README、runbook、md2 orchestration 文档补充脚本入口
+- 新增报告：`docs/PHASE_118_REPORT.md`
+
+安全边界：
+
+- 不执行 `nextCommand`
+- 不直接调用 shell 中的任意命令
+- 默认只规划，不执行 scheduler
+- 执行模式仍走 `advance-scheduler --execute` 和 bounded loop guard
+- 不安装依赖
+- 不 commit
+- 不 live sync 或 mutate GitHub
+
+完成标准：
+
+- 非 `run-advance-loop` 决策时脚本不调用 scheduler。
+- dry-run 模式只产生日志和 planned scheduler report。
+- execute 模式仍受 scheduler/advance loop 原有 guard 限制。
+- 本地 md2 dry-run drill 能生成 scheduler run log。
+- `npm test` 通过。
+
+## Phase 119: md2 Scheduler Dry-Run Drill
+
+目标：用真实 `md2-fast` 配置验证 Phase 117-118 的 read-only 调度链路，
+记录当前 md2 控制面的真实停止点。
+
+交付内容：
+
+- 执行 `issue-control supervise --labels team:migration --max-iterations 3`
+- 执行 `issue-control advance --max-steps 3`
+- 执行 `issue-control advance-status --json`
+- 执行 `issue-control advance-scheduler --json`
+- 执行 `scripts/scheduler/run-advance-scheduler.mjs --once`
+- 执行 `issue-control sync-gate --json`
+- 记录真实 artifacts 和停止原因
+- 新增报告：`docs/PHASE_119_REPORT.md`
+
+安全边界：
+
+- 只读 GitHub issue-control pull
+- 不执行 target edits
+- 不运行 advance `--execute`
+- 不安装依赖
+- 不 commit
+- 不 live sync 或 mutate GitHub
+
+完成标准：
+
+- drill 写出 supervise/progress/advance/scheduler/sync-gate artifacts。
+- 当前 `team:migration` 无可执行 issue 时，链路停在 review-plan/not-ready。
+- 报告记录具体 artifact 路径和停止原因。
+- `npm test` 通过。
+
+## Phase 120: Issue Sync Closure Gate
+
+目标：当 scheduler 到达真正的 `sync-issues` 完成态时，先生成 reviewed sync
+handoff，而不是直接执行 GitHub live mutation。
+
+交付内容：
+
+- 新增 CLI：
+  - `migration-guard issue-control sync-gate`
+  - `migration-guard issue-control sync-gate --run <id|latest>`
+  - `migration-guard issue-control sync-gate --labels a,b`
+  - `migration-guard issue-control sync-gate --json`
+- 新增 `IssueControlSyncGateReport`
+- 新增 `issueControlSyncGate`
+- 新增 `renderIssueControlSyncGate`
+- supervise selection/progress ledger 增加可选 `runId`
+- gate 从 advance loop state 追溯 completed progress ledger
+- gate 汇总 completed/unresolved/pending issue ids
+- gate 只推荐 `sync-issues --live-plan` 命令
+- 生成：
+  - `issue-control/issue-control-sync-gate-*.json`
+  - `issue-control/issue-control-sync-gate-*.md`
+- README、runbook、md2 orchestration 文档补充 sync gate 入口
+- 新增报告：`docs/PHASE_120_REPORT.md`
+
+安全边界：
+
+- `sync-gate` 不调用 `sync-issues`
+- 不执行 `--live`
+- 不读取或写入 GitHub
+- 不安装依赖
+- 不 commit
+- 真正 GitHub mutation 仍必须经过既有 `live-plan-confirm` 流程
+
+完成标准：
+
+- `sync-issues` 决策生成 ready handoff 和 live-plan 推荐命令。
+- 非 `sync-issues` 决策返回 not-ready/blocked。
+- 单一 completed issue 时推荐命令包含 `--only-issue`。
+- 单元测试覆盖 ready 和 not-ready。
+- `npm test` 通过。
+
 ## 阶段交付规则
 
 每个阶段合入前都必须回答：

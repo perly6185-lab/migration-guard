@@ -91,6 +91,15 @@ export interface ProposalRetryResult {
   reused: boolean;
 }
 
+export interface ProposalRepairRunResult {
+  message: string;
+  sourceProposal: ProposedPatch;
+  retry: ProposalRetryResult;
+  verification?: ProposalVerificationReport;
+  acceptance?: ProposalRepairAcceptanceResult;
+  nextAction: string;
+}
+
 export interface ProposalBatchOptions {
   limit?: number;
   runChecks?: boolean;
@@ -682,6 +691,64 @@ export async function createProposalRetry(
     proposal: retryProposal,
     report,
     reused: false
+  };
+}
+
+export async function repairProposal(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  proposalId: string,
+  options: { runChecks?: boolean; accept?: boolean; notes?: string; gatePolicy?: ProposalGatePolicy } = {}
+): Promise<ProposalRepairRunResult> {
+  const retry = await createProposalRetry(loaded, pkg, proposalId);
+  let verification: ProposalVerificationReport | undefined;
+  let acceptance: ProposalRepairAcceptanceResult | undefined;
+
+  if (options.runChecks) {
+    verification = await verifyProposedPatch(loaded, pkg, retry.proposal.id, {
+      runChecks: true,
+      gatePolicy: options.gatePolicy
+    });
+  }
+
+  if (options.accept) {
+    if (!verification) {
+      const latestPath = retry.proposal.lastVerificationPath ?? await latestProposalVerificationPath(loaded, pkg, retry.proposal.id);
+      if (latestPath) {
+        verification = await readJsonFile<ProposalVerificationReport>(latestPath);
+      }
+    }
+    if (!verification?.passed) {
+      return {
+        message: `Repair proposal ${retry.proposal.id} is not accepted because verification has not passed.`,
+        sourceProposal: retry.sourceProposal,
+        retry,
+        verification,
+        nextAction: `Fix ${retry.proposal.patchPath}, then run migration-guard proposal repair --run latest --proposal ${proposalId} --checks --accept.`
+      };
+    }
+    acceptance = await acceptProposalRepair(loaded, pkg, retry.proposal.id, {
+      notes: options.notes
+    });
+  }
+
+  const nextAction = acceptance
+    ? "Repair accepted; continue with proposal apply or batch planning."
+    : verification?.passed
+      ? `Run migration-guard proposal repair --run latest --proposal ${proposalId} --accept to record repair acceptance.`
+      : `Edit retry patch ${retry.proposal.patchPath}, then run migration-guard proposal repair --run latest --proposal ${proposalId} --checks.`;
+
+  return {
+    message: acceptance
+      ? `Accepted repair ${acceptance.acceptanceReport.id} for ${proposalId}.`
+      : retry.reused
+        ? `Reused retry proposal ${retry.proposal.id} for ${proposalId}.`
+        : `Created retry proposal ${retry.proposal.id} for ${proposalId}.`,
+    sourceProposal: retry.sourceProposal,
+    retry,
+    verification,
+    acceptance,
+    nextAction
   };
 }
 

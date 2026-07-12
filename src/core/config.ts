@@ -1,6 +1,6 @@
 import path from "node:path";
 import { pathExists, readJsonFile, resolveMaybeRelative, writeJsonFile } from "./files.js";
-import type { ComparePolicy, LoadedConfig, MigrationGuardConfig, MigrationGuardConfigProfile, OutputConfig, ProposalGateConfig } from "../types.js";
+import type { ComparePolicy, IssueSyncConfig, LoadedConfig, MigrationGuardConfig, MigrationGuardConfigProfile, OutputConfig, ProposalGateConfig } from "../types.js";
 
 export const CONFIG_FILE_NAME = ".migration-guard.json";
 
@@ -16,10 +16,11 @@ export const DEFAULT_IGNORE = [
   ".migration-guard"
 ];
 
-type RawMigrationGuardConfig = Omit<Partial<MigrationGuardConfig>, "output" | "compare" | "proposalGate"> & {
+type RawMigrationGuardConfig = Omit<Partial<MigrationGuardConfig>, "output" | "compare" | "proposalGate" | "issueSync"> & {
   output?: Partial<OutputConfig>;
   compare?: Partial<ComparePolicy>;
   proposalGate?: Partial<ProposalGateConfig>;
+  issueSync?: Partial<IssueSyncConfig>;
 };
 
 export function createDefaultConfig(targetRoot = "."): MigrationGuardConfig {
@@ -72,6 +73,7 @@ export function createDefaultConfig(targetRoot = "."): MigrationGuardConfig {
         }
       }
     },
+    issueSync: {},
     variables: {}
   };
 }
@@ -154,6 +156,10 @@ function mergeWithDefaults(raw: RawMigrationGuardConfig): MigrationGuardConfig {
         ...raw.proposalGate?.retry
       }
     },
+    issueSync: {
+      ...defaults.issueSync,
+      ...raw.issueSync
+    },
     variables: raw.variables ?? defaults.variables,
     profiles: raw.profiles
   };
@@ -205,6 +211,10 @@ function mergeProfile(
         ...raw.proposalGate?.retry,
         ...profile.proposalGate?.retry
       }
+    },
+    issueSync: {
+      ...raw.issueSync,
+      ...profile.issueSync
     },
     variables: {
       ...raw.variables,

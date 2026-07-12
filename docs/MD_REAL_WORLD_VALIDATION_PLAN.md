@@ -2,6 +2,12 @@
 
 目标仓库：https://github.com/perly6185-lab/md
 
+> 2026-07-11 更新：本文保留为历史验证规划。当前重构需求已矫正为
+> `perly6185-lab/md.git` 作为源仓库、`perly6185-lab/md2` 作为目标仓库和
+> GitHub issue 控制面。最新执行入口见
+> [MD_OPERATOR_RUNBOOK.md](MD_OPERATOR_RUNBOOK.md) 和
+> [MD2_REFACTOR_ORCHESTRATION.md](MD2_REFACTOR_ORCHESTRATION.md)。
+
 ## 1. 目标
 
 使用 `perly6185-lab/md` 作为真实 monorepo 目标项目，验证 Migration Guard 是否能在大型同生态项目上跑通完整闭环：

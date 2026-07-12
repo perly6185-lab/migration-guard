@@ -10,6 +10,7 @@ export interface MigrationGuardConfig {
   output: OutputConfig;
   compare: ComparePolicy;
   proposalGate: ProposalGateConfig;
+  issueSync?: IssueSyncConfig;
   variables?: Record<string, string>;
   profiles?: Record<string, MigrationGuardConfigProfile>;
 }
@@ -23,7 +24,12 @@ export interface MigrationGuardConfigProfile {
   output?: Partial<OutputConfig>;
   compare?: Partial<ComparePolicy>;
   proposalGate?: Partial<ProposalGateConfig>;
+  issueSync?: Partial<IssueSyncConfig>;
   variables?: Record<string, string>;
+}
+
+export interface IssueSyncConfig {
+  githubRepo?: string;
 }
 
 export interface OutputConfig {

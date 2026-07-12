@@ -14,7 +14,9 @@ import {
   renderOneShotRunbook,
   renderOneShotSession,
   renderOneShotSessionNextAction,
+  renderOneShotSessionRunReport,
   renderOneShotStatus,
+  runOneShotSession,
   syncOneShotSession,
   writeOneShotReport,
   writeOneShotRunbook,
@@ -154,6 +156,24 @@ test("one-shot status ignores evidence older than the selected runbook", async (
   assert.ok(status.steps.some((step) => step.id === "post-edit-verify" && step.status === "pending"));
 });
 
+test("one-shot status marks unchecked target prep as warning instead of passed", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+  const runbook = createOneShotRunbook(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg"
+  });
+  runbook.createdAt = "2026-07-08T00:00:00.000Z";
+  await writeOneShotRunbook(loaded, runbook);
+
+  const status = await collectOneShotStatus(loaded, {
+    checkTargetGit: false
+  });
+
+  assert.equal(status.status, "hold");
+  assert.ok(status.steps.some((step) => step.id === "target-prep" && step.status === "warning"));
+  assert.equal(status.summary.passedSteps, 3);
+});
+
 test("one-shot session open writes a persistent ledger with runbook evidence", async () => {
   const { loaded } = await makeFixture({ currentSourceFiles: 11 });
 
@@ -200,6 +220,215 @@ test("one-shot session next reports the current runnable command", async () => {
   assert.match(nextAction.nextAction?.command ?? "", /mg baseline/);
   assert.match(markdown, /One-Shot Session Next/);
   assert.match(markdown, /Capture fresh baseline/);
+});
+
+test("one-shot session run captures baseline then stops at bounded edit boundary", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+  const session = await openOneShotSession(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg",
+    metadata: {
+      name: "Autonomous baseline window"
+    }
+  });
+
+  const report = await runOneShotSession(loaded, {
+    sessionPath: session.outputPath,
+    checkTargetGit: false
+  });
+  const markdown = renderOneShotSessionRunReport(report);
+
+  assert.equal(report.status, "blocked");
+  assert.equal(report.executedCount, 1);
+  assert.equal(report.steps[0]?.stepId, "baseline");
+  assert.equal(report.steps[0]?.status, "executed");
+  assert.equal(report.steps[1]?.stepId, "edit-window");
+  assert.equal(report.steps[1]?.status, "blocked");
+  assert.equal(report.nextAction?.stepId, "edit-window");
+  assert.match(markdown, /Bounded source edits require/);
+});
+
+test("one-shot session next ignores session-run reports when resolving latest session", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+  const session = await openOneShotSession(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg",
+    metadata: {
+      name: "Latest session window"
+    }
+  });
+
+  await runOneShotSession(loaded, {
+    sessionPath: session.outputPath,
+    checkTargetGit: false,
+    maxSteps: 1
+  });
+  const nextAction = await collectOneShotSessionNextAction(loaded, {
+    checkTargetGit: false
+  });
+
+  assert.equal(nextAction.sessionId, session.id);
+  assert.equal(nextAction.nextAction?.stepId, "edit-window");
+});
+
+test("one-shot session run opens a session when none exists", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+
+  const report = await runOneShotSession(loaded, {
+    checkTargetGit: false,
+    maxSteps: 1,
+    maxSourceFileDelta: 2,
+    metadata: {
+      name: "Auto-opened window"
+    }
+  });
+  const nextAction = await collectOneShotSessionNextAction(loaded, {
+    checkTargetGit: false
+  });
+
+  assert.equal(report.status, "blocked");
+  assert.equal(report.executedCount, 1);
+  assert.match(report.sessionId, /^one-shot-session-/);
+  assert.equal(nextAction.sessionId, report.sessionId);
+});
+
+test("one-shot status blocks an unhealthy baseline before edit window", async () => {
+  const { loaded, baseline } = await makeFixture({ currentSourceFiles: 11 });
+  baseline.checks[0] = {
+    ...baseline.checks[0],
+    status: "failed",
+    exitCode: 1
+  };
+  await writeFile(path.join(loaded.artifactsDir, "latest-baseline.json"), `${JSON.stringify(baseline, null, 2)}\n`, "utf8");
+  const runbook = createOneShotRunbook(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg"
+  });
+  runbook.createdAt = "2026-07-08T00:00:00.000Z";
+  await writeOneShotRunbook(loaded, runbook);
+
+  const status = await collectOneShotStatus(loaded, {
+    checkTargetGit: false
+  });
+
+  assert.equal(status.steps.find((step) => step.id === "baseline")?.status, "blocked");
+  assert.equal(status.steps.find((step) => step.id === "edit-window")?.status, "blocked");
+  assert.equal(status.nextAction?.stepId, "baseline");
+  assert.match(status.nextAction?.reason ?? "", /Fix failing baseline/);
+});
+
+test("one-shot session run writes pre-PR report and stops at PR boundary", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+  const runbook = createOneShotRunbook(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg",
+    metadata: {
+      name: "Autonomous report window",
+      branch: "migration-guard/report-window",
+      budget: "single report smoke"
+    }
+  });
+  runbook.createdAt = "2026-07-08T00:00:00.000Z";
+  const writtenRunbook = await writeOneShotRunbook(loaded, runbook);
+  const openedAt = "2026-07-08T00:00:01.000Z";
+  const session = await writeOneShotSession(loaded, {
+    version: 1,
+    id: "one-shot-session-run-fixture",
+    createdAt: openedAt,
+    updatedAt: openedAt,
+    state: "active",
+    targetRoot: loaded.targetRoot,
+    artifactsDir: loaded.artifactsDir,
+    configPath: loaded.path,
+    runbookId: writtenRunbook.id,
+    runbookPath: writtenRunbook.outputPath as string,
+    maxSourceFileDelta: 1,
+    metadata: writtenRunbook.metadata,
+    evidence: {
+      runbookPath: writtenRunbook.outputPath
+    },
+    events: [
+      {
+        id: "one-shot-event-run-fixture",
+        type: "opened",
+        createdAt: openedAt,
+        message: "Opened fixture session."
+      }
+    ]
+  });
+
+  const report = await runOneShotSession(loaded, {
+    sessionPath: session.outputPath,
+    checkTargetGit: false
+  });
+
+  assert.equal(report.status, "blocked");
+  assert.equal(report.executedCount, 1);
+  assert.equal(report.steps[0]?.stepId, "pre-pr-report");
+  assert.equal(report.steps[0]?.status, "executed");
+  assert.equal(report.steps[1]?.stepId, "pr-merge");
+  assert.equal(report.steps[1]?.status, "blocked");
+  assert.equal(report.nextAction?.stepId, "pr-merge");
+  assert.ok(report.steps[0]?.artifacts?.some((artifact) => artifact.endsWith(".json")));
+});
+
+test("one-shot session run can execute edit and PR hooks to close a window", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+  const session = await openOneShotSession(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg",
+    metadata: {
+      name: "Hooked autonomous window",
+      baseBranch: "main",
+      budget: "single generated source file"
+    }
+  });
+  const editCommand = "node -e \"const fs=require('node:fs');fs.mkdirSync('src',{recursive:true});fs.writeFileSync('src/agent.ts','export const value = 1;\\\\n')\"";
+  const prCommand = "node -e \"console.log(JSON.stringify({branch:'main',prUrl:'https://github.com/example/repo/pull/96',targetCommit:'abc123',mergeCommit:'def456',mergedAt:'2026-07-10T00:00:00Z'}))\"";
+
+  const report = await runOneShotSession(loaded, {
+    sessionPath: session.outputPath,
+    checkTargetGit: false,
+    editCommand,
+    prCommand
+  });
+
+  assert.equal(report.status, "complete");
+  assert.equal(report.finalState, "closed");
+  assert.equal(report.finalStatus, "go");
+  assert.equal(report.nextAction, undefined);
+  assert.ok(report.steps.some((step) => step.stepId === "edit-window" && step.status === "executed"));
+  assert.ok(report.steps.some((step) => step.stepId === "pr-merge" && step.status === "executed"));
+  assert.ok(report.steps.some((step) => step.artifacts?.some((artifact) => artifact.includes("one-shot-external-edit-window"))));
+  assert.ok(report.steps.some((step) => step.artifacts?.some((artifact) => artifact.includes("one-shot-external-pr-merge"))));
+});
+
+test("one-shot session run records malformed PR hook output as a failed step", async () => {
+  const { loaded } = await makeFixture({ currentSourceFiles: 11 });
+  const session = await openOneShotSession(loaded, {
+    maxSourceFileDelta: 1,
+    commandPrefix: "mg",
+    metadata: {
+      name: "Malformed PR hook window",
+      baseBranch: "main",
+      budget: "single generated source file"
+    }
+  });
+  const editCommand = "node -e \"const fs=require('node:fs');fs.mkdirSync('src',{recursive:true});fs.writeFileSync('src/agent.ts','export const value = 1;\\\\n')\"";
+  const prCommand = "node -e \"console.log('not-json')\"";
+
+  const report = await runOneShotSession(loaded, {
+    sessionPath: session.outputPath,
+    checkTargetGit: false,
+    editCommand,
+    prCommand
+  });
+
+  assert.equal(report.status, "failed");
+  assert.equal(report.steps.at(-1)?.stepId, "pr-merge");
+  assert.equal(report.steps.at(-1)?.status, "failed");
+  assert.match(report.steps.at(-1)?.error ?? "", /JSON|Unexpected token|valid JSON/i);
+  assert.ok(report.outputPath?.endsWith(".json"));
 });
 
 test("one-shot session sync records closure evidence and closes the ledger", async () => {

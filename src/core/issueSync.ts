@@ -13,12 +13,16 @@ export async function syncIssues(
   options: { dryRun?: boolean; live?: boolean; livePlan?: boolean; repo?: string; token?: string; liveConfirm?: string; livePlanConfirm?: string; labels?: string[]; onlyIssue?: string; maxLiveMutations?: number; retry?: { maxAttempts?: number; delayMs?: number }; fetchImpl?: typeof fetch } = {}
 ): Promise<string> {
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "issue-sync");
-  enforceProviderSafety(provider, options, pkg.run.id);
+  const effectiveOptions = {
+    ...options,
+    repo: options.repo ?? (provider === "github" ? loaded.config.issueSync?.githubRepo : undefined)
+  };
+  enforceProviderSafety(provider, effectiveOptions, pkg.run.id);
   const context = await readIssueSyncContext(loaded, pkg);
   const mapping = providerMapping(provider);
-  const issuesToSync = filterIssues(pkg.issues, options.onlyIssue);
-  const exported = issuesToSync.map((issue) => serializeIssue(issue, provider, context, mapping, normalizeExtraLabels(options.labels)));
-  const suffix = issueSyncSuffix(options);
+  const issuesToSync = filterIssues(pkg.issues, effectiveOptions.onlyIssue);
+  const exported = issuesToSync.map((issue) => serializeIssue(issue, provider, context, mapping, normalizeExtraLabels(effectiveOptions.labels)));
+  const suffix = issueSyncSuffix(effectiveOptions);
   const outputPath = path.join(dir, `${provider}${suffix}-issues.json`);
   await writeJsonFile(outputPath, exported);
 
@@ -32,15 +36,15 @@ export async function syncIssues(
     if (provider === "github" && options.livePlan) {
       const livePlanPath = path.join(dir, "github-live-plan.json");
       const result = await planGitHubIssues({
-        repo: options.repo ?? "",
-        token: options.token ?? process.env.GITHUB_TOKEN ?? "",
+        repo: effectiveOptions.repo ?? "",
+        token: effectiveOptions.token ?? process.env.GITHUB_TOKEN ?? "",
         issues: exported.map((issue) => ({
           title: String(issue.title),
           body: String(issue.body),
           labels: Array.isArray(issue.labels) ? issue.labels.map(String) : []
         })),
-        fetchImpl: options.fetchImpl,
-        retry: options.retry
+        fetchImpl: effectiveOptions.fetchImpl,
+        retry: effectiveOptions.retry
       });
       await writeJsonFile(livePlanPath, result.plan);
       await writeJsonFile(path.join(dir, "github-live-plan-summary.json"), {
@@ -58,17 +62,17 @@ export async function syncIssues(
     if (provider === "github" && options.live) {
       const livePlanPath = path.join(dir, "github-live-plan.json");
       const result = await createGitHubIssues({
-        repo: options.repo ?? "",
-        token: options.token ?? process.env.GITHUB_TOKEN ?? "",
+        repo: effectiveOptions.repo ?? "",
+        token: effectiveOptions.token ?? process.env.GITHUB_TOKEN ?? "",
         issues: exported.map((issue) => ({
           title: String(issue.title),
           body: String(issue.body),
           labels: Array.isArray(issue.labels) ? issue.labels.map(String) : []
         })),
-        fetchImpl: options.fetchImpl,
-        maxLiveMutations: options.maxLiveMutations,
-        livePlanConfirm: options.livePlanConfirm,
-        retry: options.retry,
+        fetchImpl: effectiveOptions.fetchImpl,
+        maxLiveMutations: effectiveOptions.maxLiveMutations,
+        livePlanConfirm: effectiveOptions.livePlanConfirm,
+        retry: effectiveOptions.retry,
         onPlan: async (plan) => {
           await writeJsonFile(livePlanPath, plan);
         }
@@ -83,7 +87,7 @@ export async function syncIssues(
         failedCount: result.failedCount,
         planPath: livePlanPath,
         planHash: result.plan.planHash,
-        livePlanConfirm: options.livePlanConfirm,
+        livePlanConfirm: effectiveOptions.livePlanConfirm,
         rateLimit: result.rateLimit,
         issues: result.issues
       });
@@ -116,7 +120,8 @@ export async function syncIssues(
     message: `${options.dryRun ? "Dry-run exported" : "Exported"} ${issuesToSync.length} issues for provider ${provider}`,
     data: {
       outputPath,
-      onlyIssue: options.onlyIssue
+      onlyIssue: effectiveOptions.onlyIssue,
+      repo: effectiveOptions.repo
     }
   });
   return outputPath;

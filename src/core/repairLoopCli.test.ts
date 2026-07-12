@@ -47,9 +47,9 @@ test("CLI repair loop replans, retries, verifies, and accepts a controlled faile
     assert.equal(batch.firstFailedProposalId, "patch-cli-fail");
     assert.equal(batch.results[0]?.firstFailedCheck?.failureCategory, "command-failed");
 
-    const replan = await runCliJson<{ briefPath: string; contextPath: string; report: ProposalVerificationReport }>(dir, [
+    const repair = await runCliJson<{ retry: { proposal: ProposedPatch; report: ProposalVerificationReport } }>(dir, [
       "proposal",
-      "replan",
+      "repair",
       "--config",
       configPath,
       "--run",
@@ -58,62 +58,44 @@ test("CLI repair loop replans, retries, verifies, and accepts a controlled faile
       "patch-cli-fail",
       "--json"
     ]);
-    assert.match(await readFile(replan.briefPath, "utf8"), /AI Repair Acceptance Checklist/);
-    const replanContext = JSON.parse(await readFile(replan.contextPath, "utf8")) as {
+    assert.match(await readFile(repair.retry.report.replanBriefPath as string, "utf8"), /AI Repair Acceptance Checklist/);
+    const replanContext = JSON.parse(await readFile(repair.retry.report.replanContextPath as string, "utf8")) as {
       failure?: { latestFailedOutput?: { stderr?: string } };
       acceptanceChecklist?: string[];
     };
     assert.match(replanContext.failure?.latestFailedOutput?.stderr ?? "", /controlled failure/);
     assert.ok(replanContext.acceptanceChecklist?.some((item) => item.includes("stdout/stderr evidence")));
 
-    const retry = await runCliJson<{ proposal: ProposedPatch }>(dir, [
+    const retry = repair.retry.proposal;
+    assert.equal(retry.retryOfProposalId, "patch-cli-fail");
+    assert.equal(retry.retrySourceFailureCategory, "command-failed");
+    assert.match(await readFile(retry.patchPath, "utf8"), /Retry proposal scaffold/);
+
+    await replaceRetryWithPassingPatch(retry);
+    const repaired = await runCliJson<{ verification: ProposalVerificationReport; acceptance: { acceptanceReport: ProposalRepairAcceptanceReport } }>(dir, [
       "proposal",
-      "retry",
+      "repair",
       "--config",
       configPath,
       "--run",
       runId,
       "--proposal",
       "patch-cli-fail",
-      "--json"
-    ]);
-    assert.equal(retry.proposal.retryOfProposalId, "patch-cli-fail");
-    assert.equal(retry.proposal.retrySourceFailureCategory, "command-failed");
-    assert.match(await readFile(retry.proposal.patchPath, "utf8"), /Retry proposal scaffold/);
-
-    await replaceRetryWithPassingPatch(retry.proposal);
-    const verification = await runCliJson<ProposalVerificationReport>(dir, [
-      "proposal",
-      "verify",
-      "--config",
-      configPath,
-      "--run",
-      runId,
-      "--proposal",
-      retry.proposal.id,
       "--checks",
-      "--json"
-    ]);
-    assert.equal(verification.passed, true);
-    assert.equal(verification.checks.length, 1);
-    assert.match(verification.checks[0]?.stdout ?? "", /repair-ok/);
-
-    const acceptance = await runCliJson<{ acceptanceReport: ProposalRepairAcceptanceReport }>(dir, [
-      "proposal",
-      "accept",
-      "--config",
-      configPath,
-      "--run",
-      runId,
-      "--proposal",
-      retry.proposal.id,
+      "--accept",
       "--notes",
       "cli smoke acceptance",
       "--json"
     ]);
+    const verification = repaired.verification;
+    assert.equal(verification.passed, true);
+    assert.equal(verification.checks.length, 1);
+    assert.match(verification.checks[0]?.stdout ?? "", /repair-ok/);
+
+    const acceptance = repaired.acceptance;
     assert.equal(acceptance.acceptanceReport.accepted, true);
     assert.equal(acceptance.acceptanceReport.sourceProposalId, "patch-cli-fail");
-    assert.equal(acceptance.acceptanceReport.retryProposalId, retry.proposal.id);
+    assert.equal(acceptance.acceptanceReport.retryProposalId, retry.id);
     assert.ok(acceptance.acceptanceReport.checklist.every((item) => item.status === "accepted"));
 
     const report = await runCliText(dir, [

@@ -837,6 +837,23 @@ test("proposal batch apply reports stop reason and skipped proposals after failu
     assert.equal(livePlanSummary.mutationCount, pkg.issues.length - 1);
     assert.match(livePlanSummary.planHash ?? "", /^[a-f0-9]{64}$/);
     assert.equal(livePlanSummary.rateLimit?.[0]?.remaining, 4997);
+    const configuredRepoRequests: Array<{ url: string; init?: RequestInit }> = [];
+    loaded.config.issueSync = { githubRepo: "owner/repo" };
+    const configuredRepoMockFetch: typeof fetch = async (input, init) => {
+      configuredRepoRequests.push({ url: String(input), init });
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    };
+    const configuredRepoPlanPath = await syncIssues(loaded, pkg, "github", {
+      livePlan: true,
+      token: "secret-token",
+      onlyIssue: manualIssue.id,
+      fetchImpl: configuredRepoMockFetch
+    });
+    assert.match(configuredRepoPlanPath, /github-live-plan-issues\.json$/);
+    assert.equal(configuredRepoRequests[0]?.url, "https://api.github.com/repos/owner/repo/issues?state=open&per_page=100");
     const singlePlanRequests: Array<{ url: string; init?: RequestInit }> = [];
     const singlePlanMockFetch: typeof fetch = async (input, init) => {
       singlePlanRequests.push({ url: String(input), init });

@@ -51,6 +51,36 @@ export interface GitHubIssuePlanResult {
   rateLimit: GitHubRateLimitSnapshot[];
 }
 
+export interface GitHubIssueReadOptions {
+  repo: string;
+  token?: string;
+  state?: "open" | "closed" | "all";
+  labels?: string[];
+  fetchImpl?: typeof fetch;
+  retry?: GitHubRetryOptions;
+}
+
+export interface GitHubIssueReadResult {
+  repo: string;
+  state: "open" | "closed" | "all";
+  labels: string[];
+  rateLimit: GitHubRateLimitSnapshot[];
+  issues: GitHubIssueRemote[];
+}
+
+export interface GitHubIssueRemote {
+  number: number;
+  title: string;
+  body: string;
+  htmlUrl?: string;
+  state: "open" | "closed";
+  labels: string[];
+  createdAt?: string;
+  updatedAt?: string;
+  author?: string;
+  bodyHash: string;
+}
+
 export interface GitHubIssueLivePlan {
   provider: "github";
   repo: string;
@@ -117,6 +147,56 @@ export async function planGitHubIssues(options: GitHubIssuePlanOptions): Promise
     repo: options.repo,
     plan,
     rateLimit: lookup.rateLimit
+  };
+}
+
+export async function readGitHubIssues(options: GitHubIssueReadOptions): Promise<GitHubIssueReadResult> {
+  validateGitHubRepo(options.repo);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const state = options.state ?? "open";
+  const labels = options.labels ?? [];
+  const params = new URLSearchParams({
+    state,
+    per_page: "100"
+  });
+  if (labels.length > 0) {
+    params.set("labels", labels.join(","));
+  }
+  const api = await fetchGitHubWithRetry(fetchImpl, `https://api.github.com/repos/${options.repo}/issues?${params.toString()}`, {
+    method: "GET",
+    headers: githubHeaders(options.token)
+  }, options.retry, "GET issues");
+  const response = api.response;
+  if (!response.ok) {
+    throw new Error(`GitHub issue read failed: GitHub API returned ${response.status}`);
+  }
+  const body = await response.json().catch(() => []);
+  const issues = Array.isArray(body)
+    ? body
+      .filter((issue) => !issue?.pull_request)
+      .filter((issue) => typeof issue?.number === "number" && typeof issue?.title === "string")
+      .map((issue): GitHubIssueRemote => {
+        const issueBody = typeof issue?.body === "string" ? issue.body : "";
+        return {
+          number: issue.number,
+          title: issue.title,
+          body: issueBody,
+          htmlUrl: typeof issue?.html_url === "string" ? issue.html_url : undefined,
+          state: issue?.state === "closed" ? "closed" : "open",
+          labels: normalizeGitHubLabels(issue?.labels),
+          createdAt: typeof issue?.created_at === "string" ? issue.created_at : undefined,
+          updatedAt: typeof issue?.updated_at === "string" ? issue.updated_at : undefined,
+          author: typeof issue?.user?.login === "string" ? issue.user.login : undefined,
+          bodyHash: sha256(issueBody)
+        };
+      })
+    : [];
+  return {
+    repo: options.repo,
+    state,
+    labels,
+    rateLimit: api.rateLimit,
+    issues
   };
 }
 
@@ -385,15 +465,35 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function githubHeaders(token: string): Record<string, string> {
-  return {
+function githubHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = {
     "accept": "application/vnd.github+json",
-    "authorization": `Bearer ${token}`,
     "content-type": "application/json",
     "user-agent": "migration-guard"
   };
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 function extractMigrationIssueId(body: string): string | undefined {
   return body.match(/^mg_issue_id:\s*(.+)$/m)?.[1]?.trim();
+}
+
+function normalizeGitHubLabels(labels: unknown): string[] {
+  if (!Array.isArray(labels)) {
+    return [];
+  }
+  return labels
+    .map((label) => {
+      if (typeof label === "string") {
+        return label;
+      }
+      if (typeof label?.name === "string") {
+        return label.name;
+      }
+      return undefined;
+    })
+    .filter((label): label is string => Boolean(label));
 }

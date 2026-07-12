@@ -7,6 +7,10 @@ Status update, 2026-07-06: one authorized single-issue mutation smoke was
 completed. See `docs/PHASE_35_REPORT.md`. Do not run another mutation without a
 new read-only plan and separate authorization.
 
+Current md refactor lane, 2026-07-11: use `perly6185-lab/md2` as the GitHub
+issue repo. The `configs/md2-*` files already set `issueSync.githubRepo` to
+`perly6185-lab/md2`.
+
 ## Safety Contract
 
 Required before any real mutation:
@@ -34,7 +38,7 @@ Not allowed without separate authorization:
 Use the current local issues list:
 
 ```bash
-node dist/cli.js issues --config configs/md-fast.migration-guard.json --run latest
+node dist/cli.js issues --config configs/md2-fast.migration-guard.json --run latest
 ```
 
 Choose one low-risk issue id. Prefer a synthetic or clearly labeled migration
@@ -43,7 +47,7 @@ guard issue that can be safely closed or edited later.
 ## Dry-Run Filter Check
 
 ```bash
-node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --dry-run --only-issue <mg_issue_id>
+node dist/cli.js sync-issues --config configs/md2-fast.migration-guard.json --run latest --provider github --dry-run --only-issue <mg_issue_id>
 ```
 
 Expected:
@@ -54,7 +58,7 @@ Expected:
 ## Read-Only Plan
 
 ```bash
-node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live-plan --repo perly6185-lab/migration-guard --only-issue <mg_issue_id>
+node dist/cli.js sync-issues --config configs/md2-fast.migration-guard.json --run latest --provider github --live-plan --only-issue <mg_issue_id>
 ```
 
 Expected:
@@ -68,7 +72,7 @@ Expected:
 Do not run this command without separate explicit authorization:
 
 ```bash
-node dist/cli.js sync-issues --config configs/md-fast.migration-guard.json --run latest --provider github --live --repo perly6185-lab/migration-guard --live-confirm <run-id> --live-plan-confirm <planHash> --max-live-mutations 1 --only-issue <mg_issue_id>
+node dist/cli.js sync-issues --config configs/md2-fast.migration-guard.json --run latest --provider github --live --live-confirm <run-id> --live-plan-confirm <planHash> --max-live-mutations 1 --only-issue <mg_issue_id>
 ```
 
 ## Post-Mutation Checks
