@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/core/normalize.test.js dist/core/checkNormalize.test.js dist/core/config.test.js dist/core/compare.test.js dist/core/diffDecision.test.js dist/core/files.test.js dist/core/bootstrap.test.js dist/core/issueControl.test.js dist/core/patch.test.js dist/core/refactorReadiness.test.js dist/core/oneShot.test.js dist/core/repairLoopCli.test.js dist/core/taskGraph.test.js",
+    "test": "npm run build && node --test dist/core/normalize.test.js dist/core/checkNormalize.test.js dist/core/config.test.js dist/core/compare.test.js dist/core/diffDecision.test.js dist/core/files.test.js dist/core/checkpoint.test.js dist/core/bootstrap.test.js dist/core/dashboard.test.js dist/core/issueControl.test.js dist/core/patch.test.js dist/core/refactorReadiness.test.js dist/core/oneShot.test.js dist/core/repairLoopCli.test.js dist/core/repairStrategy.test.js dist/core/taskGraph.test.js",
     "start": "node dist/cli.js"
   },
   "keywords": [

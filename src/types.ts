@@ -472,7 +472,30 @@ export interface MigrationCheckpoint {
   patchPath: string;
   verificationPath?: string;
   gitStatus: string;
+  gitHead?: string;
+  gitBranch?: string;
+  gitStatusFingerprint?: string;
+  gitStashSnapshot?: string;
+  gitStashRef?: string;
+  untrackedFiles?: string[];
+  sideEffects?: MigrationCheckpointSideEffects;
   note?: string;
+}
+
+export interface MigrationCheckpointSideEffects {
+  lockfiles: MigrationCheckpointFileFingerprint[];
+  nodeModules?: MigrationCheckpointDirectoryFingerprint;
+}
+
+export interface MigrationCheckpointFileFingerprint {
+  path: string;
+  exists: boolean;
+  sha256?: string;
+}
+
+export interface MigrationCheckpointDirectoryFingerprint {
+  path: string;
+  exists: boolean;
 }
 
 export interface ContractRequest {

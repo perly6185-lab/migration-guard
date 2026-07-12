@@ -58,6 +58,7 @@ import {
   superviseIssueControl,
   writeIssueControlPlan
 } from "./core/issueControl.js";
+import type { IssueControlTrustTier } from "./core/issueControl.js";
 import { loadActionPlan, renderActionPlan } from "./core/actionPlan.js";
 import {
   applyProposalBatch,
@@ -96,6 +97,14 @@ import {
   renderRefactorReadinessReport,
   writeRefactorReadinessReport
 } from "./core/refactorReadiness.js";
+import {
+  collectDashboard,
+  collectDashboardBlockers,
+  renderDashboard,
+  renderDashboardBlockers,
+  writeDashboardBlockersReport,
+  writeDashboardReport
+} from "./core/dashboard.js";
 import {
   createOneShotRunbook,
   collectOneShotSessionNextAction,
@@ -817,7 +826,9 @@ async function commandRollback(args: ParsedArgs): Promise<void> {
   if (!checkpointId) {
     throw new Error("rollback requires --checkpoint <checkpoint-id>.");
   }
-  const message = await rollbackToCheckpoint(loaded, pkg, checkpointId);
+  const message = await rollbackToCheckpoint(loaded, pkg, checkpointId, {
+    force: Boolean(args.options.force)
+  });
   console.log(message);
 }
 
@@ -1144,6 +1155,37 @@ async function commandSyncIssues(args: ParsedArgs): Promise<void> {
 async function commandIssueControl(args: ParsedArgs): Promise<void> {
   const action = args.positionals[0] ?? "pull";
   const loaded = await loadFromArgs(args);
+  if (action === "dashboard") {
+    const report = await writeDashboardReport(loaded, await collectDashboard(loaded, {
+      runId: stringOption(args, "run"),
+      checkTargetGit: !args.options["skip-target-git"]
+    }));
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderDashboard(report));
+      console.log(`\nJSON: ${report.outputPath}`);
+      console.log(`Markdown: ${report.markdownPath}`);
+    }
+    return;
+  }
+  if (action === "blockers") {
+    const report = await writeDashboardBlockersReport(loaded, await collectDashboardBlockers(loaded, {
+      runId: stringOption(args, "run"),
+      checkTargetGit: !args.options["skip-target-git"]
+    }));
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderDashboardBlockers(report));
+      console.log(`\nJSON: ${report.outputPath}`);
+      console.log(`Markdown: ${report.markdownPath}`);
+    }
+    if (report.blockerCount > 0) {
+      process.exitCode = 1;
+    }
+    return;
+  }
   if (action === "pull") {
     const report = await pullIssueControl(loaded, {
       repo: stringOption(args, "repo"),
@@ -1210,6 +1252,7 @@ async function commandIssueControl(args: ParsedArgs): Promise<void> {
       execute: Boolean(args.options.execute),
       maxIterations: nonNegativeIntegerOption(args, "max-iterations"),
       allowHighRisk: Boolean(args.options["allow-high-risk"]),
+      trustTier: trustTierOption(args),
       runId: stringOption(args, "run"),
       editCommand: stringOption(args, "edit-command")
     });
@@ -1233,6 +1276,7 @@ async function commandIssueControl(args: ParsedArgs): Promise<void> {
       execute: Boolean(args.options.execute),
       maxIterations: nonNegativeIntegerOption(args, "max-iterations"),
       allowHighRisk: Boolean(args.options["allow-high-risk"]),
+      trustTier: trustTierOption(args),
       runId: stringOption(args, "run"),
       editCommand: stringOption(args, "edit-command"),
       verifyEach: Boolean(args.options["verify-each"]),
@@ -1589,6 +1633,17 @@ function issueStateOption(args: ParsedArgs): "open" | "closed" | "all" | undefin
   throw new Error(`Unsupported issue state: ${value}`);
 }
 
+function trustTierOption(args: ParsedArgs): IssueControlTrustTier | undefined {
+  const value = stringOption(args, "trust-tier");
+  if (!value) {
+    return undefined;
+  }
+  if (value !== "manual" && value !== "supervised" && value !== "unattended") {
+    throw new Error(`Invalid trust tier: ${value}. Expected manual, supervised, or unattended.`);
+  }
+  return value;
+}
+
 function stringListOption(args: ParsedArgs, name: string): string[] | undefined {
   const value = stringOption(args, name);
   if (!value) {
@@ -1737,7 +1792,7 @@ Usage:
   migration-guard one-shot report [--baseline <path>] [--current <path>] [--compare <compare.json>] [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--pr-url <url>] [--target-commit <sha>] [--merge-commit <sha>] [--merged-at <iso>] [--budget <text>] [--note <text>] [--skip-target-git] [--skip-git-metadata] [--strict] [--json]
   migration-guard checkpoint create|list [--run <id|latest>]
   migration-guard resume [--run <id|latest>] [--auto]
-  migration-guard rollback [--run <id|latest>] --checkpoint <id>
+  migration-guard rollback [--run <id|latest>] --checkpoint <id> [--force]
   migration-guard task run [--run <id|latest>] --task <id>
   migration-guard task propose [--run <id|latest>] --task <id>
   migration-guard task apply [--run <id|latest>] --proposal <id> [--behavior-diff]
@@ -1754,10 +1809,12 @@ Usage:
   migration-guard proposal reject|ignore [--run <id|latest>] --proposal <id> [--reason <text>] [--superseded-by <proposal-id>] [--json]
   migration-guard proposal batch plan|apply [--run <id|latest>] [--limit <n>] [--skip-checks] [--gate-policy fail-fast|collect-all] [--behavior-diff] [--json]
   migration-guard sync-issues [--run <id|latest>] [--provider local|github|gitlab|jira|linear] [--dry-run|--live|--live-plan] [--repo owner/name | config issueSync.githubRepo] [--live-confirm <run-id>] [--live-plan-confirm <hash>] [--labels a,b] [--only-issue <issue-id>] [--max-live-mutations <n>]
+  migration-guard issue-control dashboard [--run <id|latest>] [--skip-target-git] [--json]
+  migration-guard issue-control blockers [--run <id|latest>] [--skip-target-git] [--json]
   migration-guard issue-control pull|plan [--provider github] [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--input <pull.json>] [--json]
   migration-guard issue-control run --input <plan.json> [--only-issue <mg_issue_id>] [--execute] [--run <id|latest>] [--edit-command <cmd>] [--json]
-  migration-guard issue-control auto [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--execute] [--max-iterations 1] [--allow-high-risk] [--edit-command <cmd>] [--json]
-  migration-guard issue-control supervise [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--execute] [--verify-each] [--repair-on-fail] [--continue-after-repair] [--max-iterations <n>] [--allow-high-risk] [--edit-command <cmd>] [--json]
+  migration-guard issue-control auto [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--execute] [--max-iterations 1] [--allow-high-risk] [--trust-tier manual|supervised|unattended] [--edit-command <cmd>] [--json]
+  migration-guard issue-control supervise [--repo owner/name | config issueSync.githubRepo] [--state open|closed|all] [--labels a,b] [--execute] [--verify-each] [--repair-on-fail] [--continue-after-repair] [--max-iterations <n>] [--allow-high-risk] [--trust-tier manual|supervised|unattended] [--edit-command <cmd>] [--json]
   migration-guard issue-control progress [--input <progress.json>] [--json]
   migration-guard issue-control advance [--input <progress.json>] [--execute] [--max-steps <n>] [--force] [--json]
   migration-guard issue-control advance-status [--input <state.json>] [--json]

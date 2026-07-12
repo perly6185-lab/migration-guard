@@ -40,6 +40,35 @@ export interface MigrationRunPackage {
   issues: MigrationIssue[];
 }
 
+export interface MigrationRunIndexEntry {
+  runId: string;
+  goal: string;
+  status: MigrationRun["status"];
+  mode: MigrationRun["mode"];
+  adapter?: string;
+  targetRoot: string;
+  createdAt: string;
+  updatedAt: string;
+  latestCheckpointId?: string;
+  latestBaselineId?: string;
+  latestVerificationId?: string;
+  taskSummary: Record<string, number>;
+  issueSummary: Record<string, number>;
+  estimate: {
+    taskCount: number;
+    riskLevel: MigrationRun["estimate"]["riskLevel"];
+    confidence: MigrationRun["estimate"]["confidence"];
+  };
+}
+
+export interface MigrationRunIndex {
+  version: 1;
+  updatedAt: string;
+  latestRunId?: string;
+  runCount: number;
+  runs: MigrationRunIndexEntry[];
+}
+
 export interface MigrationRunNextAction {
   action: string;
   command?: string;
@@ -221,6 +250,10 @@ export function latestMigrationRunPath(loaded: LoadedConfig): string {
   return path.join(migrationRunsDir(loaded), "latest.json");
 }
 
+export function migrationRunIndexPath(loaded: LoadedConfig): string {
+  return path.join(migrationRunsDir(loaded), "run-index.json");
+}
+
 export async function createMigrationRun(loaded: LoadedConfig, options: CreateRunOptions): Promise<MigrationRunPackage> {
   const runId = createId("run");
   const now = new Date().toISOString();
@@ -293,6 +326,62 @@ export async function saveRunPackage(loaded: LoadedConfig, pkg: MigrationRunPack
     runId: pkg.run.id,
     updatedAt: pkg.run.updatedAt
   });
+  await updateMigrationRunIndex(loaded, pkg);
+}
+
+export async function loadMigrationRunIndex(loaded: LoadedConfig): Promise<MigrationRunIndex | undefined> {
+  const filePath = migrationRunIndexPath(loaded);
+  if (!await pathExists(filePath)) {
+    return undefined;
+  }
+  return readJsonFile<MigrationRunIndex>(filePath);
+}
+
+async function updateMigrationRunIndex(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<void> {
+  const existing = await loadMigrationRunIndex(loaded);
+  const entry = createMigrationRunIndexEntry(pkg);
+  const runs = [
+    entry,
+    ...(existing?.runs ?? []).filter((item) => item.runId !== pkg.run.id)
+  ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const latestRunId = await readLatestRunIdIfPresent(loaded) ?? pkg.run.id;
+  await writeJsonFile(migrationRunIndexPath(loaded), {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    latestRunId,
+    runCount: runs.length,
+    runs
+  });
+}
+
+function createMigrationRunIndexEntry(pkg: MigrationRunPackage): MigrationRunIndexEntry {
+  return {
+    runId: pkg.run.id,
+    goal: pkg.run.goal,
+    status: pkg.run.status,
+    mode: pkg.run.mode,
+    adapter: pkg.run.adapter,
+    targetRoot: pkg.run.targetRoot,
+    createdAt: pkg.run.createdAt,
+    updatedAt: pkg.run.updatedAt,
+    latestCheckpointId: pkg.run.latestCheckpointId,
+    latestBaselineId: pkg.run.latestBaselineId,
+    latestVerificationId: pkg.run.latestVerificationId,
+    taskSummary: countBy(pkg.graph.tasks.map((task) => task.status)),
+    issueSummary: countBy(pkg.issues.map((issue) => issue.status)),
+    estimate: {
+      taskCount: pkg.run.estimate.taskCount,
+      riskLevel: pkg.run.estimate.riskLevel,
+      confidence: pkg.run.estimate.confidence
+    }
+  };
+}
+
+function countBy(values: string[]): Record<string, number> {
+  return values.reduce<Record<string, number>>((counts, value) => {
+    counts[value] = (counts[value] ?? 0) + 1;
+    return counts;
+  }, {});
 }
 
 export async function appendEvidence(
@@ -1417,6 +1506,15 @@ async function readLatestRunId(loaded: LoadedConfig): Promise<string> {
   const latestPath = latestMigrationRunPath(loaded);
   if (!await pathExists(latestPath)) {
     throw new Error("No migration run found. Run `migration-guard run --init-only` first.");
+  }
+  const latest = await readJsonFile<{ runId: string }>(latestPath);
+  return latest.runId;
+}
+
+async function readLatestRunIdIfPresent(loaded: LoadedConfig): Promise<string | undefined> {
+  const latestPath = latestMigrationRunPath(loaded);
+  if (!await pathExists(latestPath)) {
+    return undefined;
   }
   const latest = await readJsonFile<{ runId: string }>(latestPath);
   return latest.runId;

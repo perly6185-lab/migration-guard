@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -1062,10 +1062,19 @@ test("issue-control supervise verify-each blocks when baseline is missing", asyn
     assert.equal(report.summary.blockedCount, 1);
     assert.equal(report.iterations[0]?.verification?.status, "blocked");
     assert.equal(report.failureCategory, "missing-baseline");
-    assert.equal(report.humanActionRequired, true);
+    assert.equal(report.humanActionRequired, false);
+    assert.equal(report.autoRepairEligible, true);
     assert.match(report.recoveryPlanPath ?? "", /issue-control-recovery-plan-/);
     assert.match(report.recoveryExecutionPath ?? "", /issue-control-recovery-execution-/);
-    assert.equal(report.recoveryExecutionStatus, "blocked");
+    assert.equal(report.recoveryExecutionStatus, "executed");
+    const plan = await readJsonFile<{
+      autoFixable: boolean;
+      repairStrategy: { id: string };
+      behaviorDiffRequired: boolean;
+    }>(report.recoveryPlanPath ?? "");
+    assert.equal(plan.autoFixable, true);
+    assert.equal(plan.repairStrategy.id, "capture-missing-baseline");
+    assert.equal(plan.behaviorDiffRequired, false);
     assert.match(report.stopReason ?? "", /blocked/);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -1650,6 +1659,142 @@ test("issue-control advance-status treats max-step guard as unattended continuat
     assert.equal(status.schedulerDecision?.requiresHuman, false);
     assert.equal(status.schedulerDecision?.exitCode, 0);
     assert.match(status.schedulerDecision?.nextCommand ?? "", /--max-steps 3/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("issue-control supervise unattended tier selects only low-risk issues and enables watchdog gates", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-unattended-select-"));
+  const configPath = path.join(dir, ".migration-guard.json");
+  try {
+    await writeFile(configPath, JSON.stringify({
+      schemaVersion: 1,
+      targetRoot: ".",
+      artifactsDir: ".migration-guard",
+      issueSync: {
+        githubRepo: "perly6185-lab/md2"
+      }
+    }), "utf8");
+    const loaded = await loadConfig(configPath);
+    const mockFetch: typeof fetch = async () => new Response(JSON.stringify([{
+      number: 31,
+      title: "Low risk one",
+      body: [
+        "mg_run_id: run-md2",
+        "mg_issue_id: issue-low-one",
+        "mg_issue_type: task",
+        "mg_status: ready",
+        "mg_risk: low",
+        "mg_task_id: task-one"
+      ].join("\n"),
+      state: "open",
+      labels: []
+    }, {
+      number: 32,
+      title: "Medium risk skipped",
+      body: [
+        "mg_run_id: run-md2",
+        "mg_issue_id: issue-medium",
+        "mg_issue_type: task",
+        "mg_status: ready",
+        "mg_risk: medium",
+        "mg_task_id: task-medium"
+      ].join("\n"),
+      state: "open",
+      labels: []
+    }, {
+      number: 33,
+      title: "Low risk two",
+      body: [
+        "mg_run_id: run-md2",
+        "mg_issue_id: issue-low-two",
+        "mg_issue_type: task",
+        "mg_status: ready",
+        "mg_risk: low",
+        "mg_task_id: task-two"
+      ].join("\n"),
+      state: "open",
+      labels: []
+    }]), { status: 200, headers: { "content-type": "application/json" } });
+
+    const report = await superviseIssueControl(loaded, {
+      fetchImpl: mockFetch,
+      trustTier: "unattended",
+      maxIterations: 3
+    });
+
+    assert.equal(report.trustTier, "unattended");
+    assert.equal(report.controlOptions?.verifyEach, true);
+    assert.equal(report.controlOptions?.repairOnFail, true);
+    assert.equal(report.controlOptions?.continueAfterRepair, true);
+    assert.deepEqual(report.selection.filter((item) => item.selected).map((item) => item.issueId), [
+      "issue-low-one",
+      "issue-low-two"
+    ]);
+    assert.equal(report.selection.find((item) => item.issueId === "issue-medium")?.selected, false);
+    assert.match(report.selection.find((item) => item.issueId === "issue-medium")?.reason ?? "", /Unattended trust tier/);
+    assert.equal(report.safetyEnvelope?.passed, true);
+    const ledger = await readJsonFile<{ trustTier: string; safetyEnvelope: { passed: boolean } }>(report.progressLedgerPath ?? "");
+    assert.equal(ledger.trustTier, "unattended");
+    assert.equal(ledger.safetyEnvelope.passed, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("issue-control advance-scheduler blocks unattended execution outside safety envelope and audits decision", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-unattended-scheduler-"));
+  const configPath = path.join(dir, ".migration-guard.json");
+  try {
+    await writeFile(configPath, JSON.stringify({
+      schemaVersion: 1,
+      targetRoot: ".",
+      artifactsDir: ".migration-guard",
+      issueSync: {
+        githubRepo: "perly6185-lab/md2"
+      }
+    }), "utf8");
+    const loaded = await loadConfig(configPath);
+    const statePath = path.join(loaded.artifactsDir, "issue-control", "issue-control-advance-loop-state.json");
+    await writeJsonFile(statePath, {
+      version: 1,
+      id: "issue-control-advance-loop-state",
+      updatedAt: "2026-07-12T00:00:00.000Z",
+      mode: "execute",
+      maxSteps: 3,
+      status: "complete",
+      stopReason: "Reached max steps 3.",
+      lastLoopId: "issue-control-advance-loop-paused",
+      repeatedTerminalCount: 0,
+      repeatGuardActive: false,
+      trustTier: "unattended",
+      safetyEnvelope: {
+        passed: false,
+        trustTier: "unattended",
+        checks: [{
+          id: "verify-each",
+          passed: false,
+          reason: "verify-each was not enabled"
+        }]
+      },
+      nextAction: "Continue the bounded loop.",
+      outputPath: statePath,
+      markdownPath: statePath.replace(/\.json$/, ".md")
+    });
+
+    const status = await issueControlAdvanceLoopStatus(loaded);
+    assert.equal(status.schedulerDecision?.action, "run-advance-loop");
+    assert.equal(status.schedulerDecision?.canRunUnattended, false);
+    assert.equal(status.schedulerDecision?.requiresHuman, true);
+
+    const report = await advanceIssueControlScheduler(loaded, { execute: true });
+    assert.equal(report.status, "blocked");
+    assert.match(report.reason, /not allowed unattended/);
+    assert.match(report.auditLogPath ?? "", /issue-control-unattended-audit\.jsonl/);
+    const audit = await readFile(report.auditLogPath ?? "", "utf8");
+    assert.match(audit, /scheduler-decision/);
+    assert.match(audit, /scheduler-result/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

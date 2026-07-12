@@ -114,8 +114,14 @@ To inspect the latest supervisor state without running another pull/plan/execute
 cycle:
 
 ```bash
+node dist/cli.js issue-control dashboard --config configs/md2-fast.migration-guard.json
+node dist/cli.js issue-control blockers --config configs/md2-fast.migration-guard.json
 node dist/cli.js issue-control progress --config configs/md2-fast.migration-guard.json
 ```
+
+`dashboard` writes a single run/control view, while `blockers` extracts the
+global root-cause list for ready tasks, stuck proposals, readiness holds,
+progress-ledger failures and dirty target state.
 
 This writes `issue-control/issue-control-progress-status-*.json|md` and surfaces
 unresolved items, unreached selected issues, next actions and an
@@ -137,11 +143,14 @@ with the recorded control options.
 For bounded unattended progression, add a max-step guard:
 
 ```bash
+node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --trust-tier unattended --execute --max-iterations 3
 node dist/cli.js issue-control advance --config configs/md2-fast.migration-guard.json --execute --max-steps 3
 ```
 
 The loop stops when a step fails, blocks, completes supervision, or reaches the
-max-step limit.
+max-step limit. `trust-tier unattended` only selects low-risk issues and forces
+`verify-each`, `repair-on-fail` and `continue-after-repair` so every real
+mutation is covered by checkpoint, verify/compare and recovery artifacts.
 
 Loop mode also writes a fixed state file for unattended orchestration:
 
@@ -171,11 +180,12 @@ node dist/cli.js issue-control advance-status --config configs/md2-fast.migratio
 ```
 
 Read `schedulerDecision.action`, `schedulerDecision.canRunUnattended`,
-`schedulerDecision.requiresHuman` and `schedulerDecision.exitCode` instead of
+`schedulerDecision.requiresHuman`, `schedulerDecision.trustTier`,
+`schedulerDecision.safetyEnvelope` and `schedulerDecision.exitCode` instead of
 reconstructing policy from raw status fields.
 When `schedulerDecision.action` is `run-advance-loop`, the last loop only
-paused at the max-step guard; a scheduler may run the provided next command as
-another bounded loop.
+paused at the max-step guard. A scheduler may run the provided next command as
+another bounded loop only when `canRunUnattended` is true.
 
 To let Migration Guard perform that scheduler step without executing arbitrary
 shell text:
@@ -184,6 +194,11 @@ shell text:
 node dist/cli.js issue-control advance-scheduler --config configs/md2-fast.migration-guard.json
 node dist/cli.js issue-control advance-scheduler --config configs/md2-fast.migration-guard.json --execute
 ```
+
+`advance-scheduler --execute` refuses to dispatch when the action is not
+`run-advance-loop` or when the unattended safety envelope is not green. Every
+decision/result appends to
+`issue-control/issue-control-unattended-audit.jsonl`.
 
 For an external polling wrapper:
 

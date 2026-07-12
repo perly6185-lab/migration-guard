@@ -125,6 +125,8 @@ node dist/cli.js sync-issues --run latest --provider local
 node dist/cli.js sync-issues --run latest --provider github --dry-run
 node dist/cli.js sync-issues --run latest --provider github --live-plan --repo owner/name
 node dist/cli.js sync-issues --run latest --provider github --live --repo owner/name --live-confirm <run-id> --live-plan-confirm <plan-hash> --only-issue <issue-id> --max-live-mutations 1 --labels team:migration
+node dist/cli.js issue-control dashboard --config configs/md2-fast.migration-guard.json
+node dist/cli.js issue-control blockers --config configs/md2-fast.migration-guard.json
 node dist/cli.js issue-control pull --config configs/md2-fast.migration-guard.json --labels team:migration
 node dist/cli.js issue-control plan --config configs/md2-fast.migration-guard.json --labels team:migration
 node dist/cli.js issue-control run --config configs/md2-fast.migration-guard.json --input <plan.json>
@@ -134,6 +136,7 @@ node dist/cli.js issue-control auto --config configs/md2-fast.migration-guard.js
 node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --max-iterations 3
 node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --execute --max-iterations 3
 node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --execute --verify-each --max-iterations 3
+node dist/cli.js issue-control supervise --config configs/md2-fast.migration-guard.json --labels team:migration --trust-tier unattended --execute --max-iterations 3
 node dist/cli.js issue-control progress --config configs/md2-fast.migration-guard.json
 node dist/cli.js issue-control advance --config configs/md2-fast.migration-guard.json
 node dist/cli.js issue-control advance --config configs/md2-fast.migration-guard.json --execute --max-steps 3
@@ -294,6 +297,10 @@ mutating issues. Live mutations are capped by `--max-live-mutations` and GitHub
 are written to summary artifacts. Each live plan includes a stable `planHash`;
 real live sync requires `--live-plan-confirm <plan-hash>` so mutations are bound
 to a reviewed plan.
+`issue-control dashboard` writes a single JSON/Markdown control view over the
+latest run, run-index, ready tasks, stuck proposals, readiness, progress ledger
+and target git status. `issue-control blockers` extracts the global blocker
+root causes as a CI/operator friendly list.
 `issue-control pull` reads GitHub issues from `--repo owner/name` or config
 `issueSync.githubRepo` and writes read-only control-plane artifacts.
 `issue-control plan` maps those remote issues into guarded actions such as
@@ -305,12 +312,17 @@ repository.
 at a time.
 `issue-control auto` chains pull, plan and a single selected run. Phase 100
 allows only `--max-iterations 1`; high-risk items are skipped unless
-`--allow-high-risk` is passed.
+`--allow-high-risk` is passed. Add `--trust-tier manual|supervised|unattended`
+to make the risk model explicit.
 `issue-control supervise` is the bounded multi-issue supervisor. It pulls and
 plans once, selects up to `--max-iterations` safe executable md2 issues, runs
 each through the existing single-issue runner, and writes
 `issue-control-supervise-*.json|md` plus a machine-readable progress ledger at
 `issue-control-supervise-progress-*.json|md`. Dry-run is the default.
+Selection uses a trust-tier risk budget: `supervised` keeps existing bounded
+selection, while `unattended` selects only low-risk issues and automatically
+enables `verify-each`, `repair-on-fail` and `continue-after-repair` as the
+mutation watchdog envelope.
 `--execute` still uses one issue per iteration, stops on the first failed or
 blocked iteration, and does not commit, install dependencies or mutate GitHub.
 Add `--verify-each`
@@ -319,11 +331,14 @@ executed iteration. Missing baseline or compare failure stops the supervisor
 and records the verification artifact on that iteration. `--repair-on-fail` is
 reserved for recovery planning: on blocked/failed supervisor runs the tool
 writes `issue-control-recovery-plan-*.json|md` with a failure category,
-evidence paths, auto-repair eligibility and the next recommended command.
+evidence paths, `autoFixable`, selected `repairStrategy`, behavior-diff
+requirements and the next recommended command.
 When `--repair-on-fail` is used with `--execute`, eligible proposal repair
 recoveries also write `issue-control-recovery-execution-*.json|md` and attempt
-the bounded proposal repair lane. Non-eligible categories still stop as
-blocked. Add `--continue-after-repair` only when the supervisor should continue
+the bounded proposal repair lane. Deterministic strategies can also capture a
+missing baseline or install dependencies when the category is auto-fixable.
+Non-eligible categories still stop as blocked. Add `--continue-after-repair`
+only when the supervisor should continue
 remaining selected issues after an eligible recovery execution returns
 `executed`; planned, blocked or failed recovery executions still stop.
 Use `issue-control progress` to read the latest progress ledger, write
@@ -348,12 +363,15 @@ repeat-guard active. Its JSON includes `schedulerDecision` with an action such
 as `review-plan`, `run-advance-loop`, `sync-issues` or `stop-for-recovery`,
 plus `canRunUnattended`, `requiresHuman`, `exitCode` and an optional next
 command. `run-advance-loop` is emitted when a loop only paused at the max-step
-guard and another bounded unattended loop may continue.
+guard and another bounded loop may continue. For `trust-tier unattended`,
+`canRunUnattended` is true only when the safety envelope is green.
 Use `issue-control advance-scheduler` to convert that state decision into an
 audited scheduler report; even with `--execute`, it only dispatches the
-internal bounded advance loop when the decision is `run-advance-loop`. External
-schedulers can call `scripts/scheduler/run-advance-scheduler.mjs` to poll the
-JSON decision and write a local scheduler run log. Use `issue-control
+internal bounded advance loop when the decision is `run-advance-loop` and the
+decision allows unattended execution. Scheduler decisions/results append to
+`issue-control/issue-control-unattended-audit.jsonl`. External schedulers can
+call `scripts/scheduler/run-advance-scheduler.mjs` to poll the JSON decision
+and write a local scheduler run log. Use `issue-control
 sync-gate` after scheduler completion to produce a reviewed
 `sync-issues --live-plan` handoff; the gate does not call `sync-issues` or
 mutate GitHub.

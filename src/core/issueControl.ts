@@ -7,10 +7,12 @@ import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.
 import { renderCompareReport } from "./markdown.js";
 import { loadRunPackage } from "./migrationRun.js";
 import { repairProposal } from "./patch.js";
+import { selectRepairStrategy, summarizeRepairStrategy, type RepairStrategySummary } from "./repairStrategy.js";
 import { captureSnapshot, latestBaselinePath, loadSnapshot, saveSnapshot } from "./snapshot.js";
 import type { LoadedConfig, MigrationIssueType } from "../types.js";
 
 export type IssueControlProvider = "github";
+export type IssueControlTrustTier = "manual" | "supervised" | "unattended";
 export type IssueControlAction =
   | "bootstrap-target"
   | "repair-proposal"
@@ -155,6 +157,7 @@ export interface IssueControlAutoOptions extends IssueControlPullOptions {
   execute?: boolean;
   maxIterations?: number;
   allowHighRisk?: boolean;
+  trustTier?: IssueControlTrustTier;
   runId?: string;
   editCommand?: string;
 }
@@ -168,6 +171,8 @@ export interface IssueControlAutoReport {
   mode: "dry-run" | "execute";
   maxIterations: number;
   allowHighRisk: boolean;
+  trustTier: IssueControlTrustTier;
+  riskBudget: number;
   status: "planned" | "complete" | "failed" | "blocked";
   pullPath?: string;
   planPath?: string;
@@ -195,6 +200,7 @@ export interface IssueControlSuperviseOptions extends IssueControlPullOptions {
   execute?: boolean;
   maxIterations?: number;
   allowHighRisk?: boolean;
+  trustTier?: IssueControlTrustTier;
   runId?: string;
   editCommand?: string;
   verifyEach?: boolean;
@@ -219,6 +225,9 @@ export interface IssueControlSuperviseReport {
   mode: "dry-run" | "execute";
   maxIterations: number;
   allowHighRisk: boolean;
+  trustTier: IssueControlTrustTier;
+  riskBudget: number;
+  safetyEnvelope?: IssueControlSafetyEnvelope;
   controlOptions?: IssueControlSuperviseControlOptions;
   status: "planned" | "complete" | "failed" | "blocked";
   pullPath?: string;
@@ -260,9 +269,23 @@ export interface IssueControlSuperviseControlOptions {
   execute: boolean;
   maxIterations: number;
   allowHighRisk: boolean;
+  trustTier: IssueControlTrustTier;
+  riskBudget: number;
   verifyEach: boolean;
   repairOnFail: boolean;
   continueAfterRepair: boolean;
+}
+
+export interface IssueControlSafetyEnvelope {
+  passed: boolean;
+  trustTier: IssueControlTrustTier;
+  checks: IssueControlSafetyEnvelopeCheck[];
+}
+
+export interface IssueControlSafetyEnvelopeCheck {
+  id: string;
+  passed: boolean;
+  reason: string;
 }
 
 export interface IssueControlSuperviseSelectionItem {
@@ -332,6 +355,9 @@ export interface IssueControlSuperviseProgressLedger {
   repo: string;
   mode: "dry-run" | "execute";
   status: IssueControlSuperviseReport["status"];
+  trustTier: IssueControlTrustTier;
+  riskBudget: number;
+  safetyEnvelope?: IssueControlSafetyEnvelope;
   controlOptions?: IssueControlSuperviseControlOptions;
   summary: {
     issueCount: number;
@@ -428,6 +454,8 @@ export interface IssueControlProgressAutomationDecision {
   disposition: IssueControlProgressAutomationDisposition;
   canAutoContinue: boolean;
   requiresHuman: boolean;
+  trustTier?: IssueControlTrustTier;
+  safetyEnvelope?: IssueControlSafetyEnvelope;
   reason: string;
   nextCommand?: string;
 }
@@ -515,6 +543,8 @@ export interface IssueControlAdvanceLoopState {
   terminalSuperviseStatus?: IssueControlSuperviseReport["status"];
   repeatedTerminalCount: number;
   repeatGuardActive: boolean;
+  trustTier?: IssueControlTrustTier;
+  safetyEnvelope?: IssueControlSafetyEnvelope;
   nextAction: string;
   schedulerDecision?: IssueControlAdvanceLoopSchedulerDecision;
   outputPath?: string;
@@ -543,6 +573,8 @@ export interface IssueControlAdvanceLoopSchedulerDecision {
   action: IssueControlAdvanceLoopSchedulerAction;
   canRunUnattended: boolean;
   requiresHuman: boolean;
+  trustTier?: IssueControlTrustTier;
+  safetyEnvelope?: IssueControlSafetyEnvelope;
   exitCode: 0 | 1;
   reason: string;
   nextCommand?: string;
@@ -561,6 +593,7 @@ export interface IssueControlAdvanceSchedulerReport {
   loopReportPath?: string;
   loopReportMarkdownPath?: string;
   loopStatus?: IssueControlAdvanceLoopReport["status"];
+  auditLogPath?: string;
   outputPath?: string;
   markdownPath?: string;
 }
@@ -619,8 +652,12 @@ export interface IssueControlRecoveryPlan {
   failedIssueNumber?: number;
   failedAction?: IssueControlAction;
   evidencePaths: string[];
+  autoFixable: boolean;
+  autoFixableReason: string;
   autoRepairEligible: boolean;
   humanActionRequired: boolean;
+  repairStrategy: RepairStrategySummary;
+  behaviorDiffRequired: boolean;
   recommendedNextCommand: string;
   recommendedActions: string[];
   outputPath?: string;
@@ -638,8 +675,11 @@ export interface IssueControlRecoveryExecution {
   mode: "dry-run" | "execute";
   status: "planned" | "executed" | "blocked" | "failed" | "skipped";
   failureCategory: SupervisorFailureCategory;
+  autoFixable?: boolean;
   autoRepairEligible: boolean;
-  action: "proposal-repair" | "none";
+  repairStrategy?: RepairStrategySummary;
+  behaviorDiffRequired?: boolean;
+  action: "capture-baseline" | "install-dependencies" | "proposal-repair" | "none";
   reason: string;
   recommendedNextCommand?: string;
   artifactPath?: string;
@@ -805,6 +845,8 @@ export async function autoIssueControl(
   options: IssueControlAutoOptions = {}
 ): Promise<IssueControlAutoReport> {
   const maxIterations = options.maxIterations ?? 1;
+  const trustTier = options.trustTier ?? "supervised";
+  const trustPolicy = createIssueControlTrustPolicy(trustTier, maxIterations, Boolean(options.allowHighRisk));
   if (!Number.isInteger(maxIterations) || maxIterations < 1) {
     throw new Error(`Invalid issue-control auto maxIterations: ${maxIterations}. Expected a positive integer.`);
   }
@@ -814,7 +856,8 @@ export async function autoIssueControl(
   const pull = await pullIssueControl(loaded, options);
   const plan = await writeIssueControlPlan(loaded, pull);
   const selection = selectIssueControlAutoItem(plan, {
-    allowHighRisk: Boolean(options.allowHighRisk)
+    allowHighRisk: Boolean(options.allowHighRisk),
+    trustTier
   });
   const now = new Date().toISOString();
   const selected = selection.find((item) => item.selected);
@@ -846,6 +889,8 @@ export async function autoIssueControl(
     mode: options.execute ? "execute" : "dry-run",
     maxIterations,
     allowHighRisk: Boolean(options.allowHighRisk),
+    trustTier,
+    riskBudget: trustPolicy.riskBudget,
     status,
     pullPath: pull.outputPath,
     planPath: plan.outputPath,
@@ -864,6 +909,11 @@ export async function superviseIssueControl(
   options: IssueControlSuperviseOptions = {}
 ): Promise<IssueControlSuperviseReport> {
   const maxIterations = options.maxIterations ?? 3;
+  const trustTier = options.trustTier ?? "supervised";
+  const trustPolicy = createIssueControlTrustPolicy(trustTier, maxIterations, Boolean(options.allowHighRisk));
+  const effectiveVerifyEach = trustTier === "unattended" ? true : Boolean(options.verifyEach);
+  const effectiveRepairOnFail = trustTier === "unattended" ? true : Boolean(options.repairOnFail);
+  const effectiveContinueAfterRepair = trustTier === "unattended" ? true : Boolean(options.continueAfterRepair);
   if (!Number.isInteger(maxIterations) || maxIterations < 1) {
     throw new Error(`Invalid issue-control supervise maxIterations: ${maxIterations}. Expected a positive integer.`);
   }
@@ -874,7 +924,9 @@ export async function superviseIssueControl(
   const plan = await writeIssueControlPlan(loaded, pull);
   const selection = selectIssueControlSuperviseItems(plan, {
     allowHighRisk: Boolean(options.allowHighRisk),
-    maxIterations
+    maxIterations,
+    trustTier,
+    riskBudget: trustPolicy.riskBudget
   });
   const selected = selection.filter((item) => item.selected);
   const now = new Date().toISOString();
@@ -887,6 +939,8 @@ export async function superviseIssueControl(
     mode: options.execute ? "execute" : "dry-run",
     maxIterations,
     allowHighRisk: Boolean(options.allowHighRisk),
+    trustTier,
+    riskBudget: trustPolicy.riskBudget,
     controlOptions: {
       configPath: loaded.path,
       state: options.state ?? "open",
@@ -894,9 +948,11 @@ export async function superviseIssueControl(
       execute: Boolean(options.execute),
       maxIterations,
       allowHighRisk: Boolean(options.allowHighRisk),
-      verifyEach: Boolean(options.verifyEach),
-      repairOnFail: Boolean(options.repairOnFail),
-      continueAfterRepair: Boolean(options.continueAfterRepair)
+      trustTier,
+      riskBudget: trustPolicy.riskBudget,
+      verifyEach: effectiveVerifyEach,
+      repairOnFail: effectiveRepairOnFail,
+      continueAfterRepair: effectiveContinueAfterRepair
     },
     status: selected.length === 0 ? "blocked" : options.execute ? "complete" : "planned",
     pullPath: pull.outputPath,
@@ -919,6 +975,7 @@ export async function superviseIssueControl(
   if (selected.length === 0) {
     report.stopReason = "No safe executable issue was selected.";
     await attachRecoveryPlan(loaded, report);
+    report.safetyEnvelope = createIssueControlSafetyEnvelopeFromReport(report);
     report.recommendedNextActions = createSuperviseRecommendedNextActions(report);
     return writeIssueControlSuperviseReport(loaded, report);
   }
@@ -936,7 +993,7 @@ export async function superviseIssueControl(
       ?? run.items.find((item) => item.issueNumber === selectedItem.issueNumber);
     const iteration = toSuperviseIteration(index + 1, selectedItem, run, runItem);
     const executionStatus = iteration.status;
-    if (options.verifyEach) {
+    if (effectiveVerifyEach) {
       iteration.verification = await verifySuperviseIteration(loaded, iteration);
       if (iteration.verification.status === "passed") {
         report.summary.verifiedCount += 1;
@@ -960,7 +1017,11 @@ export async function superviseIssueControl(
       report.summary.failedCount += 1;
       report.status = "failed";
       report.stopReason = `Iteration ${iteration.index} failed for ${iteration.issueId ?? `#${iteration.issueNumber}`}.`;
-      const shouldContinue = await handleSuperviseRecovery(loaded, report, iteration, options);
+      const shouldContinue = await handleSuperviseRecovery(loaded, report, iteration, {
+        ...options,
+        repairOnFail: effectiveRepairOnFail,
+        continueAfterRepair: effectiveContinueAfterRepair
+      });
       if (shouldContinue) {
         continue;
       }
@@ -970,7 +1031,11 @@ export async function superviseIssueControl(
       report.summary.blockedCount += 1;
       report.status = "blocked";
       report.stopReason = `Iteration ${iteration.index} blocked for ${iteration.issueId ?? `#${iteration.issueNumber}`}.`;
-      const shouldContinue = await handleSuperviseRecovery(loaded, report, iteration, options);
+      const shouldContinue = await handleSuperviseRecovery(loaded, report, iteration, {
+        ...options,
+        repairOnFail: effectiveRepairOnFail,
+        continueAfterRepair: effectiveContinueAfterRepair
+      });
       if (shouldContinue) {
         continue;
       }
@@ -983,10 +1048,15 @@ export async function superviseIssueControl(
   }
   if (report.status === "failed" || report.status === "blocked") {
     const recoveryPlan = await attachRecoveryPlan(loaded, report);
-    if (options.repairOnFail && recoveryPlan) {
-      await attachRecoveryExecution(loaded, report, recoveryPlan, options);
+    if (effectiveRepairOnFail && recoveryPlan) {
+      await attachRecoveryExecution(loaded, report, recoveryPlan, {
+        ...options,
+        repairOnFail: effectiveRepairOnFail,
+        continueAfterRepair: effectiveContinueAfterRepair
+      });
     }
   }
+  report.safetyEnvelope = createIssueControlSafetyEnvelopeFromReport(report);
   report.recommendedNextActions = createSuperviseRecommendedNextActions(report);
   return writeIssueControlSuperviseReport(loaded, report);
 }
@@ -1191,21 +1261,56 @@ export async function advanceIssueControlScheduler(
     sourceStatePath: state.outputPath ?? options.input,
     schedulerDecision: decision,
     reason: decision.reason,
-    nextCommand: decision.nextCommand
+    nextCommand: decision.nextCommand,
+    auditLogPath: issueControlAuditLogPath(loaded)
   };
+  await appendIssueControlAudit(loaded, {
+    type: "scheduler-decision",
+    reportId: base.id,
+    sourceStatePath: base.sourceStatePath,
+    decision
+  });
   if (decision.action !== "run-advance-loop") {
-    return writeIssueControlAdvanceSchedulerReport(loaded, {
+    const report = await writeIssueControlAdvanceSchedulerReport(loaded, {
       ...base,
       status: decision.exitCode === 0 ? "skipped" : "blocked",
       reason: `Scheduler action ${decision.action} is not executable by advance-scheduler. ${decision.reason}`
     });
+    await appendIssueControlAudit(loaded, {
+      type: "scheduler-result",
+      reportId: report.id,
+      status: report.status,
+      reason: report.reason
+    });
+    return report;
   }
   if (!options.execute) {
-    return writeIssueControlAdvanceSchedulerReport(loaded, {
+    const report = await writeIssueControlAdvanceSchedulerReport(loaded, {
       ...base,
       status: "planned",
       reason: "Scheduler planned the next bounded advance loop. Rerun with --execute to continue."
     });
+    await appendIssueControlAudit(loaded, {
+      type: "scheduler-result",
+      reportId: report.id,
+      status: report.status,
+      reason: report.reason
+    });
+    return report;
+  }
+  if (!decision.canRunUnattended) {
+    const report = await writeIssueControlAdvanceSchedulerReport(loaded, {
+      ...base,
+      status: "blocked",
+      reason: `Scheduler action run-advance-loop is not allowed unattended. ${decision.reason}`
+    });
+    await appendIssueControlAudit(loaded, {
+      type: "scheduler-result",
+      reportId: report.id,
+      status: report.status,
+      reason: report.reason
+    });
+    return report;
   }
   const loop = await advanceIssueControlLoop(loaded, {
     execute: true,
@@ -1215,7 +1320,7 @@ export async function advanceIssueControlScheduler(
     retry: options.retry,
     recoveryExecutor: options.recoveryExecutor
   });
-  return writeIssueControlAdvanceSchedulerReport(loaded, {
+  const report = await writeIssueControlAdvanceSchedulerReport(loaded, {
     ...base,
     status: loop.status === "failed" || loop.status === "blocked" ? loop.status : "executed",
     reason: `Scheduler executed advance loop ${loop.id} with status ${loop.status}.`,
@@ -1223,6 +1328,14 @@ export async function advanceIssueControlScheduler(
     loopReportMarkdownPath: loop.markdownPath,
     loopStatus: loop.status
   });
+  await appendIssueControlAudit(loaded, {
+    type: "scheduler-result",
+    reportId: report.id,
+    status: report.status,
+    reason: report.reason,
+    loopReportPath: report.loopReportPath
+  });
+  return report;
 }
 
 export async function issueControlSyncGate(
@@ -1407,6 +1520,8 @@ export function renderIssueControlAuto(report: IssueControlAutoReport): string {
     `- Status: ${report.status}`,
     `- Max iterations: ${report.maxIterations}`,
     `- Allow high risk: ${report.allowHighRisk ? "yes" : "no"}`,
+    `- Trust tier: ${report.trustTier}`,
+    `- Risk budget: ${report.riskBudget}`,
     `- Selected issue: ${report.selectedIssueId ?? "none"}`,
     `- Selected action: ${report.selectedAction ?? "none"}`,
     "",
@@ -1449,6 +1564,9 @@ export function renderIssueControlSupervise(report: IssueControlSuperviseReport)
     `- Status: ${report.status}`,
     `- Max iterations: ${report.maxIterations}`,
     `- Allow high risk: ${report.allowHighRisk ? "yes" : "no"}`,
+    `- Trust tier: ${report.trustTier}`,
+    `- Risk budget: ${report.riskBudget}`,
+    `- Safety envelope: ${report.safetyEnvelope?.passed ? "passed" : "not-passed"}`,
     `- Selected: ${report.summary.selectedCount}`,
     `- Planned: ${report.summary.plannedCount}`,
     `- Executed: ${report.summary.executedCount}`,
@@ -1526,6 +1644,9 @@ export function renderIssueControlSuperviseProgressLedger(ledger: IssueControlSu
     `- Repo: ${ledger.repo}`,
     `- Mode: ${ledger.mode}`,
     `- Status: ${ledger.status}`,
+    `- Trust tier: ${ledger.trustTier}`,
+    `- Risk budget: ${ledger.riskBudget}`,
+    `- Safety envelope: ${ledger.safetyEnvelope?.passed ? "passed" : "not-passed"}`,
     `- Selected: ${ledger.summary.selectedCount}`,
     `- Reached: ${ledger.summary.reachedCount}`,
     `- Unreached selected: ${ledger.summary.unreachedSelectedCount}`,
@@ -1589,6 +1710,8 @@ export function renderIssueControlProgressStatus(report: IssueControlProgressSta
     `- Continued: ${report.summary.continuedCount}`,
     `- Unresolved: ${report.summary.unresolvedCount}`,
     `- Automation disposition: ${report.automationDecision.disposition}`,
+    `- Trust tier: ${report.automationDecision.trustTier ?? "unknown"}`,
+    `- Safety envelope: ${report.automationDecision.safetyEnvelope?.passed ? "passed" : "not-passed"}`,
     `- Can auto continue: ${report.automationDecision.canAutoContinue ? "yes" : "no"}`,
     `- Requires human: ${report.automationDecision.requiresHuman ? "yes" : "no"}`,
     `- Automation reason: ${report.automationDecision.reason}`,
@@ -1702,6 +1825,8 @@ export function renderIssueControlAdvanceLoopState(state: IssueControlAdvanceLoo
     `- Terminal supervise status: ${state.terminalSuperviseStatus ?? "none"}`,
     `- Repeated terminal count: ${state.repeatedTerminalCount}`,
     `- Repeat guard active: ${state.repeatGuardActive ? "yes" : "no"}`,
+    `- Trust tier: ${state.trustTier ?? "unknown"}`,
+    `- Safety envelope: ${state.safetyEnvelope?.passed ? "passed" : "not-passed"}`,
     `- Next action: ${state.nextAction}`,
     `- Scheduler action: ${state.schedulerDecision?.action ?? "unknown"}`,
     `- Scheduler unattended: ${state.schedulerDecision?.canRunUnattended ? "yes" : "no"}`,
@@ -1726,12 +1851,15 @@ export function renderIssueControlAdvanceScheduler(report: IssueControlAdvanceSc
     `- Mode: ${report.mode}`,
     `- Status: ${report.status}`,
     `- Scheduler action: ${report.schedulerDecision.action}`,
+    `- Trust tier: ${report.schedulerDecision.trustTier ?? "unknown"}`,
+    `- Safety envelope: ${report.schedulerDecision.safetyEnvelope?.passed ? "passed" : "not-passed"}`,
     `- Can run unattended: ${report.schedulerDecision.canRunUnattended ? "yes" : "no"}`,
     `- Requires human: ${report.schedulerDecision.requiresHuman ? "yes" : "no"}`,
     `- Decision exit code: ${report.schedulerDecision.exitCode}`,
     `- Reason: ${report.reason}`,
     `- Next command: ${report.nextCommand ?? "none"}`,
     `- Loop status: ${report.loopStatus ?? "none"}`,
+    `- Audit log: ${report.auditLogPath ?? "none"}`,
     "",
     "## Artifacts",
     "",
@@ -2010,6 +2138,23 @@ async function writeIssueControlSyncGateReport(
   return report;
 }
 
+function issueControlAuditLogPath(loaded: LoadedConfig): string {
+  return path.join(loaded.artifactsDir, "issue-control", "issue-control-unattended-audit.jsonl");
+}
+
+async function appendIssueControlAudit(
+  loaded: LoadedConfig,
+  event: Record<string, unknown>
+): Promise<void> {
+  const filePath = issueControlAuditLogPath(loaded);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.appendFile(filePath, `${JSON.stringify({
+    version: 1,
+    createdAt: new Date().toISOString(),
+    ...event
+  })}\n`, "utf8");
+}
+
 async function writeIssueControlAdvanceLoopState(
   loaded: LoadedConfig,
   report: IssueControlAdvanceLoopReport,
@@ -2020,6 +2165,7 @@ async function writeIssueControlAdvanceLoopState(
   const markdownPath = outputPath.replace(/\.json$/, ".md");
   const terminalStep = report.steps[report.steps.length - 1];
   const sourceLedgerPath = report.sourceLedgerPath ?? terminalStep?.sourceLedgerPath;
+  const sourceSafety = sourceLedgerPath ? await readIssueControlLedgerSafety(sourceLedgerPath) : undefined;
   const isTerminalStop = report.status === "failed" || report.status === "blocked";
   const repeatedTerminalCount = isTerminalStop && previousState?.sourceLedgerPath === sourceLedgerPath
     ? previousState.repeatedTerminalCount + 1
@@ -2044,6 +2190,8 @@ async function writeIssueControlAdvanceLoopState(
     terminalSuperviseStatus: terminalStep?.superviseStatus,
     repeatedTerminalCount,
     repeatGuardActive: isTerminalStop && repeatedTerminalCount > 1,
+    trustTier: sourceSafety?.trustTier,
+    safetyEnvelope: sourceSafety?.safetyEnvelope,
     nextAction: createIssueControlAdvanceLoopStateNextAction(report, repeatedTerminalCount),
     outputPath,
     markdownPath
@@ -2052,6 +2200,20 @@ async function writeIssueControlAdvanceLoopState(
   await writeJsonFile(outputPath, state);
   await writeTextFile(markdownPath, renderIssueControlAdvanceLoopState(state));
   return state;
+}
+
+async function readIssueControlLedgerSafety(
+  filePath: string
+): Promise<{ trustTier: IssueControlTrustTier; safetyEnvelope: IssueControlSafetyEnvelope } | undefined> {
+  if (!await pathExists(filePath)) {
+    return undefined;
+  }
+  const ledger = await readJsonFile<IssueControlSuperviseProgressLedger>(filePath);
+  const trustTier = ledger.trustTier ?? ledger.controlOptions?.trustTier ?? "supervised";
+  return {
+    trustTier,
+    safetyEnvelope: ledger.safetyEnvelope ?? createIssueControlSafetyEnvelopeFromLedger(ledger)
+  };
 }
 
 async function writeIssueControlRecoveryPlan(
@@ -2084,7 +2246,7 @@ async function writeIssueControlRecoveryExecution(
 
 function selectIssueControlAutoItem(
   plan: IssueControlPlanReport,
-  options: { allowHighRisk: boolean }
+  options: { allowHighRisk: boolean; trustTier: IssueControlTrustTier }
 ): IssueControlAutoSelectionItem[] {
   const priority: Record<IssueControlAction, number> = {
     "bootstrap-target": 0,
@@ -2117,7 +2279,7 @@ function selectIssueControlAutoItem(
 
 function selectIssueControlSuperviseItems(
   plan: IssueControlPlanReport,
-  options: { allowHighRisk: boolean; maxIterations: number }
+  options: { allowHighRisk: boolean; maxIterations: number; trustTier: IssueControlTrustTier; riskBudget: number }
 ): IssueControlSuperviseSelectionItem[] {
   const priority: Record<IssueControlAction, number> = {
     "bootstrap-target": 0,
@@ -2135,12 +2297,19 @@ function selectIssueControlSuperviseItems(
       reason: autoSelectionReason(item, options)
     }))
     .sort((a, b) => priority[a.item.action] - priority[b.item.action] || a.index - b.index);
-  const selected = new Set(
-    ranked
-      .filter((candidate) => candidate.selectable)
-      .slice(0, options.maxIterations)
-      .map((candidate) => candidate.item)
-  );
+  const selected = new Set<IssueControlPlanItem>();
+  let spentRisk = 0;
+  for (const candidate of ranked.filter((item) => item.selectable)) {
+    if (selected.size >= options.maxIterations) {
+      break;
+    }
+    const risk = riskWeight(candidate.item.risk);
+    if (spentRisk + risk > options.riskBudget) {
+      continue;
+    }
+    selected.add(candidate.item);
+    spentRisk += risk;
+  }
   return plan.items.map((item) => ({
     issueNumber: item.issueNumber,
     issueId: item.issueId,
@@ -2280,8 +2449,12 @@ function createIssueControlRecoveryPlan(
     failedIssueNumber: failedIteration?.issueNumber,
     failedAction: failedIteration?.action,
     evidencePaths,
+    autoFixable: decision.autoFixable,
+    autoFixableReason: decision.autoFixableReason,
     autoRepairEligible: decision.autoRepairEligible,
     humanActionRequired: decision.humanActionRequired,
+    repairStrategy: decision.repairStrategy,
+    behaviorDiffRequired: decision.behaviorDiffRequired,
     recommendedNextCommand: decision.recommendedNextCommand,
     recommendedActions: decision.recommendedActions
   };
@@ -2296,8 +2469,12 @@ function renderIssueControlRecoveryPlan(plan: IssueControlRecoveryPlan): string 
     `- Failure category: ${plan.failureCategory}`,
     `- Failed issue: ${plan.failedIssueId ?? "none"}`,
     `- Failed action: ${plan.failedAction ?? "none"}`,
+    `- Auto fixable: ${plan.autoFixable ? "yes" : "no"}`,
+    `- Auto fixable reason: ${plan.autoFixableReason}`,
     `- Auto repair eligible: ${plan.autoRepairEligible ? "yes" : "no"}`,
     `- Human action required: ${plan.humanActionRequired ? "yes" : "no"}`,
+    `- Repair strategy: ${plan.repairStrategy.id} (${plan.repairStrategy.kind})`,
+    `- Behavior diff required: ${plan.behaviorDiffRequired ? "yes" : "no"}`,
     `- Recommended next command: ${plan.recommendedNextCommand}`,
     "",
     "## Recommended Actions",
@@ -2327,7 +2504,10 @@ function renderIssueControlRecoveryExecution(execution: IssueControlRecoveryExec
     `- Mode: ${execution.mode}`,
     `- Status: ${execution.status}`,
     `- Failure category: ${execution.failureCategory}`,
+    `- Auto fixable: ${execution.autoFixable === undefined ? "unknown" : execution.autoFixable ? "yes" : "no"}`,
     `- Auto repair eligible: ${execution.autoRepairEligible ? "yes" : "no"}`,
+    `- Repair strategy: ${execution.repairStrategy?.id ?? "none"}`,
+    `- Behavior diff required: ${execution.behaviorDiffRequired ? "yes" : "no"}`,
     `- Action: ${execution.action}`,
     `- Reason: ${execution.reason}`,
     `- Recommended next command: ${execution.recommendedNextCommand ?? "none"}`,
@@ -2358,66 +2538,57 @@ async function executeIssueControlRecoveryPlan(
     mode: options.execute ? "execute" : "dry-run",
     status: "blocked",
     failureCategory: plan.failureCategory,
+    autoFixable: plan.autoFixable,
     autoRepairEligible: plan.autoRepairEligible,
-    action: "none",
+    repairStrategy: plan.repairStrategy,
+    behaviorDiffRequired: plan.behaviorDiffRequired,
+    action: plan.repairStrategy.action,
     reason: "No recovery action selected.",
     recommendedNextCommand: plan.recommendedNextCommand
   };
-  if (!plan.autoRepairEligible) {
+  const strategy = selectRepairStrategy({ category: plan.failureCategory, plan });
+  if (!strategy.autoFixable) {
     return {
       ...base,
       status: "blocked",
-      reason: `Recovery category ${plan.failureCategory} is not eligible for automatic repair.`
+      action: strategy.action,
+      repairStrategy: summarizeRepairStrategy(strategy),
+      behaviorDiffRequired: strategy.behaviorDiffRequired,
+      reason: `Recovery category ${plan.failureCategory} is not auto-fixable.`
     };
   }
   if (!options.execute) {
     return {
       ...base,
       status: "planned",
-      action: recoveryExecutionAction(plan.failureCategory),
+      action: strategy.action,
+      repairStrategy: summarizeRepairStrategy(strategy),
+      behaviorDiffRequired: strategy.behaviorDiffRequired,
       reason: "Recovery is eligible; rerun supervisor with --execute --repair-on-fail to attempt it."
     };
   }
-  if (plan.failureCategory !== "proposal-repair-needed") {
-    return {
-      ...base,
-      status: "blocked",
-      reason: `Automatic recovery for ${plan.failureCategory} is not implemented.`
-    };
-  }
-  const command = plan.failedIteration?.command;
-  const runId = runIdFromCommand(command);
-  const proposalId = proposalFromCommand(command);
-  if (!runId || !proposalId) {
-    return {
-      ...base,
-      status: "blocked",
-      action: "proposal-repair",
-      reason: "Proposal repair recovery requires a concrete --run and --proposal from the failed iteration command."
-    };
-  }
   try {
-    const pkg = await loadRunPackage(loaded, runId);
-    const repaired = await repairProposal(loaded, pkg, proposalId, {
-      runChecks: true,
-      accept: true,
-      notes: `supervisor recovery for ${plan.failedIssueId ?? `#${plan.failedIssueNumber ?? "unknown"}`}`
+    const applied = await strategy.apply({
+      loaded,
+      report,
+      plan,
+      options
     });
-    const accepted = repaired.acceptance?.acceptanceReport.accepted !== false
-      && repaired.verification?.passed !== false;
+    const verified = strategy.verify ? await strategy.verify({ loaded, report, plan, options }, applied) : applied;
     return {
       ...base,
-      status: accepted ? "executed" : "failed",
-      action: "proposal-repair",
-      reason: repaired.message,
-      artifactPath: repaired.acceptance?.acceptanceReport.outputPath ?? repaired.verification?.outputPath ?? repaired.retry.proposal.patchPath
+      ...verified,
+      repairStrategy: summarizeRepairStrategy(strategy),
+      behaviorDiffRequired: strategy.behaviorDiffRequired
     };
   } catch (error) {
     return {
       ...base,
       status: "failed",
-      action: "proposal-repair",
-      reason: "Proposal repair recovery failed.",
+      action: strategy.action,
+      repairStrategy: summarizeRepairStrategy(strategy),
+      behaviorDiffRequired: strategy.behaviorDiffRequired,
+      reason: "Automatic recovery failed.",
       error: error instanceof Error ? error.message : String(error)
     };
   }
@@ -2498,82 +2669,83 @@ function recoveryDecision(
   category: SupervisorFailureCategory,
   iteration: IssueControlSuperviseIteration | undefined
 ): {
+  autoFixable: boolean;
+  autoFixableReason: string;
   autoRepairEligible: boolean;
   humanActionRequired: boolean;
+  repairStrategy: RepairStrategySummary;
+  behaviorDiffRequired: boolean;
   recommendedNextCommand: string;
   recommendedActions: string[];
 } {
+  const strategy = selectRepairStrategy({ category });
+  const repairStrategy = summarizeRepairStrategy(strategy);
+  const strategyFields = {
+    autoFixable: repairStrategy.autoFixable,
+    autoFixableReason: repairStrategy.reason,
+    autoRepairEligible: repairStrategy.autoFixable,
+    humanActionRequired: !repairStrategy.autoFixable,
+    repairStrategy,
+    behaviorDiffRequired: repairStrategy.behaviorDiffRequired
+  };
   switch (category) {
     case "missing-baseline":
       return {
-        autoRepairEligible: false,
-        humanActionRequired: true,
-        recommendedNextCommand: "node dist/cli.js baseline --config configs/md2-fast.migration-guard.json",
-        recommendedActions: ["Capture a fresh baseline, review it, then rerun issue-control supervise with --verify-each."]
+        ...strategyFields,
+        recommendedNextCommand: repairStrategy.recommendedNextCommand,
+        recommendedActions: ["Capture a fresh baseline with the active config, review it, then rerun issue-control supervise with --verify-each."]
       };
     case "install-required":
       return {
-        autoRepairEligible: false,
-        humanActionRequired: true,
-        recommendedNextCommand: "pnpm --dir <targetRoot> install",
-        recommendedActions: ["Install dependencies explicitly, then rerun the blocked command."]
+        ...strategyFields,
+        recommendedNextCommand: repairStrategy.recommendedNextCommand,
+        recommendedActions: ["Install dependencies using the detected package manager, then rerun the blocked command."]
       };
     case "check-regression":
     case "probe-diff":
     case "compare-diff":
       return {
-        autoRepairEligible: false,
-        humanActionRequired: true,
+        ...strategyFields,
         recommendedNextCommand: `node dist/cli.js diff list --compare ${iteration?.verification?.compareReportPath ?? "<compare.json>"}`,
         recommendedActions: ["Review the compare report, classify intentional differences, or create a repair issue before continuing."]
       };
     case "proposal-repair-needed":
       return {
-        autoRepairEligible: true,
-        humanActionRequired: false,
-        recommendedNextCommand: "node dist/cli.js proposal repair --config configs/md2-fast.migration-guard.json --run <run-id> --proposal <proposal-id> --checks --accept",
-        recommendedActions: ["Run the proposal repair loop, verify the retry proposal, then rerun supervisor."]
+        ...strategyFields,
+        recommendedNextCommand: repairStrategy.recommendedNextCommand,
+        recommendedActions: ["Run the proposal repair loop, verify the retry proposal with behavior-diff gates, then rerun supervisor."]
       };
     case "task-execution-failed":
       return {
-        autoRepairEligible: false,
-        humanActionRequired: true,
+        ...strategyFields,
         recommendedNextCommand: `node dist/cli.js issue-control run --input <plan.json> --only-issue ${iteration?.issueId ?? "<mg_issue_id>"} --execute`,
         recommendedActions: ["Inspect the failed task run artifact, resolve the task failure, then rerun the same issue."]
       };
     case "bootstrap-blocked":
       return {
-        autoRepairEligible: false,
-        humanActionRequired: true,
+        ...strategyFields,
         recommendedNextCommand: "node dist/cli.js issue-control bootstrap --config configs/md2-fast.migration-guard.json --verify",
         recommendedActions: ["Inspect bootstrap readiness, resolve target/import blockers, then rerun supervisor."]
       };
     case "github-read-blocked":
       return {
-        autoRepairEligible: false,
-        humanActionRequired: true,
+        ...strategyFields,
         recommendedNextCommand: "node dist/cli.js issue-control pull --config configs/md2-fast.migration-guard.json --labels team:migration",
         recommendedActions: ["Check GitHub token, repo access, labels and rate limit before retrying."]
       };
     case "human-approval-required":
       return {
-        autoRepairEligible: false,
-        humanActionRequired: true,
+        ...strategyFields,
         recommendedNextCommand: "Review the recovery plan evidence and approve the next bounded action.",
         recommendedActions: ["Review the evidence and choose the next approved command."]
       };
     default:
       return {
-        autoRepairEligible: false,
-        humanActionRequired: true,
+        ...strategyFields,
         recommendedNextCommand: "Inspect the supervisor and child run artifacts.",
         recommendedActions: ["Inspect artifacts, classify the failure manually, then rerun supervisor with a narrower issue selection."]
       };
   }
-}
-
-function recoveryExecutionAction(category: SupervisorFailureCategory): IssueControlRecoveryExecution["action"] {
-  return category === "proposal-repair-needed" ? "proposal-repair" : "none";
 }
 
 function runIdFromCommand(command?: string): string | undefined {
@@ -2643,6 +2815,9 @@ function createIssueControlSuperviseProgressLedger(report: IssueControlSupervise
     repo: report.repo,
     mode: report.mode,
     status: report.status,
+    trustTier: report.trustTier,
+    riskBudget: report.riskBudget,
+    safetyEnvelope: report.safetyEnvelope ?? createIssueControlSafetyEnvelopeFromReport(report),
     controlOptions: report.controlOptions,
     summary: {
       issueCount: report.summary.issueCount,
@@ -2778,8 +2953,18 @@ function createIssueControlAdvanceLoopStateNextAction(
 function createIssueControlAdvanceLoopSchedulerDecision(
   state: IssueControlAdvanceLoopState
 ): IssueControlAdvanceLoopSchedulerDecision {
+  const trustTier = state.trustTier ?? "supervised";
+  const safetyEnvelope = state.safetyEnvelope;
+  const unattendedAllowed = trustTier === "unattended"
+    ? safetyEnvelope?.passed === true
+    : true;
+  const decisionBase = {
+    trustTier,
+    safetyEnvelope
+  };
   if (state.repeatGuardActive) {
     return {
+      ...decisionBase,
       action: "stop-for-recovery",
       canRunUnattended: false,
       requiresHuman: true,
@@ -2789,6 +2974,7 @@ function createIssueControlAdvanceLoopSchedulerDecision(
   }
   if (state.status === "failed" || state.status === "blocked") {
     return {
+      ...decisionBase,
       action: "stop-for-recovery",
       canRunUnattended: false,
       requiresHuman: true,
@@ -2798,6 +2984,7 @@ function createIssueControlAdvanceLoopSchedulerDecision(
   }
   if (state.status === "planned") {
     return {
+      ...decisionBase,
       action: "review-plan",
       canRunUnattended: false,
       requiresHuman: true,
@@ -2808,15 +2995,19 @@ function createIssueControlAdvanceLoopSchedulerDecision(
   }
   if (state.status === "complete" && isAdvanceLoopMaxStepPause(state.stopReason)) {
     return {
+      ...decisionBase,
       action: "run-advance-loop",
-      canRunUnattended: true,
-      requiresHuman: false,
+      canRunUnattended: unattendedAllowed,
+      requiresHuman: !unattendedAllowed,
       exitCode: 0,
-      reason: "Advance loop reached its max-step guard without a terminal sync or complete decision.",
+      reason: unattendedAllowed
+        ? "Advance loop reached its max-step guard and the trust safety envelope allows unattended continuation."
+        : `Advance loop reached max-step guard, but unattended safety envelope is not green: ${failedSafetyChecks(safetyEnvelope ?? { passed: false, trustTier, checks: [] }).join(", ") || "missing-envelope"}.`,
       nextCommand: createIssueControlAdvanceCommand(state)
     };
   }
   return {
+    ...decisionBase,
     action: "sync-issues",
     canRunUnattended: false,
     requiresHuman: false,
@@ -2977,71 +3168,87 @@ function createIssueControlProgressAutomationDecision(
   unresolvedItems: IssueControlProgressStatusItem[],
   unreachedSelectedItems: IssueControlProgressStatusItem[]
 ): IssueControlProgressAutomationDecision {
+  const trustTier = ledger.trustTier ?? ledger.controlOptions?.trustTier ?? "supervised";
+  const safetyEnvelope = ledger.safetyEnvelope ?? createIssueControlSafetyEnvelopeFromLedger(ledger);
+  const canUseUnattendedEnvelope = trustTier !== "unattended" || safetyEnvelope.passed;
+  const withSafety = (decision: Omit<IssueControlProgressAutomationDecision, "safetyEnvelope" | "trustTier">): IssueControlProgressAutomationDecision => ({
+    ...decision,
+    trustTier,
+    safetyEnvelope
+  });
   if (unresolvedItems.length > 0) {
     const first = unresolvedItems[0];
-    return {
+    return withSafety({
       disposition: "blocked",
       canAutoContinue: false,
       requiresHuman: true,
       reason: `Unresolved issue ${first.issueId ?? `#${first.issueNumber}`} is ${first.state}.`
-    };
+    });
   }
   if (ledger.status === "failed" || ledger.status === "blocked") {
-    return {
+    return withSafety({
       disposition: "blocked",
       canAutoContinue: false,
       requiresHuman: true,
       reason: ledger.stopReason ?? `Supervisor progress is ${ledger.status}.`
-    };
+    });
   }
   if (ledger.summary.selectedCount === 0) {
-    return {
+    return withSafety({
       disposition: "review",
       canAutoContinue: false,
       requiresHuman: true,
       reason: "No selected issue-control item is available for automatic continuation."
-    };
+    });
+  }
+  if (!canUseUnattendedEnvelope) {
+    return withSafety({
+      disposition: "review",
+      canAutoContinue: false,
+      requiresHuman: true,
+      reason: `Unattended safety envelope is not green: ${failedSafetyChecks(safetyEnvelope).join(", ")}.`
+    });
   }
   if (ledger.mode === "dry-run") {
-    return {
+    return withSafety({
       disposition: "ready-to-execute",
       canAutoContinue: Boolean(ledger.controlOptions),
       requiresHuman: false,
       reason: "Dry-run selected issues are ready for explicit execution.",
       nextCommand: createIssueControlSuperviseCommand(ledger, { execute: true })
-    };
+    });
   }
   if (unreachedSelectedItems.length > 0) {
-    return {
+    return withSafety({
       disposition: "ready-to-continue",
       canAutoContinue: Boolean(ledger.controlOptions),
       requiresHuman: false,
       reason: `${unreachedSelectedItems.length} selected issue(s) were not reached.`,
       nextCommand: createIssueControlSuperviseCommand(ledger, { execute: true })
-    };
+    });
   }
   if (ledger.status === "complete" && ledger.summary.reachedCount > 0) {
-    return {
+    return withSafety({
       disposition: "ready-to-sync",
       canAutoContinue: false,
       requiresHuman: false,
       reason: "Supervisor completed reached issues; refresh md2 issue state with a reviewed sync plan."
-    };
+    });
   }
   if (ledger.status === "complete") {
-    return {
+    return withSafety({
       disposition: "complete",
       canAutoContinue: false,
       requiresHuman: false,
       reason: "Supervisor progress is complete."
-    };
+    });
   }
-  return {
+  return withSafety({
     disposition: "review",
     canAutoContinue: false,
     requiresHuman: true,
     reason: "Progress state requires review before another automated step."
-  };
+  });
 }
 
 function createIssueControlSuperviseCommand(
@@ -3275,14 +3482,146 @@ function createSuperviseRecommendedNextActions(report: IssueControlSuperviseRepo
     .map((iteration) => `Refresh md2 issue state with sync-issues --live-plan --only-issue ${iteration.issueId}.`);
 }
 
-function isAutoSelectable(item: IssueControlPlanItem, options: { allowHighRisk: boolean }): boolean {
+function createIssueControlTrustPolicy(
+  trustTier: IssueControlTrustTier,
+  maxIterations: number,
+  allowHighRisk: boolean
+): { riskBudget: number; maxBatchSize: number; allowHighRisk: boolean } {
+  if (trustTier === "manual") {
+    return {
+      riskBudget: 1,
+      maxBatchSize: 1,
+      allowHighRisk: false
+    };
+  }
+  if (trustTier === "unattended") {
+    return {
+      riskBudget: Math.max(1, maxIterations),
+      maxBatchSize: maxIterations,
+      allowHighRisk: false
+    };
+  }
+  return {
+    riskBudget: Math.max(1, maxIterations * 3),
+    maxBatchSize: maxIterations,
+    allowHighRisk
+  };
+}
+
+function riskWeight(risk?: "low" | "medium" | "high"): number {
+  if (risk === "high") {
+    return 8;
+  }
+  if (risk === "medium") {
+    return 3;
+  }
+  return 1;
+}
+
+function isRiskAllowedByTrust(
+  item: IssueControlPlanItem,
+  options: { allowHighRisk: boolean; trustTier?: IssueControlTrustTier }
+): boolean {
+  if (options.trustTier === "unattended" && item.risk && item.risk !== "low") {
+    return false;
+  }
+  if (item.risk === "high" && !options.allowHighRisk) {
+    return false;
+  }
+  return true;
+}
+
+function createIssueControlSafetyEnvelopeFromReport(report: IssueControlSuperviseReport): IssueControlSafetyEnvelope {
+  const selected = report.selection.filter((item) => item.selected);
+  const checks: IssueControlSafetyEnvelopeCheck[] = [{
+    id: "no-high-risk",
+    passed: selected.every((item) => item.risk !== "high"),
+    reason: selected.some((item) => item.risk === "high")
+      ? "Selected set includes high-risk issues."
+      : "Selected set has no high-risk issues."
+  }, {
+    id: "unattended-low-risk-only",
+    passed: report.trustTier !== "unattended" || selected.every((item) => !item.risk || item.risk === "low"),
+    reason: report.trustTier === "unattended"
+      ? "Unattended tier requires every selected issue to be low risk."
+      : "Low-risk-only check is advisory outside unattended tier."
+  }, {
+    id: "verify-each",
+    passed: Boolean(report.controlOptions?.verifyEach),
+    reason: "Unattended mutation watchdog requires verify-each."
+  }, {
+    id: "repair-on-fail",
+    passed: Boolean(report.controlOptions?.repairOnFail),
+    reason: "Unattended mutation watchdog requires repair-on-fail."
+  }, {
+    id: "continue-after-repair",
+    passed: Boolean(report.controlOptions?.continueAfterRepair),
+    reason: "Unattended continuation requires explicit continue-after-repair."
+  }, {
+    id: "no-unresolved-failures",
+    passed: report.summary.failedCount === 0 && report.summary.blockedCount === 0 && report.humanActionRequired !== true,
+    reason: "No failed, blocked or human-action-required iterations are present."
+  }];
+  return {
+    passed: checks.every((check) => check.passed),
+    trustTier: report.trustTier,
+    checks
+  };
+}
+
+function createIssueControlSafetyEnvelopeFromLedger(ledger: IssueControlSuperviseProgressLedger): IssueControlSafetyEnvelope {
+  const trustTier = ledger.trustTier ?? ledger.controlOptions?.trustTier ?? "supervised";
+  const selected = ledger.items.filter((item) => item.selected);
+  const checks: IssueControlSafetyEnvelopeCheck[] = [{
+    id: "no-high-risk",
+    passed: selected.every((item) => item.risk !== "high"),
+    reason: selected.some((item) => item.risk === "high")
+      ? "Selected set includes high-risk issues."
+      : "Selected set has no high-risk issues."
+  }, {
+    id: "unattended-low-risk-only",
+    passed: trustTier !== "unattended" || selected.every((item) => !item.risk || item.risk === "low"),
+    reason: trustTier === "unattended"
+      ? "Unattended tier requires every selected issue to be low risk."
+      : "Low-risk-only check is advisory outside unattended tier."
+  }, {
+    id: "verify-each",
+    passed: Boolean(ledger.controlOptions?.verifyEach),
+    reason: "Unattended mutation watchdog requires verify-each."
+  }, {
+    id: "repair-on-fail",
+    passed: Boolean(ledger.controlOptions?.repairOnFail),
+    reason: "Unattended mutation watchdog requires repair-on-fail."
+  }, {
+    id: "continue-after-repair",
+    passed: Boolean(ledger.controlOptions?.continueAfterRepair),
+    reason: "Unattended continuation requires explicit continue-after-repair."
+  }, {
+    id: "no-unresolved-failures",
+    passed: ledger.summary.unresolvedCount === 0,
+    reason: "Progress ledger has no unresolved failed or blocked items."
+  }];
+  return {
+    passed: checks.every((check) => check.passed),
+    trustTier,
+    checks
+  };
+}
+
+function failedSafetyChecks(envelope: IssueControlSafetyEnvelope): string[] {
+  return envelope.checks
+    .filter((check) => !check.passed)
+    .map((check) => check.id);
+}
+
+function isAutoSelectable(item: IssueControlPlanItem, options: { allowHighRisk: boolean; trustTier?: IssueControlTrustTier }): boolean {
   if (!item.executable) {
     return false;
   }
   if (!item.issueId) {
     return false;
   }
-  if (item.risk === "high" && !options.allowHighRisk) {
+  if (!isRiskAllowedByTrust(item, options)) {
     return false;
   }
   if (!["bootstrap-target", "repair-proposal", "execute-task"].includes(item.action)) {
@@ -3297,14 +3636,17 @@ function isAutoSelectable(item: IssueControlPlanItem, options: { allowHighRisk: 
   return true;
 }
 
-function autoSelectionReason(item: IssueControlPlanItem, options: { allowHighRisk: boolean }): string {
+function autoSelectionReason(item: IssueControlPlanItem, options: { allowHighRisk: boolean; trustTier?: IssueControlTrustTier }): string {
   if (!item.executable) {
     return "Not executable by issue-control plan.";
   }
   if (!item.issueId) {
     return "Missing mg_issue_id.";
   }
-  if (item.risk === "high" && !options.allowHighRisk) {
+  if (!isRiskAllowedByTrust(item, options)) {
+    if (options.trustTier === "unattended") {
+      return "Unattended trust tier only selects low-risk issues.";
+    }
     return "High risk item skipped; rerun with --allow-high-risk to select it.";
   }
   if (!["bootstrap-target", "repair-proposal", "execute-task"].includes(item.action)) {
