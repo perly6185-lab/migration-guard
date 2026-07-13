@@ -55,7 +55,9 @@ export function createDefaultConfig(targetRoot = "."): MigrationGuardConfig {
     },
     compare: {
       failOnCheckRegression: true,
-      failOnProbeDiff: true
+      failOnProbeDiff: true,
+      allowInheritedFailures: true,
+      failOnChangedFailure: true
     },
     proposalGate: {
       defaultPolicy: "collect-all",

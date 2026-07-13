@@ -47,6 +47,26 @@ function applyPreset(input: string, preset: NonNullable<CheckNormalizeConfig["pr
         .replace(/dist\/assets\/[\w./-]+-[A-Za-z0-9_-]+\.(js|css|svg|png|jpg|webp)/g, "dist/assets/<asset>.$1")
         .replace(/\s+\d+(?:\.\d+)?\s+kB(?:\s+[│|]\s+gzip:\s+\d+(?:\.\d+)?\s+kB)?/g, " <size>")
         .replace(/^\[PLUGIN_TIMINGS\].*(?:\n|$)/gm, "");
+    case "webpack":
+      return input
+        .replace(/\b\d+(?:\.\d+)?\s*(?:KiB|MiB|bytes)\b/g, "<size>")
+        .replace(/webpack\s+[\d.]+\s+compiled\s+(successfully|with \d+ warnings?)\s+in\s+\d+\s*ms/g, "webpack <version> compiled $1 in <duration>")
+        .replace(/\b[0-9a-f]{8,}\b/gi, "<hash>");
+    case "jest":
+      return input
+        .replace(/^Time:\s+.*$/gm, "Time: <duration>")
+        .replace(/^Ran all test suites.*$/gm, "Ran all test suites <normalized>")
+        .replace(/\(\d+(?:\.\d+)?\s*s\)/g, "(<duration>)")
+        .replace(/estimated\s+\d+\s*s/gi, "estimated <duration>");
+    case "pnpm":
+      return input
+        .replace(/^Scope:\s+.*$/gm, "Scope: <workspace>")
+        .replace(/^[A-Z]:\\[^\n]+(?:packages|apps)\\([^\s:]+):/gm, "<workspace>/$1:")
+        .replace(/^\s*\.\.?\\[^\n]+(?:packages|apps)\\([^\s:]+):/gm, "<workspace>/$1:");
+    case "go":
+      return input
+        .replace(/\t\(cached\)$/gm, "\t<duration>")
+        .replace(/\t\d+(?:\.\d+)?s$/gm, "\t<duration>");
     case "paths":
       return input
         .replace(/[A-Z]:\\[^\s)"']+/g, "<path>")

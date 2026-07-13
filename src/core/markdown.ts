@@ -22,6 +22,7 @@ export function renderScanSummary(scan: ScanSummary): string {
     `| Total lines | ${scan.totalLines} |`,
     `| Package manager | ${scan.packageManager} |`,
     `| Stack hints | ${scan.stackHints.join(", ") || "none"} |`,
+    `| Packages | ${scan.packages?.length ?? 0} |`,
     "",
     "## Highest Risk Files",
     "",
@@ -54,6 +55,9 @@ export function renderCompareReport(report: CompareReport, decisions: DiffDecisi
     `Current: ${report.currentId}`,
     `Created at: ${report.createdAt}`,
     `Passed: ${report.passed ? "yes" : "no"}`,
+    ...(report.checkHealth ? [
+      `Check health: ${report.checkHealth.healthy} healthy, ${report.checkHealth.inheritedFailure} inherited failure, ${report.checkHealth.regression} regression, ${report.checkHealth.changedFailure} changed failure, ${report.checkHealth.recovered} recovered, ${report.checkHealth.missing} missing`
+    ] : []),
     "",
     rows
       ? decisions.length > 0

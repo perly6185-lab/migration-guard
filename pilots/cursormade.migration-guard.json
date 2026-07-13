@@ -1,0 +1,85 @@
+{
+  "artifactsDir": "../.migration-guard/pilots/cursormade",
+  "checks": [
+    {
+      "timeoutMs": 120000,
+      "critical": true,
+      "name": "typecheck",
+      "command": "npm run typecheck",
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "presets": [
+          "paths",
+          "timing"
+        ]
+      }
+    },
+    {
+      "timeoutMs": 180000,
+      "critical": true,
+      "name": "test",
+      "command": "npm test -- --runInBand",
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "presets": [
+          "paths",
+          "timing",
+          "jest"
+        ]
+      }
+    },
+    {
+      "timeoutMs": 180000,
+      "critical": true,
+      "name": "build",
+      "command": "npm run build",
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "presets": [
+          "paths",
+          "timing",
+          "webpack"
+        ]
+      }
+    }
+  ],
+  "schemaVersion": 1,
+  "targetRoot": "${MG_PILOT_CURSORMADE_ROOT}",
+  "ignore": [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".migration-guard"
+  ],
+  "compare": {
+    "failOnProbeDiff": true,
+    "failOnCheckRegression": true
+  },
+  "probes": [
+    {
+      "timeoutMs": 30000,
+      "normalize": {
+        "json": {
+          "sortKeys": true
+        },
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "stripAnsi": true
+      },
+      "type": "command",
+      "name": "extension-manifest",
+      "command": "node -e \"const p=require('./package.json'); console.log(JSON.stringify({name:p.name,version:p.version,main:p.main,activationEvents:p.activationEvents}))\""
+    }
+  ],
+  "output": {
+    "maxOutputBytes": 262144
+  }
+}

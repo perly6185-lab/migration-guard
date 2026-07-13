@@ -1,0 +1,191 @@
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+const root = process.cwd();
+const outputDir = process.env.MG_UI_SMOKE_OUTPUT_DIR
+  ? path.resolve(root, process.env.MG_UI_SMOKE_OUTPUT_DIR)
+  : path.join(os.tmpdir(), "migration-guard-ui-smoke");
+
+await mkdir(outputDir, { recursive: true });
+
+const server = spawn(process.execPath, ["dist/cli.js", "serve", "--port", "0"], {
+  cwd: root,
+  stdio: ["ignore", "pipe", "pipe"]
+});
+
+try {
+  const url = await waitForServerUrl(server);
+  const html = await (await fetch(url)).text();
+  assertIncludes(html, "Migration Guard", "root HTML title");
+  assertIncludes(html, "Run selector", "run selector");
+  assertIncludes(html, "Guarded Actions", "guarded actions");
+  assertIncludes(html, "Run Detail", "run detail");
+  assertIncludes(html, "Recent Jobs", "recent jobs");
+  assertIncludes(html, "Job status filter", "job status filter");
+  assertIncludes(html, "Job run filter", "job run filter");
+  assertIncludes(html, "Job Detail", "job detail");
+  assertIncludes(html, "Job timeline", "job timeline");
+  assertIncludes(html, "data-job-retry", "job retry action");
+  assertIncludes(html, "data-job-cancel", "job cancel action");
+  assertIncludes(html, "jobGcPlan", "job GC controls");
+  assertIncludes(html, "data-diff-decision", "diff decision workflow");
+  assertIncludes(html, "data-diff-batch-decision", "diff batch decision workflow");
+  assertIncludes(html, "aria-label=\"Run selector\"", "run selector aria label");
+  assertIncludes(html, "aria-label=\"Job status filter\"", "job status aria label");
+  assertIncludes(html, "aria-label=\"Job timeline\"", "job timeline aria label");
+
+  const session = await getJson(`${url}/api/session`);
+  if (typeof session.csrfToken !== "string" || session.csrfToken.length < 16) {
+    throw new Error("/api/session did not return a CSRF token.");
+  }
+
+  const runs = await getJson(`${url}/api/runs`);
+  if (!Number.isInteger(runs.runCount)) {
+    throw new Error("/api/runs did not return runCount.");
+  }
+
+  const capabilities = await getJson(`${url}/api/actions/capabilities`);
+  if (!Array.isArray(capabilities.actions) || capabilities.actions.length < 3) {
+    throw new Error("/api/actions/capabilities did not return action capabilities.");
+  }
+
+  const jobs = await getJson(`${url}/api/jobs`);
+  if (!Array.isArray(jobs.jobs)) {
+    throw new Error("/api/jobs did not return jobs.");
+  }
+  const activeJobs = await getJson(`${url}/api/jobs?status=active&limit=5`);
+  if (activeJobs.filters?.status !== "active" || activeJobs.filters?.limit !== 5) {
+    throw new Error("/api/jobs did not apply status/limit filters.");
+  }
+  const gcPlan = await postJson(`${url}/api/jobs/gc`, session.csrfToken, {
+    keepLatest: 50,
+    status: "terminal"
+  });
+  if (!Array.isArray(gcPlan.candidates) || gcPlan.apply !== false) {
+    throw new Error("/api/jobs/gc did not return a dry-run plan.");
+  }
+
+  const outsideArtifact = await fetch(`${url}/api/artifact?path=${encodeURIComponent(path.join(root, "package.json"))}`);
+  if (outsideArtifact.status !== 403) {
+    throw new Error(`/api/artifact allowed an out-of-artifacts path: ${outsideArtifact.status}`);
+  }
+
+  const chrome = findChrome();
+  if (chrome) {
+    await screenshot(chrome, url, "1365,900", path.join(outputDir, "ui-desktop.png"));
+    await assertScreenshot(path.join(outputDir, "ui-desktop.png"));
+    await screenshot(chrome, url, "390,844", path.join(outputDir, "ui-mobile.png"));
+    await assertScreenshot(path.join(outputDir, "ui-mobile.png"));
+    console.log(`Screenshots: ${outputDir}`);
+  } else {
+    console.log("Chrome not found; skipped screenshot capture.");
+  }
+  console.log("UI smoke passed.");
+} finally {
+  server.kill();
+}
+
+async function assertScreenshot(outputPath) {
+  const stats = await import("node:fs/promises").then((fs) => fs.stat(outputPath));
+  if (!stats.isFile() || stats.size < 1000) {
+    throw new Error(`Screenshot was not captured correctly: ${outputPath}`);
+  }
+}
+
+async function getJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`${url} failed: ${response.status} ${await response.text()}`);
+  }
+  return await response.json();
+}
+
+async function postJson(url, csrfToken, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-migration-guard-csrf": csrfToken
+    },
+    body: JSON.stringify(body || {})
+  });
+  if (!response.ok) {
+    throw new Error(`${url} failed: ${response.status} ${await response.text()}`);
+  }
+  return await response.json();
+}
+
+function assertIncludes(value, expected, label) {
+  if (!value.includes(expected)) {
+    throw new Error(`Missing ${label}: ${expected}`);
+  }
+}
+
+async function waitForServerUrl(child) {
+  let buffer = "";
+  return await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Timed out waiting for UI server URL."));
+    }, 15000);
+    child.stdout.on("data", (chunk) => {
+      buffer += chunk.toString();
+      const match = buffer.match(/Migration Guard UI:\s+(http:\/\/[^\s]+)/);
+      if (match) {
+        clearTimeout(timeout);
+        resolve(match[1]);
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      buffer += chunk.toString();
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timeout);
+      reject(new Error(`UI server exited before ready with code ${code}. Output:\n${buffer}`));
+    });
+  });
+}
+
+function findChrome() {
+  const candidates = [
+    process.env.CHROME_PATH,
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser"
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate));
+}
+
+async function screenshot(chrome, url, windowSize, outputPath) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(chrome, [
+      "--headless=new",
+      "--disable-gpu",
+      "--virtual-time-budget=5000",
+      `--window-size=${windowSize}`,
+      `--screenshot=${outputPath}`,
+      url
+    ], {
+      stdio: ["ignore", "ignore", "pipe"]
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Chrome screenshot failed with code ${code}: ${stderr}`));
+      }
+    });
+  });
+}

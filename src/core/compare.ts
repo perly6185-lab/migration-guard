@@ -1,4 +1,4 @@
-import type { CheckResult, ComparePolicy, CompareReport, Difference, ProbeResult, Snapshot } from "../types.js";
+import type { CheckHealthResult, CheckHealthSummary, CheckResult, ComparePolicy, CompareReport, Difference, ProbeResult, Snapshot } from "../types.js";
 
 export function compareSnapshots(
   baseline: Snapshot,
@@ -9,17 +9,20 @@ export function compareSnapshots(
   }
 ): CompareReport {
   const differences: Difference[] = [];
+  const checkHealth = classifyCheckHealth(baseline.checks, current.checks);
 
   differences.push(...compareChecks(baseline.checks, current.checks, policy));
   differences.push(...compareProbes(baseline.probes, current.probes, policy));
   differences.push(...compareScan(baseline, current));
 
   return {
-    passed: !differences.some((difference) => difference.severity === "error"),
+    passed: !differences.some((difference) => difference.severity === "error")
+      && (policy.allowInheritedFailures !== false || checkHealth.inheritedFailure === 0),
     baselineId: baseline.id,
     currentId: current.id,
     createdAt: new Date().toISOString(),
-    differences
+    differences,
+    checkHealth
   };
 }
 
@@ -39,7 +42,8 @@ function compareChecks(baseline: CheckResult[], current: CheckResult[], policy: 
       continue;
     }
 
-    if (before.status === "passed" && after.status !== "passed") {
+    const health = classifyCheck(before, after);
+    if (health.classification === "regression") {
       differences.push({
         severity: before.critical && policy.failOnCheckRegression ? "error" : "warn",
         area: "check",
@@ -48,7 +52,7 @@ function compareChecks(baseline: CheckResult[], current: CheckResult[], policy: 
         before: before.exitCode,
         after: after.exitCode
       });
-    } else if (before.status !== after.status) {
+    } else if (health.classification === "recovered") {
       differences.push({
         severity: "info",
         area: "check",
@@ -56,6 +60,15 @@ function compareChecks(baseline: CheckResult[], current: CheckResult[], policy: 
         message: `Check status changed from ${before.status} to ${after.status}.`,
         before: before.exitCode,
         after: after.exitCode
+      });
+    } else if (health.classification === "changed-failure") {
+      differences.push({
+        severity: before.critical && policy.failOnChangedFailure !== false ? "error" : "warn",
+        area: "check",
+        name: before.name,
+        message: "Check remains failing, but its failure output changed.",
+        before: failureFingerprint(before),
+        after: failureFingerprint(after)
       });
     }
 
@@ -88,6 +101,47 @@ function compareChecks(baseline: CheckResult[], current: CheckResult[], policy: 
   }
 
   return differences;
+}
+
+function classifyCheckHealth(baseline: CheckResult[], current: CheckResult[]): CheckHealthSummary {
+  const currentByName = indexByName(current);
+  const results = baseline.map((before) => classifyCheck(before, currentByName.get(before.name)));
+  return {
+    total: results.length,
+    healthy: countHealth(results, "healthy"),
+    inheritedFailure: countHealth(results, "inherited-failure"),
+    regression: countHealth(results, "regression"),
+    changedFailure: countHealth(results, "changed-failure"),
+    recovered: countHealth(results, "recovered"),
+    missing: countHealth(results, "missing"),
+    results
+  };
+}
+
+function classifyCheck(before: CheckResult, after: CheckResult | undefined): CheckHealthResult {
+  const base = {
+    name: before.name,
+    critical: before.critical,
+    baselineStatus: before.status,
+    currentStatus: after?.status,
+    baselineExitCode: before.exitCode,
+    currentExitCode: after?.exitCode,
+    outputChanged: after ? failureFingerprint(before) !== failureFingerprint(after) : false
+  };
+  if (!after) return { ...base, classification: "missing" };
+  if (before.status === "passed" && after.status === "passed") return { ...base, classification: "healthy" };
+  if (before.status === "passed") return { ...base, classification: "regression" };
+  if (after.status === "passed") return { ...base, classification: "recovered" };
+  if (before.status === after.status && !base.outputChanged) return { ...base, classification: "inherited-failure" };
+  return { ...base, classification: "changed-failure" };
+}
+
+function failureFingerprint(check: CheckResult): string {
+  return [check.status, check.exitCode, check.normalizedStdoutHash ?? check.stdoutHash, check.normalizedStderrHash ?? check.stderrHash, check.error ?? ""].join(":");
+}
+
+function countHealth(results: CheckHealthResult[], classification: CheckHealthResult["classification"]): number {
+  return results.filter((result) => result.classification === classification).length;
 }
 
 function compareProbes(baseline: ProbeResult[], current: ProbeResult[], policy: ComparePolicy): Difference[] {

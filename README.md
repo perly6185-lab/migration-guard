@@ -43,6 +43,15 @@ node dist/cli.js proposal repair --run <run-id> --proposal <failed-proposal-id> 
 node dist/cli.js proposal accept --run <run-id> --proposal <retry-proposal-id> --notes "verified repair"
 ```
 
+Phase 146-150 health semantics, normalization, workspace scanning, persistence hardening and RC results are documented in
+[docs/PHASE_150_REPORT.md](docs/PHASE_150_REPORT.md). Release gates are tracked in
+[docs/RELEASE_CHECKLIST_0.2.0_RC.md](docs/RELEASE_CHECKLIST_0.2.0_RC.md).
+
+Phase 141-145 stabilization and real-project pilot results are documented in
+[docs/PHASE_145_REPORT.md](docs/PHASE_145_REPORT.md). Re-run the local pilots with
+`npm run pilot:smoke`; the checked-in pilot configs write evidence only under this
+repository's `.migration-guard/pilots` directory.
+
 Current release readiness is tracked in
 [docs/RELEASE_CHECKLIST_70_74.md](docs/RELEASE_CHECKLIST_70_74.md).
 For real `md -> md2` operations, use
@@ -302,8 +311,35 @@ real live sync requires `--live-plan-confirm <plan-hash>` so mutations are bound
 to a reviewed plan.
 `runs list` writes a run-index backed JSON/Markdown inventory across migration
 runs, including readiness, failed and blocked counts. `serve` starts a local
-read-only board over the same artifacts and exposes guarded buttons only for
-readiness, verification snapshot capture and issue-control dry-run.
+operator board over the same artifacts with run selection, blocker evidence,
+run-scoped diffs and guarded actions for readiness, verification snapshot
+capture and issue-control dry-run. Browser action buttons create asynchronous
+UI jobs under `artifactsDir/ui-jobs`, return a `jobId`, and poll `/api/jobs`
+until the job succeeds or fails; each job ledger records the action, parameters,
+status, timestamps, timeline events, result and artifact paths. The Recent Jobs
+panel supports status/current-run filtering and auto-refreshes while jobs are
+queued or running; failed jobs can be retried from their original action
+parameters and record `retryOf` for auditability. Job detail views show retry
+chains, child retries, timeline events, structured result/params and classified
+artifact links. Queued jobs can be cancelled before execution, and terminal job
+ledgers can be pruned with a dry-run-first GC control. UI write requests include
+a per-server CSRF token and accept JSON request bodies while query-string
+compatibility remains available. On server startup, orphan queued/running jobs
+from a previous process are recovered to terminal states, and active duplicate
+jobs with the same action parameters are rejected. Diff reports also support
+batch classification by severity from the board. The action panel asks
+`/api/actions/capabilities` before enabling buttons, so missing configuration
+such as `issueSync.githubRepo` is shown before an operator clicks. Run
+`npm run ui:smoke` to verify the board HTML/API and capture optional Chrome
+screenshots to a temp directory. Action POST endpoints enforce the same
+capabilities server-side and return `409` with the unavailable reason when a
+request is stale or bypasses the browser controls. The legacy synchronous
+`/api/actions/*` endpoints remain available for compatibility, while
+`/api/jobs/actions/*` is the preferred UI workflow. Evidence paths in the board
+open through `/api/artifact`, which only serves files under the configured
+`artifactsDir`. Diff report rows can be classified from the board as
+intentional, accidental or unknown; the UI writes the same diff decision ledger
+as `migration-guard diff decide`.
 `issue-control dashboard` writes a single JSON/Markdown control view over the
 latest run, run-index, ready tasks, stuck proposals, readiness, progress ledger
 and target git status. `issue-control blockers` extracts the global blocker

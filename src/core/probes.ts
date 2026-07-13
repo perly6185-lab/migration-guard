@@ -74,6 +74,7 @@ async function runCheck(loaded: LoadedConfig, check: CheckConfig): Promise<Check
     normalizedStderrHash: sha256(normalizedStderr),
     normalizedStdout,
     normalizedStderr,
+    normalizationApplied: check.normalize?.presets ?? [],
     stdout: result.stdout,
     stderr: result.stderr,
     stdoutTruncated: result.stdoutTruncated,

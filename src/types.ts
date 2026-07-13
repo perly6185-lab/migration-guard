@@ -39,6 +39,8 @@ export interface OutputConfig {
 export interface ComparePolicy {
   failOnCheckRegression: boolean;
   failOnProbeDiff: boolean;
+  allowInheritedFailures?: boolean;
+  failOnChangedFailure?: boolean;
 }
 
 export interface ProposalGateConfig {
@@ -61,7 +63,7 @@ export interface CheckNormalizeConfig {
   stripAnsi?: boolean;
   trimWhitespace?: boolean;
   lineEndings?: "lf";
-  presets?: Array<"vitest" | "vite" | "paths" | "timing">;
+  presets?: Array<"vitest" | "vite" | "webpack" | "jest" | "pnpm" | "go" | "paths" | "timing">;
   replace?: Array<{
     pattern: string;
     replacement: string;
@@ -149,6 +151,7 @@ export interface CheckResult {
   normalizedStderrHash?: string;
   normalizedStdout?: string;
   normalizedStderr?: string;
+  normalizationApplied?: string[];
   stdout: string;
   stderr: string;
   stdoutTruncated: boolean;
@@ -203,6 +206,16 @@ export interface ScanSummary {
   stackHints: string[];
   riskFiles: RiskFile[];
   dependencyEdges: DependencyEdge[];
+  packages?: PackageScanSummary[];
+}
+
+export interface PackageScanSummary {
+  name: string;
+  path: string;
+  sourceFiles: number;
+  testFiles: number;
+  scripts: string[];
+  workspaceDependencies: string[];
 }
 
 export interface RiskFile {
@@ -288,6 +301,7 @@ export interface CompareReport {
   currentId: string;
   createdAt: string;
   differences: Difference[];
+  checkHealth?: CheckHealthSummary;
 }
 
 export interface ProposalBehaviorDriftReference {
@@ -480,6 +494,30 @@ export interface MigrationCheckpoint {
   untrackedFiles?: string[];
   sideEffects?: MigrationCheckpointSideEffects;
   note?: string;
+}
+
+export type CheckHealthClassification = "healthy" | "inherited-failure" | "regression" | "changed-failure" | "recovered" | "missing";
+
+export interface CheckHealthResult {
+  name: string;
+  critical: boolean;
+  classification: CheckHealthClassification;
+  baselineStatus: CheckResult["status"];
+  currentStatus?: CheckResult["status"];
+  baselineExitCode: number | null;
+  currentExitCode?: number | null;
+  outputChanged: boolean;
+}
+
+export interface CheckHealthSummary {
+  total: number;
+  healthy: number;
+  inheritedFailure: number;
+  regression: number;
+  changedFailure: number;
+  recovered: number;
+  missing: number;
+  results: CheckHealthResult[];
 }
 
 export interface MigrationCheckpointSideEffects {

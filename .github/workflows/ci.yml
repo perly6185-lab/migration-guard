@@ -9,7 +9,7 @@ on:
 
 jobs:
   test:
-    name: Build and Test (${{ matrix.os }})
+    name: Node ${{ matrix.node }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -17,6 +17,9 @@ jobs:
         os:
           - ubuntu-latest
           - windows-latest
+        node:
+          - "20"
+          - "22"
 
     steps:
       - name: Checkout
@@ -25,7 +28,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ${{ matrix.node }}
           cache: npm
 
       - name: Install
@@ -33,3 +36,10 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: UI smoke
+        run: npm run ui:smoke
+
+      - name: Package smoke
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: npm run package:smoke

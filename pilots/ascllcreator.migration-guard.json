@@ -1,0 +1,88 @@
+{
+  "artifactsDir": "../.migration-guard/pilots/ascllcreator",
+  "checks": [
+    {
+      "timeoutMs": 120000,
+      "critical": true,
+      "name": "shared-typecheck",
+      "command": "pnpm --filter @ascllcreator/shared typecheck",
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "presets": [
+          "paths",
+          "timing",
+          "pnpm"
+        ]
+      }
+    },
+    {
+      "timeoutMs": 180000,
+      "critical": true,
+      "name": "shared-build",
+      "command": "pnpm --filter @ascllcreator/shared build",
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "presets": [
+          "paths",
+          "timing",
+          "pnpm"
+        ]
+      }
+    },
+    {
+      "timeoutMs": 240000,
+      "critical": true,
+      "name": "desktop-build",
+      "command": "pnpm --filter desktop build",
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "presets": [
+          "paths",
+          "timing",
+          "pnpm",
+          "vite"
+        ]
+      }
+    }
+  ],
+  "schemaVersion": 1,
+  "targetRoot": "${MG_PILOT_ASCLLCREATOR_ROOT}",
+  "ignore": [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".turbo",
+    ".migration-guard"
+  ],
+  "compare": {
+    "failOnProbeDiff": true,
+    "failOnCheckRegression": true
+  },
+  "probes": [
+    {
+      "timeoutMs": 30000,
+      "normalize": {
+        "json": {
+          "sortKeys": true
+        },
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "stripAnsi": true
+      },
+      "type": "command",
+      "name": "workspace-inventory",
+      "command": "node -e \"const p=require('./package.json'); console.log(JSON.stringify({name:p.name,workspaces:p.workspaces,packageManager:p.packageManager}))\""
+    }
+  ],
+  "output": {
+    "maxOutputBytes": 262144
+  }
+}

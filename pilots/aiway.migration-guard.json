@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "targetRoot": "${MG_PILOT_AIWAY_ROOT}",
+  "artifactsDir": "../.migration-guard/pilots/aiway",
+  "ignore": [
+    ".git",
+    "bin",
+    "dist",
+    "coverage",
+    ".migration-guard",
+    "logs",
+    "*.exe"
+  ],
+  "checks": [
+    {
+      "name": "go-vet",
+      "command": "go vet ./...",
+      "timeoutMs": 240000,
+      "critical": true,
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "presets": [
+          "go",
+          "paths",
+          "timing"
+        ]
+      }
+    },
+    {
+      "name": "server-compile",
+      "command": "go test ./cmd/server",
+      "timeoutMs": 180000,
+      "critical": true,
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "presets": [
+          "go",
+          "paths",
+          "timing"
+        ]
+      }
+    },
+    {
+      "name": "account-compile",
+      "command": "go test ./internal/account -run \"^$\"",
+      "timeoutMs": 180000,
+      "critical": true,
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf",
+        "presets": [
+          "go",
+          "paths",
+          "timing"
+        ]
+      }
+    }
+  ],
+  "probes": [
+    {
+      "type": "command",
+      "name": "go-module",
+      "command": "go list -m",
+      "timeoutMs": 30000,
+      "normalize": {
+        "stripAnsi": true,
+        "trimWhitespace": true,
+        "lineEndings": "lf"
+      }
+    }
+  ],
+  "output": {
+    "maxOutputBytes": 262144
+  },
+  "compare": {
+    "failOnCheckRegression": true,
+    "failOnProbeDiff": true,
+    "allowInheritedFailures": true,
+    "failOnChangedFailure": true
+  }
+}

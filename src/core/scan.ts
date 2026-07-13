@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { DEFAULT_IGNORE } from "./config.js";
 import { pathExists, readJsonFile, toPosixPath } from "./files.js";
-import type { DependencyEdge, LoadedConfig, RiskFile, ScanSummary } from "../types.js";
+import type { DependencyEdge, LoadedConfig, PackageScanSummary, RiskFile, ScanSummary } from "../types.js";
 
 const SOURCE_EXTENSIONS = new Set([
   ".ts",
@@ -67,6 +67,7 @@ export async function scanProject(loaded: LoadedConfig): Promise<ScanSummary> {
   }, {});
 
   const riskFiles = calculateRiskFiles(fileInfos, importerCounts);
+  const packages = await collectPackageSummaries(loaded.targetRoot, fileInfos);
 
   return {
     root: loaded.targetRoot,
@@ -79,7 +80,8 @@ export async function scanProject(loaded: LoadedConfig): Promise<ScanSummary> {
     packageManager: await detectPackageManager(loaded.targetRoot),
     stackHints: await detectStackHints(loaded.targetRoot),
     riskFiles,
-    dependencyEdges
+    dependencyEdges,
+    packages
   };
 }
 
@@ -139,7 +141,9 @@ function countLines(content: string): number {
 function isTestFile(relativePath: string): boolean {
   return /(^|\/)(__tests__|test|tests)\//.test(relativePath)
     || /\.(test|spec)\.[cm]?[jt]sx?$/.test(relativePath)
-    || /\.(test|spec)\.vue$/.test(relativePath);
+    || /\.(test|spec)\.vue$/.test(relativePath)
+    || /_test\.go$/.test(relativePath)
+    || /(^|\/)test_[^/]+\.py$/.test(relativePath);
 }
 
 async function collectDependencyEdges(root: string, files: FileInfo[]): Promise<DependencyEdge[]> {
@@ -267,8 +271,62 @@ function hasNearbyTest(relativePath: string, files: FileInfo[]): boolean {
       return false;
     }
     const testParsed = path.posix.parse(file.relativePath);
-    return testParsed.dir === dir && testParsed.name.startsWith(baseName);
+    const sameDirectory = testParsed.dir === dir && testParsed.name.startsWith(baseName);
+    const sameStem = testParsed.name.replace(/\.(test|spec)$/, "") === baseName;
+    const samePackage = packageRootForPath(file.relativePath) === packageRootForPath(relativePath);
+    return sameDirectory || (sameStem && samePackage);
   });
+}
+
+async function collectPackageSummaries(root: string, files: FileInfo[]): Promise<PackageScanSummary[]> {
+  const manifests = files.filter((file) => path.posix.basename(file.relativePath) === "package.json");
+  const packagePaths = manifests.map((manifest) => {
+    const manifestDir = toPosixPath(path.posix.dirname(manifest.relativePath));
+    return manifestDir === "." ? "." : manifestDir;
+  });
+  const packages: Array<PackageScanSummary & { dependencyNames: string[] }> = [];
+  for (const manifest of manifests) {
+    const packageJson = await readJsonFile<{
+      name?: string;
+      scripts?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    }>(manifest.absolutePath).catch(() => undefined);
+    if (!packageJson?.name) continue;
+    const packagePath = toPosixPath(path.posix.dirname(manifest.relativePath)) === "." ? "." : toPosixPath(path.posix.dirname(manifest.relativePath));
+    const packageFiles = files.filter((file) => owningPackagePath(file.relativePath, packagePaths) === packagePath);
+    packages.push({
+      name: packageJson.name,
+      path: packagePath,
+      sourceFiles: packageFiles.filter((file) => file.isSource && !file.isTest).length,
+      testFiles: packageFiles.filter((file) => file.isTest).length,
+      scripts: Object.keys(packageJson.scripts ?? {}).sort(),
+      dependencyNames: Object.keys({ ...packageJson.dependencies, ...packageJson.devDependencies, ...packageJson.peerDependencies }),
+      workspaceDependencies: []
+    });
+  }
+  const workspaceNames = new Set(packages.map((pkg) => pkg.name));
+  return packages
+    .map(({ dependencyNames, ...pkg }) => ({
+      ...pkg,
+      workspaceDependencies: dependencyNames.filter((name) => workspaceNames.has(name)).sort()
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function owningPackagePath(relativePath: string, packagePaths: string[]): string {
+  return packagePaths
+    .filter((packagePath) => packagePath === "." || relativePath.startsWith(`${packagePath}/`))
+    .sort((a, b) => b.length - a.length)[0] ?? ".";
+}
+
+function packageRootForPath(relativePath: string): string {
+  const parts = relativePath.split("/");
+  if ((parts[0] === "packages" || parts[0] === "apps") && parts[1]) {
+    return `${parts[0]}/${parts[1]}`;
+  }
+  return ".";
 }
 
 async function detectPackageManager(root: string): Promise<ScanSummary["packageManager"]> {

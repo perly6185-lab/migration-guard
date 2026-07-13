@@ -1,6 +1,6 @@
 {
   "name": "migration-guard",
-  "version": "0.1.0",
+  "version": "0.2.0-rc.1",
   "description": "A behavior-consistency guardrail CLI for refactoring and migration work.",
   "type": "module",
   "bin": {
@@ -8,8 +8,12 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/core/normalize.test.js dist/core/checkNormalize.test.js dist/core/config.test.js dist/core/compare.test.js dist/core/diffDecision.test.js dist/core/files.test.js dist/core/checkpoint.test.js dist/core/bootstrap.test.js dist/core/dashboard.test.js dist/core/uiServer.test.js dist/core/issueControl.test.js dist/core/patch.test.js dist/core/refactorReadiness.test.js dist/core/oneShot.test.js dist/core/repairLoopCli.test.js dist/core/repairStrategy.test.js dist/core/taskGraph.test.js",
-    "start": "node dist/cli.js"
+    "test": "npm run build && node --test dist/core/normalize.test.js dist/core/scan.test.js dist/core/checkNormalize.test.js dist/core/config.test.js dist/core/compare.test.js dist/core/diffDecision.test.js dist/core/files.test.js dist/core/checkpoint.test.js dist/core/bootstrap.test.js dist/core/dashboard.test.js dist/core/uiServer.test.js dist/core/uiJobStore.test.js dist/core/issueControl.test.js dist/core/patch.test.js dist/core/refactorReadiness.test.js dist/core/oneShot.test.js dist/core/repairLoopCli.test.js dist/core/repairStrategy.test.js dist/core/taskGraph.test.js",
+    "ui:smoke": "npm run build && node scripts/smoke/ui-server-smoke.mjs",
+    "start": "node dist/cli.js",
+    "prepack": "npm run build",
+    "package:smoke": "npm run build && node scripts/smoke/package-install-smoke.mjs",
+    "pilot:smoke": "npm run build && node scripts/smoke/real-project-pilot.mjs"
   },
   "keywords": [
     "migration",
@@ -25,5 +29,20 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "!dist/**/*.test.js",
+    "!dist/**/*.test.d.ts",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/perly6185-lab/migration-guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/perly6185-lab/migration-guard/issues"
+  },
+  "homepage": "https://github.com/perly6185-lab/migration-guard#readme"
 }
