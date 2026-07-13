@@ -46,6 +46,8 @@ node dist/cli.js proposal accept --run <run-id> --proposal <retry-proposal-id> -
 Phase 146-150 health semantics, normalization, workspace scanning, persistence hardening and RC results are documented in
 [docs/PHASE_150_REPORT.md](docs/PHASE_150_REPORT.md). Release gates are tracked in
 [docs/RELEASE_CHECKLIST_0.2.0_RC.md](docs/RELEASE_CHECKLIST_0.2.0_RC.md).
+The Phase 151-160 RC hardening and `0.2.0` GA roadmap is tracked in
+[docs/PHASE_151_160_PLAN.md](docs/PHASE_151_160_PLAN.md).
 
 Phase 141-145 stabilization and real-project pilot results are documented in
 [docs/PHASE_145_REPORT.md](docs/PHASE_145_REPORT.md). Re-run the local pilots with
