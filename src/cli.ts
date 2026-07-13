@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { CONFIG_FILE_NAME, initConfigFile, loadConfig } from "./core/config.js";
+import { detectConfig, diagnoseConfig, diagnoseUpgrade, explainConfig } from "./core/configDoctor.js";
 import { ensureDir, pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./core/files.js";
 import { renderAiBrief } from "./core/aiBrief.js";
 import { createCheckpoint, listCheckpoints, rollbackToCheckpoint } from "./core/checkpoint.js";
@@ -86,6 +87,7 @@ import {
 import { runPreviewProbe } from "./core/preview.js";
 import { collectArtifactGcReport, renderArtifactGcReport } from "./core/artifactGc.js";
 import { collectArtifactMigrationReport, renderArtifactMigrationReport } from "./core/artifactMigration.js";
+import { acceptHealthDebt, loadHealthDebtLedger, updateHealthDebtLedger } from "./core/healthDebt.js";
 import {
   bootstrapMd2Target,
   renderBootstrapMd2Manifest,
@@ -146,6 +148,15 @@ async function main(argv: string[]): Promise<void> {
       return;
     case "init":
       await commandInit(args);
+      return;
+    case "doctor":
+      await commandDoctor(args);
+      return;
+    case "config":
+      await commandConfig(args);
+      return;
+    case "health-debt":
+      await commandHealthDebt(args);
       return;
     case "scan":
       await commandScan(args);
@@ -284,7 +295,13 @@ async function commandInit(args: ParsedArgs): Promise<void> {
   const configPath = path.resolve(process.cwd(), CONFIG_FILE_NAME);
   const force = Boolean(args.options.force);
 
-  await initConfigFile(configPath, targetRoot, force);
+  if (args.options.detect) {
+    if (!force && await pathExists(configPath)) throw new Error(`Config already exists: ${configPath}`);
+    const detected = await detectConfig(path.resolve(process.cwd(), targetRoot));
+    await writeJsonFile(configPath, detected);
+  } else {
+    await initConfigFile(configPath, targetRoot, force);
+  }
   await ensureDir(path.resolve(process.cwd(), ".migration-guard"));
 
   console.log(`Created ${configPath}`);
@@ -333,15 +350,34 @@ async function commandVerify(args: ParsedArgs): Promise<void> {
   const baseline = await loadSnapshot(baselinePath);
   const report = compareSnapshots(baseline, snapshot, loaded.config.compare);
   const reportPath = await writeCompareArtifacts(loaded.artifactsDir, report);
+  const debt = await updateHealthDebtLedger(loaded, report);
 
   console.log("");
   console.log(renderCompareReport(report));
   console.log("");
   console.log(`Wrote ${reportPath}`);
+  console.log(`Health debt: ${debt.newCount} new, ${debt.acceptedCount} accepted, ${debt.expiredCount} expired, ${debt.recoveredCount} recovered.`);
 
-  if (!report.passed) {
+  if (!report.passed || (stringOption(args, "health-budget") === "strict" && !debt.strictPassed)) {
     process.exitCode = 1;
   }
+}
+
+async function commandHealthDebt(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "list";
+  const loaded = await loadFromArgs(args);
+  if (action === "list") {
+    console.log(JSON.stringify(await loadHealthDebtLedger(loaded), null, 2));
+    return;
+  }
+  if (action === "accept") {
+    const fingerprint = stringOption(args, "fingerprint");
+    const reason = stringOption(args, "reason");
+    if (!fingerprint || !reason) throw new Error("health-debt accept requires --fingerprint and --reason");
+    console.log(JSON.stringify(await acceptHealthDebt(loaded, fingerprint, { owner: stringOption(args, "owner"), reason, expiresAt: stringOption(args, "expires-at") }), null, 2));
+    return;
+  }
+  throw new Error(`Unknown health-debt command: ${action}`);
 }
 
 async function commandCompare(args: ParsedArgs): Promise<void> {
@@ -535,6 +571,41 @@ async function commandIssues(args: ParsedArgs): Promise<void> {
     return;
   }
   console.log(renderIssues(pkg.issues));
+}
+
+async function commandDoctor(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  if (args.options.upgrade) {
+    const upgrade = await diagnoseUpgrade(loaded);
+    console.log(JSON.stringify(upgrade, null, 2));
+    if (!upgrade.ready) process.exitCode = 1;
+    return;
+  }
+  const report = await diagnoseConfig(loaded);
+  if (args.options.json) console.log(JSON.stringify(report, null, 2));
+  else {
+    console.log(`Config doctor: ${report.valid ? "valid" : "invalid"}`);
+    console.log(`Target: ${report.targetRoot}`);
+    console.log(`Detected: ${report.detected.join(", ") || "none"}`);
+    console.log(`Recommended checks: ${report.recommendedChecks.map((check) => check.name).join(", ") || "none"}`);
+    for (const finding of report.findings) console.log(`[${finding.severity}] ${finding.code}: ${finding.message}${finding.fix ? ` Fix: ${finding.fix}` : ""}`);
+  }
+  if (!report.valid) process.exitCode = 1;
+}
+
+async function commandConfig(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "validate";
+  const loaded = await loadFromArgs(args);
+  if (action === "validate") {
+    await commandDoctor(args);
+    return;
+  }
+  if (action === "explain") {
+    const report = explainConfig(loaded);
+    console.log(args.options.json ? JSON.stringify(report, null, 2) : JSON.stringify(report, null, 2));
+    return;
+  }
+  throw new Error(`Unknown config command: ${action}`);
 }
 
 async function commandRuns(args: ParsedArgs): Promise<void> {
@@ -1806,10 +1877,14 @@ function printHelp(): void {
   console.log(`Migration Guard
 
 Usage:
-  migration-guard init [--target <path>] [--force]
+  migration-guard init [--target <path>] [--detect] [--force]
+  migration-guard doctor [--config <path>] [--profile <name>] [--upgrade] [--json]
+  migration-guard config validate|explain [--config <path>] [--profile <name>] [--json]
   migration-guard scan [--config <path>] [--profile <name>] [--json]
   migration-guard baseline [--config <path>] [--profile <name>]
-  migration-guard verify [--config <path>] [--profile <name>] [--baseline <path>]
+  migration-guard verify [--config <path>] [--profile <name>] [--baseline <path>] [--health-budget strict]
+  migration-guard health-debt list [--config <path>] [--json]
+  migration-guard health-debt accept --fingerprint <hash> --reason <text> [--owner <name>] [--expires-at <iso>]
   migration-guard compare [--config <path>] [--profile <name>] [--baseline <path>] [--current <path>]
   migration-guard diff list [--run <id|latest>] [--compare <compare.json>] [--json]
   migration-guard diff decide [--run <id|latest>] --compare <compare.json> --area check|probe|scan --name <name> --as intentional|accidental|unknown --reason <text> [--approved-by <name>] [--proposal <id>] [--json]

@@ -80,6 +80,9 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /data-job-retry/);
       assert.match(html, /data-job-cancel/);
       assert.match(html, /jobGcPlan/);
+      const securityResponse = await fetch(`${handle.url}/`);
+      assert.equal(securityResponse.headers.get("x-frame-options"), "DENY");
+      assert.match(securityResponse.headers.get("content-security-policy") ?? "", /default-src/);
 
       const missingCsrf = await fetch(`${handle.url}/api/jobs/actions/readiness`, { method: "POST" });
       assert.equal(missingCsrf.status, 403);
@@ -114,6 +117,8 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       const artifactResponse = await fetch(`${handle.url}/api/artifact?path=${encodeURIComponent(diffs[0]?.path ?? "")}`);
       assert.equal(artifactResponse.status, 200);
       assert.match(await artifactResponse.text(), /compare-run-ui/);
+      const downloadResponse = await fetch(`${handle.url}/api/artifact?download=1&path=${encodeURIComponent(diffs[0]?.path ?? "")}`);
+      assert.match(downloadResponse.headers.get("content-disposition") ?? "", /attachment/);
 
       const outsideArtifact = await fetch(`${handle.url}/api/artifact?path=${encodeURIComponent(path.join(dir, "package.json"))}`);
       assert.equal(outsideArtifact.status, 403);

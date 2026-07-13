@@ -139,7 +139,7 @@ async function handleUiRequest(
     }
     if (request.method === "GET" && url.pathname === "/api/artifact") {
       const artifact = await readArtifactText(loaded, url.searchParams.get("path"));
-      sendText(response, artifact.content, artifact.contentType);
+      sendText(response, artifact.content, artifact.contentType, url.searchParams.get("download") === "1" ? path.basename(url.searchParams.get("path") ?? "artifact.txt") : undefined);
       return;
     }
     if (request.method === "GET" && url.pathname === "/api/jobs") {

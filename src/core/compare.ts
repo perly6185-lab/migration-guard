@@ -1,4 +1,5 @@
 import type { CheckHealthResult, CheckHealthSummary, CheckResult, ComparePolicy, CompareReport, Difference, ProbeResult, Snapshot } from "../types.js";
+import { sha256 } from "./hash.js";
 
 export function compareSnapshots(
   baseline: Snapshot,
@@ -128,12 +129,13 @@ function classifyCheck(before: CheckResult, after: CheckResult | undefined): Che
     currentExitCode: after?.exitCode,
     outputChanged: after ? failureFingerprint(before) !== failureFingerprint(after) : false
   };
-  if (!after) return { ...base, classification: "missing" };
+  const fingerprint = sha256(`${before.name}:${failureFingerprint(before)}`);
+  if (!after) return { ...base, fingerprint, classification: "missing" };
   if (before.status === "passed" && after.status === "passed") return { ...base, classification: "healthy" };
   if (before.status === "passed") return { ...base, classification: "regression" };
-  if (after.status === "passed") return { ...base, classification: "recovered" };
-  if (before.status === after.status && !base.outputChanged) return { ...base, classification: "inherited-failure" };
-  return { ...base, classification: "changed-failure" };
+  if (after.status === "passed") return { ...base, fingerprint, classification: "recovered" };
+  if (before.status === after.status && !base.outputChanged) return { ...base, fingerprint, classification: "inherited-failure" };
+  return { ...base, fingerprint, classification: "changed-failure" };
 }
 
 function failureFingerprint(check: CheckResult): string {

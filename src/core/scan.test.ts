@@ -34,3 +34,19 @@ test("scanProject reports workspace packages and cross-directory tests", async (
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("scanProject reports Go module package and excludes Go tests from risk files", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-scan-go-"));
+  try {
+    await mkdir(path.join(dir, "internal", "service"), { recursive: true });
+    await writeFile(path.join(dir, "go.mod"), "module example.com/demo\n\ngo 1.22\n");
+    await writeFile(path.join(dir, "internal", "service", "service.go"), "package service\nfunc Run() {}\n");
+    await writeFile(path.join(dir, "internal", "service", "service_test.go"), "package service\nfunc TestRun() {}\n");
+    const configPath = path.join(dir, ".migration-guard.json");
+    await writeFile(configPath, JSON.stringify({ schemaVersion: 1, targetRoot: ".", artifactsDir: ".migration-guard" }));
+    const scan = await scanProject(await loadConfig(configPath));
+    assert.equal(scan.packages?.[0]?.name, "example.com/demo");
+    assert.equal(scan.packages?.[0]?.testFiles, 1);
+    assert.equal(scan.riskFiles.some((file) => file.path.endsWith("_test.go")), false);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

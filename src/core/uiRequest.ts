@@ -4,6 +4,7 @@ import { UiHttpError } from "./uiHttpError.js";
 
 export function sendJson(response: http.ServerResponse, data: unknown, status = 200): void {
   response.writeHead(status, {
+    ...securityHeaders(),
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store"
   });
@@ -13,15 +14,19 @@ export function sendJson(response: http.ServerResponse, data: unknown, status = 
 export function sendHtml(response: http.ServerResponse, html: string): void {
   response.writeHead(200, {
     "content-type": "text/html; charset=utf-8",
-    "cache-control": "no-store"
+    "cache-control": "no-store",
+    ...securityHeaders(),
+    "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:"
   });
   response.end(html);
 }
 
-export function sendText(response: http.ServerResponse, text: string, contentType: string): void {
+export function sendText(response: http.ServerResponse, text: string, contentType: string, fileName?: string): void {
   response.writeHead(200, {
     "content-type": contentType,
-    "cache-control": "no-store"
+    "cache-control": "no-store",
+    ...securityHeaders(),
+    ...(fileName ? { "content-disposition": `attachment; filename="${fileName.replace(/[^A-Za-z0-9._-]/g, "_")}"` } : {})
   });
   response.end(text);
 }
@@ -111,8 +116,16 @@ export async function readUiPostParams(
 
 async function readRequestBody(request: http.IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
+  let size = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > 1024 * 1024) throw new UiHttpError("UI request body exceeds 1 MiB limit.", 413);
+    chunks.push(buffer);
   }
   return Buffer.concat(chunks).toString("utf8");
+}
+
+function securityHeaders(): Record<string, string> {
+  return { "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cross-origin-resource-policy": "same-origin" };
 }

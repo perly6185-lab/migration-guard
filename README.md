@@ -49,6 +49,10 @@ Phase 146-150 health semantics, normalization, workspace scanning, persistence h
 The Phase 151-160 RC hardening and `0.2.0` GA roadmap is tracked in
 [docs/PHASE_151_160_PLAN.md](docs/PHASE_151_160_PLAN.md).
 
+CI uses the same test manifest as local `npm test`, publishes total and slowest-test
+timings to the GitHub Actions step summary, audits production dependencies, checks
+the npm package allowlist and runs the isolated package installation smoke.
+
 Phase 141-145 stabilization and real-project pilot results are documented in
 [docs/PHASE_145_REPORT.md](docs/PHASE_145_REPORT.md). Re-run the local pilots with
 `npm run pilot:smoke`; the checked-in pilot configs write evidence only under this
@@ -70,6 +74,26 @@ Every migration step should answer:
 - Are the differences expected or risky?
 
 ## Commands
+
+Configuration onboarding commands:
+
+```bash
+migration-guard init --target <project> --detect
+migration-guard doctor --config <path>
+migration-guard config validate --config <path>
+migration-guard config explain --config <path> --json
+```
+
+Detection is read-only: it inspects manifests and scripts, recommends checks and
+normalization presets, and never installs dependencies or edits the target project.
+
+Health debt workflow:
+
+```bash
+migration-guard verify --health-budget strict
+migration-guard health-debt list
+migration-guard health-debt accept --fingerprint <hash> --reason "known baseline failure" --owner team --expires-at 2026-09-01T00:00:00Z
+```
 
 ```bash
 npm install

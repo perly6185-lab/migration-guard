@@ -68,6 +68,7 @@ export async function scanProject(loaded: LoadedConfig): Promise<ScanSummary> {
 
   const riskFiles = calculateRiskFiles(fileInfos, importerCounts);
   const packages = await collectPackageSummaries(loaded.targetRoot, fileInfos);
+  packages.push(...await collectNonJsPackageSummaries(loaded.targetRoot, fileInfos));
 
   return {
     root: loaded.targetRoot,
@@ -319,6 +320,29 @@ function owningPackagePath(relativePath: string, packagePaths: string[]): string
   return packagePaths
     .filter((packagePath) => packagePath === "." || relativePath.startsWith(`${packagePath}/`))
     .sort((a, b) => b.length - a.length)[0] ?? ".";
+}
+
+async function collectNonJsPackageSummaries(root: string, files: FileInfo[]): Promise<PackageScanSummary[]> {
+  const packages: PackageScanSummary[] = [];
+  const goMod = path.join(root, "go.mod");
+  if (await pathExists(goMod)) {
+    const content = await fs.readFile(goMod, "utf8");
+    const name = content.match(/^module\s+(.+)$/m)?.[1]?.trim() ?? path.basename(root);
+    packages.push({ name, path: ".", sourceFiles: files.filter((file) => file.ext === ".go" && !file.isTest).length, testFiles: files.filter((file) => file.ext === ".go" && file.isTest).length, scripts: ["go vet ./...", "go test ./..."], workspaceDependencies: [] });
+  }
+  const cargoToml = path.join(root, "Cargo.toml");
+  if (await pathExists(cargoToml)) {
+    const content = await fs.readFile(cargoToml, "utf8");
+    const name = content.match(/^name\s*=\s*["']([^"']+)["']/m)?.[1] ?? path.basename(root);
+    packages.push({ name, path: ".", sourceFiles: files.filter((file) => file.ext === ".rs" && !file.isTest).length, testFiles: files.filter((file) => file.ext === ".rs" && file.isTest).length, scripts: ["cargo check --all-targets", "cargo test --all-targets"], workspaceDependencies: [] });
+  }
+  const pyproject = path.join(root, "pyproject.toml");
+  if (await pathExists(pyproject)) {
+    const content = await fs.readFile(pyproject, "utf8");
+    const name = content.match(/^name\s*=\s*["']([^"']+)["']/m)?.[1] ?? path.basename(root);
+    packages.push({ name, path: ".", sourceFiles: files.filter((file) => file.ext === ".py" && !file.isTest).length, testFiles: files.filter((file) => file.ext === ".py" && file.isTest).length, scripts: ["python -m compileall .", "python -m pytest"], workspaceDependencies: [] });
+  }
+  return packages;
 }
 
 function packageRootForPath(relativePath: string): string {

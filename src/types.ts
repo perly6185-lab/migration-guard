@@ -507,6 +507,7 @@ export interface CheckHealthResult {
   baselineExitCode: number | null;
   currentExitCode?: number | null;
   outputChanged: boolean;
+  fingerprint?: string;
 }
 
 export interface CheckHealthSummary {
@@ -518,6 +519,25 @@ export interface CheckHealthSummary {
   recovered: number;
   missing: number;
   results: CheckHealthResult[];
+}
+
+export interface HealthDebtEntry {
+  fingerprint: string;
+  checkName: string;
+  status: "new" | "accepted" | "recovered" | "expired";
+  firstSeenAt: string;
+  lastSeenAt: string;
+  acceptedAt?: string;
+  recoveredAt?: string;
+  owner?: string;
+  reason?: string;
+  expiresAt?: string;
+}
+
+export interface HealthDebtLedger {
+  version: 1;
+  updatedAt: string;
+  entries: HealthDebtEntry[];
 }
 
 export interface MigrationCheckpointSideEffects {

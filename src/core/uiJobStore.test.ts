@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { loadConfig } from "./config.js";
-import { claimUiJob, readUiJob, releaseUiJobClaim, uiJobPath, writeUiJob } from "./uiJobStore.js";
+import { claimUiJob, heartbeatUiJobClaim, inspectUiJobClaim, readUiJob, releaseUiJobClaim, uiJobPath, writeUiJob } from "./uiJobStore.js";
 
 test("UI job claims are exclusive and releasable", async () => {
   const { dir, loaded } = await fixture();
@@ -12,6 +12,10 @@ test("UI job claims are exclusive and releasable", async () => {
     await writeUiJob(loaded, job("claim-job"));
     assert.equal(await claimUiJob(loaded, "claim-job"), true);
     assert.equal(await claimUiJob(loaded, "claim-job"), false);
+    const inspection = await inspectUiJobClaim(loaded, "claim-job");
+    assert.equal(inspection.claimed, true);
+    assert.equal(inspection.expired, false);
+    await heartbeatUiJobClaim(loaded, "claim-job");
     await releaseUiJobClaim(loaded, "claim-job");
     assert.equal(await claimUiJob(loaded, "claim-job"), true);
     await releaseUiJobClaim(loaded, "claim-job");
@@ -29,6 +33,13 @@ test("UI job store rejects future schema versions", async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("UI job claim tolerates an artifacts directory removed during shutdown", async () => {
+  const { dir, loaded } = await fixture();
+  await writeUiJob(loaded, job("removed-job"));
+  await rm(dir, { recursive: true, force: true });
+  assert.equal(await claimUiJob(loaded, "removed-job"), false);
 });
 
 async function fixture() {

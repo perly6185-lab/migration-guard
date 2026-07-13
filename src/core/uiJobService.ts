@@ -11,6 +11,7 @@ import {
   readAllUiJobs,
   readUiJob,
   claimUiJob,
+  heartbeatUiJobClaim,
   isUiJobClaimed,
   releaseUiJobClaim,
   uiJobPath,
@@ -202,7 +203,15 @@ export async function cancelUiJob(loaded: LoadedConfig, jobId: string): Promise<
   if (updated.status !== "cancelled") {
     throw new UiHttpError("Only queued jobs can be cancelled.", 409);
   }
+  await waitForUiJobClaimRelease(loaded, jobId);
   return updated;
+}
+
+async function waitForUiJobClaimRelease(loaded: LoadedConfig, jobId: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (!await isUiJobClaimed(loaded, jobId)) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 export async function gcUiJobs(loaded: LoadedConfig, searchParams: URLSearchParams): Promise<UiJobGcReport> {
@@ -282,6 +291,8 @@ async function runUiActionJob(
   jobId: string
 ): Promise<void> {
   if (!await claimUiJob(loaded, jobId)) return;
+  const heartbeat = setInterval(() => { void heartbeatUiJobClaim(loaded, jobId).catch(() => undefined); }, 10000);
+  heartbeat.unref();
   try {
     const startedAt = new Date().toISOString();
     const runningJob = await updateUiJob(loaded, jobId, (job) => {
@@ -336,6 +347,7 @@ async function runUiActionJob(
       })
     })).catch(() => undefined);
   } finally {
+    clearInterval(heartbeat);
     await releaseUiJobClaim(loaded, jobId).catch(() => undefined);
   }
 }
