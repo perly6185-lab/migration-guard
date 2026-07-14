@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { loadConfig } from "./config.js";
 import { saveRunPackage, type MigrationRunPackage } from "./migrationRun.js";
 import { startUiServer } from "./uiServer.js";
+import { readUiJob } from "./uiJobStore.js";
 
 test("ui server exposes read-only dashboard data and guarded dry-run actions", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-ui-"));
@@ -152,12 +153,12 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.equal(createdJob.body.jobId, createdJob.body.job.id);
       assert.equal(createdJob.body.job.action, "readiness");
       const finishedJob = await waitForJob(handle.url, createdJob.body.jobId);
-      assert.equal(finishedJob.status, "succeeded");
+      assert.equal(finishedJob.status, "succeeded", finishedJob.error);
       assert.equal(finishedJob.runId, "run-ui");
       assert.ok(finishedJob.artifactPaths.some((artifactPath) => /refactor-readiness\.json$/.test(artifactPath)));
       assert.deepEqual(finishedJob.events.map((event) => event.type), ["queued", "started", "succeeded"]);
       assert.ok(finishedJob.events.at(-1)?.artifactPaths?.some((artifactPath) => /refactor-readiness\.json$/.test(artifactPath)));
-      const jobFile = JSON.parse(await readFile(createdJob.body.jobPath, "utf8")) as UiJob;
+      const jobFile = await readUiJob(loaded, createdJob.body.jobId);
       assert.deepEqual(jobFile.artifactPaths, finishedJob.artifactPaths);
       assert.deepEqual(jobFile.events, finishedJob.events);
       const jobDetail = await fetchJson<UiJobDetailReport>(`${handle.url}/api/jobs/${encodeURIComponent(createdJob.body.jobId)}/detail`);

@@ -74,3 +74,39 @@ test("normalizeCheckOutput treats Go cached and timed package results equally", 
   assert.equal(normalizeCheckOutput("ok  \taiway/internal/account\t(cached)", { presets: ["go"] }), "ok  \taiway/internal/account\t<duration>");
   assert.equal(normalizeCheckOutput("ok  \taiway/internal/account\t1.234s", { presets: ["go"] }), "ok  \taiway/internal/account\t<duration>");
 });
+
+test("normalizeCheckOutput sorts Go diagnostic package blocks", () => {
+  const first = [
+    "# aiway/cmd/ip_limit_test",
+    "# [aiway/cmd/ip_limit_test]",
+    "cmd\\ip_limit_test\\main.go:106:2: fmt.Println arg list ends with redundant newline",
+    "# aiway/scripts",
+    "# [aiway/scripts]",
+    "vet.exe: scripts\\insert_test_data.go:11:6: main redeclared in this block",
+    "# aiway",
+    "# [aiway]",
+    ".\\test_proxy_fields.go:20:2: fmt.Println arg list ends with redundant newline",
+    "# aiway/internal/middleware",
+    "# [aiway/internal/middleware]",
+    "vet.exe: internal\\middleware\\binding_auth_test.go:18:18: undefined: db.NewRepository"
+  ].join("\n");
+  const second = [
+    "# aiway/scripts",
+    "# [aiway/scripts]",
+    "vet.exe: scripts\\insert_test_data.go:11:6: main redeclared in this block",
+    "# aiway",
+    "# [aiway]",
+    ".\\test_proxy_fields.go:20:2: fmt.Println arg list ends with redundant newline",
+    "# aiway/cmd/ip_limit_test",
+    "# [aiway/cmd/ip_limit_test]",
+    "cmd\\ip_limit_test\\main.go:106:2: fmt.Println arg list ends with redundant newline",
+    "# aiway/internal/middleware",
+    "# [aiway/internal/middleware]",
+    "vet.exe: internal\\middleware\\binding_auth_test.go:18:18: undefined: db.NewRepository"
+  ].join("\n");
+
+  assert.equal(
+    normalizeCheckOutput(first, { presets: ["go", "paths", "timing"] }),
+    normalizeCheckOutput(second, { presets: ["go", "paths", "timing"] })
+  );
+});

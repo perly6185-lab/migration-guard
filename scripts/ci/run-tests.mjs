@@ -3,7 +3,7 @@ import { appendFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 
 const testFiles = 
-["dist/core/normalize.test.js","dist/core/configDoctor.test.js","dist/core/healthDebt.test.js","dist/core/artifactV2.test.js","dist/core/scan.test.js","dist/core/checkNormalize.test.js","dist/core/config.test.js","dist/core/compare.test.js","dist/core/diffDecision.test.js","dist/core/files.test.js","dist/core/checkpoint.test.js","dist/core/bootstrap.test.js","dist/core/dashboard.test.js","dist/core/uiServer.test.js","dist/core/uiJobStore.test.js","dist/core/issueControl.test.js","dist/core/patch.test.js","dist/core/refactorReadiness.test.js","dist/core/oneShot.test.js","dist/core/repairLoopCli.test.js","dist/core/repairStrategy.test.js","dist/core/taskGraph.test.js"]
+["scripts/release/evidence.test.mjs","dist/core/normalize.test.js","dist/core/configDoctor.test.js","dist/core/healthDebt.test.js","dist/core/artifactV2.test.js","dist/core/scan.test.js","dist/core/checkNormalize.test.js","dist/core/config.test.js","dist/core/compare.test.js","dist/core/diffDecision.test.js","dist/core/files.test.js","dist/core/checkpoint.test.js","dist/core/bootstrap.test.js","dist/core/dashboard.test.js","dist/core/uiServer.test.js","dist/core/uiJobStore.test.js","dist/core/issueControl.test.js","dist/core/patch.test.js","dist/core/refactorReadiness.test.js","dist/core/oneShot.test.js","dist/core/repairLoopCli.test.js","dist/core/repairStrategy.test.js","dist/core/taskGraph.test.js"]
 ;
 const startedAt = performance.now();
 const child = spawn(process.execPath, ["--test", ...testFiles], { cwd: process.cwd(), windowsHide: true });

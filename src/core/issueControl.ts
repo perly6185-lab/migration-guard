@@ -11,6 +11,7 @@ import { loadRunPackage } from "./migrationRun.js";
 import { repairProposal } from "./patch.js";
 import { selectRepairStrategy, summarizeRepairStrategy, type RepairStrategySummary } from "./repairStrategy.js";
 import { captureSnapshot, latestBaselinePath, loadSnapshot, saveSnapshot } from "./snapshot.js";
+import { writeCompareArtifactFile } from "./artifactV2.js";
 import type { LoadedConfig, MigrationIssueType } from "../types.js";
 
 export type IssueControlProvider = "github";
@@ -2729,7 +2730,7 @@ async function runRecoveryBehaviorDiffGuard(
   const baseName = `recovery-${executionId}-compare`;
   const compareReportPath = path.join(loaded.artifactsDir, "issue-control", `${baseName}.json`);
   const compareMarkdownPath = compareReportPath.replace(/\.json$/, ".md");
-  await writeJsonFile(compareReportPath, compare);
+  await writeCompareArtifactFile(compareReportPath, compare, baseline, run);
   await writeTextFile(compareMarkdownPath, renderCompareReport(compare));
   return {
     status: compare.passed ? "passed" : "failed",
@@ -2966,7 +2967,7 @@ async function verifySuperviseIteration(
   const baseName = `supervise-${iteration.index}-${run.id}-compare`;
   const compareReportPath = path.join(loaded.artifactsDir, "issue-control", `${baseName}.json`);
   const compareMarkdownPath = compareReportPath.replace(/\.json$/, ".md");
-  await writeJsonFile(compareReportPath, compare);
+  await writeCompareArtifactFile(compareReportPath, compare, baseline, run);
   await writeTextFile(compareMarkdownPath, renderCompareReport(compare));
   return {
     status: compare.passed ? "passed" : "failed",

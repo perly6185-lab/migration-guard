@@ -5,6 +5,7 @@ import { runShellCommand } from "./exec.js";
 import { ensureDir, pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
 import { renderCompareReport } from "./markdown.js";
 import { captureSnapshot, latestBaselinePath, latestRunPath, loadSnapshot, saveSnapshot } from "./snapshot.js";
+import { readCompareArtifactFile, writeCompareArtifactFile } from "./artifactV2.js";
 import type { CheckResult, CompareReport, LoadedConfig, ProbeResult, Snapshot } from "../types.js";
 
 export interface OneShotReportOptions {
@@ -273,7 +274,7 @@ export async function collectOneShotReport(
   const compareArtifact = options.compareReportPath
     ? {
         path: path.resolve(loaded.baseDir, options.compareReportPath),
-        report: await readJsonFile<CompareReport>(path.resolve(loaded.baseDir, options.compareReportPath))
+        report: await readCompareArtifactFile(path.resolve(loaded.baseDir, options.compareReportPath))
       }
     : await findLatestCompareReport(loaded, baseline.id, current.id);
   const compareReport = compareArtifact?.report ?? compareSnapshots(baseline, current, loaded.config.compare);
@@ -1085,7 +1086,7 @@ async function runOneShotSessionStep(
         if (await pathExists(baselinePath)) {
           const baseline = await loadSnapshot(baselinePath);
           const compareReport = compareSnapshots(baseline, snapshot, loaded.config.compare);
-          const comparePath = await writeOneShotCompareArtifacts(loaded, compareReport);
+          const comparePath = await writeOneShotCompareArtifacts(loaded, compareReport, baseline, snapshot);
           artifacts.push(comparePath);
           if (!compareReport.passed) {
             return {
@@ -1283,7 +1284,7 @@ async function captureVerificationWithCompare(loaded: LoadedConfig): Promise<{
   if (await pathExists(baselinePath)) {
     const baseline = await loadSnapshot(baselinePath);
     const compareReport = compareSnapshots(baseline, snapshot, loaded.config.compare);
-    const comparePath = await writeOneShotCompareArtifacts(loaded, compareReport);
+    const comparePath = await writeOneShotCompareArtifacts(loaded, compareReport, baseline, snapshot);
     artifacts.push(comparePath);
     passed &&= compareReport.passed;
   }
@@ -1347,10 +1348,10 @@ function parseOneShotMetadataFromJson(text: string): OneShotWindowMetadata | und
   };
 }
 
-async function writeOneShotCompareArtifacts(loaded: LoadedConfig, report: CompareReport): Promise<string> {
+async function writeOneShotCompareArtifacts(loaded: LoadedConfig, report: CompareReport, baseline: Snapshot, current: Snapshot): Promise<string> {
   const reportPath = path.join(loaded.artifactsDir, "compare", `${Date.now()}.json`);
   const markdownPath = reportPath.replace(/\.json$/, ".md");
-  await writeJsonFile(reportPath, report);
+  await writeCompareArtifactFile(reportPath, report, baseline, current);
   await writeTextFile(markdownPath, renderCompareReport(report));
   return reportPath;
 }
@@ -1744,7 +1745,7 @@ async function findLatestCompareReport(
     }));
 
   for (const candidate of candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)) {
-    const report = await readJsonFile<CompareReport>(candidate.filePath).catch(() => undefined);
+    const report = await readCompareArtifactFile(candidate.filePath).catch(() => undefined);
     if (report?.baselineId === baselineId && report.currentId === currentId) {
       return { path: candidate.filePath, report };
     }
@@ -1756,7 +1757,7 @@ async function readOptionalSnapshotArtifact(filePath: string, minCreatedAt?: str
   if (!await pathExists(filePath)) {
     return {};
   }
-  const snapshot = await readJsonFile<Snapshot>(filePath).catch(() => undefined);
+  const snapshot = await loadSnapshot(filePath).catch(() => undefined);
   if (!minCreatedAt) {
     return { path: filePath, snapshot };
   }
@@ -1904,7 +1905,7 @@ async function readLatestCompareArtifact(
       return { filePath, mtimeMs: stat.mtimeMs };
     }));
   for (const candidate of candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)) {
-    const value = await readJsonFile<CompareReport>(candidate.filePath).catch(() => undefined);
+    const value = await readCompareArtifactFile(candidate.filePath).catch(() => undefined);
     if (!value) {
       continue;
     }

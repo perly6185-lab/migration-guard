@@ -6,6 +6,7 @@ import { compareSnapshots } from "./compare.js";
 import { decisionsForCompareReport } from "./diffDecision.js";
 import { renderCompareReport } from "./markdown.js";
 import { captureSnapshot } from "./snapshot.js";
+import { readCompareArtifactFile, writeCompareArtifactFile, writeSnapshotArtifactFile } from "./artifactV2.js";
 import { appendEvidence, createId, createProposalFailureIssue, createProposalReplanTask, migrationRunDir, saveRunPackage } from "./migrationRun.js";
 import { getProbeTemplateDefinition, selectProbeTemplateForAction } from "./probeTemplateRegistry.js";
 import type {
@@ -1306,7 +1307,7 @@ async function readBehaviorDriftDecisionSummaries(
   if (!await pathExists(behaviorDrift.compareReportPath)) {
     return undefined;
   }
-  const report = await readJsonFile<CompareReport>(behaviorDrift.compareReportPath).catch(() => undefined);
+  const report = await readCompareArtifactFile(behaviorDrift.compareReportPath).catch(() => undefined);
   if (!report) {
     return undefined;
   }
@@ -2066,9 +2067,9 @@ async function writeProposalBehaviorDiff(
   const afterSnapshotPath = path.join(dir, `${id}-after.json`);
   const compareReportPath = path.join(dir, `${id}-compare.json`);
   const compareMarkdownPath = path.join(dir, `${id}-compare.md`);
-  await writeJsonFile(beforeSnapshotPath, before);
-  await writeJsonFile(afterSnapshotPath, after);
-  await writeJsonFile(compareReportPath, compare);
+  await writeSnapshotArtifactFile(beforeSnapshotPath, before);
+  await writeSnapshotArtifactFile(afterSnapshotPath, after);
+  await writeCompareArtifactFile(compareReportPath, compare, before, after);
   await writeTextFile(compareMarkdownPath, renderCompareReport(compare, await decisionsForCompareReport(loaded, compare, pkg.run.id)));
   const errors = compare.differences.filter((difference) => difference.severity === "error").length;
   const warnings = compare.differences.filter((difference) => difference.severity === "warn").length;
@@ -2101,7 +2102,7 @@ async function readLatestBehaviorDriftReference(
   if (!latest) {
     return undefined;
   }
-  const compareReport = await readJsonFile<CompareReport>(latest.path).catch(() => undefined);
+  const compareReport = await readCompareArtifactFile(latest.path).catch(() => undefined);
   if (!compareReport) {
     return undefined;
   }

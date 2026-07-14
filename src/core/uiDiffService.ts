@@ -1,11 +1,12 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import { createDifferenceKey, decisionsForCompareReport, evaluateDiffDecisionPolicy, recordDiffDecision, summarizeDiffDecisionCoverage } from "./diffDecision.js";
-import { pathExists, readJsonFile } from "./files.js";
+import { pathExists } from "./files.js";
 import { loadRunPackage, migrationRunDir } from "./migrationRun.js";
 import { resolveArtifactPath } from "./uiArtifacts.js";
 import { UiHttpError } from "./uiHttpError.js";
 import { requiredParam, trimmedParam } from "./uiRequest.js";
+import { readCompareArtifactFile } from "./artifactV2.js";
 import type {
   CompareReport,
   DiffDecision,
@@ -37,7 +38,7 @@ export async function collectDiffArtifacts(loaded: LoadedConfig, runSelector?: s
   const reports = [];
   for (const file of files.filter((item) => /compare.*\.json$|diff.*\.json$/.test(path.basename(item)))) {
     try {
-      const report = await readJsonFile<Partial<CompareReport> & { id?: string }>(file);
+      const report = await readCompareArtifactFile(file) as Partial<CompareReport> & { id?: string };
       if (!Array.isArray(report.differences)) {
         continue;
       }
@@ -113,7 +114,7 @@ export async function recordUiDiffDecisionBatch(
   policy: DiffDecisionPolicyResult;
 }> {
   const compareReportPath = resolveArtifactPath(loaded, requiredParam(searchParams, "compare"));
-  const report = await readJsonFile<CompareReport>(compareReportPath);
+  const report = await readCompareArtifactFile(compareReportPath);
   if (!isCompareReport(report)) {
     throw new UiHttpError("compare report is not a full compare report", 400);
   }

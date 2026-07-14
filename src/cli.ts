@@ -88,6 +88,7 @@ import { runPreviewProbe } from "./core/preview.js";
 import { collectArtifactGcReport, renderArtifactGcReport } from "./core/artifactGc.js";
 import { collectArtifactMigrationReport, renderArtifactMigrationReport } from "./core/artifactMigration.js";
 import { acceptHealthDebt, loadHealthDebtLedger, updateHealthDebtLedger } from "./core/healthDebt.js";
+import { readCompareArtifactFile, writeCompareArtifactFile, type CompareArtifactMetadata } from "./core/artifactV2.js";
 import {
   bootstrapMd2Target,
   renderBootstrapMd2Manifest,
@@ -349,8 +350,8 @@ async function commandVerify(args: ParsedArgs): Promise<void> {
 
   const baseline = await loadSnapshot(baselinePath);
   const report = compareSnapshots(baseline, snapshot, loaded.config.compare);
-  const reportPath = await writeCompareArtifacts(loaded.artifactsDir, report);
   const debt = await updateHealthDebtLedger(loaded, report);
+  const reportPath = await writeCompareArtifacts(loaded.artifactsDir, report, baseline, snapshot, debt);
 
   console.log("");
   console.log(renderCompareReport(report));
@@ -384,10 +385,10 @@ async function commandCompare(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const baselinePath = stringOption(args, "baseline") ?? args.positionals[0] ?? latestBaselinePath(loaded);
   const currentPath = stringOption(args, "current") ?? args.positionals[1] ?? latestRunPath(loaded);
-  const baseline = await readJsonFile<Awaited<ReturnType<typeof loadSnapshot>>>(path.resolve(process.cwd(), baselinePath));
-  const current = await readJsonFile<Awaited<ReturnType<typeof loadSnapshot>>>(path.resolve(process.cwd(), currentPath));
+  const baseline = await loadSnapshot(path.resolve(process.cwd(), baselinePath));
+  const current = await loadSnapshot(path.resolve(process.cwd(), currentPath));
   const report = compareSnapshots(baseline, current, loaded.config.compare);
-  const reportPath = await writeCompareArtifacts(loaded.artifactsDir, report);
+  const reportPath = await writeCompareArtifacts(loaded.artifactsDir, report, baseline, current);
 
   console.log(renderCompareReport(report));
   console.log("");
@@ -438,7 +439,7 @@ async function commandDiff(args: ParsedArgs): Promise<void> {
     const ledger = await loadDiffDecisionLedger(loaded, runId);
     const compareReportPath = stringOption(args, "compare");
     if (compareReportPath) {
-      const report = await readJsonFile<CompareReport>(path.resolve(process.cwd(), compareReportPath));
+      const report = await readCompareArtifactFile(path.resolve(process.cwd(), compareReportPath));
       const decisions = await decisionsForCompareReport(loaded, report, runId);
       if (args.options.json) {
         console.log(JSON.stringify({ ledgerPath: undefined, report, decisions }, null, 2));
@@ -1669,11 +1670,17 @@ async function loadOptionalSnapshot(filePath: string) {
   return await pathExists(filePath) ? loadSnapshot(filePath) : undefined;
 }
 
-async function writeCompareArtifacts(artifactsDir: string, report: CompareReport): Promise<string> {
+async function writeCompareArtifacts(
+  artifactsDir: string,
+  report: CompareReport,
+  baseline?: Awaited<ReturnType<typeof loadSnapshot>>,
+  current?: Awaited<ReturnType<typeof loadSnapshot>>,
+  healthDebt?: CompareArtifactMetadata["healthDebt"]
+): Promise<string> {
   const reportPath = path.join(artifactsDir, "compare", `${Date.now()}.json`);
   const markdownPath = reportPath.replace(/\.json$/, ".md");
 
-  await writeJsonFile(reportPath, report);
+  await writeCompareArtifactFile(reportPath, report, baseline, current, healthDebt);
   await writeTextFile(markdownPath, renderCompareReport(report));
   return reportPath;
 }

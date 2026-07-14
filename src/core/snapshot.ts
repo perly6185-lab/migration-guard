@@ -3,7 +3,7 @@ import { stableStringify } from "./normalize.js";
 import { runChecks, runProbes } from "./probes.js";
 import { scanProject } from "./scan.js";
 import { sha256 } from "./hash.js";
-import { readJsonFile, writeJsonFile } from "./files.js";
+import { readCoreArtifactFile, snapshotArtifactMetadata, writeCoreArtifactFile } from "./artifactV2.js";
 import type { LoadedConfig, Snapshot, SnapshotKind } from "../types.js";
 
 export async function captureSnapshot(loaded: LoadedConfig, kind: SnapshotKind): Promise<Snapshot> {
@@ -29,14 +29,15 @@ export async function saveSnapshot(loaded: LoadedConfig, snapshot: Snapshot): Pr
   const snapshotPath = path.join(loaded.artifactsDir, folder, `${snapshot.id}.json`);
   const latestPath = path.join(loaded.artifactsDir, snapshot.kind === "baseline" ? "latest-baseline.json" : "latest-run.json");
 
-  await writeJsonFile(snapshotPath, snapshot);
-  await writeJsonFile(latestPath, snapshot);
+  const metadata = snapshotArtifactMetadata(snapshot);
+  await writeCoreArtifactFile(snapshotPath, "snapshot", snapshot, metadata);
+  await writeCoreArtifactFile(latestPath, "snapshot", snapshot, metadata);
 
   return snapshotPath;
 }
 
 export async function loadSnapshot(filePath: string): Promise<Snapshot> {
-  return readJsonFile<Snapshot>(filePath);
+  return readCoreArtifactFile<Snapshot>(filePath, "snapshot");
 }
 
 export function latestBaselinePath(loaded: LoadedConfig): string {

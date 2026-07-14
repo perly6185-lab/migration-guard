@@ -64,9 +64,9 @@ function applyPreset(input: string, preset: NonNullable<CheckNormalizeConfig["pr
         .replace(/^[A-Z]:\\[^\n]+(?:packages|apps)\\([^\s:]+):/gm, "<workspace>/$1:")
         .replace(/^\s*\.\.?\\[^\n]+(?:packages|apps)\\([^\s:]+):/gm, "<workspace>/$1:");
     case "go":
-      return input
+      return sortGoDiagnosticBlocks(input
         .replace(/\t\(cached\)$/gm, "\t<duration>")
-        .replace(/\t\d+(?:\.\d+)?s$/gm, "\t<duration>");
+        .replace(/\t\d+(?:\.\d+)?s$/gm, "\t<duration>"));
     case "paths":
       return input
         .replace(/[A-Z]:\\[^\s)"']+/g, "<path>")
@@ -76,4 +76,40 @@ function applyPreset(input: string, preset: NonNullable<CheckNormalizeConfig["pr
     default:
       return input;
   }
+}
+
+function sortGoDiagnosticBlocks(input: string): string {
+  const lines = input.split("\n");
+  const output: string[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    if (!isGoDiagnosticHeader(lines[index])) {
+      output.push(lines[index]);
+      index += 1;
+      continue;
+    }
+
+    const blocks: Array<{ key: string; lines: string[] }> = [];
+    while (index < lines.length && isGoDiagnosticHeader(lines[index])) {
+      const start = index;
+      const key = lines[index];
+      index += 1;
+      while (index < lines.length && !isGoDiagnosticHeader(lines[index])) {
+        index += 1;
+      }
+      blocks.push({ key, lines: lines.slice(start, index) });
+    }
+
+    blocks.sort((a, b) => a.key.localeCompare(b.key) || a.lines.join("\n").localeCompare(b.lines.join("\n")));
+    for (const block of blocks) {
+      output.push(...block.lines);
+    }
+  }
+
+  return output.join("\n");
+}
+
+function isGoDiagnosticHeader(line: string | undefined): boolean {
+  return Boolean(line && /^# (?!\[)/.test(line));
 }

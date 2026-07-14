@@ -164,3 +164,28 @@ Next candidate:
 - idempotent update smoke
 - provider adapter abstraction expansion
 - GitLab/Jira/Linear live-plan mock
+
+## Major Phase E: GA Integrity and Portable AI Collaboration
+
+目标：先让 `0.2.0` 的发布结论具备同轮证据、新鲜度和可追溯性，再把现有 replan、one-shot 与 issue-control 上下文收敛成 provider-neutral AI handoff/result 协议。
+
+状态：已规划 Phase 161-170，见 `docs/PHASE_161_170_PLAN.md`。
+
+阶段：
+
+1. Release evidence ledger and pilot freshness gate
+2. Artifact Schema v2 mainline adoption
+3. Installed-package golden path and job fencing
+4. `0.2.0` GA freeze
+5. Test discovery and core module boundaries
+6. Portable AI handoff/result contracts
+7. Organization policy presets
+8. `0.3.0-beta.1` real-project validation
+
+退出标准：
+
+- stale pilot 或 skipped pilot 不能产生 GO。
+- v2 artifacts 由真实 baseline/verify/UI 链路写出并保持 v1 只读兼容。
+- 外部 AI 结果必须经过 path budget、lineage、patch 和 behavior verification gate。
+- 三个真实项目完成 handoff -> result -> verify 或 repair retry 闭环。
+- 不扩张 GitHub mutation provider 范围，不自动 publish/tag。

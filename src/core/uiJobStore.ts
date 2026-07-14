@@ -2,6 +2,7 @@ import path from "node:path";
 import os from "node:os";
 import { promises as fs } from "node:fs";
 import { readJsonFile, writeJsonFile } from "./files.js";
+import { decodeCoreArtifact, uiJobArtifactMetadata, writeCoreArtifactFile } from "./artifactV2.js";
 import { UiHttpError } from "./uiHttpError.js";
 import type { UiJob } from "./uiJobTypes.js";
 import type { LoadedConfig } from "../types.js";
@@ -12,7 +13,7 @@ export async function readUiJob(loaded: LoadedConfig, jobId: string): Promise<Ui
   if (!stats?.isFile()) {
     throw new UiHttpError("job not found", 404);
   }
-  return validateUiJob(await readJsonFile<UiJob>(filePath));
+  return validateUiJob(await readStoredUiJob(filePath));
 }
 
 export async function readAllUiJobs(loaded: LoadedConfig): Promise<UiJob[]> {
@@ -24,7 +25,7 @@ export async function readAllUiJobs(loaded: LoadedConfig): Promise<UiJob[]> {
       continue;
     }
     try {
-      jobs.push(validateUiJob(await readJsonFile<UiJob>(path.join(dir, entry.name))));
+      jobs.push(validateUiJob(await readStoredUiJob(path.join(dir, entry.name))));
     } catch {
       // Ignore partially written or incompatible job files; they should not block the board.
     }
@@ -43,7 +44,8 @@ export async function updateUiJob(
 }
 
 export async function writeUiJob(loaded: LoadedConfig, job: UiJob): Promise<void> {
-  await writeJsonFile(uiJobPath(loaded, job.id), job);
+  const claim = await readJsonFile<{ ownerPid?: number; heartbeatAt?: string; leaseDurationMs?: number }>(`${uiJobPath(loaded, job.id)}.claim`).catch(() => undefined);
+  await writeCoreArtifactFile(uiJobPath(loaded, job.id), "ui-job", job, uiJobArtifactMetadata(job, claim));
 }
 
 export function uiJobsDir(loaded: LoadedConfig): string {
@@ -99,6 +101,18 @@ function validateUiJob(value: UiJob): UiJob {
     throw new UiHttpError(`Unsupported UI job schema version: ${String((value as { version?: unknown })?.version)}`, 409);
   }
   return value;
+}
+
+async function readStoredUiJob(filePath: string): Promise<UiJob> {
+  const value = await readJsonFile<unknown>(filePath);
+  try {
+    return decodeCoreArtifact<UiJob>("ui-job", value);
+  } catch (error) {
+    if (value && typeof value === "object" && !Array.isArray(value) && "version" in value) {
+      throw new UiHttpError(`Unsupported UI job schema version: ${String((value as { version?: unknown }).version)}`, 409);
+    }
+    throw new UiHttpError(error instanceof Error ? error.message : String(error), 409);
+  }
 }
 
 function safeUiJobId(jobId: string): string {

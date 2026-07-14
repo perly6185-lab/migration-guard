@@ -21,6 +21,7 @@ import {
 import {
   cancelUiJob,
   collectUiJobDetail,
+  createUiJobRunner,
   createUiActionJob,
   gcUiJobs,
   listUiJobs,
@@ -51,6 +52,10 @@ export interface UiServerOptions {
   fetchImpl?: typeof fetch;
 }
 
+type UiServerRequestOptions = UiServerOptions & {
+  jobRunner: ReturnType<typeof createUiJobRunner>;
+};
+
 export interface UiServerHandle {
   url: string;
   server: http.Server;
@@ -64,9 +69,11 @@ export async function startUiServer(
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 8787;
   await recoverOrphanUiJobs(loaded);
+  const jobRunner = createUiJobRunner();
+  const requestOptions = { ...options, jobRunner };
   const csrfToken = createUiCsrfToken();
   const server = http.createServer((request, response) => {
-    void handleUiRequest(loaded, options, csrfToken, request, response);
+    void handleUiRequest(loaded, requestOptions, csrfToken, request, response);
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -81,15 +88,23 @@ export async function startUiServer(
   return {
     url,
     server,
-    close: () => new Promise((resolve, reject) => {
-      server.close((error) => error ? reject(error) : resolve());
-    })
+    close: async () => {
+      let closeError: Error | undefined;
+      await new Promise<void>((resolve) => {
+        server.close((error) => {
+          closeError = error ?? undefined;
+          resolve();
+        });
+      });
+      await jobRunner.drain();
+      if (closeError) throw closeError;
+    }
   };
 }
 
 async function handleUiRequest(
   loaded: LoadedConfig,
-  options: UiServerOptions,
+  options: UiServerRequestOptions,
   csrfToken: string,
   request: http.IncomingMessage,
   response: http.ServerResponse
@@ -147,7 +162,7 @@ async function handleUiRequest(
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/jobs/gc") {
-      sendJson(response, await gcUiJobs(loaded, await readUiPostParams(request, url.searchParams)));
+      sendJson(response, await gcUiJobs(loaded, await readUiPostParams(request, url.searchParams), options.jobRunner));
       return;
     }
     const jobDetailMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/detail$/);
@@ -157,7 +172,7 @@ async function handleUiRequest(
     }
     const cancelJobMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/cancel$/);
     if (request.method === "POST" && cancelJobMatch) {
-      sendJson(response, await cancelUiJob(loaded, cancelJobMatch[1] ?? ""));
+      sendJson(response, await cancelUiJob(loaded, cancelJobMatch[1] ?? "", options.jobRunner));
       return;
     }
     const jobMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)$/);

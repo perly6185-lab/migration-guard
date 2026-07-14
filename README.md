@@ -46,17 +46,39 @@ node dist/cli.js proposal accept --run <run-id> --proposal <retry-proposal-id> -
 Phase 146-150 health semantics, normalization, workspace scanning, persistence hardening and RC results are documented in
 [docs/PHASE_150_REPORT.md](docs/PHASE_150_REPORT.md). Release gates are tracked in
 [docs/RELEASE_CHECKLIST_0.2.0_RC.md](docs/RELEASE_CHECKLIST_0.2.0_RC.md).
-The Phase 151-160 RC hardening and `0.2.0` GA roadmap is tracked in
-[docs/PHASE_151_160_PLAN.md](docs/PHASE_151_160_PLAN.md).
+The completed Phase 151-160 RC hardening roadmap is tracked in
+[docs/PHASE_151_160_PLAN.md](docs/PHASE_151_160_PLAN.md). The next release
+integrity and portable AI collaboration roadmap is tracked in
+[docs/PHASE_161_170_PLAN.md](docs/PHASE_161_170_PLAN.md).
 
 CI uses the same test manifest as local `npm test`, publishes total and slowest-test
 timings to the GitHub Actions step summary, audits production dependencies, checks
 the npm package allowlist and runs the isolated package installation smoke.
 
+The release gate binds every result to one release run, repository context and
+current pilot evidence. Configure all three real-project roots before running it:
+
+```powershell
+$env:MG_PILOT_ASCLLCREATOR_ROOT = "D:\learn\ascllcreator"
+$env:MG_PILOT_CURSORMADE_ROOT = "D:\learn\cursormade"
+$env:MG_PILOT_AIWAY_ROOT = "D:\learn\aiway"
+npm run release:gate
+npm run release:gate -- --resume <release-run-id>
+```
+
+Evidence is written under `.migration-guard/releases/<release-run-id>/`. A
+skipped, missing, changed or historical pilot result is always NO-GO. Standalone
+pilot execution must pass the same run id to both commands:
+
+```bash
+node scripts/smoke/real-project-pilot.mjs --release-run <release-run-id>
+npm run pilot:report -- --release-run <release-run-id>
+```
+
 Phase 141-145 stabilization and real-project pilot results are documented in
-[docs/PHASE_145_REPORT.md](docs/PHASE_145_REPORT.md). Re-run the local pilots with
-`npm run pilot:smoke`; the checked-in pilot configs write evidence only under this
-repository's `.migration-guard/pilots` directory.
+[docs/PHASE_145_REPORT.md](docs/PHASE_145_REPORT.md). The checked-in pilot configs
+write project evidence under `.migration-guard/pilots` and release-bound evidence
+under `.migration-guard/releases`.
 
 Current release readiness is tracked in
 [docs/RELEASE_CHECKLIST_70_74.md](docs/RELEASE_CHECKLIST_70_74.md).
@@ -537,8 +559,8 @@ node dist/cli.js artifacts gc --keep-runs 5 --apply
 ```
 
 Artifact schema migrations are also dry-run-first. Use them after upgrading
-Migration Guard when old proposal, verification, batch or replan artifacts need
-new compatibility fields:
+Migration Guard when old snapshot, compare, UI job, proposal, verification,
+batch or replan artifacts need a current envelope or compatibility fields:
 
 ```bash
 node dist/cli.js artifacts migrate
@@ -547,6 +569,13 @@ node dist/cli.js artifacts migrate --apply --apply-confirm <plan-hash>
 
 Review the dry-run output first and copy its `planHash` into `--apply-confirm`
 only when the migration plan matches the artifacts you intend to update.
+
+New snapshot, compare and UI job files use Artifact Schema v2 envelopes. Readers
+continue to accept v1 payloads, while kind mismatches, future versions and payload
+hash mismatches fail explicitly. Snapshot metadata records normalization,
+health fingerprints and package summaries; compare metadata records snapshot
+hashes, health policy and health-debt decisions; UI jobs record owner, attempt,
+heartbeat, lease and result artifact references.
 
 ## Probe types
 

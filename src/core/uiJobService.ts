@@ -40,6 +40,13 @@ import type { LoadedConfig } from "../types.js";
 
 export interface UiJobRunnerOptions {
   fetchImpl?: typeof fetch;
+  jobRunner?: UiJobRunner;
+}
+
+export interface UiJobRunner {
+  schedule: (jobId: string, operation: () => Promise<void>) => void;
+  wait: (jobId: string) => Promise<void>;
+  drain: () => Promise<void>;
 }
 
 const uiJobCreationLocks = new Map<string, Promise<void>>();
@@ -182,7 +189,11 @@ export async function collectUiJobDetail(loaded: LoadedConfig, jobId: string): P
   };
 }
 
-export async function cancelUiJob(loaded: LoadedConfig, jobId: string): Promise<UiJob> {
+export async function cancelUiJob(
+  loaded: LoadedConfig,
+  jobId: string,
+  jobRunner?: UiJobRunner
+): Promise<UiJob> {
   const cancelledAt = new Date().toISOString();
   const updated = await updateUiJob(loaded, jobId, (job) => {
     if (job.status !== "queued") {
@@ -203,6 +214,7 @@ export async function cancelUiJob(loaded: LoadedConfig, jobId: string): Promise<
   if (updated.status !== "cancelled") {
     throw new UiHttpError("Only queued jobs can be cancelled.", 409);
   }
+  await jobRunner?.wait(jobId);
   await waitForUiJobClaimRelease(loaded, jobId);
   return updated;
 }
@@ -214,7 +226,11 @@ async function waitForUiJobClaimRelease(loaded: LoadedConfig, jobId: string): Pr
   }
 }
 
-export async function gcUiJobs(loaded: LoadedConfig, searchParams: URLSearchParams): Promise<UiJobGcReport> {
+export async function gcUiJobs(
+  loaded: LoadedConfig,
+  searchParams: URLSearchParams,
+  jobRunner?: UiJobRunner
+): Promise<UiJobGcReport> {
   const keepLatest = boundedIntegerParam(searchParams, "keepLatest", 50, 0, 500);
   const status = uiJobGcStatusParam(searchParams);
   const apply = booleanParam(searchParams, "apply");
@@ -231,6 +247,7 @@ export async function gcUiJobs(loaded: LoadedConfig, searchParams: URLSearchPara
   let deletedCount = 0;
   if (apply) {
     for (const candidate of candidates) {
+      await jobRunner?.wait(candidate.id);
       if (await isUiJobClaimed(loaded, candidate.id)) continue;
       await fs.rm(candidate.path, { force: true });
       deletedCount += 1;
@@ -280,9 +297,43 @@ function scheduleUiJobRun(
   options: UiJobRunnerOptions,
   jobId: string
 ): void {
+  if (options.jobRunner) {
+    options.jobRunner.schedule(jobId, () => runUiActionJob(loaded, options, jobId));
+    return;
+  }
   setTimeout(() => {
     void runUiActionJob(loaded, options, jobId);
   }, 250);
+}
+
+export function createUiJobRunner(delayMs = 250): UiJobRunner {
+  const pending = new Set<Promise<void>>();
+  const pendingByJobId = new Map<string, Promise<void>>();
+  return {
+    schedule(jobId, operation) {
+      const scheduled = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          void operation().then(() => resolve(), () => resolve());
+        }, delayMs);
+      });
+      pending.add(scheduled);
+      pendingByJobId.set(jobId, scheduled);
+      void scheduled.finally(() => {
+        pending.delete(scheduled);
+        if (pendingByJobId.get(jobId) === scheduled) {
+          pendingByJobId.delete(jobId);
+        }
+      });
+    },
+    async wait(jobId) {
+      await pendingByJobId.get(jobId);
+    },
+    async drain() {
+      while (pending.size > 0) {
+        await Promise.allSettled([...pending]);
+      }
+    }
+  };
 }
 
 async function runUiActionJob(

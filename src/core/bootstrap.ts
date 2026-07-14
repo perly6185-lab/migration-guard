@@ -6,7 +6,8 @@ import { ensureDir, pathExists, writeJsonFile, writeTextFile } from "./files.js"
 import { autoIssueControl, type IssueControlAutoReport, type IssueControlPullOptions } from "./issueControl.js";
 import { renderCompareReport } from "./markdown.js";
 import { captureSnapshot, saveSnapshot } from "./snapshot.js";
-import type { LoadedConfig } from "../types.js";
+import { writeCompareArtifactFile } from "./artifactV2.js";
+import type { LoadedConfig, Snapshot } from "../types.js";
 
 export interface BootstrapMd2Options {
   sourceRoot: string;
@@ -224,7 +225,7 @@ export async function verifyBootstrapMd2Target(
     const run = await captureSnapshot(verifyLoaded, "run");
     report.runSnapshotPath = await saveSnapshot(verifyLoaded, run);
     const compare = compareSnapshots(baseline, run, verifyLoaded.config.compare);
-    const comparePaths = await writeBootstrapCompareArtifacts(verifyLoaded, compare);
+    const comparePaths = await writeBootstrapCompareArtifacts(verifyLoaded, compare, baseline, run);
     report.compareReportPath = comparePaths.jsonPath;
     report.compareMarkdownPath = comparePaths.markdownPath;
     report.summary.differenceCount = compare.differences.length;
@@ -492,11 +493,13 @@ async function collectBootstrapVerifyReadiness(
 
 async function writeBootstrapCompareArtifacts(
   loaded: LoadedConfig,
-  report: ReturnType<typeof compareSnapshots>
+  report: ReturnType<typeof compareSnapshots>,
+  baseline: Snapshot,
+  current: Snapshot
 ): Promise<{ jsonPath: string; markdownPath: string }> {
   const jsonPath = path.join(loaded.artifactsDir, "compare", `${Date.now()}.json`);
   const markdownPath = jsonPath.replace(/\.json$/, ".md");
-  await writeJsonFile(jsonPath, report);
+  await writeCompareArtifactFile(jsonPath, report, baseline, current);
   await writeTextFile(markdownPath, renderCompareReport(report));
   return { jsonPath, markdownPath };
 }

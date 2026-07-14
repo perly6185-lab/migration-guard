@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import os from "node:os";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { loadConfig } from "./config.js";
 import { claimUiJob, heartbeatUiJobClaim, inspectUiJobClaim, readUiJob, releaseUiJobClaim, uiJobPath, writeUiJob } from "./uiJobStore.js";
 
@@ -10,6 +10,11 @@ test("UI job claims are exclusive and releasable", async () => {
   const { dir, loaded } = await fixture();
   try {
     await writeUiJob(loaded, job("claim-job"));
+    const stored = JSON.parse(await readFile(uiJobPath(loaded, "claim-job"), "utf8"));
+    assert.equal(stored.artifactSchemaVersion, 2);
+    assert.equal(stored.kind, "ui-job");
+    assert.equal(stored.metadata.action, "readiness");
+    assert.equal((await readUiJob(loaded, "claim-job")).id, "claim-job");
     assert.equal(await claimUiJob(loaded, "claim-job"), true);
     assert.equal(await claimUiJob(loaded, "claim-job"), false);
     const inspection = await inspectUiJobClaim(loaded, "claim-job");

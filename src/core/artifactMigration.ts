@@ -10,10 +10,11 @@ import {
 } from "./artifactSchema.js";
 import { pathExists, readJsonFile, toPosixPath, writeJsonFile } from "./files.js";
 import { sha256 } from "./hash.js";
+import { migrateCoreArtifactToV2, type CoreArtifactKind } from "./artifactV2.js";
 import type { LoadedConfig } from "../types.js";
 
 export { CURRENT_ARTIFACT_SCHEMA_VERSION };
-export type ArtifactMigrationKind = ArtifactSchemaKind;
+export type ArtifactMigrationKind = ArtifactSchemaKind | CoreArtifactKind;
 export type ArtifactMigrationStatus = "up-to-date" | "would-migrate" | "migrated" | "unsupported" | "invalid-json";
 
 export interface ArtifactMigrationOptions {
@@ -32,6 +33,7 @@ export interface ArtifactMigrationEntry {
 export interface ArtifactMigrationReport {
   version: 1;
   artifactSchemaVersion: 1;
+  coreArtifactSchemaVersion: 2;
   schema: ArtifactSchemaRegistry;
   artifactsDir: string;
   migrationRunsDir: string;
@@ -71,7 +73,10 @@ export async function collectArtifactMigrationReport(
 ): Promise<ArtifactMigrationReport> {
   const artifactsDir = path.resolve(loaded.artifactsDir);
   const migrationRunsDir = path.join(artifactsDir, "migration-runs");
-  const candidates = await listMigrationArtifactFiles(migrationRunsDir);
+  const candidates = [
+    ...await listCoreArtifactFiles(artifactsDir),
+    ...await listMigrationArtifactFiles(migrationRunsDir)
+  ].sort((a, b) => a.path.localeCompare(b.path));
   const plannedEntries: PlannedArtifactMigrationEntry[] = [];
 
   for (const candidate of candidates) {
@@ -85,6 +90,32 @@ export async function collectArtifactMigrationReport(
         changes: [],
         message: error instanceof Error ? error.message : String(error)
       });
+      continue;
+    }
+
+    if (isCoreArtifactKind(candidate.kind)) {
+      try {
+        const migrated = migrateCoreArtifactToV2(candidate.kind, value) as unknown as JsonObject;
+        if (value.artifactSchemaVersion === 2 && value.metadata && typeof value.metadata === "object" && !Array.isArray(value.metadata)) {
+          plannedEntries.push({ candidate, status: "up-to-date", changes: [] });
+        } else {
+          plannedEntries.push({
+            candidate,
+            status: "would-migrate",
+            changes: [value.artifactSchemaVersion === 2
+              ? `backfilled ${candidate.kind} core artifact metadata`
+              : `wrapped ${candidate.kind} in core artifact schema v2 envelope`],
+            migratedValue: migrated
+          });
+        }
+      } catch (error) {
+        plannedEntries.push({
+          candidate,
+          status: "unsupported",
+          changes: [],
+          message: error instanceof Error ? error.message : String(error)
+        });
+      }
       continue;
     }
 
@@ -161,6 +192,7 @@ export async function collectArtifactMigrationReport(
   return {
     version: 1,
     artifactSchemaVersion: CURRENT_ARTIFACT_SCHEMA_VERSION,
+    coreArtifactSchemaVersion: 2,
     schema: ARTIFACT_SCHEMA_V1,
     artifactsDir,
     migrationRunsDir,
@@ -182,6 +214,7 @@ export function renderArtifactMigrationReport(report: ArtifactMigrationReport): 
     `Migration runs: ${report.migrationRunsDir}`,
     `Mode: ${report.applied ? "apply" : "dry-run"}`,
     `Schema version: ${report.artifactSchemaVersion}`,
+    `Core artifact schema version: ${report.coreArtifactSchemaVersion}`,
     `Schema kinds: ${report.schema.kinds.map((kind) => kind.kind).join(", ")}`,
     `Plan hash: ${report.planHash}`,
     `Scanned: ${report.scannedCount}`,
@@ -228,7 +261,7 @@ function createArtifactMigrationPlanHash(entries: PlannedArtifactMigrationEntry[
   return sha256(JSON.stringify(plan));
 }
 
-function migrateArtifactValue(kind: ArtifactMigrationKind, value: JsonObject): MigrationResult {
+function migrateArtifactValue(kind: ArtifactSchemaKind, value: JsonObject): MigrationResult {
   switch (kind) {
     case "proposal":
       return migrateProposal(value);
@@ -370,31 +403,34 @@ async function listMigrationArtifactFiles(migrationRunsDir: string): Promise<Art
     return [];
   }
   const files = await listJsonFiles(migrationRunsDir);
-  return files
-    .map((filePath) => {
-      const normalized = toPosixPath(filePath);
-      if (normalized.endsWith("/proposal.json") && normalized.includes("/proposals/")) {
-        return { path: filePath, kind: "proposal" as const };
-      }
-      if (normalized.includes("/proposals/") && /\/verification-[^/]+\.json$/.test(normalized)) {
-        return { path: filePath, kind: "proposal-verification-report" as const };
-      }
-      if (normalized.endsWith("/batch-plan.json") && normalized.includes("/proposal-batches/")) {
-        return { path: filePath, kind: "proposal-batch-plan" as const };
-      }
-      if (normalized.includes("/proposal-batches/") && /\/proposal-batch-report-[^/]+\.json$/.test(normalized)) {
-        return { path: filePath, kind: "proposal-batch-report" as const };
-      }
-      if (normalized.endsWith("/replan-context.json") && normalized.includes("/replans/")) {
-        return { path: filePath, kind: "proposal-replan-context" as const };
-      }
-      if (normalized.includes("/replans/") && /\/repair-acceptance-[^/]+\.json$/.test(normalized)) {
-        return { path: filePath, kind: "proposal-repair-acceptance" as const };
-      }
-      return undefined;
-    })
-    .filter((candidate): candidate is ArtifactFileCandidate => candidate !== undefined)
-    .sort((a, b) => a.path.localeCompare(b.path));
+  const candidates: ArtifactFileCandidate[] = [];
+  for (const filePath of files) {
+    const normalized = toPosixPath(filePath);
+    if (normalized.endsWith("/proposal.json") && normalized.includes("/proposals/")) candidates.push({ path: filePath, kind: "proposal" });
+    else if (normalized.includes("/proposals/") && /\/verification-[^/]+\.json$/.test(normalized)) candidates.push({ path: filePath, kind: "proposal-verification-report" });
+    else if (normalized.endsWith("/batch-plan.json") && normalized.includes("/proposal-batches/")) candidates.push({ path: filePath, kind: "proposal-batch-plan" });
+    else if (normalized.includes("/proposal-batches/") && /\/proposal-batch-report-[^/]+\.json$/.test(normalized)) candidates.push({ path: filePath, kind: "proposal-batch-report" });
+    else if (normalized.endsWith("/replan-context.json") && normalized.includes("/replans/")) candidates.push({ path: filePath, kind: "proposal-replan-context" });
+    else if (normalized.includes("/replans/") && /\/repair-acceptance-[^/]+\.json$/.test(normalized)) candidates.push({ path: filePath, kind: "proposal-repair-acceptance" });
+  }
+  return candidates.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+async function listCoreArtifactFiles(artifactsDir: string): Promise<ArtifactFileCandidate[]> {
+  const candidates: ArtifactFileCandidate[] = [];
+  for (const [folder, kind] of [["baselines", "snapshot"], ["runs", "snapshot"], ["compare", "compare"], ["ui-jobs", "ui-job"]] as const) {
+    const dir = path.join(artifactsDir, folder);
+    if (!await pathExists(dir)) continue;
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith(".json")) candidates.push({ path: path.join(dir, entry.name), kind });
+    }
+  }
+  for (const name of ["latest-baseline.json", "latest-run.json"]) {
+    const filePath = path.join(artifactsDir, name);
+    if (await pathExists(filePath)) candidates.push({ path: filePath, kind: "snapshot" });
+  }
+  return candidates;
 }
 
 async function listJsonFiles(dir: string): Promise<string[]> {
@@ -421,4 +457,8 @@ function isRecord(value: unknown): value is JsonObject {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function isCoreArtifactKind(kind: ArtifactMigrationKind): kind is CoreArtifactKind {
+  return kind === "snapshot" || kind === "compare" || kind === "ui-job";
 }

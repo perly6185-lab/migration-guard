@@ -10,6 +10,7 @@ import { updateTaskStatus, insertFailureTask, getReadyTasks, validateTaskGraph }
 import { appendEvidence, createFailureIssue, createId, migrationRunDir, saveRunPackage, setRunStatus, syncIssueStatuses, writeRunReport } from "./migrationRun.js";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
 import { selectProbeTemplate } from "./probeTemplateRegistry.js";
+import { writeCompareArtifactFile, writeSnapshotArtifactFile } from "./artifactV2.js";
 import type { LoadedConfig, MigrationAction, MigrationActionCheckReadiness, MigrationIssue, MigrationTask, ScanSummary } from "../types.js";
 import type { MigrationRunPackage } from "./migrationRun.js";
 
@@ -158,7 +159,7 @@ async function executeBaseline(loaded: LoadedConfig, pkg: MigrationRunPackage): 
   }, "baseline");
   const outputPath = await saveSnapshot(loaded, snapshot);
   const runSnapshotPath = path.join(migrationRunDir(loaded, pkg.run.id), "baselines", `${snapshot.id}.json`);
-  await writeJsonFile(runSnapshotPath, snapshot);
+  await writeSnapshotArtifactFile(runSnapshotPath, snapshot);
   pkg.run.latestBaselineId = snapshot.id;
   return `Captured baseline ${snapshot.id} at ${outputPath}`;
 }
@@ -184,7 +185,7 @@ async function executeVerify(loaded: LoadedConfig, pkg: MigrationRunPackage): Pr
   }, "run");
   const outputPath = await saveSnapshot(loaded, snapshot);
   const runSnapshotPath = path.join(migrationRunDir(loaded, pkg.run.id), "verifications", `${snapshot.id}.json`);
-  await writeJsonFile(runSnapshotPath, snapshot);
+  await writeSnapshotArtifactFile(runSnapshotPath, snapshot);
   pkg.run.latestVerificationId = snapshot.id;
 
   const baselineFile = latestBaselinePath(loaded);
@@ -197,7 +198,7 @@ async function executeVerify(loaded: LoadedConfig, pkg: MigrationRunPackage): Pr
   const decisions = await decisionsForCompareReport(loaded, report, pkg.run.id);
   const decisionPolicy = evaluateDiffDecisionPolicy(report, decisions);
   const reportBase = path.join(migrationRunDir(loaded, pkg.run.id), "verifications", `${snapshot.id}-compare`);
-  await writeJsonFile(`${reportBase}.json`, report);
+  await writeCompareArtifactFile(`${reportBase}.json`, report, baseline, snapshot);
   await writeTextFile(`${reportBase}.md`, [
     renderCompareReport(report, decisions),
     "",

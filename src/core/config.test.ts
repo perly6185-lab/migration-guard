@@ -311,3 +311,38 @@ test("artifact migration freezes v1 schema and refuses unsupported future artifa
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("artifact migration wraps v1 snapshot, compare, and UI job artifacts in v2 envelopes", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-core-artifact-migrate-"));
+  const configPath = path.join(dir, ".migration-guard.json");
+  try {
+    await writeFile(configPath, JSON.stringify({ schemaVersion: 1, targetRoot: ".", artifactsDir: ".migration-guard" }), "utf8");
+    const loaded = await loadConfig(configPath);
+    const baselinePath = path.join(loaded.artifactsDir, "baselines", "baseline-old.json");
+    const comparePath = path.join(loaded.artifactsDir, "compare", "compare-old.json");
+    const jobPath = path.join(loaded.artifactsDir, "ui-jobs", "job-old.json");
+    await mkdir(path.dirname(baselinePath), { recursive: true });
+    await mkdir(path.dirname(comparePath), { recursive: true });
+    await mkdir(path.dirname(jobPath), { recursive: true });
+    await writeFile(baselinePath, JSON.stringify({ version: 1, kind: "baseline", id: "baseline-old" }), "utf8");
+    await writeFile(comparePath, JSON.stringify({ passed: true, baselineId: "baseline-old", currentId: "run-old", createdAt: "2026-07-14T00:00:00.000Z", differences: [] }), "utf8");
+    await writeFile(jobPath, JSON.stringify({ version: 1, id: "job-old", action: "readiness", status: "queued" }), "utf8");
+
+    const dryRun = await collectArtifactMigrationReport(loaded);
+    assert.equal(dryRun.scannedCount, 3);
+    assert.equal(dryRun.migratedCount, 3);
+    assert.deepEqual(dryRun.entries.map((entry) => entry.kind).sort(), ["compare", "snapshot", "ui-job"]);
+    const applied = await collectArtifactMigrationReport(loaded, { apply: true, applyConfirm: dryRun.planHash });
+    assert.equal(applied.migratedCount, 3);
+    for (const filePath of [baselinePath, comparePath, jobPath]) {
+      const stored = JSON.parse(await readFile(filePath, "utf8"));
+      assert.equal(stored.artifactSchemaVersion, 2);
+      assert.match(stored.payloadHash, /^[a-f0-9]{64}$/);
+    }
+    const repeated = await collectArtifactMigrationReport(loaded);
+    assert.equal(repeated.migratedCount, 0);
+    assert.equal(repeated.unchangedCount, 3);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

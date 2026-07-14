@@ -3,6 +3,7 @@ import { ensureDir, pathExists, readJsonFile, writeJsonFile, writeTextFile } fro
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
 import { renderCompareReport } from "./markdown.js";
+import { readCompareArtifactFile } from "./artifactV2.js";
 import type {
   CompareReport,
   DiffDecision,
@@ -66,7 +67,7 @@ export async function recordDiffDecision(
   options: RecordDiffDecisionOptions
 ): Promise<{ ledgerPath: string; decision: DiffDecision; report: CompareReport }> {
   const compareReportPath = path.resolve(process.cwd(), options.compareReportPath);
-  const report = await readJsonFile<CompareReport>(compareReportPath);
+  const report = await readCompareArtifactFile(compareReportPath);
   const difference = findDifference(report, options);
   const key = createDifferenceKey(difference);
   const now = new Date().toISOString();
@@ -122,7 +123,7 @@ export async function decisionCoverageForCompareReportPath(
   if (!compareReportPath || !await pathExists(compareReportPath)) {
     return undefined;
   }
-  const report = await readJsonFile<CompareReport>(compareReportPath).catch(() => undefined);
+  const report = await readCompareArtifactFile(compareReportPath).catch(() => undefined);
   if (!report) {
     return undefined;
   }
@@ -138,7 +139,7 @@ export async function decisionPolicyForCompareReportPath(
   if (!compareReportPath || !await pathExists(compareReportPath)) {
     return undefined;
   }
-  const report = await readJsonFile<CompareReport>(compareReportPath).catch(() => undefined);
+  const report = await readCompareArtifactFile(compareReportPath).catch(() => undefined);
   if (!report) {
     return undefined;
   }
