@@ -101,6 +101,7 @@ Configuration onboarding commands:
 
 ```bash
 migration-guard init --target <project> --detect
+migration-guard init --target <project> --detect --apply
 migration-guard doctor --config <path>
 migration-guard config validate --config <path>
 migration-guard config explain --config <path> --json
@@ -108,6 +109,8 @@ migration-guard config explain --config <path> --json
 
 Detection is read-only: it inspects manifests and scripts, recommends checks and
 normalization presets, and never installs dependencies or edits the target project.
+`init --detect` prints a preview by default; add `--apply` to write
+`.migration-guard.json`.
 
 Health debt workflow:
 

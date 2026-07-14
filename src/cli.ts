@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import path from "node:path";
+import { promises as fs } from "node:fs";
 import { CONFIG_FILE_NAME, initConfigFile, loadConfig } from "./core/config.js";
-import { detectConfig, diagnoseConfig, diagnoseUpgrade, explainConfig } from "./core/configDoctor.js";
+import { detectConfigPlan, diagnoseConfig, diagnoseUpgrade, explainConfig } from "./core/configDoctor.js";
 import { ensureDir, pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./core/files.js";
 import { renderAiBrief } from "./core/aiBrief.js";
 import { createCheckpoint, listCheckpoints, rollbackToCheckpoint } from "./core/checkpoint.js";
@@ -131,6 +132,29 @@ import {
   writeOneShotReport
 } from "./core/oneShot.js";
 import type { CompareReport, DiffDecisionClassification, Difference, MigrationAutomationMode, MigrationRun, ProposalGatePolicy, ProposedPatch } from "./types.js";
+
+interface BehaviorEvidenceReport {
+  version: 1;
+  createdAt: string;
+  status: "passed" | "failed";
+  targetRoot: string;
+  artifactsDir: string;
+  baseline: { path: string; id: string; createdAt: string };
+  current: { path: string; id: string; createdAt: string };
+  compare: {
+    path: string;
+    baselineId: string;
+    currentId: string;
+    passed: boolean;
+    differences: number;
+    healthyChecks?: number;
+    inheritedFailures?: number;
+    changedFailures?: number;
+    regressions?: number;
+  };
+  outputPath: string;
+  markdownPath: string;
+}
 
 interface ParsedArgs {
   command: string;
@@ -297,9 +321,24 @@ async function commandInit(args: ParsedArgs): Promise<void> {
   const force = Boolean(args.options.force);
 
   if (args.options.detect) {
-    if (!force && await pathExists(configPath)) throw new Error(`Config already exists: ${configPath}`);
-    const detected = await detectConfig(path.resolve(process.cwd(), targetRoot));
-    await writeJsonFile(configPath, detected);
+    const plan = await detectConfigPlan(targetRoot);
+    if (args.options.apply) {
+      if (!force && await pathExists(configPath)) throw new Error(`Config already exists: ${configPath}`);
+      await writeJsonFile(configPath, plan.config);
+      await ensureDir(path.resolve(process.cwd(), ".migration-guard"));
+      if (args.options.json) {
+        console.log(JSON.stringify({ ...plan, applied: true, outputPath: configPath }, null, 2));
+      } else {
+        console.log(renderConfigDetectionPlan(plan, configPath, true));
+      }
+      return;
+    }
+    if (args.options.json) {
+      console.log(JSON.stringify({ ...plan, applied: false, outputPath: configPath }, null, 2));
+    } else {
+      console.log(renderConfigDetectionPlan(plan, configPath, false));
+    }
+    return;
   } else {
     await initConfigFile(configPath, targetRoot, force);
   }
@@ -693,12 +732,35 @@ async function commandActions(args: ParsedArgs): Promise<void> {
 
 async function commandReport(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
-  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
-  const report = await renderRunReport(loaded, pkg);
-  const reportPath = await writeRunReport(loaded, pkg);
-  console.log(report);
-  console.log("");
-  console.log(`Wrote ${reportPath}`);
+  const runSelector = stringOption(args, "run");
+  if (runSelector) {
+    const pkg = await loadRunPackage(loaded, runSelector);
+    const report = await renderRunReport(loaded, pkg);
+    const reportPath = await writeRunReport(loaded, pkg);
+    console.log(report);
+    console.log("");
+    console.log(`Wrote ${reportPath}`);
+    return;
+  }
+  try {
+    const pkg = await loadRunPackage(loaded, "latest");
+    const report = await renderRunReport(loaded, pkg);
+    const reportPath = await writeRunReport(loaded, pkg);
+    console.log(report);
+    console.log("");
+    console.log(`Wrote ${reportPath}`);
+  } catch {
+    const report = await writeBehaviorEvidenceReport(loaded);
+    if (args.options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(renderBehaviorEvidenceReport(report));
+      console.log("");
+      console.log(`Wrote ${report.markdownPath}`);
+      console.log(`Wrote ${report.outputPath}`);
+    }
+    if (report.status !== "passed") process.exitCode = 1;
+  }
 }
 
 async function commandReadiness(args: ParsedArgs): Promise<void> {
@@ -1666,6 +1728,110 @@ async function commandArtifacts(args: ParsedArgs): Promise<void> {
   throw new Error(`Unknown artifacts command: ${action}`);
 }
 
+function renderConfigDetectionPlan(
+  plan: Awaited<ReturnType<typeof detectConfigPlan>>,
+  configPath: string,
+  applied: boolean
+): string {
+  const lines = [
+    applied ? `Created ${configPath}` : `Config preview for ${configPath}`,
+    `Target: ${plan.targetRoot}`,
+    `Confidence: ${plan.confidence}`,
+    `Detected: ${plan.detected.join(", ") || "none"}`,
+    `Package manager: ${plan.packageManager}`,
+    `Recommended checks: ${plan.recommendedChecks.map((check) => `${check.name} (${check.command})`).join(", ") || "none"}`,
+    "Sources:",
+    ...((plan.sources.length > 0 ? plan.sources : [{ path: plan.targetRoot, reason: "target root" }]).map((source) => `- ${source.reason}: ${source.path}`)),
+    "Skipped suggestions:",
+    ...(plan.skippedSuggestions.length > 0 ? plan.skippedSuggestions.map((item) => `- ${item}`) : ["- none"]),
+    "Findings:",
+    ...(plan.findings.length > 0 ? plan.findings.map((finding) => `- [${finding.severity}] ${finding.code}: ${finding.message}${finding.fix ? ` Fix: ${finding.fix}` : ""}`) : ["- none"])
+  ];
+  if (!applied) {
+    lines.push("", "No files were written. Re-run with `--apply` to create the config.");
+  } else {
+    lines.push("", "Next: run `migration-guard config validate`, then `migration-guard baseline`.");
+  }
+  return lines.join("\n");
+}
+
+async function writeBehaviorEvidenceReport(
+  loaded: Awaited<ReturnType<typeof loadFromArgs>>
+): Promise<BehaviorEvidenceReport> {
+  const baselinePath = latestBaselinePath(loaded);
+  const currentPath = latestRunPath(loaded);
+  const comparePath = await latestCompareReportPath(loaded.artifactsDir);
+  if (!await pathExists(baselinePath)) throw new Error(`No baseline found at ${baselinePath}. Run baseline first.`);
+  if (!await pathExists(currentPath)) throw new Error(`No run snapshot found at ${currentPath}. Run verify first.`);
+  if (!comparePath) throw new Error(`No compare report found under ${path.join(loaded.artifactsDir, "compare")}. Run verify first.`);
+  const baseline = await loadSnapshot(baselinePath);
+  const current = await loadSnapshot(currentPath);
+  const compare = await readCompareArtifactFile(comparePath);
+  const id = `behavior-report-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  const outputPath = path.join(loaded.artifactsDir, "reports", `${id}.json`);
+  const markdownPath = path.join(loaded.artifactsDir, "reports", `${id}.md`);
+  const report: BehaviorEvidenceReport = {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    status: compare.passed ? "passed" : "failed",
+    targetRoot: loaded.targetRoot,
+    artifactsDir: loaded.artifactsDir,
+    baseline: { path: portableRelative(loaded.baseDir, baselinePath), id: baseline.id, createdAt: baseline.createdAt },
+    current: { path: portableRelative(loaded.baseDir, currentPath), id: current.id, createdAt: current.createdAt },
+    compare: {
+      path: portableRelative(loaded.baseDir, comparePath),
+      baselineId: compare.baselineId,
+      currentId: compare.currentId,
+      passed: compare.passed,
+      differences: compare.differences.length,
+      healthyChecks: compare.checkHealth?.healthy,
+      inheritedFailures: compare.checkHealth?.inheritedFailure,
+      changedFailures: compare.checkHealth?.changedFailure,
+      regressions: compare.checkHealth?.regression
+    },
+    outputPath,
+    markdownPath
+  };
+  await writeJsonFile(outputPath, report);
+  await writeTextFile(markdownPath, renderBehaviorEvidenceReport(report));
+  return report;
+}
+
+function renderBehaviorEvidenceReport(report: BehaviorEvidenceReport): string {
+  return [
+    "# Behavior Evidence Report",
+    "",
+    `- Status: ${report.status}`,
+    `- Target: ${report.targetRoot}`,
+    `- Baseline: ${report.baseline.id}`,
+    `- Current: ${report.current.id}`,
+    `- Compare: ${report.compare.path}`,
+    `- Passed: ${report.compare.passed ? "yes" : "no"}`,
+    `- Differences: ${report.compare.differences}`,
+    `- Check health: ${report.compare.healthyChecks ?? 0} healthy, ${report.compare.inheritedFailures ?? 0} inherited failure, ${report.compare.regressions ?? 0} regression, ${report.compare.changedFailures ?? 0} changed failure`,
+    ""
+  ].join("\n");
+}
+
+async function latestCompareReportPath(artifactsDir: string): Promise<string | undefined> {
+  const dir = path.join(artifactsDir, "compare");
+  if (!await pathExists(dir)) return undefined;
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const files = await Promise.all(entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map(async (entry) => {
+      const filePath = path.join(dir, entry.name);
+      const stats = await fs.stat(filePath);
+      return { filePath, mtimeMs: stats.mtimeMs };
+    }));
+  files.sort((a, b) => b.mtimeMs - a.mtimeMs || b.filePath.localeCompare(a.filePath));
+  return files[0]?.filePath;
+}
+
+function portableRelative(baseDir: string, filePath: string): string {
+  return path.relative(baseDir, filePath).replace(/\\/g, "/");
+}
+
 async function loadOptionalSnapshot(filePath: string) {
   return await pathExists(filePath) ? loadSnapshot(filePath) : undefined;
 }
@@ -1884,7 +2050,7 @@ function printHelp(): void {
   console.log(`Migration Guard
 
 Usage:
-  migration-guard init [--target <path>] [--detect] [--force]
+  migration-guard init [--target <path>] [--detect] [--apply] [--force] [--json]
   migration-guard doctor [--config <path>] [--profile <name>] [--upgrade] [--json]
   migration-guard config validate|explain [--config <path>] [--profile <name>] [--json]
   migration-guard scan [--config <path>] [--profile <name>] [--json]
@@ -1905,7 +2071,7 @@ Usage:
   migration-guard tasks [--run <id|latest>] [--json]
   migration-guard actions [--run <id|latest>] [--json]
   migration-guard actions handoff [--run <id|latest>] [--create-replans] [--repair-briefs] [--json]
-  migration-guard report [--run <id|latest>]
+  migration-guard report [--run <id|latest>] [--json]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot runbook [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--json]
   migration-guard one-shot session open|status|sync|next|run [--session <path>] [--max-source-file-delta <n>] [--max-steps <n>] [--edit-command <cmd>] [--pr-command <cmd>] [--external-step-timeout-ms <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--skip-target-git] [--no-sync] [--strict] [--json]

@@ -79,6 +79,8 @@ Artifacts：
 
 目标：验证用户从空配置到可信 verify 的完整首次使用体验。
 
+状态：已完成，见 `docs/PHASE_163_REPORT.md`。
+
 交付内容：
 
 - 在隔离临时目录执行 package 安装后的 `init --detect -> config validate -> doctor -> scan -> baseline -> verify -> report`。
