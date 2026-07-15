@@ -14,7 +14,7 @@ const workspace = process.cwd();
 const releaseRunId = process.env.MG_RELEASE_RUN_ID;
 assert.ok(releaseRunId, "MG_RELEASE_RUN_ID is required; run this through release:gate");
 const pkg = JSON.parse(await readFile(path.join(workspace, "package.json"), "utf8"));
-assert.equal(pkg.version, "0.2.0", "GA candidate must use version 0.2.0");
+assert.match(pkg.version, /^(?:0\.2\.0|0\.3\.0-beta\.1)$/, "candidate must use a supported release version");
 
 const packed = JSON.parse(await run("npm", ["pack", "--json", "--ignore-scripts"]))[0];
 assert.ok(packed?.filename, "npm pack returned no tarball");
@@ -40,10 +40,10 @@ try {
       files: packed.files.map((file) => ({ path: file.path, size: file.size }))
     }
   };
-  assert.equal(candidate.gitDirty, false, "GA candidate evidence must be bound to a clean commit");
+  assert.equal(candidate.gitDirty, false, "release candidate evidence must be bound to a clean commit");
   await writeJsonAtomic(manifestPath, candidate);
   await writeTextAtomic(handoffPath, renderHandoff(candidate));
-  console.log(`GA candidate recorded: ${path.relative(workspace, manifestPath)}`);
+  console.log(`Release candidate recorded: ${path.relative(workspace, manifestPath)}`);
   console.log(`tarball sha256: ${candidate.tarball.sha256}`);
 } finally {
   await rm(tarballPath, { force: true });
@@ -74,7 +74,7 @@ function renderHandoff(candidate) {
     "",
     "## Rollback",
     "",
-    "Do not overwrite an npm version. For a broken fresh release, run `npm deprecate migration-guard@0.2.0 \"Use 0.2.0-rc.1 while a fix is prepared\"`, document impact, and publish a new patch version. Delete an unpushed local tag with `git tag -d v0.2.0`; coordinate before changing any pushed tag or GitHub Release.",
+    `Do not overwrite an npm version. For a broken fresh release, deprecate migration-guard@${candidate.packageVersion}, document impact, and publish a new version. Delete an unpushed local tag with \`git tag -d ${tag}\`; coordinate before changing any pushed tag or GitHub Release.`,
     ""
   ].join("\n");
 }

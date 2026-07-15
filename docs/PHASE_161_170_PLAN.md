@@ -239,6 +239,8 @@ Artifacts：
 
 目标：证明“证据驱动的外部 AI 协作”在真实项目中可以安全闭环。
 
+状态：门禁实现完成；本地 beta readiness 已 GO，真实 pilot release gate 待配置三个项目根后执行。见 `docs/PHASE_170_REPORT.md`。
+
 验证场景：
 
 - 单包 JS/TS：配置生成、baseline、handoff、result import、verify。

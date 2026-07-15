@@ -123,7 +123,7 @@ export async function diagnoseUpgrade(loaded: LoadedConfig): Promise<Record<stri
   if (!artifactWritable) findings.push({ severity: "error", code: "artifacts-permission", message: `Artifacts directory is not writable: ${loaded.artifactsDir}` });
   const unresolvedVariables = JSON.stringify(loaded.config).match(/\$\{?[A-Z0-9_]+\}?/g) ?? [];
   if (unresolvedVariables.length > 0) findings.push({ severity: "error", code: "unresolved-variable", message: `Unresolved config variables: ${[...new Set(unresolvedVariables)].join(", ")}` });
-  return { version: 1, currentVersion: "0.2.0-rc.1", targetVersion: "0.2.0", nodeVersion: process.versions.node, configSchemaVersion: loaded.config.schemaVersion, artifactsDir: loaded.artifactsDir, findings, ready: !findings.some((finding) => finding.severity === "error") };
+  return { version: 1, currentVersion: "0.2.0", targetVersion: "0.3.0-beta.1", nodeVersion: process.versions.node, configSchemaVersion: loaded.config.schemaVersion, artifactsDir: loaded.artifactsDir, findings, ready: !findings.some((finding) => finding.severity === "error") };
 }
 
 async function inspectTarget(targetRoot: string): Promise<Omit<ConfigDoctorReport, "valid">> {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0-beta.1 - 2026-07-15
+
+- Add portable AI handoff and guarded external result acceptance contracts.
+- Add offline organization policies with stable hashes and conservative overrides.
+- Add beta readiness evidence covering multi-stack golden fixtures, repair convergence,
+  worker fencing, schema compatibility and manual release boundaries.
+
 ## Unreleased
 
 - Add local refactoring project registration, stack preview, project switching and initial-run creation to the operator UI.

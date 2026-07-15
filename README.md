@@ -1,5 +1,9 @@
 # Migration Guard
 
+Current beta version: `0.3.0-beta.1`. Run `npm run beta:readiness` for the local
+collaboration-foundation gate; a publishable candidate still requires the full
+release gate with all configured real-project pilots available.
+
 Migration Guard is a behavior-consistency guardrail CLI for important refactoring
 and migration projects.
 

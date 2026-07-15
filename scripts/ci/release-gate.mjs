@@ -24,11 +24,11 @@ const releaseRunId = resumeIndex >= 0 ? args[resumeIndex + 1] : createReleaseRun
 if (!releaseRunId) throw new Error("--resume requires a release run id");
 
 const packageJson = JSON.parse(await readFile(path.join(workspace, "package.json"), "utf8"));
-assert.match(packageJson.version, /^0\.2\.0(?:-rc\.\d+)?$/, `unexpected release version: ${packageJson.version}`);
+assert.match(packageJson.version, /^(?:0\.2\.0(?:-rc\.\d+)?|0\.3\.0-beta\.1)$/, `unexpected release version: ${packageJson.version}`);
 
 const combinedContext = await collectContext();
-if (packageJson.version === "0.2.0" && combinedContext.release.git?.dirty) {
-  throw new Error("0.2.0 GA release gate requires a clean Git checkout");
+if ((packageJson.version === "0.2.0" || packageJson.version === "0.3.0-beta.1") && combinedContext.release.git?.dirty) {
+  throw new Error(`${packageJson.version} release gate requires a clean Git checkout`);
 }
 const currentContextHash = sha256(JSON.stringify(combinedContext));
 const runDir = releaseRunDir(workspace, releaseRunId);
@@ -66,6 +66,7 @@ await persist();
 
 const steps = [
   { id: "test", command: "npm", args: ["test"] },
+  { id: "beta-readiness", command: "npm", args: ["run", "beta:readiness"] },
   { id: "ui-smoke", command: "npm", args: ["run", "ui:smoke"] },
   { id: "package-audit", command: "npm", args: ["run", "package:audit"] },
   { id: "package-smoke", command: "npm", args: ["run", "package:smoke"] },
