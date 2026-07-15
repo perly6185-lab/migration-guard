@@ -69,6 +69,8 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /Guarded Actions/);
       assert.match(html, /Run selector/);
       assert.match(html, /Project Workflow/);
+      assert.match(html, /Auto advance/);
+      assert.match(html, /maybeAutoAdvance/);
       assert.match(html, /Project Portfolio/);
       assert.match(html, /Capture Baseline/);
       assert.match(html, /Create Checkpoint/);

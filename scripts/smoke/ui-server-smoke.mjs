@@ -38,6 +38,7 @@ try {
   assertIncludes(html, "CLI and advanced next actions", "advanced CLI fallback");
   assertIncludes(html, "Guarded Actions", "guarded actions");
   assertIncludes(html, "Project Workflow", "project workflow");
+  assertIncludes(html, "Auto advance", "safe workflow auto advance");
   assertIncludes(html, "Project Portfolio", "project portfolio");
   assertIncludes(html, "Deliverables", "report deliverables");
   assertIncludes(html, "data-requires-workspace", "workspace view locks");

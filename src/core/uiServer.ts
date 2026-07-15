@@ -414,6 +414,8 @@ function renderUiHtml(csrfToken: string): string {
     .toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .toolbar.compact select { min-width:120px; max-width:180px; }
     .panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+    .auto-advance { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px; white-space:nowrap; }
+    .auto-advance input { width:16px; height:16px; margin:0; padding:0; }
     .grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
     .stat { border:1px solid var(--line); border-radius:8px; padding:10px; background:#fbfcfd; min-height:74px; }
     .stat span { display:block; color:var(--muted); }
@@ -564,7 +566,7 @@ function renderUiHtml(csrfToken: string): string {
   </dialog>
   <main>
     <aside class="stack">
-      <section data-views="workspace"><div class="panel-head"><h2>Project Workflow</h2></div><div id="workspaceOverview"><p class="muted">Loading...</p></div><div id="workspaceActions" class="actions job-actions">
+      <section data-views="workspace"><div class="panel-head"><h2>Project Workflow</h2><label class="auto-advance" title="Continue safe workflow steps; stop before bounded code changes, blockers, reports, or recovery"><input id="autoAdvance" type="checkbox"> Auto advance</label></div><div id="workspaceOverview"><p class="muted">Loading...</p></div><div id="workspaceActions" class="actions job-actions">
         <button data-action="scan">Scan Project</button>
         <button data-action="baseline">Capture Baseline</button>
         <button data-action="verify">Verify</button>
@@ -636,6 +638,8 @@ function renderUiHtml(csrfToken: string): string {
     let workspacePreviewRevision = 0;
     let workspaceManaged = false;
     let activeJobDetailId = null;
+    let currentWorkflowStage = 'registered';
+    let autoAdvanceRunning = false;
 
     async function json(path, options) {
       const requestOptions = options || {};
@@ -753,6 +757,7 @@ function renderUiHtml(csrfToken: string): string {
       };
       const order = ['registered', 'scan', 'baseline', 'execute', 'verify', 'report'];
       const current = order.find(stage => !complete[stage]) || 'report';
+      currentWorkflowStage = current;
       document.querySelectorAll('[data-stage]').forEach(step => {
         step.classList.toggle('done', complete[step.dataset.stage]);
         step.classList.toggle('current', step.dataset.stage === current);
@@ -1032,6 +1037,7 @@ function renderUiHtml(csrfToken: string): string {
         status.className = 'status-line ' + (finished.result?.status === 'accepted' ? 'ok' : 'bad');
         status.innerHTML = renderJobStatus(finished);
         await load();
+        if (finished.status === 'succeeded') await maybeAutoAdvance('task-execute');
       } catch (error) { status.className = 'status-line bad'; status.innerHTML = errorHtml(error); button.disabled = false; }
     }
     function renderProposals(proposals) {
@@ -1405,12 +1411,31 @@ function renderUiHtml(csrfToken: string): string {
         const finished = await pollJob(created.jobId);
         if (finished.status === 'succeeded') {
           await load();
+          await maybeAutoAdvance(name);
         }
       } catch (error) {
         status.className = 'status-line bad';
         status.innerHTML = '<strong>' + escapeHtml(button.textContent) + ' failed</strong><div>' + escapeHtml(error.message || String(error)) + '</div>';
       } finally {
         if (actionCapabilities) renderActionCapabilities(actionCapabilities);
+      }
+    }
+    function autoAdvanceEnabled() {
+      return document.getElementById('autoAdvance').checked;
+    }
+    async function maybeAutoAdvance(completedAction) {
+      if (!autoAdvanceEnabled() || autoAdvanceRunning) return;
+      const safeNextAction = { scan: 'scan', baseline: 'baseline', verify: 'verify' }[currentWorkflowStage];
+      if (!safeNextAction || safeNextAction === completedAction) return;
+      const capability = actionCapabilities?.actions?.find(action => action.id === safeNextAction);
+      if (capability && !capability.enabled) return;
+      autoAdvanceRunning = true;
+      try {
+        const virtualButton = document.createElement('button');
+        virtualButton.textContent = 'Auto ' + safeNextAction;
+        await startActionJob(safeNextAction, virtualButton);
+      } finally {
+        autoAdvanceRunning = false;
       }
     }
     async function retryJob(button) {
@@ -1572,6 +1597,9 @@ function renderUiHtml(csrfToken: string): string {
       textarea.remove();
     }
     document.getElementById('refresh').addEventListener('click', load);
+    const autoAdvance = document.getElementById('autoAdvance');
+    autoAdvance.checked = localStorage.getItem('migrationGuardAutoAdvance') === 'true';
+    autoAdvance.addEventListener('change', () => localStorage.setItem('migrationGuardAutoAdvance', String(autoAdvance.checked)));
     document.querySelectorAll('[data-work-view]').forEach(button => button.addEventListener('click', () => setWorkView(button.dataset.workView)));
     document.getElementById('newWorkspace').addEventListener('click', () => {
       loadRecentWorkspacePaths();
