@@ -72,6 +72,10 @@ test("workspace workflow jobs persist scan, baseline and checkpoint progress", a
     assert.equal(overview.progress.find((step) => step.id === "checkpoint")?.complete, true);
     assert.equal(overview.progress.find((step) => step.id === "execute")?.complete, false);
     assert.equal(overview.progress.find((step) => step.id === "report")?.complete, false);
+    const workflowPkg = await loadRunPackage(loaded, workspace.activeRunId);
+    assert.equal(workflowPkg.graph.tasks.find((task) => task.type === "analyze")?.status, "done");
+    assert.equal(workflowPkg.graph.tasks.find((task) => task.type === "baseline")?.status, "done");
+    assert.equal(workflowPkg.graph.tasks.find((task) => task.type === "plan")?.status, "ready");
     const recovery = await collectUiRecovery(loaded, workspace.activeRunId);
     assert.equal(recovery.checkpoints.length, 1);
     const plan = await writeUiRecoveryPlan(loaded, workspace.activeRunId, recovery.checkpoints[0]?.id ?? "");

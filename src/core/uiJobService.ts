@@ -8,7 +8,8 @@ import { createCheckpoint } from "./checkpoint.js";
 import { executeUiTaskPlan } from "./uiTaskExecution.js";
 import { writeJsonFile } from "./files.js";
 import { stableStringify } from "./normalize.js";
-import { loadRunPackage } from "./migrationRun.js";
+import { loadRunPackage, saveRunPackage } from "./migrationRun.js";
+import { updateTaskStatus } from "./taskGraph.js";
 import { UiHttpError } from "./uiHttpError.js";
 import { resolveArtifactPath } from "./uiArtifacts.js";
 import {
@@ -454,18 +455,24 @@ async function executeUiActionJob(
     return await writeRefactorReadinessReport(loaded, pkg, await assessRefactorReadiness(loaded, pkg));
   }
   if (job.action === "scan") {
-    const scan = await scanProject(loaded);
-    const outputPath = path.join(loaded.artifactsDir, "scan", `${Date.now()}.json`);
-    await writeJsonFile(outputPath, scan);
-    return { status: "complete", outputPath, summary: { sourceFiles: scan.sourceFiles, testFiles: scan.testFiles, totalFiles: scan.totalFiles } };
+    return await executeWorkflowStep(loaded, job, "analyze", async () => {
+      const scan = await scanProject(loaded);
+      const outputPath = path.join(loaded.artifactsDir, "scan", `${Date.now()}.json`);
+      await writeJsonFile(outputPath, scan);
+      return { status: "complete", outputPath, summary: { sourceFiles: scan.sourceFiles, testFiles: scan.testFiles, totalFiles: scan.totalFiles } };
+    });
   }
   if (job.action === "baseline") {
-    const snapshotPath = await saveSnapshot(loaded, await captureSnapshot(loaded, "baseline"));
-    return { status: "complete", snapshotPath };
+    return await executeWorkflowStep(loaded, job, "baseline", async () => {
+      const snapshotPath = await saveSnapshot(loaded, await captureSnapshot(loaded, "baseline"));
+      return { status: "complete", snapshotPath };
+    });
   }
   if (job.action === "verify") {
-    const snapshotPath = await saveSnapshot(loaded, await captureSnapshot(loaded, "run"));
-    return { status: "complete", snapshotPath };
+    return await executeWorkflowStep(loaded, job, "verify", async () => {
+      const snapshotPath = await saveSnapshot(loaded, await captureSnapshot(loaded, "run"));
+      return { status: "complete", snapshotPath };
+    });
   }
   if (job.action === "checkpoint") {
     const pkg = await loadRunPackage(loaded, stringJobParam(job, "run") ?? job.runId ?? "latest");
@@ -489,6 +496,39 @@ async function executeUiActionJob(
     fetchImpl: options.fetchImpl,
     maxIterations: numberJobParam(job, "maxIterations") ?? 3
   });
+}
+
+async function executeWorkflowStep<T>(
+  loaded: LoadedConfig,
+  job: UiJob,
+  taskType: "analyze" | "baseline" | "verify",
+  operation: () => Promise<T>
+): Promise<T> {
+  const pkg = await loadRunPackage(loaded, job.runId ?? "latest").catch(() => undefined);
+  const task = pkg?.graph.tasks.find((candidate) => candidate.type === taskType && candidate.status === "ready");
+  if (pkg && task) {
+    updateTaskStatus(pkg.graph, task.id, "running");
+    pkg.run.status = "running";
+    pkg.run.updatedAt = new Date().toISOString();
+    await saveRunPackage(loaded, pkg);
+  }
+  try {
+    const result = await operation();
+    if (pkg && task) {
+      updateTaskStatus(pkg.graph, task.id, "done", `Completed by UI ${job.action} job ${job.id}.`);
+      pkg.run.updatedAt = new Date().toISOString();
+      await saveRunPackage(loaded, pkg);
+    }
+    return result;
+  } catch (error) {
+    if (pkg && task) {
+      updateTaskStatus(pkg.graph, task.id, "failed", error instanceof Error ? error.message : String(error));
+      pkg.run.status = "blocked";
+      pkg.run.updatedAt = new Date().toISOString();
+      await saveRunPackage(loaded, pkg);
+    }
+    throw error;
+  }
 }
 
 function uiJobParams(
