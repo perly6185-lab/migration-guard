@@ -13,6 +13,7 @@ export interface MigrationGuardConfig {
   issueSync?: IssueSyncConfig;
   variables?: Record<string, string>;
   profiles?: Record<string, MigrationGuardConfigProfile>;
+  policy?: PolicyConfig;
 }
 
 export interface MigrationGuardConfigProfile {
@@ -26,7 +27,12 @@ export interface MigrationGuardConfigProfile {
   proposalGate?: Partial<ProposalGateConfig>;
   issueSync?: Partial<IssueSyncConfig>;
   variables?: Record<string, string>;
+  policy?: PolicyConfig;
 }
+
+export interface PolicyConfig { preset?: string; overrides?: Partial<GuardPolicy>; }
+export interface GuardPolicy { maxChangedFiles: number; maxCommands: number; artifactRetentionRuns: number; requireStrictHealth: boolean; allowTargetEdit: boolean; allowGithubMutation: boolean; allowReleaseMutation: boolean; }
+export interface PolicyResolution { preset: string; source: string; policy: GuardPolicy; hash: string; findings: string[]; }
 
 export interface IssueSyncConfig {
   githubRepo?: string;
@@ -110,6 +116,7 @@ export interface LoadedConfig {
   artifactsDir: string;
   profile?: string;
   config: MigrationGuardConfig;
+  policy?: PolicyResolution;
 }
 
 export interface CommandExecutionResult {
@@ -370,6 +377,7 @@ export interface MigrationRun {
   latestBaselineId?: string;
   latestVerificationId?: string;
   finalReportPath?: string;
+  policyHash?: string;
 }
 
 export interface MigrationEstimate {

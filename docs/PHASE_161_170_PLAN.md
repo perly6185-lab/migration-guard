@@ -217,6 +217,8 @@ Artifacts：
 
 目标：让多个项目复用一致的安全策略，而不是复制大型配置文件。
 
+状态：已完成，见 `docs/PHASE_169_REPORT.md`。
+
 交付内容：
 
 - 支持本地 policy preset：check budget、health debt、artifact retention、allowed mutation 和 handoff limits。

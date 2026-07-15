@@ -1,6 +1,7 @@
 import path from "node:path";
 import { pathExists, readJsonFile, resolveMaybeRelative, writeJsonFile } from "./files.js";
 import type { ComparePolicy, IssueSyncConfig, LoadedConfig, MigrationGuardConfig, MigrationGuardConfigProfile, OutputConfig, ProposalGateConfig } from "../types.js";
+import { resolvePolicy } from "./policy.js";
 
 export const CONFIG_FILE_NAME = ".migration-guard.json";
 
@@ -104,6 +105,7 @@ export async function loadConfig(configPath?: string, startDir = process.cwd(), 
   const config = interpolateConfig(mergeWithDefaults(applyConfigProfile(raw, selectedProfile, resolvedConfigPath)));
   const targetRoot = resolveMaybeRelative(baseDir, config.targetRoot);
   const artifactsDir = resolveMaybeRelative(baseDir, config.artifactsDir);
+  const policy = await resolvePolicy(config.policy, baseDir);
 
   return {
     path: resolvedConfigPath,
@@ -111,7 +113,8 @@ export async function loadConfig(configPath?: string, startDir = process.cwd(), 
     targetRoot,
     artifactsDir,
     profile: selectedProfile,
-    config
+    config,
+    policy
   };
 }
 
@@ -163,6 +166,7 @@ function mergeWithDefaults(raw: RawMigrationGuardConfig): MigrationGuardConfig {
       ...raw.issueSync
     },
     variables: raw.variables ?? defaults.variables,
+    policy: raw.policy,
     profiles: raw.profiles
   };
 }
@@ -222,6 +226,7 @@ function mergeProfile(
       ...raw.variables,
       ...profile.variables
     },
+    policy: profile.policy ?? raw.policy,
     profiles: raw.profiles
   };
 }

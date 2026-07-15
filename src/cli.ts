@@ -135,6 +135,7 @@ import type { CompareReport, DiffDecisionClassification, Difference, MigrationAu
 import { dispatchCliCommand, type CliCommandRegistry } from "./core/cliDispatch.js";
 import { createHandoffContract, explainHandoffContract, readHandoffContract, redactHandoffContract, referenceHandoffArtifact, renderHandoffCompactPrompt, renderHandoffMarkdown, validateHandoffContract, writeHandoffContract } from "./core/handoff.js";
 import { applyHandoffResultImport, planHandoffResultImport, renderHandoffResultImportPlan } from "./core/handoffResult.js";
+import { listBuiltinPolicies } from "./core/policy.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -177,13 +178,21 @@ async function main(argv: string[]): Promise<void> {
     "one-shot": commandOneShot, checkpoint: commandCheckpoint, resume: commandResume, rollback: commandRollback,
     task: commandTask, action: commandAction, proposal: commandProposal, "sync-issues": commandSyncIssues,
     "issue-control": commandIssueControl, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
-    preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff
+    preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff, policy: commandPolicy
   };
   if (!await dispatchCliCommand(args, handlers)) {
     console.error(`Unknown command: ${args.command}`);
     printHelp();
     process.exitCode = 1;
   }
+}
+
+async function commandPolicy(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "explain";
+  const loaded = await loadFromArgs(args);
+  if (action === "list") { console.log(JSON.stringify(listBuiltinPolicies(), null, 2)); return; }
+  if (action === "explain") { console.log(JSON.stringify(loaded.policy, null, 2)); return; }
+  throw new Error(`Unknown policy command: ${action}`);
 }
 
 async function commandHandoff(args: ParsedArgs): Promise<void> {
@@ -249,8 +258,13 @@ async function commandHandoff(args: ParsedArgs): Promise<void> {
     commands = status.nextAction.command ? [status.nextAction.command] : []; criteria = ["the selected one-shot step is reported as passed"];
     for (const [filePath, kind] of [[status.runbookPath, "one-shot-runbook"], [status.latestComparePath, "compare"]] as const) if (filePath && await pathExists(filePath)) evidence.push(await referenceHandoffArtifact(pkg.run.targetRoot, filePath, kind));
   }
-  const maxChangedFiles = numberOption(args, "max-changed-files") ?? Math.max(allowedPaths.length, oneShot ? 1 : 0);
-  const contract = await createHandoffContract({ goal: pkg.run.goal, task, permissions: { granted: [allowedPaths.length || oneShot ? "target-edit" : "read-only"], denied: ["github-mutation", "release-mutation"] }, scope: { root: pkg.run.targetRoot, allowedPaths, maxChangedFiles }, forbiddenActions: ["edit files outside allowedPaths", "change credentials or secret stores", "push commits, tags, releases, or remote issues", "disable or bypass verification"], evidence, suggestedCommands: commands, acceptanceCriteria: criteria, budget: { maxChangedFiles, maxCommands: commands.length, note: stringOption(args, "budget") }, lineage });
+  const requestedFiles = numberOption(args, "max-changed-files") ?? Math.max(allowedPaths.length, oneShot ? 1 : 0);
+  const maxChangedFiles = Math.min(requestedFiles, loaded.policy?.policy.maxChangedFiles ?? requestedFiles);
+  if (allowedPaths.length > maxChangedFiles) throw new Error(`Task scope has ${allowedPaths.length} files but active policy allows ${maxChangedFiles}.`);
+  if (commands.length > (loaded.policy?.policy.maxCommands ?? commands.length)) throw new Error(`Task requires ${commands.length} commands but active policy allows ${loaded.policy?.policy.maxCommands}.`);
+  const wantsEdit = Boolean(allowedPaths.length || oneShot);
+  if (wantsEdit && loaded.policy?.policy.allowTargetEdit === false) throw new Error("Active policy denies target edits.");
+  const contract = await createHandoffContract({ goal: pkg.run.goal, task, permissions: { granted: [wantsEdit ? "target-edit" : "read-only"], denied: ["github-mutation", "release-mutation"] }, scope: { root: pkg.run.targetRoot, allowedPaths, maxChangedFiles }, forbiddenActions: ["edit files outside allowedPaths", "change credentials or secret stores", "push commits, tags, releases, or remote issues", "disable or bypass verification"], evidence, suggestedCommands: commands, acceptanceCriteria: criteria, budget: { maxChangedFiles, maxCommands: commands.length, note: stringOption(args, "budget") }, lineage: { ...lineage, policyHash: loaded.policy?.hash } });
   const written = await writeHandoffContract(pkg.run.targetRoot, contract, stringOption(args, "output-dir") ?? path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "handoffs"));
   if (args.options.json) console.log(JSON.stringify(written, null, 2));
   else if (args.options.prompt) console.log(renderHandoffCompactPrompt(written));
@@ -375,7 +389,7 @@ async function commandVerify(args: ParsedArgs): Promise<void> {
   console.log(`Wrote ${reportPath}`);
   console.log(`Health debt: ${debt.newCount} new, ${debt.acceptedCount} accepted, ${debt.expiredCount} expired, ${debt.recoveredCount} recovered.`);
 
-  if (!report.passed || (stringOption(args, "health-budget") === "strict" && !debt.strictPassed)) {
+  if (!report.passed || ((stringOption(args, "health-budget") === "strict" || loaded.policy?.policy.requireStrictHealth) && !debt.strictPassed)) {
     process.exitCode = 1;
   }
 }
@@ -1677,7 +1691,7 @@ async function commandArtifacts(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   if (action === "gc") {
     const report = await collectArtifactGcReport(loaded, {
-      keepRuns: numberOption(args, "keep-runs"),
+      keepRuns: Math.max(numberOption(args, "keep-runs") ?? 0, loaded.policy?.policy.artifactRetentionRuns ?? 5),
       apply: Boolean(args.options.apply)
     });
     if (args.options.json) {
@@ -2053,6 +2067,8 @@ Usage:
   migration-guard handoff redact --input <handoff.json> [--output <path>] [--json]
   migration-guard handoff import-result --input <result.json> [--run <id|latest>] [--json]
   migration-guard handoff import-result --input <result.json> [--run <id|latest>] --apply --apply-confirm <plan-hash>
+  migration-guard policy list [--config <path>]
+  migration-guard policy explain [--config <path>]
   migration-guard report [--run <id|latest>] [--json]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot runbook [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--json]

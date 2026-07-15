@@ -275,6 +275,7 @@ export async function createMigrationRun(loaded: LoadedConfig, options: CreateRu
     mode: options.mode,
     adapter: options.adapter,
     issueProvider: options.issueProvider ?? "local",
+    policyHash: loaded.policy?.hash,
     createdAt: now,
     updatedAt: now,
     estimate

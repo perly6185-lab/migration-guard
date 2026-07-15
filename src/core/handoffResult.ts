@@ -61,6 +61,7 @@ export async function planHandoffResultImport(loaded: LoadedConfig, manifestPath
     warnings.push(...validation.warnings);
     if (manifest.handoff.id !== handoff.id || manifest.handoff.contractHash !== handoff.contractHash) blockers.push("Handoff lineage does not match the referenced contract.");
     if (handoff.lineage.runId && handoff.lineage.runId !== pkg.run.id) blockers.push(`Handoff belongs to run ${handoff.lineage.runId}, not ${pkg.run.id}.`);
+    if (handoff.lineage.policyHash && handoff.lineage.policyHash !== loaded.policy?.hash) blockers.push("Policy changed after handoff creation; create a fresh handoff.");
     if (path.resolve(handoff.scope.root) !== path.resolve(pkg.run.targetRoot)) blockers.push("Handoff scope root does not match the selected run target.");
     if (!handoff.permissions.granted.includes("target-edit")) blockers.push("Handoff does not grant target-edit permission.");
     if ((manifest.commands?.length ?? 0) > handoff.budget.maxCommands) blockers.push("Result declares more commands than the handoff command budget.");
@@ -137,6 +138,8 @@ function parsePatchPaths(content: string, blockers: string[]): string[] {
 function validateChangedFiles(loaded: LoadedConfig, handoff: AiHandoffContract, files: string[], blockers: string[]): void {
   const allowed = new Set(handoff.scope.allowedPaths.map(normalizePath));
   if (files.length > handoff.scope.maxChangedFiles || files.length > handoff.budget.maxChangedFiles) blockers.push("Patch exceeds the handoff changed-file budget.");
+  if (loaded.policy && files.length > loaded.policy.policy.maxChangedFiles) blockers.push("Patch exceeds the active organization policy changed-file budget.");
+  if (loaded.policy && !loaded.policy.policy.allowTargetEdit) blockers.push("Active organization policy denies target edits.");
   const artifactRelative = normalizePath(path.relative(handoff.scope.root, loaded.artifactsDir));
   for (const file of files) {
     const normalized = normalizePath(file);

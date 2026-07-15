@@ -68,6 +68,7 @@ export async function detectConfigPlan(targetRoot: string): Promise<ConfigDetect
 export async function diagnoseConfig(loaded: LoadedConfig): Promise<ConfigDoctorReport> {
   const report = await inspectTarget(loaded.targetRoot);
   const findings = [...report.findings];
+  for (const message of loaded.policy?.findings ?? []) findings.push({ severity: "warn", code: "policy-override-capped", message, fix: "Remove the loosening override or select a reviewed local preset that explicitly permits it." });
   for (const check of loaded.config.checks) {
     const cwd = check.cwd ? path.resolve(loaded.targetRoot, check.cwd) : loaded.targetRoot;
     if (!await pathExists(cwd)) {
@@ -105,7 +106,8 @@ export function explainConfig(loaded: LoadedConfig): Record<string, unknown> {
     checks: loaded.config.checks.map((check) => ({ name: check.name, command: check.command, cwd: check.cwd ? path.resolve(loaded.targetRoot, check.cwd) : loaded.targetRoot, timeoutMs: check.timeoutMs, normalization: check.normalize?.presets ?? [] })),
     probes: loaded.config.probes.map((probe) => ({ name: probe.name, type: probe.type, cwd: "cwd" in probe && probe.cwd ? path.resolve(loaded.targetRoot, probe.cwd) : loaded.targetRoot })),
     compare: loaded.config.compare,
-    variables: Object.keys(loaded.config.variables ?? {}).sort()
+    variables: Object.keys(loaded.config.variables ?? {}).sort(),
+    policy: loaded.policy
   };
 }
 

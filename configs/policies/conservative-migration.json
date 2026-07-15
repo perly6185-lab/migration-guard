@@ -1,0 +1,9 @@
+{
+  "maxChangedFiles": 3,
+  "maxCommands": 4,
+  "artifactRetentionRuns": 30,
+  "requireStrictHealth": true,
+  "allowTargetEdit": true,
+  "allowGithubMutation": false,
+  "allowReleaseMutation": false
+}

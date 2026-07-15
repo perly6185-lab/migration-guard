@@ -122,6 +122,25 @@ The manifest includes `id`, `handoff { id, contractHash, path }`,
 `patch { path, sha256 }`, `changedFiles`, claimed `commands`, `declaration`, and
 agent metadata. Relative handoff and patch paths resolve beside the manifest.
 
+Organization policy presets are local and optional. Select a built-in preset or a
+JSON file inside the config directory; project overrides may tighten boundaries but
+cannot silently enable denied mutations, increase edit/command budgets, disable
+strict health, or reduce artifact retention:
+
+```json
+{
+  "policy": {
+    "preset": "conservative-migration",
+    "overrides": { "maxChangedFiles": 2, "allowTargetEdit": false }
+  }
+}
+```
+
+Run `migration-guard policy list` and `migration-guard policy explain`. Built-ins
+are `js-ts-monorepo`, `go-service`, and `conservative-migration`; equivalent local
+examples live under `configs/policies/`. The resolved policy hash is recorded on new
+runs and handoffs, so a policy change invalidates stale result imports.
+
 Evidence is written under `.migration-guard/releases/<release-run-id>/`. A
 skipped, missing, changed or historical pilot result is always NO-GO. Standalone
 pilot execution must pass the same run id to both commands:

@@ -26,7 +26,7 @@ export interface AiHandoffContract {
   suggestedCommands: string[];
   acceptanceCriteria: string[];
   budget: { maxChangedFiles: number; maxCommands: number; note?: string };
-  lineage: { runId?: string; taskId?: string; proposalId?: string; parentHandoffId?: string };
+  lineage: { runId?: string; taskId?: string; proposalId?: string; parentHandoffId?: string; policyHash?: string };
   contractHash: string;
   output?: { jsonPath: string; markdownPath: string; promptPath: string };
 }

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "minimumTestFiles": 27,
-  "minimumTests": 154,
+  "minimumTests": 157,
   "layers": {
     "unit": "Focused deterministic module behavior; runs in npm test.",
     "integration": "Cross-module, process, filesystem or Git behavior; runs in npm test.",
