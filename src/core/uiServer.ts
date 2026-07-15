@@ -374,6 +374,19 @@ function renderUiHtml(csrfToken: string): string {
     * { box-sizing:border-box; }
     body { margin:0; font:14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; background:var(--bg); color:var(--ink); overflow-x:hidden; }
     header { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:14px 18px; background:#222831; color:white; position:sticky; top:0; z-index:2; }
+    .work-nav { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 14px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:62px; z-index:1; }
+    .view-tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .view-tab { border-color:transparent; background:transparent; color:var(--muted); font-weight:600; }
+    .view-tab[aria-selected="true"] { color:var(--blue); background:var(--blue-soft); border-color:#b8cef0; }
+    .stage-strip { display:flex; align-items:center; gap:5px; min-width:0; overflow:auto; }
+    .stage-step { display:flex; align-items:center; gap:5px; color:var(--muted); white-space:nowrap; font-size:12px; }
+    .stage-step + .stage-step::before { content:'›'; color:#9aa4b2; margin-right:2px; }
+    .stage-step strong { width:20px; height:20px; display:grid; place-items:center; border:1px solid var(--line); border-radius:50%; background:#fff; font-size:11px; }
+    .stage-step.done { color:var(--ok); }
+    .stage-step.done strong { color:#fff; border-color:var(--ok); background:var(--ok); }
+    .stage-step.current { color:var(--blue); font-weight:700; }
+    .stage-step.current strong { color:#fff; border-color:var(--blue); background:var(--blue); }
+    [hidden] { display:none !important; }
     h1 { margin:0; font-size:18px; font-weight:700; }
     main { display:grid; grid-template-columns:320px 1fr; gap:14px; padding:14px; }
     aside, .stack { display:grid; align-content:start; gap:14px; min-width:0; }
@@ -464,8 +477,11 @@ function renderUiHtml(csrfToken: string): string {
     .primary-button { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:600; }
     .primary-button:hover:not(:disabled) { background:#174e9d; border-color:#174e9d; color:#fff; }
     .workspace-summary { padding:10px; border-left:3px solid var(--blue); background:var(--blue-soft); }
+    .workflow-focus { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; margin-bottom:12px; border:1px solid #b8cef0; background:var(--blue-soft); border-radius:8px; }
+    .workflow-focus span { display:block; color:var(--muted); font-size:12px; }
     @media (max-width:900px) {
       header { align-items:flex-start; }
+      .work-nav { position:static; display:grid; gap:8px; }
       main { grid-template-columns:1fr; }
       select { min-width:0; max-width:100%; width:100%; }
       .toolbar { width:100%; }
@@ -473,9 +489,14 @@ function renderUiHtml(csrfToken: string): string {
     }
     @media (max-width:520px) {
       header { display:grid; }
+      header, .work-nav, main { width:calc(100vw - 16px); max-width:calc(100vw - 16px); }
+      header, header .toolbar, header .toolbar > *, .work-nav > *, main, aside, .stack, section { min-width:0; }
+      .view-tabs { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); }
+      .view-tabs { width:100%; }
+      .view-tab { width:100%; }
       .toolbar { display:grid; grid-template-columns:minmax(0, 1fr); }
       .toolbar button { width:max-content; }
-      select { width:calc(100vw - 36px); }
+      select { width:100%; }
       .toolbar.compact { grid-template-columns:1fr; }
       .toolbar.compact select { max-width:100%; }
       .kv { grid-template-columns:1fr; }
@@ -503,6 +524,22 @@ function renderUiHtml(csrfToken: string): string {
       <button id="refresh">Refresh</button>
     </div>
   </header>
+  <nav class="work-nav" aria-label="Refactoring workspace views">
+    <div class="view-tabs" role="tablist" aria-label="Work views">
+      <button class="view-tab" data-work-view="workspace" role="tab" aria-selected="true">Workspace</button>
+      <button class="view-tab" data-work-view="execution" role="tab" aria-selected="false">Execution</button>
+      <button class="view-tab" data-work-view="monitoring" role="tab" aria-selected="false">Monitoring</button>
+      <button class="view-tab" data-work-view="reports" role="tab" aria-selected="false">Reports</button>
+    </div>
+    <div id="stageStrip" class="stage-strip" aria-label="Refactoring stages">
+      <span class="stage-step current" data-stage="registered"><strong>1</strong>Project</span>
+      <span class="stage-step" data-stage="scan"><strong>2</strong>Assess</span>
+      <span class="stage-step" data-stage="baseline"><strong>3</strong>Baseline</span>
+      <span class="stage-step" data-stage="execute"><strong>4</strong>Execute</span>
+      <span class="stage-step" data-stage="verify"><strong>5</strong>Verify</span>
+      <span class="stage-step" data-stage="report"><strong>6</strong>Report</span>
+    </div>
+  </nav>
   <dialog id="workspaceDialog">
     <form id="workspaceForm">
       <div class="dialog-head"><h2>New refactoring project</h2><button id="closeWorkspace" type="button" class="dialog-close" title="Close" aria-label="Close">&times;</button></div>
@@ -519,14 +556,14 @@ function renderUiHtml(csrfToken: string): string {
   </dialog>
   <main>
     <aside class="stack">
-      <section><div class="panel-head"><h2>Project Workflow</h2></div><div id="workspaceOverview"><p class="muted">Loading...</p></div><div class="actions job-actions">
+      <section data-views="workspace"><div class="panel-head"><h2>Project Workflow</h2></div><div id="workspaceOverview"><p class="muted">Loading...</p></div><div id="workspaceActions" class="actions job-actions">
         <button data-action="scan">Scan Project</button>
         <button data-action="baseline">Capture Baseline</button>
         <button data-action="verify">Verify</button>
         <button data-action="checkpoint">Create Checkpoint</button>
       </div></section>
-      <section><div class="panel-head"><h2>Status</h2></div><div id="stats" class="grid"><p class="muted">Loading...</p></div><p id="runMeta" class="run-meta"></p></section>
-      <section><div class="panel-head"><h2>Guarded Actions</h2></div><div class="actions">
+      <section data-views="workspace monitoring"><div class="panel-head"><h2>Status</h2></div><div id="stats" class="grid"><p class="muted">Loading...</p></div><p id="runMeta" class="run-meta"></p></section>
+      <section data-views="execution"><div class="panel-head"><h2>Guarded Actions</h2></div><div class="actions">
         <button data-action="readiness">Write Readiness</button>
         <button data-action="issue-control-dry-run">Issue Dry-run</button>
       </div><div class="action-form">
@@ -534,7 +571,7 @@ function renderUiHtml(csrfToken: string): string {
         <label class="field">Labels <input id="issueLabels" placeholder="label-a,label-b"></label>
         <label class="field">Max iterations <input id="issueMaxIterations" type="number" min="1" max="10" value="3"></label>
       </div><p class="action-note">Snapshot writes an artifact. Issue control stays dry-run.</p><div id="actionHints" class="status-line" hidden></div><div id="actionStatus" class="status-line" hidden></div></section>
-      <section><div class="panel-head"><h2>Recent Jobs</h2><div class="toolbar compact">
+      <section data-views="monitoring"><div class="panel-head"><h2>Recent Jobs</h2><div class="toolbar compact">
         <select id="jobStatusFilter" aria-label="Job status filter">
           <option value="all">all jobs</option>
           <option value="active">active</option>
@@ -551,18 +588,18 @@ function renderUiHtml(csrfToken: string): string {
         <button id="jobGcPlan">Plan GC</button>
         <button id="jobGcApply">Apply GC</button>
       </div><div id="jobGcStatus" class="status-line" hidden></div><div id="jobs"><p class="muted">Loading...</p></div></section>
-      <section><div class="panel-head"><h2>Unattended Audit</h2></div><pre id="audit">[]</pre></section>
+      <section data-views="reports"><div class="panel-head"><h2>Unattended Audit</h2></div><pre id="audit">[]</pre></section>
     </aside>
     <div class="stack">
-      <section><div class="panel-head"><h2>Next Actions</h2></div><div id="nextActions"><p class="muted">Loading...</p></div></section>
-      <section><div class="panel-head"><h2>Run Detail</h2></div><div id="runDetail"><p class="muted">Loading...</p></div></section>
-      <section><div class="panel-head"><h2>Job Detail</h2><button id="clearJobDetail">Clear</button></div><div id="jobDetail"><p class="muted">Select a job.</p></div></section>
-      <section><div class="panel-head"><h2>Recovery Center</h2></div><div id="recovery"><p class="muted">Loading...</p></div><div id="recoveryPlan" class="status-line" hidden></div></section>
-      <section><div class="panel-head"><h2>Blockers</h2></div><div id="blockers"><p class="muted">Loading...</p></div></section>
-      <section><div class="panel-head"><h2>Project History</h2></div><div id="runs"><p class="muted">Loading...</p></div></section>
-      <section><div class="panel-head"><h2>Ready Tasks</h2></div><div id="tasks"><p class="muted">Loading...</p></div><div id="taskExecutionPlan" class="status-line" hidden></div></section>
-      <section><div class="panel-head"><h2>Stuck Proposals</h2></div><div id="proposals"><p class="muted">Loading...</p></div></section>
-      <section><div class="panel-head"><h2>Evidence / Diff</h2><div class="toolbar compact">
+      <section data-views="workspace"><details><summary>CLI and advanced next actions</summary><div id="nextActions" class="job-actions"><p class="muted">Loading...</p></div></details></section>
+      <section data-views="workspace"><div class="panel-head"><h2>Run Detail</h2></div><div id="runDetail"><p class="muted">Loading...</p></div></section>
+      <section data-views="monitoring"><div class="panel-head"><h2>Job Detail</h2><button id="clearJobDetail">Clear</button></div><div id="jobDetail"><p class="muted">Select a job.</p></div></section>
+      <section data-views="execution monitoring"><div class="panel-head"><h2>Recovery Center</h2></div><div id="recovery"><p class="muted">Loading...</p></div><div id="recoveryPlan" class="status-line" hidden></div></section>
+      <section data-views="workspace monitoring"><div class="panel-head"><h2>Blockers</h2></div><div id="blockers"><p class="muted">Loading...</p></div></section>
+      <section data-views="workspace reports"><div class="panel-head"><h2>Project History</h2></div><div id="runs"><p class="muted">Loading...</p></div></section>
+      <section data-views="execution"><div class="panel-head"><h2>Ready Tasks</h2></div><div id="tasks"><p class="muted">Loading...</p></div><div id="taskExecutionPlan" class="status-line" hidden></div></section>
+      <section data-views="execution"><div class="panel-head"><h2>Stuck Proposals</h2></div><div id="proposals"><p class="muted">Loading...</p></div></section>
+      <section data-views="reports"><div class="panel-head"><h2>Evidence / Diff</h2><div class="toolbar compact">
         <select id="diffStatusFilter" aria-label="Diff status filter">
           <option value="all">all status</option>
           <option value="failed">failed</option>
@@ -576,7 +613,7 @@ function renderUiHtml(csrfToken: string): string {
           <option value="unknown">unknown</option>
         </select>
       </div></div><div id="diffs"><p class="muted">Loading...</p></div></section>
-      <section><div class="panel-head"><h2>Monitor</h2></div><pre id="monitor">{}</pre></section>
+      <section data-views="monitoring"><div class="panel-head"><h2>Monitor</h2></div><pre id="monitor">{}</pre></section>
     </div>
   </main>
   <script>
@@ -674,10 +711,61 @@ function renderUiHtml(csrfToken: string): string {
         setWorkspaceFieldError(inputId === 'workspaceSource' ? 'Source' : 'Target', 'Clipboard access was blocked. Paste the path into this field.');
       }
     }
+    function setWorkView(view, remember = true) {
+      const selected = ['workspace', 'execution', 'monitoring', 'reports'].includes(view) ? view : 'workspace';
+      document.querySelectorAll('[data-work-view]').forEach(button => button.setAttribute('aria-selected', String(button.dataset.workView === selected)));
+      document.querySelectorAll('main section[data-views]').forEach(section => {
+        section.hidden = !section.dataset.views.split(' ').filter(Boolean).includes(selected);
+      });
+      if (remember) localStorage.setItem('migrationGuardWorkView', selected);
+    }
+    function renderRefactoringStages(report) {
+      const progress = new Map((report.progress || []).map(step => [step.id, Boolean(step.complete)]));
+      const registered = progress.get('registered') || false;
+      const scanned = registered && (progress.get('scan') || false);
+      const baseline = scanned && (progress.get('baseline') || false);
+      const executed = baseline && (progress.get('checkpoint') || false);
+      const verified = executed && (progress.get('verify') || false);
+      const complete = {
+        registered,
+        scan: scanned,
+        baseline,
+        execute: executed,
+        verify: verified,
+        report: false
+      };
+      const order = ['registered', 'scan', 'baseline', 'execute', 'verify', 'report'];
+      const current = order.find(stage => !complete[stage]) || 'report';
+      document.querySelectorAll('[data-stage]').forEach(step => {
+        step.classList.toggle('done', complete[step.dataset.stage]);
+        step.classList.toggle('current', step.dataset.stage === current);
+      });
+      return current;
+    }
+    function workflowFocus(stage) {
+      const steps = {
+        registered: ['Project setup', 'Register project', 'new-project'],
+        scan: ['Assess project', 'Scan project', 'action:scan'],
+        baseline: ['Capture baseline', 'Capture baseline', 'action:baseline'],
+        execute: ['Execute bounded tasks', 'Open execution', 'view:execution'],
+        verify: ['Verify behavior', 'Run verification', 'action:verify'],
+        report: ['Review evidence', 'Open reports', 'view:reports']
+      };
+      const step = steps[stage] || steps.registered;
+      return '<div class="workflow-focus"><div><span>Current step</span><strong>' + escapeHtml(step[0]) + '</strong></div><button class="primary-button" data-workflow-next="' + attr(step[2]) + '">' + escapeHtml(step[1]) + '</button></div>';
+    }
+    function advanceWorkflow(button) {
+      const next = button.dataset.workflowNext || '';
+      if (next === 'new-project') { loadRecentWorkspacePaths(); document.getElementById('workspaceDialog').showModal(); return; }
+      if (next.startsWith('view:')) { setWorkView(next.slice(5)); return; }
+      if (next.startsWith('action:')) { startActionJob(next.slice(7), button); }
+    }
     function renderWorkspaceOverview(report) {
       const container = document.getElementById('workspaceOverview');
+      const stage = renderRefactoringStages(report);
+      document.getElementById('workspaceActions').hidden = !report.managed;
       if (!report.managed || !report.workspace) {
-        container.innerHTML = '<p class="muted">Register a source and target project to track a refactoring workflow.</p>';
+        container.innerHTML = workflowFocus(stage) + '<p class="muted">Register a source and target project to track a refactoring workflow.</p>';
         return;
       }
       const workspace = report.workspace;
@@ -687,7 +775,7 @@ function renderUiHtml(csrfToken: string): string {
         ['Checks', (report.checks || []).join(', ') || 'none']
       ];
       const progress = (report.progress || []).map(step => '<li><strong>' + (step.complete ? 'Complete' : 'Pending') + '</strong> ' + escapeHtml(step.label) + (step.complete && step.evidence ? '<div>' + artifactHtml(step.evidence) + '</div>' : '') + '</li>').join('');
-      container.innerHTML = '<dl class="kv">' + rows.map(row => '<dt>' + escapeHtml(row[0]) + '</dt><dd>' + escapeHtml(row[1]) + '</dd>').join('') + '</dl><ol class="timeline">' + progress + '</ol>';
+      container.innerHTML = workflowFocus(stage) + '<dl class="kv">' + rows.map(row => '<dt>' + escapeHtml(row[0]) + '</dt><dd>' + escapeHtml(row[1]) + '</dd>').join('') + '</dl><ol class="timeline">' + progress + '</ol>';
     }
     function renderRecovery(report) {
       const checkpoints = report.checkpoints || [];
@@ -906,6 +994,8 @@ function renderUiHtml(csrfToken: string): string {
       button.disabled = true; status.className = 'status-line'; status.textContent = 'Queueing guarded task execution...';
       try {
         const created = await postJson('/api/jobs/actions/task-execute', { run: selectedRun() || undefined, task: button.dataset.taskExecute, planHash: button.dataset.planHash });
+        setWorkView('monitoring');
+        await loadJobDetail(created.jobId);
         const finished = await pollJob(created.jobId);
         status.className = 'status-line ' + (finished.result?.status === 'accepted' ? 'ok' : 'bad');
         status.innerHTML = renderJobStatus(finished);
@@ -1276,6 +1366,8 @@ function renderUiHtml(csrfToken: string): string {
         const created = await postJson(actionJobPath(name), actionJobParams(name));
         status.className = 'status-line warn';
         status.innerHTML = renderJobStatus(created.job);
+        setWorkView('monitoring');
+        await loadJobDetail(created.jobId);
         await loadJobs();
         const finished = await pollJob(created.jobId);
         if (finished.status === 'succeeded') {
@@ -1446,6 +1538,7 @@ function renderUiHtml(csrfToken: string): string {
       textarea.remove();
     }
     document.getElementById('refresh').addEventListener('click', load);
+    document.querySelectorAll('[data-work-view]').forEach(button => button.addEventListener('click', () => setWorkView(button.dataset.workView)));
     document.getElementById('newWorkspace').addEventListener('click', () => {
       loadRecentWorkspacePaths();
       document.getElementById('workspaceDialog').showModal();
@@ -1497,12 +1590,14 @@ function renderUiHtml(csrfToken: string): string {
       if (target instanceof HTMLElement && target.dataset.taskPlan) planTaskExecution(target);
       if (target instanceof HTMLElement && target.dataset.taskExecute) executeTaskPlan(target);
       if (target instanceof HTMLElement && target.dataset.pastePath) pasteWorkspacePath(target.dataset.pastePath);
+      if (target instanceof HTMLElement && target.dataset.workflowNext) advanceWorkflow(target);
       if (target instanceof HTMLElement && target.dataset.diffBatchDecision !== undefined) recordDiffBatchDecisionFromForm(target);
       if (target instanceof HTMLElement && target.dataset.diffDecision !== undefined) recordDiffDecisionFromForm(target);
     });
     if (new URLSearchParams(window.location.search).get('newProject') === '1') {
       document.getElementById('workspaceDialog').showModal();
     }
+    setWorkView(new URLSearchParams(window.location.search).get('view') || localStorage.getItem('migrationGuardWorkView') || 'workspace', false);
     Promise.all([loadWorkspaces(), load()]).catch(error => { document.getElementById('monitor').textContent = error.stack || error.message; });
   </script>
 </body>

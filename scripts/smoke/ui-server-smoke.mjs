@@ -29,6 +29,13 @@ try {
   assertIncludes(html, "Check project", "workspace review action");
   assertIncludes(html, "data-paste-path", "workspace path paste actions");
   assertIncludes(html, "workspacePreviewRevision", "stale workspace preview guard");
+  assertIncludes(html, "data-work-view=\"workspace\"", "workspace view navigation");
+  assertIncludes(html, "data-work-view=\"execution\"", "execution view navigation");
+  assertIncludes(html, "data-work-view=\"monitoring\"", "monitoring view navigation");
+  assertIncludes(html, "data-work-view=\"reports\"", "reports view navigation");
+  assertIncludes(html, "data-stage=\"baseline\"", "refactoring stage strip");
+  assertIncludes(html, "Current step", "guided workflow focus");
+  assertIncludes(html, "CLI and advanced next actions", "advanced CLI fallback");
   assertIncludes(html, "Guarded Actions", "guarded actions");
   assertIncludes(html, "Project Workflow", "project workflow");
   assertIncludes(html, "Capture Baseline", "baseline action");
@@ -106,6 +113,12 @@ try {
     await assertScreenshot(path.join(outputDir, "ui-new-project-desktop.png"));
     await screenshot(chrome, `${url}?newProject=1`, "390,844", path.join(outputDir, "ui-new-project-mobile.png"));
     await assertScreenshot(path.join(outputDir, "ui-new-project-mobile.png"));
+    for (const view of ["execution", "monitoring", "reports"]) {
+      await screenshot(chrome, `${url}?view=${view}`, "1365,900", path.join(outputDir, `ui-${view}-desktop.png`));
+      await assertScreenshot(path.join(outputDir, `ui-${view}-desktop.png`));
+    }
+    await screenshot(chrome, `${url}?view=monitoring`, "390,844", path.join(outputDir, "ui-monitoring-mobile.png"));
+    await assertScreenshot(path.join(outputDir, "ui-monitoring-mobile.png"));
     console.log(`Screenshots: ${outputDir}`);
   } else {
     console.log("Chrome not found; skipped screenshot capture.");
