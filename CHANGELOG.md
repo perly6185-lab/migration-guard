@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add local refactoring project registration, stack preview, project switching and initial-run creation to the operator UI.
+- Fix UI smoke screenshots so fresh desktop/mobile captures are required instead of accepting stale files.
 - Discover built tests recursively with stable ordering and minimum file/test-count guards.
 - Split patch and issue-control pure models from orchestration and route CLI commands through a narrow registry.
 

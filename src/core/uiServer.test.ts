@@ -79,6 +79,9 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /Job run filter/);
       assert.match(html, /Job Detail/);
       assert.match(html, /data-job-retry/);
+      assert.match(html, /New refactoring project/);
+      assert.match(html, /Source repository directory/);
+      assert.match(html, /Refactored target directory/);
       assert.match(html, /data-job-cancel/);
       assert.match(html, /jobGcPlan/);
       const securityResponse = await fetch(`${handle.url}/`);

@@ -41,6 +41,15 @@ import {
   trimmedParam
 } from "./uiRequest.js";
 import type { UiActionId } from "./uiJobTypes.js";
+import {
+  archiveUiWorkspace,
+  createUiWorkspace,
+  listUiWorkspaces,
+  previewUiWorkspace,
+  resolveActiveUiWorkspace,
+  selectUiWorkspace,
+  type UiWorkspaceInput
+} from "./uiWorkspace.js";
 import type {
   LoadedConfig
 } from "../types.js";
@@ -69,6 +78,8 @@ export async function startUiServer(
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 8787;
   await recoverOrphanUiJobs(loaded);
+  const initialWorkspace = await resolveActiveUiWorkspace(loaded);
+  if (initialWorkspace.workspace) await recoverOrphanUiJobs(initialWorkspace.loaded);
   const jobRunner = createUiJobRunner();
   const requestOptions = { ...options, jobRunner };
   const csrfToken = createUiCsrfToken();
@@ -103,7 +114,7 @@ export async function startUiServer(
 }
 
 async function handleUiRequest(
-  loaded: LoadedConfig,
+  hostLoaded: LoadedConfig,
   options: UiServerRequestOptions,
   csrfToken: string,
   request: http.IncomingMessage,
@@ -122,6 +133,33 @@ async function handleUiRequest(
     if (request.method === "POST") {
       requireCsrfToken(request, csrfToken);
     }
+    if (request.method === "GET" && url.pathname === "/api/workspaces") {
+      sendJson(response, await listUiWorkspaces(hostLoaded));
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/workspaces/preview") {
+      sendJson(response, await previewUiWorkspace(workspaceInput(await readUiPostParams(request, url.searchParams))));
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/workspaces") {
+      sendJson(response, await createUiWorkspace(hostLoaded, workspaceInput(await readUiPostParams(request, url.searchParams))), 201);
+      return;
+    }
+    const selectWorkspaceMatch = url.pathname.match(/^\/api\/workspaces\/([^/]+)\/select$/);
+    if (request.method === "POST" && selectWorkspaceMatch) {
+      const workspace = await selectUiWorkspace(hostLoaded, selectWorkspaceMatch[1] ?? "");
+      const selected = await resolveActiveUiWorkspace(hostLoaded);
+      await recoverOrphanUiJobs(selected.loaded);
+      sendJson(response, workspace);
+      return;
+    }
+    const archiveWorkspaceMatch = url.pathname.match(/^\/api\/workspaces\/([^/]+)\/archive$/);
+    if (request.method === "POST" && archiveWorkspaceMatch) {
+      sendJson(response, await archiveUiWorkspace(hostLoaded, archiveWorkspaceMatch[1] ?? ""));
+      return;
+    }
+    const activeWorkspace = await resolveActiveUiWorkspace(hostLoaded);
+    const loaded = activeWorkspace.loaded;
     if (request.method === "GET" && url.pathname === "/api/dashboard") {
       sendJson(response, await collectDashboard(loaded, {
         runId: url.searchParams.get("run") ?? undefined,
@@ -264,6 +302,15 @@ async function handleUiRequest(
   }
 }
 
+function workspaceInput(params: URLSearchParams): UiWorkspaceInput {
+  return {
+    name: params.get("name") ?? "",
+    sourceRoot: params.get("sourceRoot") ?? "",
+    targetRoot: params.get("targetRoot") ?? "",
+    goal: params.get("goal") ?? ""
+  };
+}
+
 async function resolveOptionalRunId(loaded: LoadedConfig, runSelector: string | undefined): Promise<string | undefined> {
   return runSelector ? (await loadRunPackage(loaded, runSelector)).run.id : undefined;
 }
@@ -359,6 +406,13 @@ function renderUiHtml(csrfToken: string): string {
     .timeline strong { color:var(--ink); }
     .job-actions { margin-top:10px; }
     .empty { margin:0; color:var(--muted); }
+    dialog { width:min(680px, calc(100vw - 28px)); max-height:calc(100vh - 28px); overflow:auto; border:1px solid var(--line); border-radius:8px; padding:0; color:var(--ink); background:var(--surface); box-shadow:0 18px 50px rgba(23,34,45,.22); }
+    dialog::backdrop { background:rgba(23,34,45,.42); }
+    .dialog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px; border-bottom:1px solid var(--line); }
+    .dialog-head h2 { margin:0; }
+    .dialog-body { display:grid; gap:12px; padding:18px; }
+    .dialog-actions { display:flex; justify-content:flex-end; gap:8px; padding:0 18px 18px; }
+    .workspace-summary { padding:10px; border-left:3px solid var(--blue); background:var(--blue-soft); }
     @media (max-width:900px) {
       header { align-items:flex-start; }
       main { grid-template-columns:1fr; }
@@ -386,10 +440,23 @@ function renderUiHtml(csrfToken: string): string {
   <header>
     <h1>Migration Guard</h1>
     <div class="toolbar">
+      <select id="workspaceSelect" aria-label="Project selector"><option value="">Host project</option></select>
+      <button id="newWorkspace">New project</button>
       <select id="runSelect" aria-label="Run selector"><option value="">latest</option></select>
       <button id="refresh">Refresh</button>
     </div>
   </header>
+  <dialog id="workspaceDialog">
+    <div class="dialog-head"><h2>New refactoring project</h2><button id="closeWorkspace" title="Close">Close</button></div>
+    <div class="dialog-body">
+      <label class="field">Project name <input id="workspaceName" autocomplete="off" placeholder="Checkout service migration"></label>
+      <label class="field">Source repository directory <input id="workspaceSource" autocomplete="off" placeholder="D:\\projects\\legacy-service"></label>
+      <label class="field">Refactored target directory <input id="workspaceTarget" autocomplete="off" placeholder="D:\\projects\\new-service"></label>
+      <label class="field">Refactoring goal <input id="workspaceGoal" autocomplete="off" placeholder="Migrate the service while preserving behavior"></label>
+      <div id="workspacePreview" class="status-line">Enter both local repository directories, then run detection.</div>
+    </div>
+    <div class="dialog-actions"><button id="previewWorkspace">Detect</button><button id="createWorkspace" disabled>Create project</button></div>
+  </dialog>
   <main>
     <aside class="stack">
       <section><div class="panel-head"><h2>Status</h2></div><div id="stats" class="grid"><p class="muted">Loading...</p></div><p id="runMeta" class="run-meta"></p></section>
@@ -472,6 +539,42 @@ function renderUiHtml(csrfToken: string): string {
         headers:{'content-type':'application/json'},
         body: JSON.stringify(values || {})
       });
+    }
+    function workspaceValues() {
+      return {
+        name: document.getElementById('workspaceName').value,
+        sourceRoot: document.getElementById('workspaceSource').value,
+        targetRoot: document.getElementById('workspaceTarget').value,
+        goal: document.getElementById('workspaceGoal').value
+      };
+    }
+    async function loadWorkspaces() {
+      const registry = await json('/api/workspaces');
+      const select = document.getElementById('workspaceSelect');
+      select.innerHTML = '<option value="">Host project</option>' + (registry.workspaces || []).filter(item => item.status === 'active').map(item => '<option value="' + attr(item.id) + '">' + escapeHtml(item.name) + ' · ' + escapeHtml(item.packageManager) + '</option>').join('');
+      select.value = registry.activeWorkspaceId || '';
+    }
+    async function previewWorkspace() {
+      const status = document.getElementById('workspacePreview');
+      const create = document.getElementById('createWorkspace');
+      status.className = 'status-line'; status.textContent = 'Detecting repositories and target stack...'; create.disabled = true;
+      try {
+        const preview = await postJson('/api/workspaces/preview', workspaceValues());
+        status.className = 'status-line ' + (preview.valid ? 'ok' : 'bad');
+        const detection = preview.detection;
+        status.innerHTML = (preview.errors || []).map(error => '<div>' + escapeHtml(error) + '</div>').join('') +
+          (detection ? '<div class="workspace-summary"><strong>' + escapeHtml((detection.detected || []).join(', ') || 'Unknown stack') + '</strong><div>Package manager: ' + escapeHtml(detection.packageManager) + ' · confidence: ' + escapeHtml(detection.confidence) + '</div><div>Source Git: ' + (preview.source.git ? 'yes' : 'no') + ' · Target Git: ' + (preview.target.git ? 'yes' : 'no') + ' · Existing config: ' + (preview.target.configExists ? 'yes' : 'no') + '</div><div>Checks: ' + escapeHtml((detection.recommendedChecks || []).map(check => check.name).join(', ') || 'none') + '</div></div>' : '');
+        create.disabled = !preview.valid;
+      } catch (error) { status.className = 'status-line bad'; status.innerHTML = errorHtml(error); }
+    }
+    async function createWorkspace() {
+      const button = document.getElementById('createWorkspace');
+      const status = document.getElementById('workspacePreview');
+      button.disabled = true; status.className = 'status-line'; status.textContent = 'Creating config and initial migration run...';
+      try {
+        await postJson('/api/workspaces', workspaceValues());
+        window.location.reload();
+      } catch (error) { status.className = 'status-line bad'; status.innerHTML = errorHtml(error); button.disabled = false; }
     }
     function selectedRun() {
       return document.getElementById('runSelect').value;
@@ -1139,6 +1242,15 @@ function renderUiHtml(csrfToken: string): string {
       textarea.remove();
     }
     document.getElementById('refresh').addEventListener('click', load);
+    document.getElementById('newWorkspace').addEventListener('click', () => document.getElementById('workspaceDialog').showModal());
+    document.getElementById('closeWorkspace').addEventListener('click', () => document.getElementById('workspaceDialog').close());
+    document.getElementById('previewWorkspace').addEventListener('click', previewWorkspace);
+    document.getElementById('createWorkspace').addEventListener('click', createWorkspace);
+    document.getElementById('workspaceSelect').addEventListener('change', async event => {
+      if (!event.target.value) return;
+      await postJson('/api/workspaces/' + encodeURIComponent(event.target.value) + '/select');
+      window.location.reload();
+    });
     document.getElementById('clearJobDetail').addEventListener('click', () => {
       document.getElementById('jobDetail').innerHTML = '<p class="muted">Select a job.</p>';
     });
@@ -1171,7 +1283,7 @@ function renderUiHtml(csrfToken: string): string {
       if (target instanceof HTMLElement && target.dataset.diffBatchDecision !== undefined) recordDiffBatchDecisionFromForm(target);
       if (target instanceof HTMLElement && target.dataset.diffDecision !== undefined) recordDiffDecisionFromForm(target);
     });
-    load().catch(error => { document.getElementById('monitor').textContent = error.stack || error.message; });
+    Promise.all([loadWorkspaces(), load()]).catch(error => { document.getElementById('monitor').textContent = error.stack || error.message; });
   </script>
 </body>
 </html>`;

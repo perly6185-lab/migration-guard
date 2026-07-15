@@ -68,6 +68,13 @@ npm run release:gate
 npm run release:gate -- --resume <release-run-id>
 ```
 
+The operator UI starts with a project selector and a **New project** workflow.
+Enter separate local source and target repository directories plus the refactoring
+goal, run read-only detection, then confirm creation. Confirmation writes a detected
+`.migration-guard.json` only when the target has no config, creates an initial dry-run
+migration run, and switches the workbench to that project. Source files are never
+copied or modified by project registration.
+
 Evidence is written under `.migration-guard/releases/<release-run-id>/`. A
 skipped, missing, changed or historical pilot result is always NO-GO. Standalone
 pilot execution must pass the same run id to both commands:

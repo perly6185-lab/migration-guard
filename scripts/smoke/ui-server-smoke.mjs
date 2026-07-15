@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -21,6 +21,9 @@ try {
   const html = await (await fetch(url)).text();
   assertIncludes(html, "Migration Guard", "root HTML title");
   assertIncludes(html, "Run selector", "run selector");
+  assertIncludes(html, "New refactoring project", "workspace creation dialog");
+  assertIncludes(html, "Source repository directory", "workspace source input");
+  assertIncludes(html, "Refactored target directory", "workspace target input");
   assertIncludes(html, "Guarded Actions", "guarded actions");
   assertIncludes(html, "Run Detail", "run detail");
   assertIncludes(html, "Recent Jobs", "recent jobs");
@@ -45,6 +48,10 @@ try {
   const runs = await getJson(`${url}/api/runs`);
   if (!Number.isInteger(runs.runCount)) {
     throw new Error("/api/runs did not return runCount.");
+  }
+  const workspaces = await getJson(`${url}/api/workspaces`);
+  if (!Array.isArray(workspaces.workspaces)) {
+    throw new Error("/api/workspaces did not return a workspace registry.");
   }
 
   const capabilities = await getJson(`${url}/api/actions/capabilities`);
@@ -165,13 +172,20 @@ function findChrome() {
 }
 
 async function screenshot(chrome, url, windowSize, outputPath) {
-  await new Promise((resolve, reject) => {
+  const profile = await mkdtemp(path.join(os.tmpdir(), "migration-guard-chrome-"));
+  await rm(outputPath, { force: true });
+  const startedAt = Date.now();
+  try {
+    await new Promise((resolve, reject) => {
     const child = spawn(chrome, [
       "--headless=new",
       "--disable-gpu",
+      "--no-first-run",
+      "--no-default-browser-check",
+      `--user-data-dir=${profile.replace(/\\/g, "/")}`,
       "--virtual-time-budget=5000",
       `--window-size=${windowSize}`,
-      `--screenshot=${outputPath}`,
+      `--screenshot=${outputPath.replace(/\\/g, "/")}`,
       url
     ], {
       stdio: ["ignore", "ignore", "pipe"]
@@ -187,5 +201,20 @@ async function screenshot(chrome, url, windowSize, outputPath) {
         reject(new Error(`Chrome screenshot failed with code ${code}: ${stderr}`));
       }
     });
-  });
+    });
+    await waitForScreenshot(outputPath);
+  } finally {
+    await rm(profile, { recursive: true, force: true }).catch(() => undefined);
+  }
+  const stats = await import("node:fs/promises").then((fs) => fs.stat(outputPath));
+  if (stats.mtimeMs < startedAt) throw new Error(`Screenshot was not refreshed: ${outputPath}`);
+}
+
+async function waitForScreenshot(outputPath) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const stats = await import("node:fs/promises").then((fs) => fs.stat(outputPath)).catch(() => undefined);
+    if (stats?.isFile() && stats.size > 1000) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Chrome exited without writing a screenshot: ${outputPath}`);
 }
