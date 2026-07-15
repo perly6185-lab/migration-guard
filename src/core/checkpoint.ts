@@ -279,7 +279,9 @@ async function readGitCheckpointState(
   root: string,
   knownStatus?: string
 ): Promise<GitCheckpointState> {
-  const status = knownStatus ?? await gitOutput(loaded, root, "git status --short") ?? "";
+  const status = excludeManagedArtifactStatus(knownStatus ?? await gitOutput(loaded, root, "git status --short") ?? "", root, loaded.artifactsDir);
+  const untracked = splitLines(await gitOutput(loaded, root, "git ls-files --others --exclude-standard"))
+    .filter((file) => !isManagedArtifactPath(file, root, loaded.artifactsDir));
   return {
     head: await gitOutput(loaded, root, "git rev-parse --verify HEAD"),
     branch: await gitOutput(loaded, root, "git branch --show-current"),
@@ -287,8 +289,22 @@ async function readGitCheckpointState(
     statusFingerprint: fingerprint(status),
     stashSnapshot: await gitOutput(loaded, root, "git stash create migration-guard-checkpoint"),
     stashRef: await gitOutput(loaded, root, "git rev-parse --verify refs/stash"),
-    untrackedFiles: splitLines(await gitOutput(loaded, root, "git ls-files --others --exclude-standard"))
+    untrackedFiles: untracked
   };
+}
+
+function excludeManagedArtifactStatus(status: string, root: string, artifactsDir: string): string {
+  return status.split(/\r?\n/).filter((line) => {
+    const changedPath = line.slice(3).replace(/^"|"$/g, "").replace(/\\/g, "/");
+    return changedPath && !isManagedArtifactPath(changedPath, root, artifactsDir);
+  }).join("\n");
+}
+
+function isManagedArtifactPath(filePath: string, root: string, artifactsDir: string): boolean {
+  const relativeArtifacts = path.relative(root, artifactsDir).replace(/\\/g, "/");
+  if (!relativeArtifacts || relativeArtifacts.startsWith("..") || path.isAbsolute(relativeArtifacts)) return false;
+  const normalized = filePath.replace(/\\/g, "/");
+  return normalized === relativeArtifacts || normalized.startsWith(`${relativeArtifacts}/`);
 }
 
 async function checkRollbackSafety(

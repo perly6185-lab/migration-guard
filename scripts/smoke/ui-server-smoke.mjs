@@ -30,6 +30,8 @@ try {
   assertIncludes(html, "Create Checkpoint", "checkpoint action");
   assertIncludes(html, "Recovery Center", "recovery center");
   assertIncludes(html, "Project History", "project history");
+  assertIncludes(html, "Review plan", "task execution planning");
+  assertIncludes(html, "Execute task", "task execution confirmation");
   assertIncludes(html, "Run Detail", "run detail");
   assertIncludes(html, "Recent Jobs", "recent jobs");
   assertIncludes(html, "Job status filter", "job status filter");

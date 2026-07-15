@@ -42,6 +42,7 @@ import {
 } from "./uiRequest.js";
 import type { UiActionId } from "./uiJobTypes.js";
 import { applyUiRecoveryPlan, collectUiRecovery, writeUiRecoveryPlan } from "./uiRecovery.js";
+import { writeUiTaskExecutionPlan } from "./uiTaskExecution.js";
 import {
   archiveUiWorkspace,
   collectActiveUiWorkspaceOverview,
@@ -184,6 +185,13 @@ async function handleUiRequest(
       sendJson(response, await applyUiRecoveryPlan(loaded, params.get("run") ?? "latest", planHash));
       return;
     }
+    if (request.method === "POST" && url.pathname === "/api/tasks/plan") {
+      const params = await readUiPostParams(request, url.searchParams);
+      const taskId = trimmedParam(params, "task");
+      if (!taskId) throw new UiHttpError("task is required", 400);
+      sendJson(response, await writeUiTaskExecutionPlan(loaded, params.get("run") ?? "latest", taskId));
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/dashboard") {
       sendJson(response, await collectDashboard(loaded, {
         runId: url.searchParams.get("run") ?? undefined,
@@ -245,6 +253,10 @@ async function handleUiRequest(
     const retryJobMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/retry$/);
     if (request.method === "POST" && retryJobMatch) {
       const previousJob = await readUiJob(loaded, retryJobMatch[1] ?? "");
+      if (previousJob.action === "task-execute") {
+        sendJson(response, { error: "Task execution requires a fresh reviewed plan and cannot be retried directly." }, 409);
+        return;
+      }
       if (previousJob.status !== "failed") {
         sendJson(response, { error: "Only failed jobs can be retried." }, 409);
         return;
@@ -524,7 +536,7 @@ function renderUiHtml(csrfToken: string): string {
       <section><div class="panel-head"><h2>Recovery Center</h2></div><div id="recovery"><p class="muted">Loading...</p></div><div id="recoveryPlan" class="status-line" hidden></div></section>
       <section><div class="panel-head"><h2>Blockers</h2></div><div id="blockers"><p class="muted">Loading...</p></div></section>
       <section><div class="panel-head"><h2>Project History</h2></div><div id="runs"><p class="muted">Loading...</p></div></section>
-      <section><div class="panel-head"><h2>Ready Tasks</h2></div><div id="tasks"><p class="muted">Loading...</p></div></section>
+      <section><div class="panel-head"><h2>Ready Tasks</h2></div><div id="tasks"><p class="muted">Loading...</p></div><div id="taskExecutionPlan" class="status-line" hidden></div></section>
       <section><div class="panel-head"><h2>Stuck Proposals</h2></div><div id="proposals"><p class="muted">Loading...</p></div></section>
       <section><div class="panel-head"><h2>Evidence / Diff</h2><div class="toolbar compact">
         <select id="diffStatusFilter" aria-label="Diff status filter">
@@ -784,7 +796,29 @@ function renderUiHtml(csrfToken: string): string {
     function renderTasks(tasks) {
       if (!tasks.length) return empty();
       return '<div class="item-list">' + tasks.map(task => '<details><summary>' + escapeHtml(task.taskId + ' · ' + task.title) + '</summary>' +
-        '<dl class="kv"><dt>Risk</dt><dd>' + escapeHtml(task.risk) + '</dd><dt>Owner</dt><dd>' + escapeHtml(task.owner) + '</dd><dt>Issue</dt><dd>' + escapeHtml(task.issueId || 'none') + '</dd></dl></details>').join('') + '</div>';
+        '<dl class="kv"><dt>Risk</dt><dd>' + escapeHtml(task.risk) + '</dd><dt>Owner</dt><dd>' + escapeHtml(task.owner) + '</dd><dt>Issue</dt><dd>' + escapeHtml(task.issueId || 'none') + '</dd><dt>Description</dt><dd>' + escapeHtml(task.description || '') + '</dd><dt>Affected paths</dt><dd>' + escapeHtml((task.affectedFiles || []).join(', ') || 'none') + '</dd><dt>Verification</dt><dd>' + escapeHtml((task.verificationCommands || []).join(', ') || 'none') + '</dd><dt>Acceptance</dt><dd>' + escapeHtml((task.acceptanceCriteria || []).join(', ') || 'none') + '</dd></dl><div class="job-actions"><button data-task-plan="' + attr(task.taskId) + '">Review plan</button></div></details>').join('') + '</div>';
+    }
+    async function planTaskExecution(button) {
+      const status = document.getElementById('taskExecutionPlan');
+      status.hidden = false; status.className = 'status-line'; status.textContent = 'Checking task, path budget, baseline and repository state...'; button.disabled = true;
+      try {
+        const plan = await postJson('/api/tasks/plan', { run: selectedRun() || undefined, task: button.dataset.taskPlan });
+        status.className = 'status-line ' + (plan.passed ? 'ok' : 'bad');
+        status.innerHTML = '<strong>Task plan ' + (plan.passed ? 'ready' : 'blocked') + '</strong><dl class="kv"><dt>Task</dt><dd>' + escapeHtml(plan.task.id + ' · ' + plan.task.title) + '</dd><dt>Risk</dt><dd>' + escapeHtml(plan.task.risk) + '</dd><dt>Owner</dt><dd>' + escapeHtml(plan.task.owner) + '</dd><dt>Paths</dt><dd>' + escapeHtml((plan.affectedPaths || []).join(', ') || 'none') + '</dd><dt>Git HEAD</dt><dd class="mono">' + escapeHtml(plan.gitHead || 'unavailable') + '</dd><dt>Baseline</dt><dd>' + (plan.baselineAvailable ? artifactHtml(plan.baselinePath) : 'missing') + '</dd><dt>Plan hash</dt><dd class="mono">' + escapeHtml(plan.planHash) + '</dd></dl>' + (plan.blockers || []).map(item => '<div class="error">' + escapeHtml(item) + '</div>').join('') + (plan.warnings || []).map(item => '<div class="muted">Warning: ' + escapeHtml(item) + '</div>').join('') + (plan.passed ? '<div class="job-actions"><button data-task-execute="' + attr(plan.task.id) + '" data-plan-hash="' + attr(plan.planHash) + '">Execute task</button></div>' : '');
+      } catch (error) { status.className = 'status-line bad'; status.innerHTML = errorHtml(error); }
+      finally { button.disabled = false; }
+    }
+    async function executeTaskPlan(button) {
+      if (!confirm('Execute this reviewed task plan? A checkpoint will be created before the task and verification will run afterward. Continue?')) return;
+      const status = document.getElementById('taskExecutionPlan');
+      button.disabled = true; status.className = 'status-line'; status.textContent = 'Queueing guarded task execution...';
+      try {
+        const created = await postJson('/api/jobs/actions/task-execute', { run: selectedRun() || undefined, task: button.dataset.taskExecute, planHash: button.dataset.planHash });
+        const finished = await pollJob(created.jobId);
+        status.className = 'status-line ' + (finished.result?.status === 'accepted' ? 'ok' : 'bad');
+        status.innerHTML = renderJobStatus(finished);
+        await load();
+      } catch (error) { status.className = 'status-line bad'; status.innerHTML = errorHtml(error); button.disabled = false; }
     }
     function renderProposals(proposals) {
       if (!proposals.length) return empty();
@@ -1361,6 +1395,8 @@ function renderUiHtml(csrfToken: string): string {
       if (target instanceof HTMLElement && target.dataset.jobRetry) retryJob(target);
       if (target instanceof HTMLElement && target.dataset.recoveryPlan) planRecovery(target);
       if (target instanceof HTMLElement && target.dataset.recoveryApply) applyRecovery(target);
+      if (target instanceof HTMLElement && target.dataset.taskPlan) planTaskExecution(target);
+      if (target instanceof HTMLElement && target.dataset.taskExecute) executeTaskPlan(target);
       if (target instanceof HTMLElement && target.dataset.diffBatchDecision !== undefined) recordDiffBatchDecisionFromForm(target);
       if (target instanceof HTMLElement && target.dataset.diffDecision !== undefined) recordDiffDecisionFromForm(target);
     });

@@ -84,6 +84,12 @@ two-step operation: generate a preflight plan, review its strategy, HEAD, warnin
 blockers and hash, then explicitly apply that same hash. The UI never offers forced
 rollback; changed or blocked plans must be reviewed and handled through the CLI.
 
+Ready tasks expose a **Review plan** action. The plan binds task status, risk,
+declared paths, baseline, Git state and configuration to a hash. A confirmed
+low/medium-risk plan executes exactly one task, creates a checkpoint first, then
+captures and compares behavior evidence. High-risk tasks and stale plans fail closed;
+task execution jobs cannot be retried without creating a fresh plan.
+
 Evidence is written under `.migration-guard/releases/<release-run-id>/`. A
 skipped, missing, changed or historical pilot result is always NO-GO. Standalone
 pilot execution must pass the same run id to both commands:

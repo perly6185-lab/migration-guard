@@ -5,6 +5,7 @@ import { captureSnapshot, saveSnapshot } from "./snapshot.js";
 import { superviseIssueControl } from "./issueControl.js";
 import { scanProject } from "./scan.js";
 import { createCheckpoint } from "./checkpoint.js";
+import { executeUiTaskPlan } from "./uiTaskExecution.js";
 import { writeJsonFile } from "./files.js";
 import { stableStringify } from "./normalize.js";
 import { loadRunPackage } from "./migrationRun.js";
@@ -67,7 +68,7 @@ export async function createUiActionJob(
   searchParams: URLSearchParams,
   createOptions: CreateUiActionJobOptions = {}
 ): Promise<UiJobCreateResponse> {
-  const runId = action === "readiness" || action === "checkpoint" ? (await loadRunPackage(loaded, searchParams.get("run") ?? "latest")).run.id : undefined;
+  const runId = action === "readiness" || action === "checkpoint" || action === "task-execute" ? (await loadRunPackage(loaded, searchParams.get("run") ?? "latest")).run.id : undefined;
   const params = uiJobParams(loaded, action, searchParams);
   if (action === "readiness" && runId) {
     params.run = runId;
@@ -292,7 +293,7 @@ export async function gcUiJobs(
 }
 
 export function uiActionIdParam(value: string): UiActionId {
-  if (value === "scan" || value === "baseline" || value === "checkpoint" || value === "readiness" || value === "verify" || value === "issue-control-dry-run") {
+  if (value === "scan" || value === "baseline" || value === "checkpoint" || value === "task-execute" || value === "readiness" || value === "verify" || value === "issue-control-dry-run") {
     return value;
   }
   throw new UiHttpError(`Unsupported job action: ${value}`, 400);
@@ -471,6 +472,14 @@ async function executeUiActionJob(
     const checkpoint = await createCheckpoint(loaded, pkg, undefined, "Created from the operator UI.");
     return { status: "complete", checkpointId: checkpoint.id, outputPath: checkpoint.patchPath, checkpoint };
   }
+  if (job.action === "task-execute") {
+    return await executeUiTaskPlan(
+      loaded,
+      stringJobParam(job, "run") ?? job.runId ?? "latest",
+      stringJobParam(job, "task") ?? "",
+      stringJobParam(job, "planHash") ?? ""
+    );
+  }
   const labels = arrayJobParam(job, "labels");
   const repo = stringJobParam(job, "repo");
   return await superviseIssueControl(loaded, {
@@ -490,6 +499,13 @@ function uiJobParams(
   if (action === "readiness" || action === "checkpoint") {
     return {
       run: searchParams.get("run") ?? "latest"
+    };
+  }
+  if (action === "task-execute") {
+    return {
+      run: searchParams.get("run") ?? "latest",
+      task: trimmedParam(searchParams, "task"),
+      planHash: trimmedParam(searchParams, "planHash")
     };
   }
   if (action === "scan" || action === "baseline" || action === "verify") {

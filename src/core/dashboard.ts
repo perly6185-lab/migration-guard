@@ -90,6 +90,10 @@ export interface DashboardTaskSummary {
   risk: "low" | "medium" | "high";
   owner: "engine" | "ai" | "human";
   issueId?: string;
+  description: string;
+  affectedFiles: string[];
+  verificationCommands: string[];
+  acceptanceCriteria: string[];
 }
 
 export interface DashboardProposalSummary {
@@ -196,7 +200,11 @@ export async function collectDashboard(
       status: task.status,
       risk: task.risk,
       owner: task.owner,
-      issueId: task.issueId
+      issueId: task.issueId,
+      description: task.description,
+      affectedFiles: task.affectedFiles,
+      verificationCommands: task.verificationCommands,
+      acceptanceCriteria: task.acceptanceCriteria
     }));
   const warnings = blockers.filter((blocker) => blocker.severity === "warning").length;
   const blocking = blockers.length - warnings;

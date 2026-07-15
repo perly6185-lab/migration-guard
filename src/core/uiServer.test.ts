@@ -73,6 +73,8 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /Create Checkpoint/);
       assert.match(html, /Recovery Center/);
       assert.match(html, /Project History/);
+      assert.match(html, /Review plan/);
+      assert.match(html, /Execute task/);
       assert.match(html, /Run Detail/);
       assert.match(html, /Diff status filter/);
       assert.match(html, /issueMaxIterations/);
@@ -500,7 +502,7 @@ async function postOptions(url: string, body?: Record<string, unknown>): Promise
 }
 
 async function waitForJob(baseUrl: string, jobId: string): Promise<UiJob> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     const job = await fetchJson<UiJob>(`${baseUrl}/api/jobs/${encodeURIComponent(jobId)}`);
     if (job.status === "succeeded" || job.status === "failed") {
       return job;

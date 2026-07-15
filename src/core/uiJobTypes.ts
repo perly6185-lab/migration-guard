@@ -1,4 +1,4 @@
-export type UiActionId = "scan" | "baseline" | "verify" | "checkpoint" | "readiness" | "issue-control-dry-run";
+export type UiActionId = "scan" | "baseline" | "verify" | "checkpoint" | "task-execute" | "readiness" | "issue-control-dry-run";
 export type UiJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type UiJobEventType = "queued" | "started" | "succeeded" | "failed" | "cancelled" | "recovered";
 
