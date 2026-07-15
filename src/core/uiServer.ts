@@ -41,6 +41,7 @@ import {
   trimmedParam
 } from "./uiRequest.js";
 import type { UiActionId } from "./uiJobTypes.js";
+import { applyUiRecoveryPlan, collectUiRecovery, writeUiRecoveryPlan } from "./uiRecovery.js";
 import {
   archiveUiWorkspace,
   collectActiveUiWorkspaceOverview,
@@ -165,6 +166,24 @@ async function handleUiRequest(
     }
     const activeWorkspace = await resolveActiveUiWorkspace(hostLoaded);
     const loaded = activeWorkspace.loaded;
+    if (request.method === "GET" && url.pathname === "/api/recovery") {
+      sendJson(response, await collectUiRecovery(loaded, url.searchParams.get("run") ?? "latest"));
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/recovery/plan") {
+      const params = await readUiPostParams(request, url.searchParams);
+      const checkpointId = trimmedParam(params, "checkpoint");
+      if (!checkpointId) throw new UiHttpError("checkpoint is required", 400);
+      sendJson(response, await writeUiRecoveryPlan(loaded, params.get("run") ?? "latest", checkpointId));
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/recovery/apply") {
+      const params = await readUiPostParams(request, url.searchParams);
+      const planHash = trimmedParam(params, "planHash");
+      if (!planHash) throw new UiHttpError("planHash is required", 400);
+      sendJson(response, await applyUiRecoveryPlan(loaded, params.get("run") ?? "latest", planHash));
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/dashboard") {
       sendJson(response, await collectDashboard(loaded, {
         runId: url.searchParams.get("run") ?? undefined,
@@ -502,8 +521,9 @@ function renderUiHtml(csrfToken: string): string {
       <section><div class="panel-head"><h2>Next Actions</h2></div><div id="nextActions"><p class="muted">Loading...</p></div></section>
       <section><div class="panel-head"><h2>Run Detail</h2></div><div id="runDetail"><p class="muted">Loading...</p></div></section>
       <section><div class="panel-head"><h2>Job Detail</h2><button id="clearJobDetail">Clear</button></div><div id="jobDetail"><p class="muted">Select a job.</p></div></section>
+      <section><div class="panel-head"><h2>Recovery Center</h2></div><div id="recovery"><p class="muted">Loading...</p></div><div id="recoveryPlan" class="status-line" hidden></div></section>
       <section><div class="panel-head"><h2>Blockers</h2></div><div id="blockers"><p class="muted">Loading...</p></div></section>
-      <section><div class="panel-head"><h2>Runs</h2></div><div id="runs"><p class="muted">Loading...</p></div></section>
+      <section><div class="panel-head"><h2>Project History</h2></div><div id="runs"><p class="muted">Loading...</p></div></section>
       <section><div class="panel-head"><h2>Ready Tasks</h2></div><div id="tasks"><p class="muted">Loading...</p></div></section>
       <section><div class="panel-head"><h2>Stuck Proposals</h2></div><div id="proposals"><p class="muted">Loading...</p></div></section>
       <section><div class="panel-head"><h2>Evidence / Diff</h2><div class="toolbar compact">
@@ -572,6 +592,35 @@ function renderUiHtml(csrfToken: string): string {
       ];
       const progress = (report.progress || []).map(step => '<li><strong>' + (step.complete ? 'Complete' : 'Pending') + '</strong> ' + escapeHtml(step.label) + (step.complete && step.evidence ? '<div>' + artifactHtml(step.evidence) + '</div>' : '') + '</li>').join('');
       container.innerHTML = '<dl class="kv">' + rows.map(row => '<dt>' + escapeHtml(row[0]) + '</dt><dd>' + escapeHtml(row[1]) + '</dd>').join('') + '</dl><ol class="timeline">' + progress + '</ol>';
+    }
+    function renderRecovery(report) {
+      const checkpoints = report.checkpoints || [];
+      if (!checkpoints.length) return '<p class="muted">No recovery checkpoints for this run.</p>';
+      return '<div class="item-list">' + checkpoints.map(checkpoint => '<details><summary>' + badge('checkpoint', 'ok') + ' ' + escapeHtml(checkpoint.id) + '</summary><dl class="kv"><dt>Created</dt><dd>' + escapeHtml(checkpoint.createdAt) + '</dd><dt>Branch</dt><dd>' + escapeHtml(checkpoint.gitBranch || 'unknown') + '</dd><dt>HEAD</dt><dd class="mono">' + escapeHtml(checkpoint.gitHead || 'unavailable') + '</dd><dt>Untracked</dt><dd>' + escapeHtml(String((checkpoint.untrackedFiles || []).length)) + '</dd><dt>Note</dt><dd>' + escapeHtml(checkpoint.note || 'none') + '</dd></dl><div class="job-actions"><button data-recovery-plan="' + attr(checkpoint.id) + '">Plan recovery</button></div></details>').join('') + '</div>';
+    }
+    async function loadRecovery() {
+      try { document.getElementById('recovery').innerHTML = renderRecovery(await json(withRun('/api/recovery'))); }
+      catch (error) { document.getElementById('recovery').innerHTML = errorHtml(error); }
+    }
+    async function planRecovery(button) {
+      const status = document.getElementById('recoveryPlan');
+      status.hidden = false; status.className = 'status-line'; status.textContent = 'Checking current Git and side-effect state...'; button.disabled = true;
+      try {
+        const plan = await postJson('/api/recovery/plan', { run: selectedRun() || undefined, checkpoint: button.dataset.recoveryPlan });
+        status.className = 'status-line ' + (plan.passed ? 'ok' : 'bad');
+        status.innerHTML = '<strong>Recovery plan ' + (plan.passed ? 'ready' : 'blocked') + '</strong><dl class="kv"><dt>Strategy</dt><dd>' + escapeHtml(plan.strategy) + '</dd><dt>Checkpoint</dt><dd>' + escapeHtml(plan.checkpointId) + '</dd><dt>Current HEAD</dt><dd class="mono">' + escapeHtml(plan.currentHead || 'unavailable') + '</dd><dt>Plan hash</dt><dd class="mono">' + escapeHtml(plan.planHash) + '</dd></dl>' + (plan.blockers || []).map(item => '<div class="error">' + escapeHtml(item) + '</div>').join('') + (plan.warnings || []).map(item => '<div class="muted">Warning: ' + escapeHtml(item) + '</div>').join('') + (plan.passed ? '<div class="job-actions"><button data-recovery-apply="' + attr(plan.planHash) + '">Apply recovery</button></div>' : '');
+      } catch (error) { status.className = 'status-line bad'; status.innerHTML = errorHtml(error); }
+      finally { button.disabled = false; }
+    }
+    async function applyRecovery(button) {
+      if (!confirm('Apply this reviewed recovery plan? Target files and Git state may change. Continue?')) return;
+      const status = document.getElementById('recoveryPlan');
+      button.disabled = true; status.className = 'status-line'; status.textContent = 'Revalidating and applying recovery...';
+      try {
+        const result = await postJson('/api/recovery/apply', { run: selectedRun() || undefined, planHash: button.dataset.recoveryApply });
+        status.className = 'status-line ok'; status.innerHTML = '<strong>Recovery applied</strong><div>' + escapeHtml(result.message) + '</div><div>' + artifactHtml(result.outputPath) + '</div>';
+        await load();
+      } catch (error) { status.className = 'status-line bad'; status.innerHTML = errorHtml(error); button.disabled = false; }
     }
     async function loadWorkspaceOverview() {
       try { renderWorkspaceOverview(await json('/api/workspaces/active')); }
@@ -1049,6 +1098,7 @@ function renderUiHtml(csrfToken: string): string {
       await loadRuns().catch(error => { document.getElementById('runs').innerHTML = errorHtml(error); });
       await Promise.all([
         loadWorkspaceOverview(),
+        loadRecovery(),
         loadRunScoped(),
         loadJobs(),
         json('/api/audit')
@@ -1289,6 +1339,7 @@ function renderUiHtml(csrfToken: string): string {
     document.getElementById('runSelect').addEventListener('change', () => {
       loadRunScoped();
       loadJobs();
+      loadRecovery();
     });
     ['diffStatusFilter', 'diffSeverityFilter'].forEach(id => {
       document.getElementById(id).addEventListener('change', () => {
@@ -1308,6 +1359,8 @@ function renderUiHtml(csrfToken: string): string {
       if (target instanceof HTMLElement && target.dataset.jobDetail) loadJobDetail(target.dataset.jobDetail);
       if (target instanceof HTMLElement && target.dataset.jobCancel) cancelJob(target);
       if (target instanceof HTMLElement && target.dataset.jobRetry) retryJob(target);
+      if (target instanceof HTMLElement && target.dataset.recoveryPlan) planRecovery(target);
+      if (target instanceof HTMLElement && target.dataset.recoveryApply) applyRecovery(target);
       if (target instanceof HTMLElement && target.dataset.diffBatchDecision !== undefined) recordDiffBatchDecisionFromForm(target);
       if (target instanceof HTMLElement && target.dataset.diffDecision !== undefined) recordDiffDecisionFromForm(target);
     });

@@ -71,6 +71,8 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /Project Workflow/);
       assert.match(html, /Capture Baseline/);
       assert.match(html, /Create Checkpoint/);
+      assert.match(html, /Recovery Center/);
+      assert.match(html, /Project History/);
       assert.match(html, /Run Detail/);
       assert.match(html, /Diff status filter/);
       assert.match(html, /issueMaxIterations/);

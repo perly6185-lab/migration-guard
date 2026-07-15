@@ -28,6 +28,8 @@ try {
   assertIncludes(html, "Project Workflow", "project workflow");
   assertIncludes(html, "Capture Baseline", "baseline action");
   assertIncludes(html, "Create Checkpoint", "checkpoint action");
+  assertIncludes(html, "Recovery Center", "recovery center");
+  assertIncludes(html, "Project History", "project history");
   assertIncludes(html, "Run Detail", "run detail");
   assertIncludes(html, "Recent Jobs", "recent jobs");
   assertIncludes(html, "Job status filter", "job status filter");
@@ -65,6 +67,10 @@ try {
   const jobs = await getJson(`${url}/api/jobs`);
   if (!Array.isArray(jobs.jobs)) {
     throw new Error("/api/jobs did not return jobs.");
+  }
+  const recovery = await getJson(`${url}/api/recovery`);
+  if (!Array.isArray(recovery.checkpoints)) {
+    throw new Error("/api/recovery did not return checkpoints.");
   }
   const activeJobs = await getJson(`${url}/api/jobs?status=active&limit=5`);
   if (activeJobs.filters?.status !== "active" || activeJobs.filters?.limit !== 5) {

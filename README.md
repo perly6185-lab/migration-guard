@@ -79,6 +79,11 @@ The selected project's **Project Workflow** panel tracks registration, scan,
 baseline, verification and recovery-checkpoint evidence. Each operation runs as a
 leased UI job with duplicate prevention, heartbeat, retry lineage and crash recovery.
 
+The **Recovery Center** lists checkpoints for the selected run. Recovery is a
+two-step operation: generate a preflight plan, review its strategy, HEAD, warnings,
+blockers and hash, then explicitly apply that same hash. The UI never offers forced
+rollback; changed or blocked plans must be reviewed and handled through the CLI.
+
 Evidence is written under `.migration-guard/releases/<release-run-id>/`. A
 skipped, missing, changed or historical pilot result is always NO-GO. Standalone
 pilot execution must pass the same run id to both commands:

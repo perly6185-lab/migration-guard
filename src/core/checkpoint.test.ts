@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCheckpoint, rollbackToCheckpoint } from "./checkpoint.js";
+import { createCheckpoint, planRollbackToCheckpoint, rollbackToCheckpoint } from "./checkpoint.js";
 import { loadConfig } from "./config.js";
 import { saveRunPackage, type MigrationRunPackage } from "./migrationRun.js";
 
@@ -24,6 +24,9 @@ test("checkpoint records git metadata and force rollback resets a later commit",
     assert.equal(checkpoint.gitStatusFingerprint?.length, 64);
     assert.deepEqual(checkpoint.untrackedFiles, []);
     assert.equal(checkpoint.sideEffects?.nodeModules?.exists, false);
+    const reviewedPlan = await planRollbackToCheckpoint(loaded, pkg, checkpoint.id);
+    assert.equal(reviewedPlan.passed, true);
+    assert.equal(reviewedPlan.planHash.length, 64);
 
     await writeFile(path.join(repo, "src.txt"), "later\n", "utf8");
     await git(repo, "add", "src.txt");
@@ -32,6 +35,10 @@ test("checkpoint records git metadata and force rollback resets a later commit",
     await assert.rejects(
       rollbackToCheckpoint(loaded, pkg, checkpoint.id),
       /checkpoint HEAD .* differs from current HEAD/
+    );
+    await assert.rejects(
+      rollbackToCheckpoint(loaded, pkg, checkpoint.id, { force: true, planHash: reviewedPlan.planHash }),
+      /plan changed/
     );
     const message = await rollbackToCheckpoint(loaded, pkg, checkpoint.id, { force: true });
 

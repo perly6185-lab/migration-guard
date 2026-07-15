@@ -6,6 +6,7 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promise
 import { loadConfig } from "./config.js";
 import { archiveUiWorkspace, collectActiveUiWorkspaceOverview, createUiWorkspace, listUiWorkspaces, previewUiWorkspace, resolveActiveUiWorkspace, selectUiWorkspace } from "./uiWorkspace.js";
 import { createUiActionJob, createUiJobRunner, readUiJob } from "./uiJobService.js";
+import { applyUiRecoveryPlan, collectUiRecovery, writeUiRecoveryPlan } from "./uiRecovery.js";
 
 test("workspace preview rejects identical or nested source and target roots", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "migration-guard-workspace-preview-"));
@@ -63,6 +64,12 @@ test("workspace workflow jobs persist scan, baseline and checkpoint progress", a
     assert.equal(overview.progress.find((step) => step.id === "scan")?.complete, true);
     assert.equal(overview.progress.find((step) => step.id === "baseline")?.complete, true);
     assert.equal(overview.progress.find((step) => step.id === "checkpoint")?.complete, true);
+    const recovery = await collectUiRecovery(loaded, workspace.activeRunId);
+    assert.equal(recovery.checkpoints.length, 1);
+    const plan = await writeUiRecoveryPlan(loaded, workspace.activeRunId, recovery.checkpoints[0]?.id ?? "");
+    assert.equal(plan.passed, true);
+    assert.equal((await applyUiRecoveryPlan(loaded, workspace.activeRunId, plan.planHash)).status, "applied");
+    await assert.rejects(applyUiRecoveryPlan(loaded, workspace.activeRunId, "invalid"), /Invalid recovery plan hash/);
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });
 

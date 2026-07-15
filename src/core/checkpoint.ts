@@ -10,6 +10,23 @@ import type { MigrationRunPackage } from "./migrationRun.js";
 export interface RollbackToCheckpointOptions {
   force?: boolean;
   strategy?: "auto" | "patch" | "reset";
+  planHash?: string;
+}
+
+export interface CheckpointRollbackPlan {
+  version: 1;
+  runId: string;
+  checkpointId: string;
+  root: string;
+  strategy: "patch" | "reset";
+  patchPath: string;
+  gitHead?: string;
+  passed: boolean;
+  blockers: string[];
+  warnings: string[];
+  currentHead?: string;
+  currentStatusFingerprint: string;
+  planHash: string;
 }
 
 interface GitCheckpointState {
@@ -126,6 +143,10 @@ export async function rollbackToCheckpoint(
     throw new Error(`Checkpoint patch not found: ${checkpoint.patchPath}`);
   }
 
+  const plan = await planRollbackToCheckpoint(loaded, pkg, checkpointId, options.strategy);
+  if (options.planHash && options.planHash !== plan.planHash) {
+    throw new Error("Rollback plan changed; review a fresh plan before applying.");
+  }
   const precheck = await checkRollbackSafety(loaded, checkpoint);
   if (!precheck.passed && !options.force) {
     throw new Error([
@@ -223,6 +244,34 @@ export async function rollbackToCheckpoint(
   });
 
   return `Rolled back checkpoint ${checkpointId}.`;
+}
+
+export async function planRollbackToCheckpoint(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  checkpointId: string,
+  strategy: RollbackToCheckpointOptions["strategy"] = "auto"
+): Promise<CheckpointRollbackPlan> {
+  const metadataPath = path.join(migrationRunDir(loaded, pkg.run.id), "checkpoints", checkpointId, "metadata.json");
+  const checkpoint = await readJsonFile<MigrationCheckpoint>(metadataPath);
+  if (!await pathExists(checkpoint.patchPath)) throw new Error(`Checkpoint patch not found: ${checkpoint.patchPath}`);
+  const precheck = await checkRollbackSafety(loaded, checkpoint);
+  const selectedStrategy: "patch" | "reset" = checkpoint.gitHead && strategy !== "patch" ? "reset" : "patch";
+  const payload = {
+    version: 1 as const,
+    runId: pkg.run.id,
+    checkpointId,
+    root: checkpoint.root,
+    strategy: selectedStrategy,
+    patchPath: checkpoint.patchPath,
+    gitHead: checkpoint.gitHead,
+    passed: precheck.passed,
+    blockers: precheck.blockers,
+    warnings: precheck.warnings,
+    currentHead: precheck.current.head,
+    currentStatusFingerprint: precheck.current.statusFingerprint
+  };
+  return { ...payload, planHash: fingerprint(JSON.stringify(payload)) };
 }
 
 async function readGitCheckpointState(
