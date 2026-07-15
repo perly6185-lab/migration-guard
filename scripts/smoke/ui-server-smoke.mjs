@@ -24,6 +24,8 @@ try {
   assertIncludes(html, "New refactoring project", "workspace creation dialog");
   assertIncludes(html, "Source repository directory", "workspace source input");
   assertIncludes(html, "Refactored target directory", "workspace target input");
+  assertIncludes(html, "background:#fff", "opaque dialog surface");
+  assertIncludes(html, "dialog-close", "dialog close control");
   assertIncludes(html, "Guarded Actions", "guarded actions");
   assertIncludes(html, "Project Workflow", "project workflow");
   assertIncludes(html, "Capture Baseline", "baseline action");
@@ -97,6 +99,10 @@ try {
     await assertScreenshot(path.join(outputDir, "ui-desktop.png"));
     await screenshot(chrome, url, "390,844", path.join(outputDir, "ui-mobile.png"));
     await assertScreenshot(path.join(outputDir, "ui-mobile.png"));
+    await screenshot(chrome, `${url}?newProject=1`, "1365,900", path.join(outputDir, "ui-new-project-desktop.png"));
+    await assertScreenshot(path.join(outputDir, "ui-new-project-desktop.png"));
+    await screenshot(chrome, `${url}?newProject=1`, "390,844", path.join(outputDir, "ui-new-project-mobile.png"));
+    await assertScreenshot(path.join(outputDir, "ui-new-project-mobile.png"));
     console.log(`Screenshots: ${outputDir}`);
   } else {
     console.log("Chrome not found; skipped screenshot capture.");

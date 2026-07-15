@@ -442,12 +442,21 @@ function renderUiHtml(csrfToken: string): string {
     .timeline strong { color:var(--ink); }
     .job-actions { margin-top:10px; }
     .empty { margin:0; color:var(--muted); }
-    dialog { width:min(680px, calc(100vw - 28px)); max-height:calc(100vh - 28px); overflow:auto; border:1px solid var(--line); border-radius:8px; padding:0; color:var(--ink); background:var(--surface); box-shadow:0 18px 50px rgba(23,34,45,.22); }
-    dialog::backdrop { background:rgba(23,34,45,.42); }
-    .dialog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px; border-bottom:1px solid var(--line); }
-    .dialog-head h2 { margin:0; }
-    .dialog-body { display:grid; gap:12px; padding:18px; }
-    .dialog-actions { display:flex; justify-content:flex-end; gap:8px; padding:0 18px 18px; }
+    dialog { width:min(680px, calc(100vw - 28px)); max-height:calc(100vh - 28px); overflow:auto; overflow-x:hidden; border:1px solid #aeb8c5; border-radius:8px; padding:0; color:var(--ink); background:#fff; box-shadow:0 24px 70px rgba(8,15,24,.38); }
+    dialog::backdrop { background:rgba(18,25,34,.68); backdrop-filter:blur(2px); }
+    .dialog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px; border-bottom:1px solid var(--line); background:#f7f9fc; position:sticky; top:0; z-index:1; }
+    .dialog-head h2 { margin:0; font-size:17px; }
+    .dialog-close { width:34px; height:34px; display:grid; place-items:center; padding:0; font-size:22px; line-height:1; color:var(--muted); }
+    .dialog-body { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px 16px; padding:20px 18px; background:#fff; }
+    .dialog-body > * { min-width:0; }
+    .dialog-body .field { color:#374151; font-weight:600; }
+    .dialog-body .field input { min-height:40px; font-weight:400; background:#fbfcfe; border-color:#c8d0db; }
+    .dialog-body .field input:focus { outline:2px solid rgba(31,95,191,.18); border-color:var(--blue); background:#fff; }
+    .dialog-body .path-field, .dialog-body .goal-field, .dialog-body .status-line { grid-column:1 / -1; }
+    .dialog-body .path-field input { font-family:ui-monospace, SFMono-Regular, Consolas, monospace; font-size:13px; }
+    .dialog-actions { display:flex; justify-content:flex-end; gap:8px; padding:14px 18px; border-top:1px solid var(--line); background:#f7f9fc; position:sticky; bottom:0; }
+    .primary-button { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:600; }
+    .primary-button:hover:not(:disabled) { background:#174e9d; border-color:#174e9d; color:#fff; }
     .workspace-summary { padding:10px; border-left:3px solid var(--blue); background:var(--blue-soft); }
     @media (max-width:900px) {
       header { align-items:flex-start; }
@@ -469,6 +478,12 @@ function renderUiHtml(csrfToken: string): string {
       .decision-form { grid-template-columns:1fr; }
       .actions { display:grid; grid-template-columns:1fr; }
       .actions button { width:100%; }
+      dialog { left:auto; right:auto; width:calc(100vw - 64px); min-width:0; max-width:340px; max-height:calc(100vh - 16px); margin:auto; }
+      .dialog-body { grid-template-columns:1fr; padding:16px; }
+      .dialog-body .field { grid-column:1; }
+      .dialog-body input { min-width:0; max-width:100%; }
+      .dialog-body .status-line { overflow-wrap:anywhere; }
+      .dialog-actions { padding:12px 16px; flex-wrap:wrap; }
     }
   </style>
 </head>
@@ -483,15 +498,15 @@ function renderUiHtml(csrfToken: string): string {
     </div>
   </header>
   <dialog id="workspaceDialog">
-    <div class="dialog-head"><h2>New refactoring project</h2><button id="closeWorkspace" title="Close">Close</button></div>
+    <div class="dialog-head"><h2>New refactoring project</h2><button id="closeWorkspace" class="dialog-close" title="Close" aria-label="Close">&times;</button></div>
     <div class="dialog-body">
       <label class="field">Project name <input id="workspaceName" autocomplete="off" placeholder="Checkout service migration"></label>
-      <label class="field">Source repository directory <input id="workspaceSource" autocomplete="off" placeholder="D:\\projects\\legacy-service"></label>
-      <label class="field">Refactored target directory <input id="workspaceTarget" autocomplete="off" placeholder="D:\\projects\\new-service"></label>
-      <label class="field">Refactoring goal <input id="workspaceGoal" autocomplete="off" placeholder="Migrate the service while preserving behavior"></label>
+      <label class="field goal-field">Refactoring goal <input id="workspaceGoal" autocomplete="off" placeholder="Migrate the service while preserving behavior"></label>
+      <label class="field path-field">Source repository directory <input id="workspaceSource" autocomplete="off" placeholder="D:\\projects\\legacy-service"></label>
+      <label class="field path-field">Refactored target directory <input id="workspaceTarget" autocomplete="off" placeholder="D:\\projects\\new-service"></label>
       <div id="workspacePreview" class="status-line">Enter both local repository directories, then run detection.</div>
     </div>
-    <div class="dialog-actions"><button id="previewWorkspace">Detect</button><button id="createWorkspace" disabled>Create project</button></div>
+    <div class="dialog-actions"><button id="previewWorkspace">Detect</button><button id="createWorkspace" class="primary-button" disabled>Create project</button></div>
   </dialog>
   <main>
     <aside class="stack">
@@ -1400,6 +1415,9 @@ function renderUiHtml(csrfToken: string): string {
       if (target instanceof HTMLElement && target.dataset.diffBatchDecision !== undefined) recordDiffBatchDecisionFromForm(target);
       if (target instanceof HTMLElement && target.dataset.diffDecision !== undefined) recordDiffDecisionFromForm(target);
     });
+    if (new URLSearchParams(window.location.search).get('newProject') === '1') {
+      document.getElementById('workspaceDialog').showModal();
+    }
     Promise.all([loadWorkspaces(), load()]).catch(error => { document.getElementById('monitor').textContent = error.stack || error.message; });
   </script>
 </body>
