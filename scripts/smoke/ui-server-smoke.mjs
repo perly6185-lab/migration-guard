@@ -38,6 +38,9 @@ try {
   assertIncludes(html, "CLI and advanced next actions", "advanced CLI fallback");
   assertIncludes(html, "Guarded Actions", "guarded actions");
   assertIncludes(html, "Project Workflow", "project workflow");
+  assertIncludes(html, "Project Portfolio", "project portfolio");
+  assertIncludes(html, "Deliverables", "report deliverables");
+  assertIncludes(html, "data-requires-workspace", "workspace view locks");
   assertIncludes(html, "Capture Baseline", "baseline action");
   assertIncludes(html, "Create Checkpoint", "checkpoint action");
   assertIncludes(html, "Recovery Center", "recovery center");
@@ -71,6 +74,10 @@ try {
   const workspaces = await getJson(`${url}/api/workspaces`);
   if (!Array.isArray(workspaces.workspaces)) {
     throw new Error("/api/workspaces did not return a workspace registry.");
+  }
+  const portfolio = await getJson(`${url}/api/workspaces/portfolio`);
+  if (!Array.isArray(portfolio.projects)) {
+    throw new Error("/api/workspaces/portfolio did not return projects.");
   }
 
   const capabilities = await getJson(`${url}/api/actions/capabilities`);

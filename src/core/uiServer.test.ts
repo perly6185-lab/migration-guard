@@ -69,6 +69,7 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /Guarded Actions/);
       assert.match(html, /Run selector/);
       assert.match(html, /Project Workflow/);
+      assert.match(html, /Project Portfolio/);
       assert.match(html, /Capture Baseline/);
       assert.match(html, /Create Checkpoint/);
       assert.match(html, /Recovery Center/);
@@ -84,6 +85,8 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /Job status filter/);
       assert.match(html, /Job run filter/);
       assert.match(html, /Job Detail/);
+      assert.match(html, /Deliverables/);
+      assert.match(html, /data-requires-workspace/);
       assert.match(html, /data-job-retry/);
       assert.match(html, /New refactoring project/);
       assert.match(html, /dialog-close/);
@@ -118,6 +121,9 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       const runs = await fetchJson<{ runCount: number; runs: Array<{ runId: string }> }>(`${handle.url}/api/runs`);
       assert.equal(runs.runCount, 1);
       assert.equal(runs.runs[0]?.runId, "run-ui");
+
+      const portfolio = await fetchJson<{ projects: unknown[] }>(`${handle.url}/api/workspaces/portfolio`);
+      assert.deepEqual(portfolio.projects, []);
 
       const capabilities = await fetchJson<UiActionCapabilities>(`${handle.url}/api/actions/capabilities?run=run-ui`);
       assert.equal(capabilities.runId, "run-ui");

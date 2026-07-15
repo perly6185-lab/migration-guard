@@ -32,7 +32,11 @@ test("dashboard aggregates run index, ready tasks, proposals, progress and block
     }), "utf8");
     const loaded = await loadConfig(configPath);
     const pkg = createDashboardRunPackage(dir, targetRoot);
+    pkg.run.finalReportPath = path.join(pkg.run.artifactsDir, "final-report.md");
     await saveRunPackage(loaded, pkg);
+    await writeFile(pkg.run.finalReportPath, "# Final report\n");
+    await mkdir(path.join(pkg.run.artifactsDir, "handoffs"), { recursive: true });
+    await writeFile(path.join(pkg.run.artifactsDir, "handoffs", "handoff.md"), "# Handoff\n");
     const index = await loadMigrationRunIndex(loaded);
 
     assert.equal(index?.runCount, 1);
@@ -55,6 +59,8 @@ test("dashboard aggregates run index, ready tasks, proposals, progress and block
     assert.ok(blockerIds.includes("task:task-blocked"));
     assert.ok(blockerIds.includes("proposal:patch-dashboard"));
     assert.ok(blockerIds.includes("progress:issue-progress"));
+    assert.ok(report.reportArtifacts.some((artifact) => artifact.kind === "final" && artifact.path === pkg.run.finalReportPath));
+    assert.ok(report.reportArtifacts.some((artifact) => artifact.kind === "handoff" && /handoff\.md$/.test(artifact.path)));
     assert.match(renderDashboard(report), /Migration Guard Dashboard/);
 
     const written = await writeDashboardReport(loaded, report);

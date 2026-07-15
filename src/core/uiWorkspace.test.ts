@@ -6,7 +6,7 @@ import os from "node:os";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { loadConfig } from "./config.js";
-import { archiveUiWorkspace, collectActiveUiWorkspaceOverview, createUiWorkspace, listUiWorkspaces, previewUiWorkspace, resolveActiveUiWorkspace, selectUiWorkspace } from "./uiWorkspace.js";
+import { archiveUiWorkspace, collectActiveUiWorkspaceOverview, collectUiWorkspacePortfolio, createUiWorkspace, listUiWorkspaces, previewUiWorkspace, resolveActiveUiWorkspace, selectUiWorkspace } from "./uiWorkspace.js";
 import { createUiActionJob, createUiJobRunner, readUiJob } from "./uiJobService.js";
 import { applyUiRecoveryPlan, collectUiRecovery, writeUiRecoveryPlan } from "./uiRecovery.js";
 import { executeUiTaskPlan, writeUiTaskExecutionPlan } from "./uiTaskExecution.js";
@@ -70,6 +70,8 @@ test("workspace workflow jobs persist scan, baseline and checkpoint progress", a
     assert.equal(overview.progress.find((step) => step.id === "scan")?.complete, true);
     assert.equal(overview.progress.find((step) => step.id === "baseline")?.complete, true);
     assert.equal(overview.progress.find((step) => step.id === "checkpoint")?.complete, true);
+    assert.equal(overview.progress.find((step) => step.id === "execute")?.complete, false);
+    assert.equal(overview.progress.find((step) => step.id === "report")?.complete, false);
     const recovery = await collectUiRecovery(loaded, workspace.activeRunId);
     assert.equal(recovery.checkpoints.length, 1);
     const plan = await writeUiRecoveryPlan(loaded, workspace.activeRunId, recovery.checkpoints[0]?.id ?? "");
@@ -88,6 +90,20 @@ test("workspace workflow jobs persist scan, baseline and checkpoint progress", a
     const refreshedPlan = await writeUiTaskExecutionPlan(loaded, workspace.activeRunId, task.id);
     const taskResult = await executeUiTaskPlan(loaded, workspace.activeRunId, task.id, refreshedPlan.planHash);
     assert.equal(taskResult.status, "accepted");
+    const completed = await loadRunPackage(loaded, workspace.activeRunId);
+    for (const executionTask of completed.graph.tasks.filter((candidate) => candidate.type === "code-change" || candidate.type === "adapter" || candidate.type === "replan")) {
+      executionTask.status = "done";
+    }
+    completed.run.finalReportPath = path.join(completed.run.artifactsDir, "final-report.md");
+    await writeFile(completed.run.finalReportPath, "# Final report\n");
+    await saveRunPackage(loaded, completed);
+    const finalOverview = await collectActiveUiWorkspaceOverview(fixture.host);
+    assert.equal(finalOverview.progress.find((step) => step.id === "execute")?.complete, true);
+    assert.equal(finalOverview.progress.find((step) => step.id === "report")?.complete, true);
+    const portfolio = await collectUiWorkspacePortfolio(fixture.host);
+    assert.equal(portfolio.projects[0]?.stage, "report");
+    assert.ok(portfolio.projects[0]?.readiness);
+    assert.ok(Number.isInteger(portfolio.projects[0]?.blockerCount));
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });
 

@@ -46,6 +46,7 @@ import { writeUiTaskExecutionPlan } from "./uiTaskExecution.js";
 import {
   archiveUiWorkspace,
   collectActiveUiWorkspaceOverview,
+  collectUiWorkspacePortfolio,
   createUiWorkspace,
   listUiWorkspaces,
   previewUiWorkspace,
@@ -142,6 +143,10 @@ async function handleUiRequest(
     }
     if (request.method === "GET" && url.pathname === "/api/workspaces/active") {
       sendJson(response, await collectActiveUiWorkspaceOverview(hostLoaded));
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/workspaces/portfolio") {
+      sendJson(response, await collectUiWorkspacePortfolio(hostLoaded));
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/workspaces/preview") {
@@ -377,7 +382,7 @@ function renderUiHtml(csrfToken: string): string {
     .work-nav { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 14px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:62px; z-index:1; }
     .view-tabs { display:flex; gap:4px; flex-wrap:wrap; }
     .view-tab { border-color:transparent; background:transparent; color:var(--muted); font-weight:600; }
-    .view-tab[aria-selected="true"] { color:var(--blue); background:var(--blue-soft); border-color:#b8cef0; }
+    .view-tab[aria-current="page"] { color:var(--blue); background:var(--blue-soft); border-color:#b8cef0; }
     .stage-strip { display:flex; align-items:center; gap:5px; min-width:0; overflow:auto; }
     .stage-step { display:flex; align-items:center; gap:5px; color:var(--muted); white-space:nowrap; font-size:12px; }
     .stage-step + .stage-step::before { content:'›'; color:#9aa4b2; margin-right:2px; }
@@ -489,7 +494,7 @@ function renderUiHtml(csrfToken: string): string {
     }
     @media (max-width:520px) {
       header { display:grid; }
-      header, .work-nav, main { width:calc(100vw - 16px); max-width:calc(100vw - 16px); }
+      header, .work-nav, main { width:100%; max-width:100%; }
       header, header .toolbar, header .toolbar > *, .work-nav > *, main, aside, .stack, section { min-width:0; }
       .view-tabs { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); }
       .view-tabs { width:100%; }
@@ -505,6 +510,9 @@ function renderUiHtml(csrfToken: string): string {
       .decision-form { grid-template-columns:1fr; }
       .actions { display:grid; grid-template-columns:1fr; }
       .actions button { width:100%; }
+      .workflow-focus { display:grid; grid-template-columns:minmax(0, 1fr) auto; }
+      .workflow-focus > * { min-width:0; }
+      .workflow-focus button { max-width:100%; white-space:normal; }
       dialog { left:auto; right:auto; width:calc(100vw - 64px); min-width:0; max-width:340px; max-height:calc(100vh - 16px); margin:auto; }
       .dialog-body { grid-template-columns:1fr; padding:16px; }
       .dialog-body .field { grid-column:1; }
@@ -525,11 +533,11 @@ function renderUiHtml(csrfToken: string): string {
     </div>
   </header>
   <nav class="work-nav" aria-label="Refactoring workspace views">
-    <div class="view-tabs" role="tablist" aria-label="Work views">
-      <button class="view-tab" data-work-view="workspace" role="tab" aria-selected="true">Workspace</button>
-      <button class="view-tab" data-work-view="execution" role="tab" aria-selected="false">Execution</button>
-      <button class="view-tab" data-work-view="monitoring" role="tab" aria-selected="false">Monitoring</button>
-      <button class="view-tab" data-work-view="reports" role="tab" aria-selected="false">Reports</button>
+    <div class="view-tabs" aria-label="Work views">
+      <button class="view-tab" data-work-view="workspace" aria-current="page">Workspace</button>
+      <button class="view-tab" data-work-view="execution">Execution</button>
+      <button class="view-tab" data-work-view="monitoring">Monitoring</button>
+      <button class="view-tab" data-work-view="reports">Reports</button>
     </div>
     <div id="stageStrip" class="stage-strip" aria-label="Refactoring stages">
       <span class="stage-step current" data-stage="registered"><strong>1</strong>Project</span>
@@ -562,8 +570,9 @@ function renderUiHtml(csrfToken: string): string {
         <button data-action="verify">Verify</button>
         <button data-action="checkpoint">Create Checkpoint</button>
       </div></section>
-      <section data-views="workspace monitoring"><div class="panel-head"><h2>Status</h2></div><div id="stats" class="grid"><p class="muted">Loading...</p></div><p id="runMeta" class="run-meta"></p></section>
-      <section data-views="execution"><div class="panel-head"><h2>Guarded Actions</h2></div><div class="actions">
+      <section data-views="workspace"><div class="panel-head"><h2>Project Portfolio</h2></div><div id="workspacePortfolio"><p class="muted">Loading...</p></div></section>
+      <section data-views="workspace monitoring" data-requires-workspace><div class="panel-head"><h2>Status</h2></div><div id="stats" class="grid"><p class="muted">Loading...</p></div><p id="runMeta" class="run-meta"></p></section>
+      <section data-views="execution" data-requires-workspace><div class="panel-head"><h2>Guarded Actions</h2></div><div class="actions">
         <button data-action="readiness">Write Readiness</button>
         <button data-action="issue-control-dry-run">Issue Dry-run</button>
       </div><div class="action-form">
@@ -571,7 +580,7 @@ function renderUiHtml(csrfToken: string): string {
         <label class="field">Labels <input id="issueLabels" placeholder="label-a,label-b"></label>
         <label class="field">Max iterations <input id="issueMaxIterations" type="number" min="1" max="10" value="3"></label>
       </div><p class="action-note">Snapshot writes an artifact. Issue control stays dry-run.</p><div id="actionHints" class="status-line" hidden></div><div id="actionStatus" class="status-line" hidden></div></section>
-      <section data-views="monitoring"><div class="panel-head"><h2>Recent Jobs</h2><div class="toolbar compact">
+      <section data-views="monitoring" data-requires-workspace><div class="panel-head"><h2>Recent Jobs</h2><div class="toolbar compact">
         <select id="jobStatusFilter" aria-label="Job status filter">
           <option value="all">all jobs</option>
           <option value="active">active</option>
@@ -588,18 +597,19 @@ function renderUiHtml(csrfToken: string): string {
         <button id="jobGcPlan">Plan GC</button>
         <button id="jobGcApply">Apply GC</button>
       </div><div id="jobGcStatus" class="status-line" hidden></div><div id="jobs"><p class="muted">Loading...</p></div></section>
-      <section data-views="reports"><div class="panel-head"><h2>Unattended Audit</h2></div><pre id="audit">[]</pre></section>
+      <section data-views="reports" data-requires-workspace><div class="panel-head"><h2>Unattended Audit</h2></div><pre id="audit">[]</pre></section>
     </aside>
     <div class="stack">
-      <section data-views="workspace"><details><summary>CLI and advanced next actions</summary><div id="nextActions" class="job-actions"><p class="muted">Loading...</p></div></details></section>
-      <section data-views="workspace"><div class="panel-head"><h2>Run Detail</h2></div><div id="runDetail"><p class="muted">Loading...</p></div></section>
-      <section data-views="monitoring"><div class="panel-head"><h2>Job Detail</h2><button id="clearJobDetail">Clear</button></div><div id="jobDetail"><p class="muted">Select a job.</p></div></section>
-      <section data-views="execution monitoring"><div class="panel-head"><h2>Recovery Center</h2></div><div id="recovery"><p class="muted">Loading...</p></div><div id="recoveryPlan" class="status-line" hidden></div></section>
-      <section data-views="workspace monitoring"><div class="panel-head"><h2>Blockers</h2></div><div id="blockers"><p class="muted">Loading...</p></div></section>
-      <section data-views="workspace reports"><div class="panel-head"><h2>Project History</h2></div><div id="runs"><p class="muted">Loading...</p></div></section>
-      <section data-views="execution"><div class="panel-head"><h2>Ready Tasks</h2></div><div id="tasks"><p class="muted">Loading...</p></div><div id="taskExecutionPlan" class="status-line" hidden></div></section>
-      <section data-views="execution"><div class="panel-head"><h2>Stuck Proposals</h2></div><div id="proposals"><p class="muted">Loading...</p></div></section>
-      <section data-views="reports"><div class="panel-head"><h2>Evidence / Diff</h2><div class="toolbar compact">
+      <section data-views="workspace" data-requires-workspace><details><summary>CLI and advanced next actions</summary><div id="nextActions" class="job-actions"><p class="muted">Loading...</p></div></details></section>
+      <section data-views="workspace" data-requires-workspace><div class="panel-head"><h2>Run Detail</h2></div><div id="runDetail"><p class="muted">Loading...</p></div></section>
+      <section data-views="monitoring" data-requires-workspace><div class="panel-head"><h2>Job Detail</h2><button id="clearJobDetail">Clear</button></div><div id="jobDetail"><p class="muted">Select a job.</p></div></section>
+      <section data-views="execution monitoring" data-requires-workspace><div class="panel-head"><h2>Recovery Center</h2></div><div id="recovery"><p class="muted">Loading...</p></div><div id="recoveryPlan" class="status-line" hidden></div></section>
+      <section data-views="workspace monitoring" data-requires-workspace><div class="panel-head"><h2>Blockers</h2></div><div id="blockers"><p class="muted">Loading...</p></div></section>
+      <section data-views="workspace reports" data-requires-workspace><div class="panel-head"><h2>Project History</h2></div><div id="runs"><p class="muted">Loading...</p></div></section>
+      <section data-views="execution" data-requires-workspace><div class="panel-head"><h2>Ready Tasks</h2></div><div id="tasks"><p class="muted">Loading...</p></div><div id="taskExecutionPlan" class="status-line" hidden></div></section>
+      <section data-views="execution" data-requires-workspace><div class="panel-head"><h2>Stuck Proposals</h2></div><div id="proposals"><p class="muted">Loading...</p></div></section>
+      <section data-views="reports" data-requires-workspace><div class="panel-head"><h2>Deliverables</h2></div><div id="reportArtifacts"><p class="muted">Loading...</p></div></section>
+      <section data-views="reports" data-requires-workspace><div class="panel-head"><h2>Evidence / Diff</h2><div class="toolbar compact">
         <select id="diffStatusFilter" aria-label="Diff status filter">
           <option value="all">all status</option>
           <option value="failed">failed</option>
@@ -613,7 +623,7 @@ function renderUiHtml(csrfToken: string): string {
           <option value="unknown">unknown</option>
         </select>
       </div></div><div id="diffs"><p class="muted">Loading...</p></div></section>
-      <section data-views="monitoring"><div class="panel-head"><h2>Monitor</h2></div><pre id="monitor">{}</pre></section>
+      <section data-views="monitoring" data-requires-workspace><div class="panel-head"><h2>Monitor</h2></div><pre id="monitor">{}</pre></section>
     </div>
   </main>
   <script>
@@ -624,6 +634,8 @@ function renderUiHtml(csrfToken: string): string {
     let jobsLoading = false;
     let workspacePreviewValid = false;
     let workspacePreviewRevision = 0;
+    let workspaceManaged = false;
+    let activeJobDetailId = null;
 
     async function json(path, options) {
       const requestOptions = options || {};
@@ -712,19 +724,24 @@ function renderUiHtml(csrfToken: string): string {
       }
     }
     function setWorkView(view, remember = true) {
-      const selected = ['workspace', 'execution', 'monitoring', 'reports'].includes(view) ? view : 'workspace';
-      document.querySelectorAll('[data-work-view]').forEach(button => button.setAttribute('aria-selected', String(button.dataset.workView === selected)));
-      document.querySelectorAll('main section[data-views]').forEach(section => {
-        section.hidden = !section.dataset.views.split(' ').filter(Boolean).includes(selected);
+      const requested = ['workspace', 'execution', 'monitoring', 'reports'].includes(view) ? view : 'workspace';
+      const selected = workspaceManaged || requested === 'workspace' ? requested : 'workspace';
+      document.querySelectorAll('[data-work-view]').forEach(button => {
+        const active = button.dataset.workView === selected;
+        if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+        button.disabled = !workspaceManaged && button.dataset.workView !== 'workspace';
       });
-      if (remember) localStorage.setItem('migrationGuardWorkView', selected);
+      document.querySelectorAll('main section[data-views]').forEach(section => {
+        section.hidden = !section.dataset.views.split(' ').filter(Boolean).includes(selected) || (!workspaceManaged && section.hasAttribute('data-requires-workspace'));
+      });
+      if (remember) localStorage.setItem('migrationGuardWorkView', requested);
     }
     function renderRefactoringStages(report) {
       const progress = new Map((report.progress || []).map(step => [step.id, Boolean(step.complete)]));
       const registered = progress.get('registered') || false;
       const scanned = registered && (progress.get('scan') || false);
       const baseline = scanned && (progress.get('baseline') || false);
-      const executed = baseline && (progress.get('checkpoint') || false);
+      const executed = baseline && (progress.get('execute') || false);
       const verified = executed && (progress.get('verify') || false);
       const complete = {
         registered,
@@ -732,7 +749,7 @@ function renderUiHtml(csrfToken: string): string {
         baseline,
         execute: executed,
         verify: verified,
-        report: false
+        report: verified && (progress.get('report') || false)
       };
       const order = ['registered', 'scan', 'baseline', 'execute', 'verify', 'report'];
       const current = order.find(stage => !complete[stage]) || 'report';
@@ -762,8 +779,10 @@ function renderUiHtml(csrfToken: string): string {
     }
     function renderWorkspaceOverview(report) {
       const container = document.getElementById('workspaceOverview');
+      workspaceManaged = Boolean(report.managed && report.workspace);
       const stage = renderRefactoringStages(report);
       document.getElementById('workspaceActions').hidden = !report.managed;
+      setWorkView(localStorage.getItem('migrationGuardWorkView') || 'workspace', false);
       if (!report.managed || !report.workspace) {
         container.innerHTML = workflowFocus(stage) + '<p class="muted">Register a source and target project to track a refactoring workflow.</p>';
         return;
@@ -811,10 +830,18 @@ function renderUiHtml(csrfToken: string): string {
       catch (error) { document.getElementById('workspaceOverview').innerHTML = errorHtml(error); }
     }
     async function loadWorkspaces() {
-      const registry = await json('/api/workspaces');
+      const [registry, portfolio] = await Promise.all([json('/api/workspaces'), json('/api/workspaces/portfolio')]);
       const select = document.getElementById('workspaceSelect');
       select.innerHTML = '<option value="">Host project</option>' + (registry.workspaces || []).filter(item => item.status === 'active').map(item => '<option value="' + attr(item.id) + '">' + escapeHtml(item.name) + ' · ' + escapeHtml(item.packageManager) + '</option>').join('');
       select.value = registry.activeWorkspaceId || '';
+      const projects = portfolio.projects || [];
+      document.getElementById('workspacePortfolio').innerHTML = projects.length
+        ? '<div class="item-list">' + projects.map(item => '<div class="blocker"><div class="blocker-title"><strong>' + escapeHtml(item.name) + '</strong>' + badge(item.stage, '') + badge(item.readiness, toneFor(item.readiness)) + (item.id === portfolio.activeWorkspaceId ? badge('active', 'ok') : '') + '</div><div class="muted">' + escapeHtml(item.goal) + '</div><div class="muted">Blockers: ' + escapeHtml(String(item.blockerCount)) + ' · updated ' + escapeHtml(item.updatedAt) + '</div><div class="mono run-meta">' + escapeHtml(item.targetRoot) + '</div>' + (item.id === portfolio.activeWorkspaceId ? '' : '<div class="job-actions"><button data-select-workspace="' + attr(item.id) + '">Open project</button></div>') + '</div>').join('') + '</div>'
+        : '<p class="muted">No registered projects.</p>';
+    }
+    async function selectWorkspace(workspaceId) {
+      await postJson('/api/workspaces/' + encodeURIComponent(workspaceId) + '/select');
+      window.location.reload();
     }
     async function previewWorkspace() {
       const status = document.getElementById('workspacePreview');
@@ -950,6 +977,7 @@ function renderUiHtml(csrfToken: string): string {
       document.getElementById('tasks').innerHTML = renderTasks(dashboard.readyTasks);
       document.getElementById('proposals').innerHTML = renderProposals(dashboard.stuckProposals);
       document.getElementById('nextActions').innerHTML = renderNextActions(dashboard.recommendedNextActions || []);
+      document.getElementById('reportArtifacts').innerHTML = renderReportArtifacts(dashboard.reportArtifacts || []);
       document.getElementById('monitor').textContent = JSON.stringify({
         runId: dashboard.runId,
         progress: dashboard.progress,
@@ -977,6 +1005,10 @@ function renderUiHtml(csrfToken: string): string {
       if (!tasks.length) return empty();
       return '<div class="item-list">' + tasks.map(task => '<details><summary>' + escapeHtml(task.taskId + ' · ' + task.title) + '</summary>' +
         '<dl class="kv"><dt>Risk</dt><dd>' + escapeHtml(task.risk) + '</dd><dt>Owner</dt><dd>' + escapeHtml(task.owner) + '</dd><dt>Issue</dt><dd>' + escapeHtml(task.issueId || 'none') + '</dd><dt>Description</dt><dd>' + escapeHtml(task.description || '') + '</dd><dt>Affected paths</dt><dd>' + escapeHtml((task.affectedFiles || []).join(', ') || 'none') + '</dd><dt>Verification</dt><dd>' + escapeHtml((task.verificationCommands || []).join(', ') || 'none') + '</dd><dt>Acceptance</dt><dd>' + escapeHtml((task.acceptanceCriteria || []).join(', ') || 'none') + '</dd></dl><div class="job-actions"><button data-task-plan="' + attr(task.taskId) + '">Review plan</button></div></details>').join('') + '</div>';
+    }
+    function renderReportArtifacts(artifacts) {
+      if (!artifacts.length) return '<p class="muted">No deliverables have been written for this run.</p>';
+      return '<div class="item-list">' + artifacts.map(item => '<div class="blocker"><div class="blocker-title">' + badge(item.kind, item.kind === 'final' ? 'ok' : '') + '<strong>' + escapeHtml(item.path.split(/[\\/]/).pop()) + '</strong></div>' + artifactHtml(item.path) + '</div>').join('') + '</div>';
     }
     async function planTaskExecution(button) {
       const status = document.getElementById('taskExecutionPlan');
@@ -1341,6 +1373,7 @@ function renderUiHtml(csrfToken: string): string {
         status.className = 'status-line ' + toneFor(job.status);
         status.innerHTML = renderJobStatus(job);
         await loadJobs();
+        if (activeJobDetailId === jobId) await loadJobDetail(jobId);
         if (job.status === 'succeeded' || job.status === 'failed') {
           return job;
         }
@@ -1406,6 +1439,7 @@ function renderUiHtml(csrfToken: string): string {
       }
     }
     async function loadJobDetail(jobId) {
+      activeJobDetailId = jobId;
       const detail = document.getElementById('jobDetail');
       detail.innerHTML = '<p class="muted">Loading job detail...</p>';
       try {
@@ -1552,10 +1586,10 @@ function renderUiHtml(csrfToken: string): string {
     });
     document.getElementById('workspaceSelect').addEventListener('change', async event => {
       if (!event.target.value) return;
-      await postJson('/api/workspaces/' + encodeURIComponent(event.target.value) + '/select');
-      window.location.reload();
+      await selectWorkspace(event.target.value);
     });
     document.getElementById('clearJobDetail').addEventListener('click', () => {
+      activeJobDetailId = null;
       document.getElementById('jobDetail').innerHTML = '<p class="muted">Select a job.</p>';
     });
     document.getElementById('jobGcPlan').addEventListener('click', () => gcJobs(false));
@@ -1591,6 +1625,7 @@ function renderUiHtml(csrfToken: string): string {
       if (target instanceof HTMLElement && target.dataset.taskExecute) executeTaskPlan(target);
       if (target instanceof HTMLElement && target.dataset.pastePath) pasteWorkspacePath(target.dataset.pastePath);
       if (target instanceof HTMLElement && target.dataset.workflowNext) advanceWorkflow(target);
+      if (target instanceof HTMLElement && target.dataset.selectWorkspace) selectWorkspace(target.dataset.selectWorkspace);
       if (target instanceof HTMLElement && target.dataset.diffBatchDecision !== undefined) recordDiffBatchDecisionFromForm(target);
       if (target instanceof HTMLElement && target.dataset.diffDecision !== undefined) recordDiffDecisionFromForm(target);
     });

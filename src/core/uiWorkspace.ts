@@ -9,6 +9,7 @@ import { loadRunPackage } from "./migrationRun.js";
 import { latestBaselinePath, latestRunPath } from "./snapshot.js";
 import { UiHttpError } from "./uiHttpError.js";
 import type { LoadedConfig } from "../types.js";
+import { collectDashboard } from "./dashboard.js";
 
 export type UiWorkspaceStatus = "active" | "archived";
 
@@ -59,7 +60,13 @@ export interface UiWorkspaceOverview {
   targetRoot: string;
   configPath: string;
   checks: string[];
-  progress: Array<{ id: "registered" | "scan" | "baseline" | "verify" | "checkpoint"; label: string; complete: boolean; evidence?: string }>;
+  progress: Array<{ id: "registered" | "scan" | "baseline" | "execute" | "verify" | "report" | "checkpoint"; label: string; complete: boolean; evidence?: string }>;
+}
+
+export interface UiWorkspacePortfolio {
+  version: 1;
+  activeWorkspaceId?: string;
+  projects: Array<{ id: string; name: string; goal: string; targetRoot: string; stage: "project" | "assess" | "baseline" | "execute" | "verify" | "report"; readiness: string; blockerCount: number; updatedAt: string }>;
 }
 
 const registryLocks = new Map<string, Promise<void>>();
@@ -173,6 +180,10 @@ export async function collectActiveUiWorkspaceOverview(host: LoadedConfig): Prom
   const verifyPath = latestRunPath(active.loaded);
   const run = await loadRunPackage(active.loaded, active.workspace?.activeRunId ?? "latest").catch(() => undefined);
   const checkpointId = run?.run.latestCheckpointId;
+  const executionTasks = run?.graph.tasks.filter((task) => task.type === "code-change" || task.type === "adapter" || task.type === "replan") ?? [];
+  const executionComplete = executionTasks.length > 0 && executionTasks.every((task) => task.status === "done" || task.status === "accepted-diff");
+  const reportPath = run?.run.finalReportPath;
+  const reportComplete = Boolean(reportPath && await fs.stat(reportPath).catch(() => undefined));
   return {
     version: 1,
     managed: Boolean(active.workspace),
@@ -184,10 +195,39 @@ export async function collectActiveUiWorkspaceOverview(host: LoadedConfig): Prom
       { id: "registered", label: "Project registered", complete: Boolean(active.workspace) },
       { id: "scan", label: "Project scanned", complete: scanFiles.length > 0, evidence: scanFiles.length ? path.join(scanDir, scanFiles.at(-1) ?? "") : undefined },
       { id: "baseline", label: "Baseline captured", complete: Boolean(await fs.stat(baselinePath).catch(() => undefined)), evidence: baselinePath },
+      { id: "execute", label: "Bounded tasks executed", complete: executionComplete },
       { id: "verify", label: "Verification captured", complete: Boolean(await fs.stat(verifyPath).catch(() => undefined)), evidence: verifyPath },
+      { id: "report", label: "Final report written", complete: reportComplete, evidence: reportPath },
       { id: "checkpoint", label: "Recovery checkpoint", complete: Boolean(checkpointId), evidence: checkpointId }
     ]
   };
+}
+
+export async function collectUiWorkspacePortfolio(host: LoadedConfig): Promise<UiWorkspacePortfolio> {
+  const registry = await listUiWorkspaces(host);
+  const projects = await Promise.all(registry.workspaces.filter((item) => item.status === "active").map(async (workspace) => {
+    const loaded = await loadConfig(workspace.configPath);
+    const run = await loadRunPackage(loaded, workspace.activeRunId).catch(() => undefined);
+    const scanDir = path.join(loaded.artifactsDir, "scan");
+    const scanned = (await fs.readdir(scanDir).catch(() => [])).some((name) => name.endsWith(".json"));
+    const baseline = Boolean(await fs.stat(latestBaselinePath(loaded)).catch(() => undefined));
+    const executionTasks = run?.graph.tasks.filter((task) => task.type === "code-change" || task.type === "adapter" || task.type === "replan") ?? [];
+    const executed = executionTasks.length > 0 && executionTasks.every((task) => task.status === "done" || task.status === "accepted-diff");
+    const verified = Boolean(await fs.stat(latestRunPath(loaded)).catch(() => undefined));
+    const reported = Boolean(run?.run.finalReportPath && await fs.stat(run.run.finalReportPath).catch(() => undefined));
+    const stage: UiWorkspacePortfolio["projects"][number]["stage"] = !scanned
+      ? "assess"
+      : !baseline
+        ? "baseline"
+        : !executed
+          ? "execute"
+          : !verified
+            ? "verify"
+            : "report";
+    const dashboard = await collectDashboard(loaded, { runId: workspace.activeRunId, checkTargetGit: false }).catch(() => undefined);
+    return { id: workspace.id, name: workspace.name, goal: workspace.goal, targetRoot: workspace.targetRoot, stage, readiness: dashboard?.readiness?.status ?? "unknown", blockerCount: dashboard?.summary.blockerCount ?? 0, updatedAt: workspace.updatedAt };
+  }));
+  return { version: 1, activeWorkspaceId: registry.activeWorkspaceId, projects };
 }
 
 function workspaceRegistryPath(host: LoadedConfig): string {

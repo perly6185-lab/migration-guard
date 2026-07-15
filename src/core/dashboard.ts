@@ -79,6 +79,7 @@ export interface DashboardReport {
     warningCount: number;
   };
   recommendedNextActions: string[];
+  reportArtifacts: Array<{ kind: "final" | "readiness" | "handoff" | "result" | "recovery"; path: string }>;
   outputPath?: string;
   markdownPath?: string;
 }
@@ -189,6 +190,7 @@ export async function collectDashboard(
     }));
   const runs = await loadDashboardRunIndex(loaded);
   const blockers = buildDashboardBlockers(pkg, proposals, readiness, progress?.ledger, progress?.path, git);
+  const reportArtifacts = await collectDashboardReportArtifacts(loaded, pkg);
   const stuckProposals = proposals
     .filter((proposal) => STUCK_PROPOSAL_STATES.has(proposal.applyState))
     .map(toDashboardProposalSummary);
@@ -253,8 +255,39 @@ export async function collectDashboard(
       blockerCount: blocking,
       warningCount: warnings
     },
-    recommendedNextActions: createDashboardNextActions(blockers)
+    recommendedNextActions: createDashboardNextActions(blockers),
+    reportArtifacts
   };
+}
+
+async function collectDashboardReportArtifacts(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<DashboardReport["reportArtifacts"]> {
+  const runDir = migrationRunDir(loaded, pkg.run.id);
+  const entries: DashboardReport["reportArtifacts"] = [];
+  if (pkg.run.finalReportPath && await pathExists(pkg.run.finalReportPath)) entries.push({ kind: "final", path: pkg.run.finalReportPath });
+  for (const [kind, relative] of [
+    ["readiness", path.join("reports", "refactor-readiness.json")],
+    ["readiness", path.join("reports", "refactor-readiness.md")],
+    ["handoff", path.join("reports", "action-check-readiness-handoff.json")],
+    ["handoff", path.join("reports", "action-check-readiness-handoff.md")]
+  ] as const) {
+    const filePath = path.join(runDir, relative);
+    if (await pathExists(filePath)) entries.push({ kind, path: filePath });
+  }
+  for (const [kind, folder] of [["handoff", "handoffs"], ["result", "handoff-results"], ["recovery", "recovery-plans"]] as const) {
+    for (const filePath of await listDashboardArtifactFiles(path.join(runDir, folder))) entries.push({ kind, path: filePath });
+  }
+  return entries.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+async function listDashboardArtifactFiles(dir: string): Promise<string[]> {
+  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+  const files: string[] = [];
+  for (const entry of entries) {
+    const filePath = path.join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...await listDashboardArtifactFiles(filePath));
+    else if (entry.isFile() && /\.(?:json|md|txt)$/.test(entry.name)) files.push(filePath);
+  }
+  return files;
 }
 
 export async function writeDashboardReport(
