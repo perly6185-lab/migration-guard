@@ -4,6 +4,7 @@ import { assessRefactorReadiness, writeRefactorReadinessReport } from "./refacto
 import { captureSnapshot, saveSnapshot } from "./snapshot.js";
 import { superviseIssueControl } from "./issueControl.js";
 import { stableStringify } from "./normalize.js";
+import { writeJsonFile } from "./files.js";
 import { loadRunPackage } from "./migrationRun.js";
 import { UiHttpError } from "./uiHttpError.js";
 import { resolveArtifactPath } from "./uiArtifacts.js";
@@ -11,10 +12,14 @@ import {
   readAllUiJobs,
   readUiJob,
   claimUiJob,
+  assertUiJobClaim,
+  classifyUiJobClaim,
   heartbeatUiJobClaim,
+  inspectUiJobClaim,
   isUiJobClaimed,
   releaseUiJobClaim,
   uiJobPath,
+  uiJobsDir,
   updateUiJob,
   writeUiJob
 } from "./uiJobStore.js";
@@ -72,11 +77,15 @@ export async function createUiActionJob(
       throw new UiHttpError(`An active ${action} job already exists: ${duplicate.id}`, 409);
     }
     const now = new Date().toISOString();
+    const parent = createOptions.retryOf ? await readUiJob(loaded, createOptions.retryOf) : undefined;
+    const commandFingerprint = stableStringify({ action, params });
     const queuedJob: UiJob = {
       version: 1,
       id: createUiJobId(action, now),
       retryOf: createOptions.retryOf,
       ownerPid: process.pid,
+      attempt: (parent?.attempt ?? 0) + 1,
+      commandFingerprint,
       action,
       status: "queued",
       createdAt: now,
@@ -129,22 +138,37 @@ export async function recoverOrphanUiJobs(loaded: LoadedConfig): Promise<void> {
     if (job.status !== "queued" && job.status !== "running") {
       continue;
     }
-    if (job.ownerPid && isProcessAlive(job.ownerPid)) {
+    const inspection = await inspectUiJobClaim(loaded, job.id).catch(() => ({ claimed: false as const, claim: undefined }));
+    const reason = classifyUiJobClaim(inspection.claim);
+    if (!reason) {
       continue;
     }
+    const planPath = path.join(uiJobsDir(loaded), "recovery-plans", `${job.id}-${recoveredAt.replace(/[:.]/g, "-")}.json`);
+    await writeJsonFile(planPath, {
+      version: 1,
+      jobId: job.id,
+      action: job.action,
+      previousStatus: job.status,
+      attempt: job.attempt ?? 1,
+      reason,
+      decision: job.status === "queued" ? "cancel" : "fail",
+      replayMutation: false,
+      plannedAt: recoveredAt
+    });
     await releaseUiJobClaim(loaded, job.id).catch(() => undefined);
     const recovered: UiJob = {
       ...job,
       status: job.status === "queued" ? "cancelled" : "failed",
       updatedAt: recoveredAt,
       finishedAt: recoveredAt,
+      recoveryReason: reason,
       error: job.status === "running" ? "Recovered after server restart; previous runner is no longer active." : job.error,
       events: appendUiJobEvent(job, {
         at: recoveredAt,
         type: "recovered",
         message: job.status === "queued"
-          ? "Cancelled queued job after server restart."
-          : "Marked running job failed after server restart."
+          ? `Cancelled queued job after recovery plan (${reason}); no command was replayed.`
+          : `Marked running job failed after recovery plan (${reason}); no command was replayed.`
       })
     };
     await writeUiJob(loaded, recovered);
@@ -341,8 +365,13 @@ async function runUiActionJob(
   options: UiJobRunnerOptions,
   jobId: string
 ): Promise<void> {
-  if (!await claimUiJob(loaded, jobId)) return;
-  const heartbeat = setInterval(() => { void heartbeatUiJobClaim(loaded, jobId).catch(() => undefined); }, 10000);
+  const queued = await readUiJob(loaded, jobId);
+  const claim = await claimUiJob(loaded, jobId, queued.commandFingerprint ?? stableStringify({ action: queued.action, params: queued.params }));
+  if (!claim) return;
+  let leaseValid = true;
+  const heartbeat = setInterval(() => {
+    void heartbeatUiJobClaim(loaded, jobId, claim).catch(() => { leaseValid = false; });
+  }, Math.max(1000, Math.floor(claim.leaseDurationMs / 3)));
   heartbeat.unref();
   try {
     const startedAt = new Date().toISOString();
@@ -353,6 +382,13 @@ async function runUiActionJob(
       return {
         ...job,
         status: "running",
+        ownerPid: claim.ownerPid,
+        ownerId: claim.ownerId,
+        attempt: claim.attempt,
+        commandFingerprint: claim.commandFingerprint,
+        fencingToken: claim.fencingToken,
+        heartbeatAt: claim.heartbeatAt,
+        leaseDurationMs: claim.leaseDurationMs,
         startedAt,
         updatedAt: startedAt,
         events: appendUiJobEvent(job, {
@@ -366,6 +402,8 @@ async function runUiActionJob(
       return;
     }
     const result = await executeUiActionJob(loaded, options, runningJob);
+    if (!leaseValid) throw new UiHttpError("UI job lease heartbeat failed; refusing to commit a result", 409);
+    await assertUiJobClaim(loaded, jobId, claim);
     const finishedAt = new Date().toISOString();
     const artifactPaths = extractArtifactPaths(loaded, result);
     await updateUiJob(loaded, jobId, (job) => ({
@@ -385,7 +423,7 @@ async function runUiActionJob(
   } catch (error) {
     const finishedAt = new Date().toISOString();
     const message = error instanceof Error ? error.message : String(error);
-    await updateUiJob(loaded, jobId, (job) => ({
+    await assertUiJobClaim(loaded, jobId, claim).then(() => updateUiJob(loaded, jobId, (job) => ({
       ...job,
       status: "failed",
       updatedAt: finishedAt,
@@ -396,19 +434,10 @@ async function runUiActionJob(
         type: "failed",
         message
       })
-    })).catch(() => undefined);
+    }))).catch(() => undefined);
   } finally {
     clearInterval(heartbeat);
-    await releaseUiJobClaim(loaded, jobId).catch(() => undefined);
-  }
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
+    await releaseUiJobClaim(loaded, jobId, claim).catch(() => undefined);
   }
 }
 

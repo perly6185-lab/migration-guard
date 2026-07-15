@@ -15,15 +15,17 @@ test("UI job claims are exclusive and releasable", async () => {
     assert.equal(stored.kind, "ui-job");
     assert.equal(stored.metadata.action, "readiness");
     assert.equal((await readUiJob(loaded, "claim-job")).id, "claim-job");
-    assert.equal(await claimUiJob(loaded, "claim-job"), true);
-    assert.equal(await claimUiJob(loaded, "claim-job"), false);
+    const claim = await claimUiJob(loaded, "claim-job", "fingerprint");
+    assert.ok(claim);
+    assert.equal(await claimUiJob(loaded, "claim-job", "fingerprint"), undefined);
     const inspection = await inspectUiJobClaim(loaded, "claim-job");
     assert.equal(inspection.claimed, true);
     assert.equal(inspection.expired, false);
-    await heartbeatUiJobClaim(loaded, "claim-job");
-    await releaseUiJobClaim(loaded, "claim-job");
-    assert.equal(await claimUiJob(loaded, "claim-job"), true);
-    await releaseUiJobClaim(loaded, "claim-job");
+    await heartbeatUiJobClaim(loaded, "claim-job", claim);
+    await releaseUiJobClaim(loaded, "claim-job", claim);
+    const nextClaim = await claimUiJob(loaded, "claim-job", "fingerprint");
+    assert.ok(nextClaim);
+    await releaseUiJobClaim(loaded, "claim-job", nextClaim);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -40,11 +42,28 @@ test("UI job store rejects future schema versions", async () => {
   }
 });
 
+test("stale fencing tokens cannot heartbeat or release a replacement claim", async () => {
+  const { dir, loaded } = await fixture();
+  try {
+    await writeUiJob(loaded, job("fenced-job"));
+    const stale = await claimUiJob(loaded, "fenced-job", "fingerprint");
+    assert.ok(stale);
+    const replacement = { ...stale, ownerId: "replacement-owner", fencingToken: "replacement-token" };
+    await writeFile(`${uiJobPath(loaded, "fenced-job")}.claim`, `${JSON.stringify(replacement)}\n`);
+    await assert.rejects(heartbeatUiJobClaim(loaded, "fenced-job", stale), /fencing token/);
+    await assert.rejects(releaseUiJobClaim(loaded, "fenced-job", stale), /fencing token/);
+    assert.equal((await inspectUiJobClaim(loaded, "fenced-job")).claim?.fencingToken, "replacement-token");
+    await releaseUiJobClaim(loaded, "fenced-job");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("UI job claim tolerates an artifacts directory removed during shutdown", async () => {
   const { dir, loaded } = await fixture();
   await writeUiJob(loaded, job("removed-job"));
   await rm(dir, { recursive: true, force: true });
-  assert.equal(await claimUiJob(loaded, "removed-job"), false);
+  assert.equal(await claimUiJob(loaded, "removed-job", "fingerprint"), undefined);
 });
 
 async function fixture() {

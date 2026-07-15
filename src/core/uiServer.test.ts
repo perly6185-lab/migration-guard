@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -438,10 +438,13 @@ test("ui server recovers orphan queued and running jobs on startup", async () =>
       const queued = await fetchJson<UiJob>(`${handle.url}/api/jobs/orphan-queued`);
       assert.equal(queued.status, "cancelled");
       assert.equal(queued.events.at(-1)?.type, "recovered");
+      assert.equal(queued.recoveryReason, "claim-missing");
       const running = await fetchJson<UiJob>(`${handle.url}/api/jobs/orphan-running`);
       assert.equal(running.status, "failed");
       assert.match(running.error ?? "", /server restart/);
       assert.equal(running.events.at(-1)?.type, "recovered");
+      assert.equal(running.recoveryReason, "claim-missing");
+      assert.equal((await readdir(path.join(jobsDir, "recovery-plans"))).length, 2);
     } finally {
       await handle.close();
     }
@@ -513,6 +516,11 @@ interface UiActionCapabilities {
 interface UiJob {
   id: string;
   retryOf?: string;
+  ownerId?: string;
+  attempt?: number;
+  heartbeatAt?: string;
+  leaseDurationMs?: number;
+  recoveryReason?: string;
   action: string;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   runId?: string;

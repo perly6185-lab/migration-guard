@@ -1,6 +1,6 @@
 {
   "name": "migration-guard",
-  "version": "0.2.0-rc.1",
+  "version": "0.2.0",
   "description": "A behavior-consistency guardrail CLI for refactoring and migration work.",
   "type": "module",
   "bin": {
@@ -18,7 +18,8 @@
     "package:audit": "npm run build && node scripts/ci/audit-package.mjs",
     "pilot:report": "node scripts/smoke/rc-feedback-report.mjs",
     "install:smoke": "npm run build && node scripts/smoke/install-modes-smoke.mjs",
-    "release:gate": "node scripts/ci/release-gate.mjs"
+    "release:gate": "node scripts/ci/release-gate.mjs",
+    "release:candidate": "node scripts/release/candidate.mjs"
   },
   "keywords": [
     "migration",

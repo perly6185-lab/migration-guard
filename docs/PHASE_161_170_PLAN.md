@@ -101,6 +101,8 @@ Artifacts：
 
 目标：保证长任务在进程暂停、崩溃和恢复时不会被重复执行。
 
+状态：已完成，见 `docs/PHASE_164_REPORT.md`。
+
 交付内容：
 
 - lease 增加稳定 owner id、fencing token、attempt 和 command fingerprint。
@@ -120,6 +122,8 @@ Artifacts：
 ## Phase 165：`0.2.0` GA 候选冻结
 
 目标：形成可人工发布、可复核、可回滚的正式版候选。
+
+状态：已完成，见 `docs/PHASE_165_REPORT.md`。
 
 交付内容：
 

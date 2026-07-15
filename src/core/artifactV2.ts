@@ -190,9 +190,9 @@ export function uiJobArtifactMetadata(
     status: job.status,
     ownerPid: claim?.ownerPid ?? job.ownerPid,
     retryOf: job.retryOf,
-    attempt: Math.max(1, (job.events ?? []).filter((event) => event.type === "started" || event.type === "recovered").length),
-    heartbeatAt: claim?.heartbeatAt,
-    leaseDurationMs: claim?.leaseDurationMs,
+    attempt: job.attempt ?? Math.max(1, (job.events ?? []).filter((event) => event.type === "started" || event.type === "recovered").length),
+    heartbeatAt: claim?.heartbeatAt ?? job.heartbeatAt,
+    leaseDurationMs: claim?.leaseDurationMs ?? job.leaseDurationMs,
     artifactPaths: [...(job.artifactPaths ?? [])]
   };
 }

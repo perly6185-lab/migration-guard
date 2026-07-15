@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-07-15
+
 - Bind release gates and real-project pilots to a shared release run and context hash.
 - Reject skipped, missing, stale, mutated or historical pilot evidence from GO reports.
 - Add resumable release evidence manifests covering tests, package, install and pilot gates.
@@ -11,6 +13,8 @@
 - Change `init --detect` into a preview-first flow with explicit `--apply`, source/confidence metadata and skipped suggestions.
 - Harden `doctor` diagnostics for unresolved variables, missing executables and artifact directory permissions.
 - Let `report` summarize latest baseline/verify compare evidence when no migration run package exists.
+- Fence UI job leases with stable owners and tokens, persist recovery plans, and refuse late worker results.
+- Add clean-commit GA candidate evidence with tarball inventory, SHA-256 and reviewed publish handoff.
 
 ## 0.2.0-rc.1 - 2026-07-13
 

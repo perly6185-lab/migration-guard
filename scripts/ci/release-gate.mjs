@@ -27,6 +27,9 @@ const packageJson = JSON.parse(await readFile(path.join(workspace, "package.json
 assert.match(packageJson.version, /^0\.2\.0(?:-rc\.\d+)?$/, `unexpected release version: ${packageJson.version}`);
 
 const combinedContext = await collectContext();
+if (packageJson.version === "0.2.0" && combinedContext.release.git?.dirty) {
+  throw new Error("0.2.0 GA release gate requires a clean Git checkout");
+}
 const currentContextHash = sha256(JSON.stringify(combinedContext));
 const runDir = releaseRunDir(workspace, releaseRunId);
 const manifestPath = path.join(runDir, "release-evidence.json");
@@ -66,16 +69,20 @@ const steps = [
   { id: "ui-smoke", command: "npm", args: ["run", "ui:smoke"] },
   { id: "package-audit", command: "npm", args: ["run", "package:audit"] },
   { id: "package-smoke", command: "npm", args: ["run", "package:smoke"] },
+  { id: "package-golden", command: "npm", args: ["run", "package:golden"] },
   { id: "install-smoke", command: "npm", args: ["run", "install:smoke"] },
   { id: "diff-check", command: "git", args: ["diff", "--check"] },
   { id: "pilot-smoke", command: process.execPath, args: ["scripts/smoke/real-project-pilot.mjs", "--release-run", releaseRunId] },
-  { id: "pilot-report", command: process.execPath, args: ["scripts/smoke/rc-feedback-report.mjs", "--release-run", releaseRunId], alwaysRun: true }
+  { id: "pilot-report", command: process.execPath, args: ["scripts/smoke/rc-feedback-report.mjs", "--release-run", releaseRunId], alwaysRun: true },
+  { id: "ga-candidate", command: process.execPath, args: ["scripts/release/candidate.mjs"] }
 ];
 
 try {
   for (const definition of steps) await runGate(definition);
   manifest.evidence.pilotSmoke = await describeArtifact(path.join(runDir, "pilot-smoke.json"), workspace);
   manifest.evidence.pilotReport = await describeArtifact(path.join(runDir, "pilot-report.json"), workspace);
+  manifest.evidence.gaCandidate = await describeArtifact(path.join(runDir, "ga-candidate.json"), workspace);
+  manifest.evidence.publishHandoff = await describeArtifact(path.join(runDir, "PUBLISH_HANDOFF.md"), workspace);
   const resumeContext = await collectContext();
   manifest.resumeContextHash = sha256(JSON.stringify(resumeContext));
   manifest.resumePilotContexts = resumeContext.pilots;

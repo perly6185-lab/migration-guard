@@ -1,10 +1,11 @@
 import path from "node:path";
 import os from "node:os";
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { readJsonFile, writeJsonFile } from "./files.js";
 import { decodeCoreArtifact, uiJobArtifactMetadata, writeCoreArtifactFile } from "./artifactV2.js";
 import { UiHttpError } from "./uiHttpError.js";
-import type { UiJob } from "./uiJobTypes.js";
+import type { UiJob, UiJobClaim, UiJobRecoveryReason } from "./uiJobTypes.js";
 import type { LoadedConfig } from "../types.js";
 
 export async function readUiJob(loaded: LoadedConfig, jobId: string): Promise<UiJob> {
@@ -13,7 +14,18 @@ export async function readUiJob(loaded: LoadedConfig, jobId: string): Promise<Ui
   if (!stats?.isFile()) {
     throw new UiHttpError("job not found", 404);
   }
-  return validateUiJob(await readStoredUiJob(filePath));
+  const job = validateUiJob(await readStoredUiJob(filePath));
+  const claim = await readJsonFile<UiJobClaim>(`${filePath}.claim`).catch(() => undefined);
+  return claim ? {
+    ...job,
+    ownerPid: claim.ownerPid,
+    ownerId: claim.ownerId,
+    attempt: claim.attempt,
+    commandFingerprint: claim.commandFingerprint,
+    fencingToken: claim.fencingToken,
+    heartbeatAt: claim.heartbeatAt,
+    leaseDurationMs: claim.leaseDurationMs
+  } : job;
 }
 
 export async function readAllUiJobs(loaded: LoadedConfig): Promise<UiJob[]> {
@@ -56,40 +68,88 @@ export function uiJobPath(loaded: LoadedConfig, jobId: string): string {
   return path.join(uiJobsDir(loaded), `${safeUiJobId(jobId)}.json`);
 }
 
-export async function claimUiJob(loaded: LoadedConfig, jobId: string): Promise<boolean> {
+const processOwnerId = `${os.hostname()}:${process.pid}:${randomUUID()}`;
+
+export async function claimUiJob(
+  loaded: LoadedConfig,
+  jobId: string,
+  commandFingerprint: string,
+  leaseDurationMs = 30000
+): Promise<UiJobClaim | undefined> {
   const jobPath = uiJobPath(loaded, jobId);
-  if (!await fs.stat(jobPath).catch(() => undefined)) return false;
+  if (!await fs.stat(jobPath).catch(() => undefined)) return undefined;
   const claimPath = `${jobPath}.claim`;
   await fs.mkdir(path.dirname(claimPath), { recursive: true });
   try {
     const handle = await fs.open(claimPath, "wx");
     const now = new Date().toISOString();
-    await handle.writeFile(`${JSON.stringify({ version: 1, ownerPid: process.pid, hostname: os.hostname(), acquiredAt: now, heartbeatAt: now, leaseDurationMs: 30000 }, null, 2)}\n`, "utf8");
+    const job = await readUiJob(loaded, jobId);
+    const claim: UiJobClaim = {
+      version: 2,
+      ownerId: processOwnerId,
+      ownerPid: process.pid,
+      hostname: os.hostname(),
+      fencingToken: randomUUID(),
+      attempt: Math.max(1, job.attempt ?? 1),
+      commandFingerprint,
+      acquiredAt: now,
+      heartbeatAt: now,
+      leaseDurationMs
+    };
+    await handle.writeFile(`${JSON.stringify(claim, null, 2)}\n`, "utf8");
     await handle.close();
-    return true;
+    return claim;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === "EEXIST" || code === "ENOENT") return false;
+    if (code === "EEXIST" || code === "ENOENT") return undefined;
     throw error;
   }
 }
 
-export async function heartbeatUiJobClaim(loaded: LoadedConfig, jobId: string): Promise<void> {
+export async function heartbeatUiJobClaim(loaded: LoadedConfig, jobId: string, expected: UiJobClaim): Promise<UiJobClaim> {
   const claimPath = `${uiJobPath(loaded, jobId)}.claim`;
-  const claim = await readJsonFile<{ version: 1; ownerPid: number; hostname: string; acquiredAt: string; heartbeatAt: string; leaseDurationMs: number }>(claimPath);
-  if (claim.ownerPid !== process.pid || claim.hostname !== os.hostname()) throw new UiHttpError("UI job claim is owned by another process", 409);
-  await writeJsonFile(claimPath, { ...claim, heartbeatAt: new Date().toISOString() });
+  const claim = await readJsonFile<UiJobClaim>(claimPath);
+  assertUiJobClaimOwner(claim, expected);
+  const updated = { ...claim, heartbeatAt: new Date().toISOString() };
+  await writeJsonFile(claimPath, updated);
+  return updated;
 }
 
-export async function inspectUiJobClaim(loaded: LoadedConfig, jobId: string): Promise<{ claimed: boolean; expired?: boolean; claim?: Record<string, unknown> }> {
+export async function inspectUiJobClaim(loaded: LoadedConfig, jobId: string): Promise<{ claimed: boolean; expired?: boolean; claim?: UiJobClaim }> {
   const claimPath = `${uiJobPath(loaded, jobId)}.claim`;
   if (!await fs.stat(claimPath).catch(() => undefined)) return { claimed: false };
-  const claim = await readJsonFile<{ heartbeatAt: string; leaseDurationMs: number } & Record<string, unknown>>(claimPath);
+  const claim = await readJsonFile<UiJobClaim>(claimPath);
   return { claimed: true, expired: Date.now() - Date.parse(claim.heartbeatAt) > claim.leaseDurationMs, claim };
 }
 
-export async function releaseUiJobClaim(loaded: LoadedConfig, jobId: string): Promise<void> {
-  await fs.rm(`${uiJobPath(loaded, jobId)}.claim`, { force: true });
+export async function assertUiJobClaim(loaded: LoadedConfig, jobId: string, expected: UiJobClaim): Promise<void> {
+  assertUiJobClaimOwner(await readJsonFile<UiJobClaim>(`${uiJobPath(loaded, jobId)}.claim`), expected);
+}
+
+export async function releaseUiJobClaim(loaded: LoadedConfig, jobId: string, expected?: UiJobClaim): Promise<void> {
+  const claimPath = `${uiJobPath(loaded, jobId)}.claim`;
+  if (expected) assertUiJobClaimOwner(await readJsonFile<UiJobClaim>(claimPath), expected);
+  await fs.rm(claimPath, { force: true });
+}
+
+export function classifyUiJobClaim(claim: Partial<UiJobClaim> | undefined, now = Date.now()): UiJobRecoveryReason | undefined {
+  if (!claim) return "claim-missing";
+  if (claim.hostname !== os.hostname()) return "host-mismatch";
+  if (typeof claim.ownerPid === "number" && !isProcessAlive(claim.ownerPid)) return "process-dead";
+  const heartbeatAge = now - Date.parse(String(claim.heartbeatAt));
+  if (!Number.isFinite(heartbeatAge)) return "heartbeat-stale";
+  if (heartbeatAge > Number(claim.leaseDurationMs ?? 0)) return "lease-expired";
+  return undefined;
+}
+
+function assertUiJobClaimOwner(actual: UiJobClaim, expected: UiJobClaim): void {
+  if (actual.ownerId !== expected.ownerId || actual.fencingToken !== expected.fencingToken) {
+    throw new UiHttpError("UI job claim fencing token is no longer current", 409);
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
 export async function isUiJobClaimed(loaded: LoadedConfig, jobId: string): Promise<boolean> {

@@ -14,6 +14,13 @@ export interface UiJob {
   id: string;
   retryOf?: string;
   ownerPid?: number;
+  ownerId?: string;
+  attempt?: number;
+  commandFingerprint?: string;
+  fencingToken?: string;
+  heartbeatAt?: string;
+  leaseDurationMs?: number;
+  recoveryReason?: UiJobRecoveryReason;
   action: UiActionId;
   status: UiJobStatus;
   createdAt: string;
@@ -26,6 +33,21 @@ export interface UiJob {
   error?: string;
   artifactPaths: string[];
   events: UiJobEvent[];
+}
+
+export type UiJobRecoveryReason = "process-dead" | "host-mismatch" | "heartbeat-stale" | "lease-expired" | "claim-missing";
+
+export interface UiJobClaim {
+  version: 2;
+  ownerId: string;
+  ownerPid: number;
+  hostname: string;
+  fencingToken: string;
+  attempt: number;
+  commandFingerprint: string;
+  acquiredAt: string;
+  heartbeatAt: string;
+  leaseDurationMs: number;
 }
 
 export interface UiJobCreateResponse {
