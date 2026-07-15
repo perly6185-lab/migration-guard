@@ -57,6 +57,34 @@ export async function collectActionCapabilities(
     runId: "runId" in runResult ? runResult.runId : undefined,
     repo,
     actions: [{
+      id: "scan",
+      label: "Scan Project",
+      enabled: targetExists,
+      reason: targetExists ? undefined : `Target root does not exist: ${loaded.targetRoot}`,
+      writesArtifacts: true,
+      dryRunOnly: false,
+      requiresConfirmation: false,
+      defaults: { targetRoot: loaded.targetRoot }
+    }, {
+      id: "baseline",
+      label: "Capture Baseline",
+      enabled: targetExists,
+      reason: targetExists ? undefined : `Target root does not exist: ${loaded.targetRoot}`,
+      writesArtifacts: true,
+      dryRunOnly: false,
+      requiresConfirmation: true,
+      confirmMessage: "Run configured checks and capture the behavior baseline for this project?",
+      defaults: { targetRoot: loaded.targetRoot }
+    }, {
+      id: "checkpoint",
+      label: "Create Checkpoint",
+      enabled: runEnabled && targetExists,
+      reason: !runEnabled ? `Run is unavailable: ${runResult.error}` : targetExists ? undefined : `Target root does not exist: ${loaded.targetRoot}`,
+      writesArtifacts: true,
+      dryRunOnly: false,
+      requiresConfirmation: true,
+      confirmMessage: "Capture current Git and filesystem recovery evidence for this run?"
+    }, {
       id: "readiness",
       label: "Write Readiness",
       enabled: runEnabled,
@@ -66,7 +94,7 @@ export async function collectActionCapabilities(
       requiresConfirmation: false
     }, {
       id: "verify",
-      label: "Capture Snapshot",
+      label: "Verify Changes",
       enabled: targetExists,
       reason: targetExists ? undefined : `Target root does not exist: ${loaded.targetRoot}`,
       writesArtifacts: true,

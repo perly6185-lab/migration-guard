@@ -68,7 +68,9 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /Migration Guard/);
       assert.match(html, /Guarded Actions/);
       assert.match(html, /Run selector/);
-      assert.match(html, /Capture Snapshot/);
+      assert.match(html, /Project Workflow/);
+      assert.match(html, /Capture Baseline/);
+      assert.match(html, /Create Checkpoint/);
       assert.match(html, /Run Detail/);
       assert.match(html, /Diff status filter/);
       assert.match(html, /issueMaxIterations/);
@@ -109,6 +111,9 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.equal(capabilities.runId, "run-ui");
       assert.equal(findAction(capabilities, "readiness").enabled, true);
       assert.equal(findAction(capabilities, "verify").writesArtifacts, true);
+      assert.equal(findAction(capabilities, "scan").enabled, true);
+      assert.equal(findAction(capabilities, "baseline").enabled, true);
+      assert.equal(findAction(capabilities, "checkpoint").enabled, true);
       assert.equal(findAction(capabilities, "issue-control-dry-run").enabled, true);
       assert.equal(findAction(capabilities, "issue-control-dry-run").dryRunOnly, true);
 

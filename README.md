@@ -75,6 +75,10 @@ goal, run read-only detection, then confirm creation. Confirmation writes a dete
 migration run, and switches the workbench to that project. Source files are never
 copied or modified by project registration.
 
+The selected project's **Project Workflow** panel tracks registration, scan,
+baseline, verification and recovery-checkpoint evidence. Each operation runs as a
+leased UI job with duplicate prevention, heartbeat, retry lineage and crash recovery.
+
 Evidence is written under `.migration-guard/releases/<release-run-id>/`. A
 skipped, missing, changed or historical pilot result is always NO-GO. Standalone
 pilot execution must pass the same run id to both commands:

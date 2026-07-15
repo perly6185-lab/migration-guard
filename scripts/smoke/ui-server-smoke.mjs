@@ -25,6 +25,9 @@ try {
   assertIncludes(html, "Source repository directory", "workspace source input");
   assertIncludes(html, "Refactored target directory", "workspace target input");
   assertIncludes(html, "Guarded Actions", "guarded actions");
+  assertIncludes(html, "Project Workflow", "project workflow");
+  assertIncludes(html, "Capture Baseline", "baseline action");
+  assertIncludes(html, "Create Checkpoint", "checkpoint action");
   assertIncludes(html, "Run Detail", "run detail");
   assertIncludes(html, "Recent Jobs", "recent jobs");
   assertIncludes(html, "Job status filter", "job status filter");
@@ -55,7 +58,7 @@ try {
   }
 
   const capabilities = await getJson(`${url}/api/actions/capabilities`);
-  if (!Array.isArray(capabilities.actions) || capabilities.actions.length < 3) {
+  if (!Array.isArray(capabilities.actions) || capabilities.actions.length < 6) {
     throw new Error("/api/actions/capabilities did not return action capabilities.");
   }
 

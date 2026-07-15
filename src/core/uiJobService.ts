@@ -3,8 +3,10 @@ import { promises as fs } from "node:fs";
 import { assessRefactorReadiness, writeRefactorReadinessReport } from "./refactorReadiness.js";
 import { captureSnapshot, saveSnapshot } from "./snapshot.js";
 import { superviseIssueControl } from "./issueControl.js";
-import { stableStringify } from "./normalize.js";
+import { scanProject } from "./scan.js";
+import { createCheckpoint } from "./checkpoint.js";
 import { writeJsonFile } from "./files.js";
+import { stableStringify } from "./normalize.js";
 import { loadRunPackage } from "./migrationRun.js";
 import { UiHttpError } from "./uiHttpError.js";
 import { resolveArtifactPath } from "./uiArtifacts.js";
@@ -65,7 +67,7 @@ export async function createUiActionJob(
   searchParams: URLSearchParams,
   createOptions: CreateUiActionJobOptions = {}
 ): Promise<UiJobCreateResponse> {
-  const runId = action === "readiness" ? (await loadRunPackage(loaded, searchParams.get("run") ?? "latest")).run.id : undefined;
+  const runId = action === "readiness" || action === "checkpoint" ? (await loadRunPackage(loaded, searchParams.get("run") ?? "latest")).run.id : undefined;
   const params = uiJobParams(loaded, action, searchParams);
   if (action === "readiness" && runId) {
     params.run = runId;
@@ -290,7 +292,7 @@ export async function gcUiJobs(
 }
 
 export function uiActionIdParam(value: string): UiActionId {
-  if (value === "readiness" || value === "verify" || value === "issue-control-dry-run") {
+  if (value === "scan" || value === "baseline" || value === "checkpoint" || value === "readiness" || value === "verify" || value === "issue-control-dry-run") {
     return value;
   }
   throw new UiHttpError(`Unsupported job action: ${value}`, 400);
@@ -450,9 +452,24 @@ async function executeUiActionJob(
     const pkg = await loadRunPackage(loaded, stringJobParam(job, "run") ?? job.runId ?? "latest");
     return await writeRefactorReadinessReport(loaded, pkg, await assessRefactorReadiness(loaded, pkg));
   }
+  if (job.action === "scan") {
+    const scan = await scanProject(loaded);
+    const outputPath = path.join(loaded.artifactsDir, "scan", `${Date.now()}.json`);
+    await writeJsonFile(outputPath, scan);
+    return { status: "complete", outputPath, summary: { sourceFiles: scan.sourceFiles, testFiles: scan.testFiles, totalFiles: scan.totalFiles } };
+  }
+  if (job.action === "baseline") {
+    const snapshotPath = await saveSnapshot(loaded, await captureSnapshot(loaded, "baseline"));
+    return { status: "complete", snapshotPath };
+  }
   if (job.action === "verify") {
     const snapshotPath = await saveSnapshot(loaded, await captureSnapshot(loaded, "run"));
     return { status: "complete", snapshotPath };
+  }
+  if (job.action === "checkpoint") {
+    const pkg = await loadRunPackage(loaded, stringJobParam(job, "run") ?? job.runId ?? "latest");
+    const checkpoint = await createCheckpoint(loaded, pkg, undefined, "Created from the operator UI.");
+    return { status: "complete", checkpointId: checkpoint.id, outputPath: checkpoint.patchPath, checkpoint };
   }
   const labels = arrayJobParam(job, "labels");
   const repo = stringJobParam(job, "repo");
@@ -470,12 +487,12 @@ function uiJobParams(
   action: UiActionId,
   searchParams: URLSearchParams
 ): UiJob["params"] {
-  if (action === "readiness") {
+  if (action === "readiness" || action === "checkpoint") {
     return {
       run: searchParams.get("run") ?? "latest"
     };
   }
-  if (action === "verify") {
+  if (action === "scan" || action === "baseline" || action === "verify") {
     return {
       targetRoot: loaded.targetRoot
     };

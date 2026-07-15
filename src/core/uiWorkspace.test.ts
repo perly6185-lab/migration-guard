@@ -4,7 +4,8 @@ import path from "node:path";
 import os from "node:os";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { loadConfig } from "./config.js";
-import { archiveUiWorkspace, createUiWorkspace, listUiWorkspaces, previewUiWorkspace, resolveActiveUiWorkspace, selectUiWorkspace } from "./uiWorkspace.js";
+import { archiveUiWorkspace, collectActiveUiWorkspaceOverview, createUiWorkspace, listUiWorkspaces, previewUiWorkspace, resolveActiveUiWorkspace, selectUiWorkspace } from "./uiWorkspace.js";
+import { createUiActionJob, createUiJobRunner, readUiJob } from "./uiJobService.js";
 
 test("workspace preview rejects identical or nested source and target roots", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "migration-guard-workspace-preview-"));
@@ -43,6 +44,25 @@ test("workspace selection and archive preserve project files", async () => {
     assert.equal((await listUiWorkspaces(fixture.host)).activeWorkspaceId, undefined);
     await access(path.join(fixture.target, "package.json"));
     await assert.rejects(selectUiWorkspace(fixture.host, workspace.id), /Archived projects/);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test("workspace workflow jobs persist scan, baseline and checkpoint progress", async () => {
+  const fixture = await workspaceFixture();
+  try {
+    const workspace = await createUiWorkspace(fixture.host, fixture.input);
+    const loaded = (await resolveActiveUiWorkspace(fixture.host)).loaded;
+    const runner = createUiJobRunner(0);
+    for (const action of ["scan", "baseline", "checkpoint"] as const) {
+      const params = new URLSearchParams(action === "checkpoint" ? { run: workspace.activeRunId } : {});
+      const created = await createUiActionJob(loaded, { jobRunner: runner }, action, params);
+      await runner.wait(created.jobId);
+      assert.equal((await readUiJob(loaded, created.jobId)).status, "succeeded");
+    }
+    const overview = await collectActiveUiWorkspaceOverview(fixture.host);
+    assert.equal(overview.progress.find((step) => step.id === "scan")?.complete, true);
+    assert.equal(overview.progress.find((step) => step.id === "baseline")?.complete, true);
+    assert.equal(overview.progress.find((step) => step.id === "checkpoint")?.complete, true);
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });
 

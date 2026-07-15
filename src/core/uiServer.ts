@@ -43,6 +43,7 @@ import {
 import type { UiActionId } from "./uiJobTypes.js";
 import {
   archiveUiWorkspace,
+  collectActiveUiWorkspaceOverview,
   createUiWorkspace,
   listUiWorkspaces,
   previewUiWorkspace,
@@ -135,6 +136,10 @@ async function handleUiRequest(
     }
     if (request.method === "GET" && url.pathname === "/api/workspaces") {
       sendJson(response, await listUiWorkspaces(hostLoaded));
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/api/workspaces/active") {
+      sendJson(response, await collectActiveUiWorkspaceOverview(hostLoaded));
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/workspaces/preview") {
@@ -459,10 +464,15 @@ function renderUiHtml(csrfToken: string): string {
   </dialog>
   <main>
     <aside class="stack">
+      <section><div class="panel-head"><h2>Project Workflow</h2></div><div id="workspaceOverview"><p class="muted">Loading...</p></div><div class="actions job-actions">
+        <button data-action="scan">Scan Project</button>
+        <button data-action="baseline">Capture Baseline</button>
+        <button data-action="verify">Verify</button>
+        <button data-action="checkpoint">Create Checkpoint</button>
+      </div></section>
       <section><div class="panel-head"><h2>Status</h2></div><div id="stats" class="grid"><p class="muted">Loading...</p></div><p id="runMeta" class="run-meta"></p></section>
       <section><div class="panel-head"><h2>Guarded Actions</h2></div><div class="actions">
         <button data-action="readiness">Write Readiness</button>
-        <button data-action="verify" data-confirm="Capture a verification snapshot for the configured target. This writes a run artifact and may take a while. Continue?">Capture Snapshot</button>
         <button data-action="issue-control-dry-run">Issue Dry-run</button>
       </div><div class="action-form">
         <label class="field">Repo <input id="issueRepo" placeholder="owner/name"></label>
@@ -547,6 +557,25 @@ function renderUiHtml(csrfToken: string): string {
         targetRoot: document.getElementById('workspaceTarget').value,
         goal: document.getElementById('workspaceGoal').value
       };
+    }
+    function renderWorkspaceOverview(report) {
+      const container = document.getElementById('workspaceOverview');
+      if (!report.managed || !report.workspace) {
+        container.innerHTML = '<p class="muted">Register a source and target project to track a refactoring workflow.</p>';
+        return;
+      }
+      const workspace = report.workspace;
+      const rows = [
+        ['Project', workspace.name], ['Goal', workspace.goal], ['Source', workspace.sourceRoot],
+        ['Target', workspace.targetRoot], ['Stack', (workspace.detected || []).join(', ') || workspace.packageManager],
+        ['Checks', (report.checks || []).join(', ') || 'none']
+      ];
+      const progress = (report.progress || []).map(step => '<li><strong>' + (step.complete ? 'Complete' : 'Pending') + '</strong> ' + escapeHtml(step.label) + (step.complete && step.evidence ? '<div>' + artifactHtml(step.evidence) + '</div>' : '') + '</li>').join('');
+      container.innerHTML = '<dl class="kv">' + rows.map(row => '<dt>' + escapeHtml(row[0]) + '</dt><dd>' + escapeHtml(row[1]) + '</dd>').join('') + '</dl><ol class="timeline">' + progress + '</ol>';
+    }
+    async function loadWorkspaceOverview() {
+      try { renderWorkspaceOverview(await json('/api/workspaces/active')); }
+      catch (error) { document.getElementById('workspaceOverview').innerHTML = errorHtml(error); }
     }
     async function loadWorkspaces() {
       const registry = await json('/api/workspaces');
@@ -1019,6 +1048,7 @@ function renderUiHtml(csrfToken: string): string {
     async function load() {
       await loadRuns().catch(error => { document.getElementById('runs').innerHTML = errorHtml(error); });
       await Promise.all([
+        loadWorkspaceOverview(),
         loadRunScoped(),
         loadJobs(),
         json('/api/audit')
@@ -1027,13 +1057,11 @@ function renderUiHtml(csrfToken: string): string {
       ]);
     }
     function actionJobPath(name) {
-      if (name === 'readiness') return '/api/jobs/actions/readiness';
-      if (name === 'verify') return '/api/jobs/actions/verify';
-      return '/api/jobs/actions/issue-control-dry-run';
+      return '/api/jobs/actions/' + encodeURIComponent(name);
     }
     function actionJobParams(name) {
-      if (name === 'readiness') return runScopedParams();
-      if (name === 'verify') return {};
+      if (name === 'readiness' || name === 'checkpoint') return runScopedParams();
+      if (name !== 'issue-control-dry-run') return {};
       return issueControlParams();
     }
     function wait(ms) {

@@ -5,6 +5,8 @@ import { CONFIG_FILE_NAME, loadConfig } from "./config.js";
 import { detectConfigPlan, type ConfigDetectionPlan } from "./configDoctor.js";
 import { readJsonFile, writeJsonFile } from "./files.js";
 import { createMigrationRun } from "./migrationRun.js";
+import { loadRunPackage } from "./migrationRun.js";
+import { latestBaselinePath, latestRunPath } from "./snapshot.js";
 import { UiHttpError } from "./uiHttpError.js";
 import type { LoadedConfig } from "../types.js";
 
@@ -48,6 +50,16 @@ export interface UiWorkspacePreview {
   source: { exists: boolean; git: boolean };
   target: { exists: boolean; git: boolean; configExists: boolean };
   detection?: ConfigDetectionPlan;
+}
+
+export interface UiWorkspaceOverview {
+  version: 1;
+  managed: boolean;
+  workspace?: UiWorkspace;
+  targetRoot: string;
+  configPath: string;
+  checks: string[];
+  progress: Array<{ id: "registered" | "scan" | "baseline" | "verify" | "checkpoint"; label: string; complete: boolean; evidence?: string }>;
 }
 
 const registryLocks = new Map<string, Promise<void>>();
@@ -151,6 +163,31 @@ export async function resolveActiveUiWorkspace(host: LoadedConfig): Promise<{ wo
   } catch (error) {
     throw new UiHttpError(`Active project config is unavailable: ${error instanceof Error ? error.message : String(error)}`, 409);
   }
+}
+
+export async function collectActiveUiWorkspaceOverview(host: LoadedConfig): Promise<UiWorkspaceOverview> {
+  const active = await resolveActiveUiWorkspace(host);
+  const scanDir = path.join(active.loaded.artifactsDir, "scan");
+  const scanFiles = (await fs.readdir(scanDir).catch(() => [])).filter((name) => name.endsWith(".json")).sort();
+  const baselinePath = latestBaselinePath(active.loaded);
+  const verifyPath = latestRunPath(active.loaded);
+  const run = await loadRunPackage(active.loaded, active.workspace?.activeRunId ?? "latest").catch(() => undefined);
+  const checkpointId = run?.run.latestCheckpointId;
+  return {
+    version: 1,
+    managed: Boolean(active.workspace),
+    workspace: active.workspace,
+    targetRoot: active.loaded.targetRoot,
+    configPath: active.loaded.path,
+    checks: active.loaded.config.checks.map((check) => check.name),
+    progress: [
+      { id: "registered", label: "Project registered", complete: Boolean(active.workspace) },
+      { id: "scan", label: "Project scanned", complete: scanFiles.length > 0, evidence: scanFiles.length ? path.join(scanDir, scanFiles.at(-1) ?? "") : undefined },
+      { id: "baseline", label: "Baseline captured", complete: Boolean(await fs.stat(baselinePath).catch(() => undefined)), evidence: baselinePath },
+      { id: "verify", label: "Verification captured", complete: Boolean(await fs.stat(verifyPath).catch(() => undefined)), evidence: verifyPath },
+      { id: "checkpoint", label: "Recovery checkpoint", complete: Boolean(checkpointId), evidence: checkpointId }
+    ]
+  };
 }
 
 function workspaceRegistryPath(host: LoadedConfig): string {
