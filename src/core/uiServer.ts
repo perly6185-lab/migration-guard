@@ -640,6 +640,7 @@ function renderUiHtml(csrfToken: string): string {
     let activeJobDetailId = null;
     let currentWorkflowStage = 'registered';
     let autoAdvanceRunning = false;
+    let latestDashboardTasks = [];
 
     async function json(path, options) {
       const requestOptions = options || {};
@@ -969,6 +970,7 @@ function renderUiHtml(csrfToken: string): string {
       ]);
     }
     function renderDashboard(dashboard) {
+      latestDashboardTasks = dashboard.tasks || dashboard.readyTasks || [];
       document.getElementById('stats').innerHTML = [
         ['Readiness', dashboard.readiness?.status || 'unknown', toneFor(dashboard.readiness?.status)],
         ['Blockers', dashboard.summary.blockerCount, dashboard.summary.blockerCount > 0 ? 'bad' : 'ok'],
@@ -979,7 +981,7 @@ function renderUiHtml(csrfToken: string): string {
       ].map(([k,v,tone]) => '<div class="stat ' + tone + '"><span>' + k + '</span><strong>' + escapeHtml(String(v)) + '</strong></div>').join('');
       document.getElementById('runMeta').textContent = dashboard.run.goal + ' · ' + dashboard.run.status + ' · updated ' + dashboard.run.updatedAt;
       document.getElementById('runDetail').innerHTML = renderRunDetail(dashboard);
-      document.getElementById('tasks').innerHTML = renderTasks(dashboard.tasks || dashboard.readyTasks || []);
+      document.getElementById('tasks').innerHTML = renderTasks(latestDashboardTasks);
       document.getElementById('proposals').innerHTML = renderProposals(dashboard.stuckProposals);
       document.getElementById('nextActions').innerHTML = renderNextActions(dashboard.recommendedNextActions || []);
       document.getElementById('reportArtifacts').innerHTML = renderReportArtifacts(dashboard.reportArtifacts || []);
@@ -1011,8 +1013,11 @@ function renderUiHtml(csrfToken: string): string {
       const order = { running: 0, ready: 1, failed: 2, blocked: 3, planned: 4, replanned: 5, done: 6, 'accepted-diff': 7 };
       return '<div class="item-list">' + [...tasks].sort((a, b) => (order[a.status] ?? 99) - (order[b.status] ?? 99)).map(task => {
         const workflowAction = ({ analyze: 'scan', baseline: 'baseline', verify: 'verify' })[task.type];
+        const safeTask = task.type === 'plan' || task.type === 'report';
         const readyAction = task.status !== 'ready' ? '' : workflowAction
           ? '<div class="job-actions"><button class="primary-button" data-workflow-task-action="' + attr(workflowAction) + '">Start task</button></div>'
+          : safeTask
+            ? '<div class="job-actions"><button class="primary-button" data-safe-task="' + attr(task.taskId) + '">Start task</button></div>'
           : '<div class="job-actions"><button data-task-plan="' + attr(task.taskId) + '">Review plan</button></div>';
         return '<details' + (task.status === 'running' ? ' open' : '') + '><summary>' + badge(task.status, toneFor(task.status)) + ' ' + escapeHtml(task.taskId + ' · ' + task.title) + '</summary>' +
           '<dl class="kv"><dt>Status</dt><dd>' + escapeHtml(task.status) + '</dd><dt>Updated</dt><dd>' + escapeHtml(task.updatedAt || 'unknown') + '</dd><dt>Risk</dt><dd>' + escapeHtml(task.risk) + '</dd><dt>Owner</dt><dd>' + escapeHtml(task.owner) + '</dd><dt>Depends on</dt><dd>' + escapeHtml((task.dependsOn || []).join(', ') || 'none') + '</dd><dt>Issue</dt><dd>' + escapeHtml(task.issueId || 'none') + '</dd><dt>Description</dt><dd>' + escapeHtml(task.description || '') + '</dd><dt>Result</dt><dd>' + escapeHtml(task.result || 'none') + '</dd><dt>Affected paths</dt><dd>' + escapeHtml((task.affectedFiles || []).join(', ') || 'none') + '</dd><dt>Verification</dt><dd>' + escapeHtml((task.verificationCommands || []).join(', ') || 'none') + '</dd><dt>Acceptance</dt><dd>' + escapeHtml((task.acceptanceCriteria || []).join(', ') || 'none') + '</dd></dl>' + readyAction + '</details>';
@@ -1046,6 +1051,30 @@ function renderUiHtml(csrfToken: string): string {
         await load();
         if (finished.status === 'succeeded') await maybeAutoAdvance('task-execute');
       } catch (error) { status.className = 'status-line bad'; status.innerHTML = errorHtml(error); button.disabled = false; }
+    }
+    async function startSafeTask(button) {
+      const taskId = button.dataset.safeTask;
+      const status = document.getElementById('taskExecutionPlan');
+      button.disabled = true;
+      status.hidden = false;
+      status.className = 'status-line';
+      status.textContent = 'Validating and starting safe task...';
+      try {
+        const plan = await postJson('/api/tasks/plan', { run: selectedRun() || undefined, task: taskId });
+        if (!plan.passed) throw new Error((plan.blockers || []).join('; ') || 'Task plan is blocked.');
+        const created = await postJson('/api/jobs/actions/task-execute', { run: selectedRun() || undefined, task: taskId, planHash: plan.planHash });
+        setWorkView('monitoring');
+        await loadJobDetail(created.jobId);
+        const finished = await pollJob(created.jobId);
+        status.className = 'status-line ' + (finished.status === 'succeeded' ? 'ok' : 'bad');
+        status.innerHTML = renderJobStatus(finished);
+        await load();
+        if (finished.status === 'succeeded') await maybeAutoAdvance('safe-task');
+      } catch (error) {
+        status.className = 'status-line bad';
+        status.innerHTML = errorHtml(error);
+        button.disabled = false;
+      }
     }
     function renderProposals(proposals) {
       if (!proposals.length) return empty();
@@ -1459,14 +1488,21 @@ function renderUiHtml(csrfToken: string): string {
     async function maybeAutoAdvance(completedAction) {
       if (!autoAdvanceEnabled() || autoAdvanceRunning) return;
       const safeNextAction = { scan: 'scan', baseline: 'baseline', verify: 'verify' }[currentWorkflowStage];
-      if (!safeNextAction || safeNextAction === completedAction) return;
+      const safeReadyTask = latestDashboardTasks.find(task => task.status === 'ready' && task.type === 'plan');
+      if (!safeNextAction && !safeReadyTask) return;
+      if (safeNextAction === completedAction) return;
       const capability = actionCapabilities?.actions?.find(action => action.id === safeNextAction);
       if (capability && !capability.enabled) return;
       autoAdvanceRunning = true;
       try {
         const virtualButton = document.createElement('button');
-        virtualButton.textContent = 'Auto ' + safeNextAction;
-        await startActionJob(safeNextAction, virtualButton);
+        if (safeNextAction) {
+          virtualButton.textContent = 'Auto ' + safeNextAction;
+          await startActionJob(safeNextAction, virtualButton);
+        } else if (safeReadyTask) {
+          virtualButton.dataset.safeTask = safeReadyTask.taskId;
+          await startSafeTask(virtualButton);
+        }
       } finally {
         autoAdvanceRunning = false;
       }
@@ -1687,6 +1723,7 @@ function renderUiHtml(csrfToken: string): string {
       if (target instanceof HTMLElement && target.dataset.recoveryApply) applyRecovery(target);
       if (target instanceof HTMLElement && target.dataset.taskPlan) planTaskExecution(target);
       if (target instanceof HTMLElement && target.dataset.taskExecute) executeTaskPlan(target);
+      if (target instanceof HTMLElement && target.dataset.safeTask) startSafeTask(target);
       if (target instanceof HTMLElement && target.dataset.workflowTaskAction) startActionJob(target.dataset.workflowTaskAction, target);
       if (target instanceof HTMLElement && target.dataset.pastePath) pasteWorkspacePath(target.dataset.pastePath);
       if (target instanceof HTMLElement && target.dataset.workflowNext) advanceWorkflow(target);
