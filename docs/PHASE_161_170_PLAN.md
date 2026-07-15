@@ -195,6 +195,8 @@ Artifacts：
 
 目标：让外部 AI 的修改结果可被 Migration Guard 验证，而不是把 AI 进程直接内嵌进状态机。
 
+状态：已完成，见 `docs/PHASE_168_REPORT.md`。
+
 交付内容：
 
 - 定义 result manifest：handoff id、changed files、patch hash、执行命令、声明结果和 agent metadata。

@@ -134,6 +134,7 @@ import {
 import type { CompareReport, DiffDecisionClassification, Difference, MigrationAutomationMode, MigrationRun, ProposalGatePolicy, ProposedPatch } from "./types.js";
 import { dispatchCliCommand, type CliCommandRegistry } from "./core/cliDispatch.js";
 import { createHandoffContract, explainHandoffContract, readHandoffContract, redactHandoffContract, referenceHandoffArtifact, renderHandoffCompactPrompt, renderHandoffMarkdown, validateHandoffContract, writeHandoffContract } from "./core/handoff.js";
+import { applyHandoffResultImport, planHandoffResultImport, renderHandoffResultImportPlan } from "./core/handoffResult.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -189,6 +190,19 @@ async function commandHandoff(args: ParsedArgs): Promise<void> {
   const action = args.positionals[0] ?? "create";
   const loaded = await loadFromArgs(args);
   const input = stringOption(args, "input");
+  if (action === "import-result") {
+    if (!input) throw new Error("handoff import-result requires --input <result.json>.");
+    if (args.options.apply) {
+      const confirmation = stringOption(args, "apply-confirm");
+      if (!confirmation) throw new Error("handoff import-result --apply requires --apply-confirm <plan-hash>.");
+      console.log(JSON.stringify(await applyHandoffResultImport(loaded, input, confirmation, stringOption(args, "run") ?? "latest"), null, 2));
+      return;
+    }
+    const plan = await planHandoffResultImport(loaded, input, stringOption(args, "run") ?? "latest");
+    console.log(args.options.json ? JSON.stringify(plan, null, 2) : renderHandoffResultImportPlan(plan));
+    if (!plan.passed) process.exitCode = 1;
+    return;
+  }
   if (action === "validate" || action === "explain" || action === "redact") {
     if (!input) throw new Error(`handoff ${action} requires --input <handoff.json>.`);
     const contract = await readHandoffContract(path.resolve(process.cwd(), input));
@@ -2037,6 +2051,8 @@ Usage:
   migration-guard handoff create [--run <id|latest>] (--task <id>|--proposal <id>|--one-shot) [--max-changed-files <n>] [--budget <text>] [--output-dir <path>] [--json|--prompt]
   migration-guard handoff validate|explain --input <handoff.json>
   migration-guard handoff redact --input <handoff.json> [--output <path>] [--json]
+  migration-guard handoff import-result --input <result.json> [--run <id|latest>] [--json]
+  migration-guard handoff import-result --input <result.json> [--run <id|latest>] --apply --apply-confirm <plan-hash>
   migration-guard report [--run <id|latest>] [--json]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot runbook [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--json]

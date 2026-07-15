@@ -108,6 +108,20 @@ node dist/cli.js handoff redact --input <handoff.json> --output <redacted.json>
 Generated packages deny remote and release mutations by default; those operations
 still require their existing reviewed confirmation flows.
 
+External agents return a `migration-guard.ai-result` v1 manifest that references
+the original handoff and a unified Git patch. Import is always two-step: review a
+dry-run plan, then apply that exact plan hash. Agent-reported test results remain
+untrusted; successful import creates a checkpoint and requires local verification.
+
+```bash
+node dist/cli.js handoff import-result --run latest --input result.json
+node dist/cli.js handoff import-result --run latest --input result.json --apply --apply-confirm <plan-hash>
+```
+
+The manifest includes `id`, `handoff { id, contractHash, path }`,
+`patch { path, sha256 }`, `changedFiles`, claimed `commands`, `declaration`, and
+agent metadata. Relative handoff and patch paths resolve beside the manifest.
+
 Evidence is written under `.migration-guard/releases/<release-run-id>/`. A
 skipped, missing, changed or historical pilot result is always NO-GO. Standalone
 pilot execution must pass the same run id to both commands:
