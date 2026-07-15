@@ -88,6 +88,8 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /New refactoring project/);
       assert.match(html, /dialog-close/);
       assert.match(html, /background:#fff/);
+      assert.match(html, /Check project/);
+      assert.match(html, /workspacePreviewRevision/);
       assert.match(html, /Source repository directory/);
       assert.match(html, /Refactored target directory/);
       assert.match(html, /data-job-cancel/);

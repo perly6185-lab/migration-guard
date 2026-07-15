@@ -452,8 +452,14 @@ function renderUiHtml(csrfToken: string): string {
     .dialog-body .field { color:#374151; font-weight:600; }
     .dialog-body .field input { min-height:40px; font-weight:400; background:#fbfcfe; border-color:#c8d0db; }
     .dialog-body .field input:focus { outline:2px solid rgba(31,95,191,.18); border-color:var(--blue); background:#fff; }
-    .dialog-body .path-field, .dialog-body .goal-field, .dialog-body .status-line { grid-column:1 / -1; }
+    .dialog-body .field, .dialog-body .status-line { grid-column:1 / -1; }
     .dialog-body .path-field input { font-family:ui-monospace, SFMono-Regular, Consolas, monospace; font-size:13px; }
+    .dialog-body .field input[aria-invalid="true"] { border-color:var(--bad); background:#fff8f8; }
+    .field-error { min-height:18px; color:var(--bad); font-size:12px; font-weight:400; }
+    .field-error:empty { display:none; }
+    .path-input { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:8px; }
+    .path-input button { min-width:66px; }
+    .workspace-details { margin-top:8px; background:#fff; }
     .dialog-actions { display:flex; justify-content:flex-end; gap:8px; padding:14px 18px; border-top:1px solid var(--line); background:#f7f9fc; position:sticky; bottom:0; }
     .primary-button { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:600; }
     .primary-button:hover:not(:disabled) { background:#174e9d; border-color:#174e9d; color:#fff; }
@@ -498,15 +504,18 @@ function renderUiHtml(csrfToken: string): string {
     </div>
   </header>
   <dialog id="workspaceDialog">
-    <div class="dialog-head"><h2>New refactoring project</h2><button id="closeWorkspace" class="dialog-close" title="Close" aria-label="Close">&times;</button></div>
-    <div class="dialog-body">
-      <label class="field">Project name <input id="workspaceName" autocomplete="off" placeholder="Checkout service migration"></label>
-      <label class="field goal-field">Refactoring goal <input id="workspaceGoal" autocomplete="off" placeholder="Migrate the service while preserving behavior"></label>
-      <label class="field path-field">Source repository directory <input id="workspaceSource" autocomplete="off" placeholder="D:\\projects\\legacy-service"></label>
-      <label class="field path-field">Refactored target directory <input id="workspaceTarget" autocomplete="off" placeholder="D:\\projects\\new-service"></label>
-      <div id="workspacePreview" class="status-line">Enter both local repository directories, then run detection.</div>
-    </div>
-    <div class="dialog-actions"><button id="previewWorkspace">Detect</button><button id="createWorkspace" class="primary-button" disabled>Create project</button></div>
+    <form id="workspaceForm">
+      <div class="dialog-head"><h2>New refactoring project</h2><button id="closeWorkspace" type="button" class="dialog-close" title="Close" aria-label="Close">&times;</button></div>
+      <div class="dialog-body">
+        <label class="field">Project name <input id="workspaceName" autocomplete="off" placeholder="Checkout service migration" aria-describedby="workspaceNameError"><span id="workspaceNameError" class="field-error"></span></label>
+        <label class="field goal-field">Refactoring goal <input id="workspaceGoal" autocomplete="off" placeholder="Migrate the service while preserving behavior" aria-describedby="workspaceGoalError"><span id="workspaceGoalError" class="field-error"></span></label>
+        <label class="field path-field">Source repository directory <span class="path-input"><input id="workspaceSource" autocomplete="off" list="workspaceRecentPaths" placeholder="D:\\projects\\legacy-service" aria-describedby="workspaceSourceError"><button type="button" data-paste-path="workspaceSource">Paste</button></span><span id="workspaceSourceError" class="field-error"></span></label>
+        <label class="field path-field">Refactored target directory <span class="path-input"><input id="workspaceTarget" autocomplete="off" list="workspaceRecentPaths" placeholder="D:\\projects\\new-service" aria-describedby="workspaceTargetError"><button type="button" data-paste-path="workspaceTarget">Paste</button></span><span id="workspaceTargetError" class="field-error"></span></label>
+        <datalist id="workspaceRecentPaths"></datalist>
+        <div id="workspacePreview" class="status-line">Enter both local repository directories, then check the project.</div>
+      </div>
+      <div class="dialog-actions"><button id="previewWorkspace" type="submit">Check project</button><button id="createWorkspace" type="button" class="primary-button" disabled>Create project</button></div>
+    </form>
   </dialog>
   <main>
     <aside class="stack">
@@ -576,6 +585,8 @@ function renderUiHtml(csrfToken: string): string {
     let latestDiffs = [];
     let jobsRefreshTimer = null;
     let jobsLoading = false;
+    let workspacePreviewValid = false;
+    let workspacePreviewRevision = 0;
 
     async function json(path, options) {
       const requestOptions = options || {};
@@ -604,6 +615,64 @@ function renderUiHtml(csrfToken: string): string {
         targetRoot: document.getElementById('workspaceTarget').value,
         goal: document.getElementById('workspaceGoal').value
       };
+    }
+    function clearWorkspaceErrors() {
+      ['Name', 'Goal', 'Source', 'Target'].forEach(name => {
+        const input = document.getElementById('workspace' + name);
+        const error = document.getElementById('workspace' + name + 'Error');
+        input.removeAttribute('aria-invalid');
+        error.textContent = '';
+      });
+    }
+    function setWorkspaceFieldError(name, message) {
+      const input = document.getElementById('workspace' + name);
+      document.getElementById('workspace' + name + 'Error').textContent = message;
+      input.setAttribute('aria-invalid', 'true');
+    }
+    function invalidateWorkspacePreview() {
+      workspacePreviewRevision += 1;
+      workspacePreviewValid = false;
+      document.getElementById('createWorkspace').disabled = true;
+      clearWorkspaceErrors();
+      const status = document.getElementById('workspacePreview');
+      status.className = 'status-line';
+      status.textContent = 'Project details changed. Check the project again.';
+    }
+    function showWorkspaceErrors(errors) {
+      for (const message of errors) {
+        if (/Project name/i.test(message)) setWorkspaceFieldError('Name', message);
+        else if (/Refactoring goal/i.test(message)) setWorkspaceFieldError('Goal', message);
+        else if (/Source directory/i.test(message)) setWorkspaceFieldError('Source', message);
+        else if (/Target directory/i.test(message)) setWorkspaceFieldError('Target', message);
+        else if (/must be separate|cannot contain/i.test(message)) {
+          setWorkspaceFieldError('Source', message);
+          setWorkspaceFieldError('Target', message);
+        }
+      }
+    }
+    function recentWorkspacePaths() {
+      try { return JSON.parse(localStorage.getItem('migrationGuardRecentPaths') || '[]'); }
+      catch { return []; }
+    }
+    function loadRecentWorkspacePaths() {
+      document.getElementById('workspaceRecentPaths').innerHTML = recentWorkspacePaths().map(value => '<option value="' + attr(value) + '"></option>').join('');
+    }
+    function rememberWorkspacePaths(values) {
+      const paths = [values.sourceRoot, values.targetRoot, ...recentWorkspacePaths()].map(value => String(value || '').trim()).filter(Boolean);
+      localStorage.setItem('migrationGuardRecentPaths', JSON.stringify([...new Set(paths)].slice(0, 8)));
+    }
+    async function pasteWorkspacePath(inputId) {
+      try {
+        const value = (await navigator.clipboard.readText()).trim();
+        if (value) {
+          document.getElementById(inputId).value = value.replace(/^["']|["']$/g, '');
+          invalidateWorkspacePreview();
+        }
+      } catch {
+        const input = document.getElementById(inputId);
+        input.focus();
+        setWorkspaceFieldError(inputId === 'workspaceSource' ? 'Source' : 'Target', 'Clipboard access was blocked. Paste the path into this field.');
+      }
     }
     function renderWorkspaceOverview(report) {
       const container = document.getElementById('workspaceOverview');
@@ -662,22 +731,30 @@ function renderUiHtml(csrfToken: string): string {
     async function previewWorkspace() {
       const status = document.getElementById('workspacePreview');
       const create = document.getElementById('createWorkspace');
-      status.className = 'status-line'; status.textContent = 'Detecting repositories and target stack...'; create.disabled = true;
+      clearWorkspaceErrors(); workspacePreviewValid = false;
+      const revision = ++workspacePreviewRevision;
+      status.className = 'status-line'; status.textContent = 'Checking repositories and target stack...'; create.disabled = true;
       try {
         const preview = await postJson('/api/workspaces/preview', workspaceValues());
+        if (revision !== workspacePreviewRevision) return;
         status.className = 'status-line ' + (preview.valid ? 'ok' : 'bad');
         const detection = preview.detection;
+        showWorkspaceErrors(preview.errors || []);
         status.innerHTML = (preview.errors || []).map(error => '<div>' + escapeHtml(error) + '</div>').join('') +
-          (detection ? '<div class="workspace-summary"><strong>' + escapeHtml((detection.detected || []).join(', ') || 'Unknown stack') + '</strong><div>Package manager: ' + escapeHtml(detection.packageManager) + ' · confidence: ' + escapeHtml(detection.confidence) + '</div><div>Source Git: ' + (preview.source.git ? 'yes' : 'no') + ' · Target Git: ' + (preview.target.git ? 'yes' : 'no') + ' · Existing config: ' + (preview.target.configExists ? 'yes' : 'no') + '</div><div>Checks: ' + escapeHtml((detection.recommendedChecks || []).map(check => check.name).join(', ') || 'none') + '</div></div>' : '');
+          (detection ? '<div class="workspace-summary"><strong>' + (preview.valid ? 'Ready to create' : 'Project needs attention') + '</strong><div>' + escapeHtml((detection.detected || []).join(', ') || 'Unknown stack') + '</div><details class="workspace-details"><summary>Technical details</summary><div>Package manager: ' + escapeHtml(detection.packageManager) + ' · confidence: ' + escapeHtml(detection.confidence) + '</div><div>Source Git: ' + (preview.source.git ? 'yes' : 'no') + ' · Target Git: ' + (preview.target.git ? 'yes' : 'no') + ' · Existing config: ' + (preview.target.configExists ? 'yes' : 'no') + '</div><div>Checks: ' + escapeHtml((detection.recommendedChecks || []).map(check => check.name).join(', ') || 'none') + '</div></details></div>' : '');
+        workspacePreviewValid = preview.valid;
         create.disabled = !preview.valid;
       } catch (error) { status.className = 'status-line bad'; status.innerHTML = errorHtml(error); }
     }
     async function createWorkspace() {
       const button = document.getElementById('createWorkspace');
       const status = document.getElementById('workspacePreview');
+      if (!workspacePreviewValid) { status.className = 'status-line bad'; status.textContent = 'Check the project before creating it.'; return; }
       button.disabled = true; status.className = 'status-line'; status.textContent = 'Creating config and initial migration run...';
       try {
-        await postJson('/api/workspaces', workspaceValues());
+        const values = workspaceValues();
+        await postJson('/api/workspaces', values);
+        rememberWorkspacePaths(values);
         window.location.reload();
       } catch (error) { status.className = 'status-line bad'; status.innerHTML = errorHtml(error); button.disabled = false; }
     }
@@ -1369,10 +1446,17 @@ function renderUiHtml(csrfToken: string): string {
       textarea.remove();
     }
     document.getElementById('refresh').addEventListener('click', load);
-    document.getElementById('newWorkspace').addEventListener('click', () => document.getElementById('workspaceDialog').showModal());
+    document.getElementById('newWorkspace').addEventListener('click', () => {
+      loadRecentWorkspacePaths();
+      document.getElementById('workspaceDialog').showModal();
+      document.getElementById('workspaceName').focus();
+    });
     document.getElementById('closeWorkspace').addEventListener('click', () => document.getElementById('workspaceDialog').close());
-    document.getElementById('previewWorkspace').addEventListener('click', previewWorkspace);
+    document.getElementById('workspaceForm').addEventListener('submit', event => { event.preventDefault(); previewWorkspace(); });
     document.getElementById('createWorkspace').addEventListener('click', createWorkspace);
+    ['workspaceName', 'workspaceGoal', 'workspaceSource', 'workspaceTarget'].forEach(id => {
+      document.getElementById(id).addEventListener('input', invalidateWorkspacePreview);
+    });
     document.getElementById('workspaceSelect').addEventListener('change', async event => {
       if (!event.target.value) return;
       await postJson('/api/workspaces/' + encodeURIComponent(event.target.value) + '/select');
@@ -1412,6 +1496,7 @@ function renderUiHtml(csrfToken: string): string {
       if (target instanceof HTMLElement && target.dataset.recoveryApply) applyRecovery(target);
       if (target instanceof HTMLElement && target.dataset.taskPlan) planTaskExecution(target);
       if (target instanceof HTMLElement && target.dataset.taskExecute) executeTaskPlan(target);
+      if (target instanceof HTMLElement && target.dataset.pastePath) pasteWorkspacePath(target.dataset.pastePath);
       if (target instanceof HTMLElement && target.dataset.diffBatchDecision !== undefined) recordDiffBatchDecisionFromForm(target);
       if (target instanceof HTMLElement && target.dataset.diffDecision !== undefined) recordDiffDecisionFromForm(target);
     });

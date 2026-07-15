@@ -26,6 +26,9 @@ try {
   assertIncludes(html, "Refactored target directory", "workspace target input");
   assertIncludes(html, "background:#fff", "opaque dialog surface");
   assertIncludes(html, "dialog-close", "dialog close control");
+  assertIncludes(html, "Check project", "workspace review action");
+  assertIncludes(html, "data-paste-path", "workspace path paste actions");
+  assertIncludes(html, "workspacePreviewRevision", "stale workspace preview guard");
   assertIncludes(html, "Guarded Actions", "guarded actions");
   assertIncludes(html, "Project Workflow", "project workflow");
   assertIncludes(html, "Capture Baseline", "baseline action");
