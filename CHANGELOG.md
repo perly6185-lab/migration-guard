@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Discover built tests recursively with stable ordering and minimum file/test-count guards.
+- Split patch and issue-control pure models from orchestration and route CLI commands through a narrow registry.
+
 ## 0.2.0 - 2026-07-15
 
 - Bind release gates and real-project pilots to a shared release run and context hash.

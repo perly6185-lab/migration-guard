@@ -132,6 +132,7 @@ import {
   writeOneShotReport
 } from "./core/oneShot.js";
 import type { CompareReport, DiffDecisionClassification, Difference, MigrationAutomationMode, MigrationRun, ProposalGatePolicy, ProposedPatch } from "./types.js";
+import { dispatchCliCommand, type CliCommandRegistry } from "./core/cliDispatch.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -164,119 +165,22 @@ interface ParsedArgs {
 
 async function main(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
-
-  switch (args.command) {
-    case "help":
-    case "--help":
-    case "-h":
-      printHelp();
-      return;
-    case "init":
-      await commandInit(args);
-      return;
-    case "doctor":
-      await commandDoctor(args);
-      return;
-    case "config":
-      await commandConfig(args);
-      return;
-    case "health-debt":
-      await commandHealthDebt(args);
-      return;
-    case "scan":
-      await commandScan(args);
-      return;
-    case "baseline":
-      await commandBaseline(args);
-      return;
-    case "verify":
-      await commandVerify(args);
-      return;
-    case "compare":
-      await commandCompare(args);
-      return;
-    case "diff":
-      await commandDiff(args);
-      return;
-    case "plan":
-      await commandPlan(args);
-      return;
-    case "ai-brief":
-      await commandAiBrief(args);
-      return;
-    case "run":
-      await commandRun(args);
-      return;
-    case "status":
-      await commandStatus(args);
-      return;
-    case "issues":
-      await commandIssues(args);
-      return;
-    case "runs":
-      await commandRuns(args);
-      return;
-    case "serve":
-      await commandServe(args);
-      return;
-    case "tasks":
-      await commandTasks(args);
-      return;
-    case "actions":
-      await commandActions(args);
-      return;
-    case "report":
-      await commandReport(args);
-      return;
-    case "readiness":
-      await commandReadiness(args);
-      return;
-    case "one-shot":
-      await commandOneShot(args);
-      return;
-    case "checkpoint":
-      await commandCheckpoint(args);
-      return;
-    case "resume":
-      await commandResume(args);
-      return;
-    case "rollback":
-      await commandRollback(args);
-      return;
-    case "task":
-      await commandTask(args);
-      return;
-    case "action":
-      await commandAction(args);
-      return;
-    case "proposal":
-      await commandProposal(args);
-      return;
-    case "sync-issues":
-      await commandSyncIssues(args);
-      return;
-    case "issue-control":
-      await commandIssueControl(args);
-      return;
-    case "ci":
-      await commandCi(args);
-      return;
-    case "contract":
-      await commandContract(args);
-      return;
-    case "dual-run":
-      await commandDualRun(args);
-      return;
-    case "preview":
-      await commandPreview(args);
-      return;
-    case "artifacts":
-      await commandArtifacts(args);
-      return;
-    default:
-      console.error(`Unknown command: ${args.command}`);
-      printHelp();
-      process.exitCode = 1;
+  const handlers: CliCommandRegistry<ParsedArgs> = {
+    help: () => printHelp(), "--help": () => printHelp(), "-h": () => printHelp(),
+    init: commandInit, doctor: commandDoctor, config: commandConfig, "health-debt": commandHealthDebt,
+    scan: commandScan, baseline: commandBaseline, verify: commandVerify, compare: commandCompare,
+    diff: commandDiff, plan: commandPlan, "ai-brief": commandAiBrief, run: commandRun,
+    status: commandStatus, issues: commandIssues, runs: commandRuns, serve: commandServe,
+    tasks: commandTasks, actions: commandActions, report: commandReport, readiness: commandReadiness,
+    "one-shot": commandOneShot, checkpoint: commandCheckpoint, resume: commandResume, rollback: commandRollback,
+    task: commandTask, action: commandAction, proposal: commandProposal, "sync-issues": commandSyncIssues,
+    "issue-control": commandIssueControl, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
+    preview: commandPreview, artifacts: commandArtifacts
+  };
+  if (!await dispatchCliCommand(args, handlers)) {
+    console.error(`Unknown command: ${args.command}`);
+    printHelp();
+    process.exitCode = 1;
   }
 }
 

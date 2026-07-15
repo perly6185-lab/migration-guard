@@ -51,9 +51,11 @@ The completed Phase 151-160 RC hardening roadmap is tracked in
 integrity and portable AI collaboration roadmap is tracked in
 [docs/PHASE_161_170_PLAN.md](docs/PHASE_161_170_PLAN.md).
 
-CI uses the same test manifest as local `npm test`, publishes total and slowest-test
-timings to the GitHub Actions step summary, audits production dependencies, checks
-the npm package allowlist and runs the isolated package installation smoke.
+CI and local `npm test` recursively discover built tests with stable ordering and
+enforce the minimum file/test counts in `scripts/ci/test-manifest.json`. Unit and
+integration tests run together; packaged smoke and real-project pilots remain
+explicit release gates. CI also publishes total and slowest-test timings, audits
+production dependencies, checks the npm package allowlist and runs installation smoke.
 
 The release gate binds every result to one release run, repository context and
 current pilot evidence. Configure all three real-project roots before running it:

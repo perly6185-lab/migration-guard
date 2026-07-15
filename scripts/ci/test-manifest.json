@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "minimumTestFiles": 26,
+  "minimumTests": 145,
+  "layers": {
+    "unit": "Focused deterministic module behavior; runs in npm test.",
+    "integration": "Cross-module, process, filesystem or Git behavior; runs in npm test.",
+    "smoke": "Packaged CLI and UI workflows; runs as explicit release gates.",
+    "pilot": "Real-project behavior evidence; runs only with configured project roots."
+  }
+}

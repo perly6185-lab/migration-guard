@@ -1,10 +1,20 @@
 import { spawn } from "node:child_process";
 import { appendFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
+import { classifyTestFile, discoverTestFiles } from "./test-discovery.mjs";
 
-const testFiles = 
-["scripts/release/evidence.test.mjs","dist/core/normalize.test.js","dist/core/configDoctor.test.js","dist/core/healthDebt.test.js","dist/core/artifactV2.test.js","dist/core/scan.test.js","dist/core/checkNormalize.test.js","dist/core/config.test.js","dist/core/compare.test.js","dist/core/diffDecision.test.js","dist/core/files.test.js","dist/core/checkpoint.test.js","dist/core/bootstrap.test.js","dist/core/dashboard.test.js","dist/core/uiServer.test.js","dist/core/uiJobStore.test.js","dist/core/issueControl.test.js","dist/core/patch.test.js","dist/core/refactorReadiness.test.js","dist/core/oneShot.test.js","dist/core/repairLoopCli.test.js","dist/core/repairStrategy.test.js","dist/core/taskGraph.test.js"]
-;
+const workspace = process.cwd();
+const manifest = JSON.parse(await readFile(new URL("./test-manifest.json", import.meta.url), "utf8"));
+const testFiles = await discoverTestFiles(workspace);
+if (testFiles.length < manifest.minimumTestFiles) {
+  throw new Error(`Test discovery found ${testFiles.length} files; expected at least ${manifest.minimumTestFiles}. Check the build and test globs.`);
+}
+const layerCounts = testFiles.reduce((counts, file) => {
+  const layer = classifyTestFile(file);
+  counts[layer] = (counts[layer] ?? 0) + 1;
+  return counts;
+}, {});
 const startedAt = performance.now();
 const child = spawn(process.execPath, ["--test", ...testFiles], { cwd: process.cwd(), windowsHide: true });
 let stdout = "";
@@ -14,12 +24,20 @@ child.stderr.on("data", (chunk) => { const text = chunk.toString(); stderr += te
 const exitCode = await new Promise((resolve, reject) => { child.on("error", reject); child.on("close", resolve); });
 const durationMs = performance.now() - startedAt;
 const slowTests = parseTapDurations(stdout).sort((a, b) => b.durationMs - a.durationMs).slice(0, 10);
+const testCount = parseTapTestCount(stdout);
+if (Number(exitCode ?? 1) === 0 && testCount < manifest.minimumTests) {
+  stderr += `\nTest count ${testCount} is below the required minimum ${manifest.minimumTests}.\n`;
+  process.stderr.write(stderr.slice(stderr.lastIndexOf("\nTest count")));
+}
+const effectiveExitCode = Number(exitCode ?? 1) === 0 && testCount >= manifest.minimumTests ? 0 : 1;
 const summary = [
   "## Migration Guard test summary",
   "",
   `- Total test command duration: ${(durationMs / 1000).toFixed(2)}s`,
   `- Test files: ${testFiles.length}`,
-  `- Exit code: ${exitCode}`,
+  `- Tests: ${testCount}`,
+  `- Layers: unit ${layerCounts.unit ?? 0}, integration ${layerCounts.integration ?? 0}`,
+  `- Exit code: ${effectiveExitCode}`,
   "",
   "### Slowest tests",
   "",
@@ -30,7 +48,7 @@ const summary = [
 ].join("\n");
 if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, summary, "utf8");
 if (process.env.MG_TEST_SUMMARY === "1") process.stdout.write(`\n${summary}\n`);
-process.exitCode = Number(exitCode ?? 1);
+process.exitCode = effectiveExitCode;
 
 function parseTapDurations(output) {
   const lines = output.split(/\r?\n/);
@@ -46,3 +64,8 @@ function parseTapDurations(output) {
 }
 
 function escapeTable(value) { return value.replace(/\|/g, "\\|"); }
+
+function parseTapTestCount(output) {
+  const matches = [...output.matchAll(/^# tests (\d+)$/gm)];
+  return Number(matches.at(-1)?.[1] ?? 0);
+}

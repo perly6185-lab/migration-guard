@@ -44,6 +44,9 @@ import type {
 import type { MigrationRunPackage } from "./migrationRun.js";
 import { runShellCommand } from "./exec.js";
 import { startManagedPreview } from "./preview.js";
+import { createAddFilePatch } from "./patchModel.js";
+
+export { createAddFilePatch } from "./patchModel.js";
 
 export interface ApplyProposedPatchOptions {
   runChecks?: boolean;
@@ -2506,21 +2509,6 @@ function createPatchContent(goal: string, title: string, affectedFiles: string[]
   ].join("\n");
 }
 
-export function createAddFilePatch(filePath: string, content: string): string {
-  const normalizedPath = normalizePatchPath(filePath);
-  const normalizedContent = content.endsWith("\n") ? content : `${content}\n`;
-  const lines = normalizedContent.slice(0, -1).split("\n");
-  return [
-    `diff --git a/${normalizedPath} b/${normalizedPath}`,
-    "new file mode 100644",
-    "--- /dev/null",
-    `+++ b/${normalizedPath}`,
-    `@@ -0,0 +1,${lines.length} @@`,
-    ...lines.map((line) => `+${line}`),
-    ""
-  ].join("\n");
-}
-
 function isGitPatchContent(input: string): boolean {
   return input
     .split(/\r?\n/)
@@ -3077,14 +3065,6 @@ function createUiSmokeProbeScript(goal: string, action: MigrationAction): string
 
 function createProbeChecks(template: MigrationActionPatchTemplate): Array<{ name: string; pattern: string }> {
   return getProbeTemplateDefinition(template).checks;
-}
-
-function normalizePatchPath(filePath: string): string {
-  const normalizedPath = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
-  if (path.isAbsolute(filePath) || normalizedPath.split("/").includes("..")) {
-    throw new Error(`Unsafe patch path: ${filePath}`);
-  }
-  return normalizedPath;
 }
 
 function sanitizeFileName(value: string): string {

@@ -3,7 +3,7 @@ import path from "node:path";
 import { rollbackToCheckpoint } from "./checkpoint.js";
 import { compareSnapshots } from "./compare.js";
 import { runShellCommand } from "./exec.js";
-import { readGitHubIssues, validateGitHubRepo, type GitHubIssueRemote, type GitHubRetryOptions } from "./githubIssueAdapter.js";
+import { readGitHubIssues, validateGitHubRepo, type GitHubRetryOptions } from "./githubIssueAdapter.js";
 import { executeTask } from "./executor.js";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
 import { renderCompareReport } from "./markdown.js";
@@ -12,6 +12,11 @@ import { repairProposal } from "./patch.js";
 import { selectRepairStrategy, summarizeRepairStrategy, type RepairStrategySummary } from "./repairStrategy.js";
 import { captureSnapshot, latestBaselinePath, loadSnapshot, saveSnapshot } from "./snapshot.js";
 import { writeCompareArtifactFile } from "./artifactV2.js";
+import {
+  proposalFromCommand as modelProposalFromCommand,
+  toIssueControlPlanItem as modelToIssueControlPlanItem,
+  toIssueControlRemoteIssue as modelToIssueControlRemoteIssue
+} from "./issueControlModel.js";
 import type { LoadedConfig, MigrationIssueType } from "../types.js";
 
 export type IssueControlProvider = "github";
@@ -747,7 +752,7 @@ export async function pullIssueControl(loaded: LoadedConfig, options: IssueContr
     createdAt: new Date().toISOString(),
     issueCount: result.issues.length,
     rateLimit: result.rateLimit,
-    issues: result.issues.map(toIssueControlRemoteIssue)
+    issues: result.issues.map(modelToIssueControlRemoteIssue)
   };
   return writeIssueControlPullReport(loaded, report);
 }
@@ -773,7 +778,7 @@ export async function writeIssueControlPlan(loaded: LoadedConfig, pull: IssueCon
 }
 
 export function collectIssueControlPlan(pull: IssueControlPullReport): IssueControlPlanReport {
-  const items = pull.issues.map(toIssueControlPlanItem);
+  const items = pull.issues.map(modelToIssueControlPlanItem);
   return {
     version: 1,
     id: `issue-control-plan-${new Date().toISOString().replace(/[:.]/g, "-")}`,
@@ -2006,7 +2011,7 @@ async function runIssueControlPlanItem(
         if (!runId) {
           return { ...base, status: "blocked", reason: "repair-proposal requires a run id from the issue or --run." };
         }
-        const proposal = proposalFromCommand(command);
+        const proposal = modelProposalFromCommand(command);
         if (!proposal) {
           return { ...base, status: "blocked", reason: "repair-proposal requires a proposal id." };
         }
@@ -3941,7 +3946,7 @@ function isAutoSelectable(item: IssueControlPlanItem, options: { allowHighRisk: 
   if (item.action === "execute-task" && (!item.runId || !item.taskId)) {
     return false;
   }
-  if (item.action === "repair-proposal" && (!item.runId || !proposalFromCommand(item.recommendedCommand))) {
+  if (item.action === "repair-proposal" && (!item.runId || !modelProposalFromCommand(item.recommendedCommand))) {
     return false;
   }
   return true;
@@ -3966,7 +3971,7 @@ function autoSelectionReason(item: IssueControlPlanItem, options: { allowHighRis
   if (item.action === "execute-task" && (!item.runId || !item.taskId)) {
     return "execute-task requires mg_run_id and mg_task_id.";
   }
-  if (item.action === "repair-proposal" && (!item.runId || !proposalFromCommand(item.recommendedCommand))) {
+  if (item.action === "repair-proposal" && (!item.runId || !modelProposalFromCommand(item.recommendedCommand))) {
     return "repair-proposal requires mg_run_id and proposal id.";
   }
   return "Selectable but lower priority than the selected issue.";
@@ -4021,192 +4026,6 @@ function resolveGitHubRepo(loaded: LoadedConfig, repo?: string): string {
   }
   validateGitHubRepo(resolved);
   return resolved;
-}
-
-function toIssueControlRemoteIssue(issue: GitHubIssueRemote): IssueControlRemoteIssue {
-  return {
-    number: issue.number,
-    title: issue.title,
-    body: issue.body,
-    bodyHash: issue.bodyHash,
-    htmlUrl: issue.htmlUrl,
-    state: issue.state,
-    labels: issue.labels,
-    createdAt: issue.createdAt,
-    updatedAt: issue.updatedAt,
-    author: issue.author,
-    migrationGuard: parseIssueControlMetadata(issue)
-  };
-}
-
-function parseIssueControlMetadata(issue: GitHubIssueRemote): IssueControlMetadata {
-  return {
-    runId: field(issue.body, "mg_run_id"),
-    issueId: field(issue.body, "mg_issue_id"),
-    taskId: field(issue.body, "mg_task_id"),
-    issueType: issueType(field(issue.body, "mg_issue_type") ?? labelValue(issue.labels, "mg-type")),
-    status: field(issue.body, "mg_status") ?? labelValue(issue.labels, "status"),
-    risk: risk(field(issue.body, "mg_risk") ?? labelValue(issue.labels, "mg-risk")),
-    owner: owner(field(issue.body, "mg_owner") ?? labelValue(issue.labels, "owner")),
-    proposalId: proposalId(issue.title, issue.body)
-  };
-}
-
-function toIssueControlPlanItem(issue: IssueControlRemoteIssue): IssueControlPlanItem {
-  const metadata = issue.migrationGuard;
-  const ready = isReadyStatus(metadata.status);
-  const commandRun = metadata.runId ? ` --run ${metadata.runId}` : " --run <run-id>";
-  if (!metadata.issueId) {
-    return {
-      issueNumber: issue.number,
-      title: issue.title,
-      url: issue.htmlUrl,
-      labels: issue.labels,
-      action: "review-external",
-      executable: false,
-      reason: "Issue has no mg_issue_id; keep it out of automated Migration Guard execution."
-    };
-  }
-  if (isBootstrapIssue(issue)) {
-    return {
-      issueNumber: issue.number,
-      title: issue.title,
-      url: issue.htmlUrl,
-      issueId: metadata.issueId,
-      runId: metadata.runId,
-      taskId: metadata.taskId,
-      issueType: metadata.issueType,
-      status: metadata.status,
-      risk: metadata.risk,
-      labels: issue.labels,
-      action: "bootstrap-target",
-      executable: true,
-      reason: "Target bootstrap issue; run the bounded md -> md2 bootstrap/import lane before normal refactor checks.",
-      recommendedCommand: "node dist/cli.js issue-control bootstrap --config configs/md2-fast.migration-guard.json --execute --verify --labels team:migration"
-    };
-  }
-  if (metadata.issueType === "failure") {
-    const proposal = metadata.proposalId ?? "<failed-proposal-id>";
-    return {
-      issueNumber: issue.number,
-      title: issue.title,
-      url: issue.htmlUrl,
-      issueId: metadata.issueId,
-      runId: metadata.runId,
-      taskId: metadata.taskId,
-      issueType: metadata.issueType,
-      status: metadata.status,
-      risk: metadata.risk,
-      labels: issue.labels,
-      action: "repair-proposal",
-      executable: true,
-      reason: "Failure issue can enter the proposal repair loop.",
-      recommendedCommand: `node dist/cli.js proposal repair --config configs/md2-fast.migration-guard.json${commandRun} --proposal ${proposal} --checks --accept`
-    };
-  }
-  if (metadata.issueType === "risk" || metadata.issueType === "diff") {
-    return {
-      issueNumber: issue.number,
-      title: issue.title,
-      url: issue.htmlUrl,
-      issueId: metadata.issueId,
-      runId: metadata.runId,
-      taskId: metadata.taskId,
-      issueType: metadata.issueType,
-      status: metadata.status,
-      risk: metadata.risk,
-      labels: issue.labels,
-      action: "classify-risk",
-      executable: false,
-      reason: "Risk/diff issues need classification before source edits."
-    };
-  }
-  if (metadata.taskId && ready) {
-    return {
-      issueNumber: issue.number,
-      title: issue.title,
-      url: issue.htmlUrl,
-      issueId: metadata.issueId,
-      runId: metadata.runId,
-      taskId: metadata.taskId,
-      issueType: metadata.issueType,
-      status: metadata.status,
-      risk: metadata.risk,
-      labels: issue.labels,
-      action: "execute-task",
-      executable: true,
-      reason: "Ready Migration Guard task issue can be handed to the task executor.",
-      recommendedCommand: `node dist/cli.js task run --config configs/md2-fast.migration-guard.json${commandRun} --task ${metadata.taskId}`
-    };
-  }
-  return {
-    issueNumber: issue.number,
-    title: issue.title,
-    url: issue.htmlUrl,
-    issueId: metadata.issueId,
-    runId: metadata.runId,
-    taskId: metadata.taskId,
-    issueType: metadata.issueType,
-    status: metadata.status,
-    risk: metadata.risk,
-    labels: issue.labels,
-    action: "track",
-    executable: false,
-    reason: "Issue is mapped to Migration Guard but is not ready for automated execution."
-  };
-}
-
-function field(body: string, name: string): string | undefined {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return body.match(new RegExp(`^${escaped}:\\s*(.+)$`, "m"))?.[1]?.trim();
-}
-
-function labelValue(labels: string[], prefix: string): string | undefined {
-  return labels.find((label) => label.startsWith(`${prefix}:`))?.slice(prefix.length + 1).trim();
-}
-
-function issueType(value?: string): MigrationIssueType | undefined {
-  return value && ["epic", "phase", "task", "risk", "diff", "failure"].includes(value)
-    ? value as MigrationIssueType
-    : undefined;
-}
-
-function risk(value?: string): "low" | "medium" | "high" | undefined {
-  return value && ["low", "medium", "high"].includes(value)
-    ? value as "low" | "medium" | "high"
-    : undefined;
-}
-
-function owner(value?: string): "engine" | "ai" | "human" | undefined {
-  return value && ["engine", "ai", "human"].includes(value)
-    ? value as "engine" | "ai" | "human"
-    : undefined;
-}
-
-function proposalId(title: string, body: string): string | undefined {
-  return title.match(/^Proposal gate failed:\s*(\S+)/)?.[1]
-    ?? body.match(/\bproposal(?:Id| id)?:?\s*`?([A-Za-z0-9_.-]+)`?/i)?.[1];
-}
-
-function proposalFromCommand(command?: string): string | undefined {
-  return command?.match(/--proposal\s+(\S+)/)?.[1]?.replace(/^<|>$/g, "");
-}
-
-function isReadyStatus(status?: string): boolean {
-  return Boolean(status && ["ready", "running", "replanned"].includes(status));
-}
-
-function isBootstrapIssue(issue: IssueControlRemoteIssue): boolean {
-  const title = issue.title.toLowerCase();
-  const labels = issue.labels.map((label) => label.toLowerCase());
-  const metadata = issue.migrationGuard;
-  const taskId = metadata.taskId?.toLowerCase() ?? "";
-  const issueId = metadata.issueId?.toLowerCase() ?? "";
-  return labels.some((label) => ["bootstrap", "mg-bootstrap", "type:bootstrap", "mg-type:bootstrap"].includes(label))
-    || taskId.includes("bootstrap")
-    || issueId.includes("bootstrap")
-    || /\bbootstrap\b/.test(title)
-    || /\binitial import\b/.test(title);
 }
 
 function escapeCell(value: string): string {
