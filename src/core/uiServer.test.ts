@@ -87,6 +87,8 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /Job status filter/);
       assert.match(html, /Job run filter/);
       assert.match(html, /Job Detail/);
+      assert.match(html, /jobDuration/);
+      assert.match(html, /Duration/);
       assert.match(html, /Deliverables/);
       assert.match(html, /data-requires-workspace/);
       assert.match(html, /data-job-retry/);

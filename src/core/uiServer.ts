@@ -1160,6 +1160,7 @@ function renderUiHtml(csrfToken: string): string {
       const paths = job.artifactPaths || [];
       const details = [
         ['Job', job.id],
+        ['Task', job.params?.task || workflowTaskLabel(job.action)],
         ['Retry of', job.retryOf || 'none'],
         ['Action', actionLabel(job.action)],
         ['Status', job.status],
@@ -1170,7 +1171,8 @@ function renderUiHtml(csrfToken: string): string {
         ['Recovery reason', job.recoveryReason || 'none'],
         ['Run', job.runId || 'none'],
         ['Started', job.startedAt || 'not started'],
-        ['Finished', job.finishedAt || 'not finished']
+        ['Finished', job.finishedAt || 'not finished'],
+        ['Duration', jobDuration(job)]
       ];
       return '<details' + (job.status === 'running' || job.status === 'queued' ? ' open' : '') + '><summary>' +
         badge(job.status, toneFor(job.status)) + ' ' + escapeHtml(actionLabel(job.action)) + '</summary>' +
@@ -1184,6 +1186,7 @@ function renderUiHtml(csrfToken: string): string {
     function renderJobStatus(job) {
       const paths = job.artifactPaths || [];
       return '<strong>' + escapeHtml(actionLabel(job.action)) + ' ' + escapeHtml(job.status) + '</strong>' +
+        '<div class="muted">task: ' + escapeHtml(job.params?.task || workflowTaskLabel(job.action)) + ' · duration: ' + escapeHtml(jobDuration(job)) + '</div>' +
         '<div class="muted">job: ' + escapeHtml(job.id) + (job.runId ? ' · run: ' + escapeHtml(job.runId) : '') + '</div>' +
         (job.error ? '<div>' + escapeHtml(job.error) + '</div>' : '') +
         (job.status === 'succeeded' && job.result ? renderActionResult(actionLabel(job.action), job.result) : '') +
@@ -1223,6 +1226,7 @@ function renderUiHtml(csrfToken: string): string {
       const children = report.retryChildren || [];
       const rows = [
         ['Job', job.id],
+        ['Task', job.params?.task || workflowTaskLabel(job.action)],
         ['Action', actionLabel(job.action)],
         ['Status', job.status],
         ['Attempt', job.attempt || 1],
@@ -1236,7 +1240,8 @@ function renderUiHtml(csrfToken: string): string {
         ['Created', job.createdAt],
         ['Updated', job.updatedAt],
         ['Started', job.startedAt || 'not started'],
-        ['Finished', job.finishedAt || 'not finished']
+        ['Finished', job.finishedAt || 'not finished'],
+        ['Duration', jobDuration(job)]
       ];
       return '<div class="diff-meta">' + badge(job.status, toneFor(job.status)) + badge(actionLabel(job.action), '') + '</div>' +
         '<dl class="kv">' + rows.map(([key, value]) => '<dt>' + escapeHtml(key) + '</dt><dd>' + escapeHtml(String(value)) + '</dd>').join('') + '</dl>' +
@@ -1251,6 +1256,27 @@ function renderUiHtml(csrfToken: string): string {
         '<h3>Timeline</h3>' + renderJobEvents(job) +
         '<h3>Params</h3><pre>' + escapeHtml(JSON.stringify(job.params || {}, null, 2)) + '</pre>' +
         '<h3>Result</h3><pre>' + escapeHtml(JSON.stringify(job.result || {}, null, 2)) + '</pre>';
+    }
+    function workflowTaskLabel(action) {
+      return ({
+        scan: 'Analyze repository',
+        baseline: 'Capture behavior baseline',
+        verify: 'Verify migrated behavior',
+        checkpoint: 'Create recovery checkpoint',
+        readiness: 'Assess refactor readiness',
+        'issue-control-dry-run': 'Plan issue execution'
+      })[action] || action;
+    }
+    function jobDuration(job) {
+      if (!job.startedAt) return 'not started';
+      const start = Date.parse(job.startedAt);
+      const end = job.finishedAt ? Date.parse(job.finishedAt) : Date.now();
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return 'unknown';
+      const totalSeconds = Math.max(0, Math.floor((end - start) / 1000));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      return (hours ? hours + 'h ' : '') + (minutes || hours ? minutes + 'm ' : '') + seconds + 's' + (job.finishedAt ? '' : ' elapsed');
     }
     function renderActionCapabilities(report) {
       actionCapabilities = report;

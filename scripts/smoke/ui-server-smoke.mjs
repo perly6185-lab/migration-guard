@@ -53,6 +53,7 @@ try {
   assertIncludes(html, "Job status filter", "job status filter");
   assertIncludes(html, "Job run filter", "job run filter");
   assertIncludes(html, "Job Detail", "job detail");
+  assertIncludes(html, "jobDuration", "job duration rendering");
   assertIncludes(html, "Job timeline", "job timeline");
   assertIncludes(html, "data-job-retry", "job retry action");
   assertIncludes(html, "data-job-cancel", "job cancel action");
