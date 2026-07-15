@@ -1009,8 +1009,14 @@ function renderUiHtml(csrfToken: string): string {
     function renderTasks(tasks) {
       if (!tasks.length) return empty();
       const order = { running: 0, ready: 1, failed: 2, blocked: 3, planned: 4, replanned: 5, done: 6, 'accepted-diff': 7 };
-      return '<div class="item-list">' + [...tasks].sort((a, b) => (order[a.status] ?? 99) - (order[b.status] ?? 99)).map(task => '<details' + (task.status === 'running' ? ' open' : '') + '><summary>' + badge(task.status, toneFor(task.status)) + ' ' + escapeHtml(task.taskId + ' · ' + task.title) + '</summary>' +
-        '<dl class="kv"><dt>Status</dt><dd>' + escapeHtml(task.status) + '</dd><dt>Updated</dt><dd>' + escapeHtml(task.updatedAt || 'unknown') + '</dd><dt>Risk</dt><dd>' + escapeHtml(task.risk) + '</dd><dt>Owner</dt><dd>' + escapeHtml(task.owner) + '</dd><dt>Depends on</dt><dd>' + escapeHtml((task.dependsOn || []).join(', ') || 'none') + '</dd><dt>Issue</dt><dd>' + escapeHtml(task.issueId || 'none') + '</dd><dt>Description</dt><dd>' + escapeHtml(task.description || '') + '</dd><dt>Result</dt><dd>' + escapeHtml(task.result || 'none') + '</dd><dt>Affected paths</dt><dd>' + escapeHtml((task.affectedFiles || []).join(', ') || 'none') + '</dd><dt>Verification</dt><dd>' + escapeHtml((task.verificationCommands || []).join(', ') || 'none') + '</dd><dt>Acceptance</dt><dd>' + escapeHtml((task.acceptanceCriteria || []).join(', ') || 'none') + '</dd></dl>' + (task.status === 'ready' ? '<div class="job-actions"><button data-task-plan="' + attr(task.taskId) + '">Review plan</button></div>' : '') + '</details>').join('') + '</div>';
+      return '<div class="item-list">' + [...tasks].sort((a, b) => (order[a.status] ?? 99) - (order[b.status] ?? 99)).map(task => {
+        const workflowAction = ({ analyze: 'scan', baseline: 'baseline', verify: 'verify' })[task.type];
+        const readyAction = task.status !== 'ready' ? '' : workflowAction
+          ? '<div class="job-actions"><button class="primary-button" data-workflow-task-action="' + attr(workflowAction) + '">Start task</button></div>'
+          : '<div class="job-actions"><button data-task-plan="' + attr(task.taskId) + '">Review plan</button></div>';
+        return '<details' + (task.status === 'running' ? ' open' : '') + '><summary>' + badge(task.status, toneFor(task.status)) + ' ' + escapeHtml(task.taskId + ' · ' + task.title) + '</summary>' +
+          '<dl class="kv"><dt>Status</dt><dd>' + escapeHtml(task.status) + '</dd><dt>Updated</dt><dd>' + escapeHtml(task.updatedAt || 'unknown') + '</dd><dt>Risk</dt><dd>' + escapeHtml(task.risk) + '</dd><dt>Owner</dt><dd>' + escapeHtml(task.owner) + '</dd><dt>Depends on</dt><dd>' + escapeHtml((task.dependsOn || []).join(', ') || 'none') + '</dd><dt>Issue</dt><dd>' + escapeHtml(task.issueId || 'none') + '</dd><dt>Description</dt><dd>' + escapeHtml(task.description || '') + '</dd><dt>Result</dt><dd>' + escapeHtml(task.result || 'none') + '</dd><dt>Affected paths</dt><dd>' + escapeHtml((task.affectedFiles || []).join(', ') || 'none') + '</dd><dt>Verification</dt><dd>' + escapeHtml((task.verificationCommands || []).join(', ') || 'none') + '</dd><dt>Acceptance</dt><dd>' + escapeHtml((task.acceptanceCriteria || []).join(', ') || 'none') + '</dd></dl>' + readyAction + '</details>';
+      }).join('') + '</div>';
     }
     function renderReportArtifacts(artifacts) {
       if (!artifacts.length) return '<p class="muted">No deliverables have been written for this run.</p>';
@@ -1626,7 +1632,10 @@ function renderUiHtml(csrfToken: string): string {
     document.getElementById('refresh').addEventListener('click', load);
     const autoAdvance = document.getElementById('autoAdvance');
     autoAdvance.checked = localStorage.getItem('migrationGuardAutoAdvance') === 'true';
-    autoAdvance.addEventListener('change', () => localStorage.setItem('migrationGuardAutoAdvance', String(autoAdvance.checked)));
+    autoAdvance.addEventListener('change', async () => {
+      localStorage.setItem('migrationGuardAutoAdvance', String(autoAdvance.checked));
+      if (autoAdvance.checked) await maybeAutoAdvance('toggle');
+    });
     document.querySelectorAll('[data-work-view]').forEach(button => button.addEventListener('click', () => setWorkView(button.dataset.workView)));
     document.getElementById('newWorkspace').addEventListener('click', () => {
       loadRecentWorkspacePaths();
@@ -1678,6 +1687,7 @@ function renderUiHtml(csrfToken: string): string {
       if (target instanceof HTMLElement && target.dataset.recoveryApply) applyRecovery(target);
       if (target instanceof HTMLElement && target.dataset.taskPlan) planTaskExecution(target);
       if (target instanceof HTMLElement && target.dataset.taskExecute) executeTaskPlan(target);
+      if (target instanceof HTMLElement && target.dataset.workflowTaskAction) startActionJob(target.dataset.workflowTaskAction, target);
       if (target instanceof HTMLElement && target.dataset.pastePath) pasteWorkspacePath(target.dataset.pastePath);
       if (target instanceof HTMLElement && target.dataset.workflowNext) advanceWorkflow(target);
       if (target instanceof HTMLElement && target.dataset.selectWorkspace) selectWorkspace(target.dataset.selectWorkspace);

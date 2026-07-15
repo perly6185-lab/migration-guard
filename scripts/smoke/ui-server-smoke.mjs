@@ -48,6 +48,7 @@ try {
   assertIncludes(html, "Project History", "project history");
   assertIncludes(html, "Review plan", "task execution planning");
   assertIncludes(html, "Task Board", "complete task board");
+  assertIncludes(html, "data-workflow-task-action", "ready workflow task start action");
   assertIncludes(html, "Execute task", "task execution confirmation");
   assertIncludes(html, "Run Detail", "run detail");
   assertIncludes(html, "Recent Jobs", "recent jobs");

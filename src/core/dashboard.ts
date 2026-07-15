@@ -88,6 +88,7 @@ export interface DashboardReport {
 export interface DashboardTaskSummary {
   taskId: string;
   title: string;
+  type: string;
   status: MigrationTaskStatus;
   risk: "low" | "medium" | "high";
   owner: "engine" | "ai" | "human";
@@ -201,6 +202,7 @@ export async function collectDashboard(
   const tasks = pkg.graph.tasks.map((task) => ({
       taskId: task.id,
       title: task.title,
+      type: task.type,
       status: task.status,
       risk: task.risk,
       owner: task.owner,
