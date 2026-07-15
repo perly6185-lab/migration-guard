@@ -608,7 +608,7 @@ function renderUiHtml(csrfToken: string): string {
       <section data-views="execution monitoring" data-requires-workspace><div class="panel-head"><h2>Recovery Center</h2></div><div id="recovery"><p class="muted">Loading...</p></div><div id="recoveryPlan" class="status-line" hidden></div></section>
       <section data-views="workspace monitoring" data-requires-workspace><div class="panel-head"><h2>Blockers</h2></div><div id="blockers"><p class="muted">Loading...</p></div></section>
       <section data-views="workspace reports" data-requires-workspace><div class="panel-head"><h2>Project History</h2></div><div id="runs"><p class="muted">Loading...</p></div></section>
-      <section data-views="execution" data-requires-workspace><div class="panel-head"><h2>Ready Tasks</h2></div><div id="tasks"><p class="muted">Loading...</p></div><div id="taskExecutionPlan" class="status-line" hidden></div></section>
+      <section data-views="execution" data-requires-workspace><div class="panel-head"><h2>Task Board</h2></div><div id="tasks"><p class="muted">Loading...</p></div><div id="taskExecutionPlan" class="status-line" hidden></div></section>
       <section data-views="execution" data-requires-workspace><div class="panel-head"><h2>Stuck Proposals</h2></div><div id="proposals"><p class="muted">Loading...</p></div></section>
       <section data-views="reports" data-requires-workspace><div class="panel-head"><h2>Deliverables</h2></div><div id="reportArtifacts"><p class="muted">Loading...</p></div></section>
       <section data-views="reports" data-requires-workspace><div class="panel-head"><h2>Evidence / Diff</h2><div class="toolbar compact">
@@ -979,7 +979,7 @@ function renderUiHtml(csrfToken: string): string {
       ].map(([k,v,tone]) => '<div class="stat ' + tone + '"><span>' + k + '</span><strong>' + escapeHtml(String(v)) + '</strong></div>').join('');
       document.getElementById('runMeta').textContent = dashboard.run.goal + ' · ' + dashboard.run.status + ' · updated ' + dashboard.run.updatedAt;
       document.getElementById('runDetail').innerHTML = renderRunDetail(dashboard);
-      document.getElementById('tasks').innerHTML = renderTasks(dashboard.readyTasks);
+      document.getElementById('tasks').innerHTML = renderTasks(dashboard.tasks || dashboard.readyTasks || []);
       document.getElementById('proposals').innerHTML = renderProposals(dashboard.stuckProposals);
       document.getElementById('nextActions').innerHTML = renderNextActions(dashboard.recommendedNextActions || []);
       document.getElementById('reportArtifacts').innerHTML = renderReportArtifacts(dashboard.reportArtifacts || []);
@@ -1008,8 +1008,9 @@ function renderUiHtml(csrfToken: string): string {
     }
     function renderTasks(tasks) {
       if (!tasks.length) return empty();
-      return '<div class="item-list">' + tasks.map(task => '<details><summary>' + escapeHtml(task.taskId + ' · ' + task.title) + '</summary>' +
-        '<dl class="kv"><dt>Risk</dt><dd>' + escapeHtml(task.risk) + '</dd><dt>Owner</dt><dd>' + escapeHtml(task.owner) + '</dd><dt>Issue</dt><dd>' + escapeHtml(task.issueId || 'none') + '</dd><dt>Description</dt><dd>' + escapeHtml(task.description || '') + '</dd><dt>Affected paths</dt><dd>' + escapeHtml((task.affectedFiles || []).join(', ') || 'none') + '</dd><dt>Verification</dt><dd>' + escapeHtml((task.verificationCommands || []).join(', ') || 'none') + '</dd><dt>Acceptance</dt><dd>' + escapeHtml((task.acceptanceCriteria || []).join(', ') || 'none') + '</dd></dl><div class="job-actions"><button data-task-plan="' + attr(task.taskId) + '">Review plan</button></div></details>').join('') + '</div>';
+      const order = { running: 0, ready: 1, failed: 2, blocked: 3, planned: 4, replanned: 5, done: 6, 'accepted-diff': 7 };
+      return '<div class="item-list">' + [...tasks].sort((a, b) => (order[a.status] ?? 99) - (order[b.status] ?? 99)).map(task => '<details' + (task.status === 'running' ? ' open' : '') + '><summary>' + badge(task.status, toneFor(task.status)) + ' ' + escapeHtml(task.taskId + ' · ' + task.title) + '</summary>' +
+        '<dl class="kv"><dt>Status</dt><dd>' + escapeHtml(task.status) + '</dd><dt>Updated</dt><dd>' + escapeHtml(task.updatedAt || 'unknown') + '</dd><dt>Risk</dt><dd>' + escapeHtml(task.risk) + '</dd><dt>Owner</dt><dd>' + escapeHtml(task.owner) + '</dd><dt>Depends on</dt><dd>' + escapeHtml((task.dependsOn || []).join(', ') || 'none') + '</dd><dt>Issue</dt><dd>' + escapeHtml(task.issueId || 'none') + '</dd><dt>Description</dt><dd>' + escapeHtml(task.description || '') + '</dd><dt>Result</dt><dd>' + escapeHtml(task.result || 'none') + '</dd><dt>Affected paths</dt><dd>' + escapeHtml((task.affectedFiles || []).join(', ') || 'none') + '</dd><dt>Verification</dt><dd>' + escapeHtml((task.verificationCommands || []).join(', ') || 'none') + '</dd><dt>Acceptance</dt><dd>' + escapeHtml((task.acceptanceCriteria || []).join(', ') || 'none') + '</dd></dl>' + (task.status === 'ready' ? '<div class="job-actions"><button data-task-plan="' + attr(task.taskId) + '">Review plan</button></div>' : '') + '</details>').join('') + '</div>';
     }
     function renderReportArtifacts(artifacts) {
       if (!artifacts.length) return '<p class="muted">No deliverables have been written for this run.</p>';

@@ -48,6 +48,7 @@ export interface DashboardReport {
     items: MigrationRunIndexEntry[];
   };
   taskSummary: Record<string, number>;
+  tasks: DashboardTaskSummary[];
   readyTasks: DashboardTaskSummary[];
   proposalSummary: Record<string, number>;
   stuckProposals: DashboardProposalSummary[];
@@ -95,6 +96,9 @@ export interface DashboardTaskSummary {
   affectedFiles: string[];
   verificationCommands: string[];
   acceptanceCriteria: string[];
+  dependsOn: string[];
+  result?: string;
+  updatedAt: string;
 }
 
 export interface DashboardProposalSummary {
@@ -194,9 +198,7 @@ export async function collectDashboard(
   const stuckProposals = proposals
     .filter((proposal) => STUCK_PROPOSAL_STATES.has(proposal.applyState))
     .map(toDashboardProposalSummary);
-  const readyTasks = pkg.graph.tasks
-    .filter((task) => task.status === "ready")
-    .map((task) => ({
+  const tasks = pkg.graph.tasks.map((task) => ({
       taskId: task.id,
       title: task.title,
       status: task.status,
@@ -206,8 +208,12 @@ export async function collectDashboard(
       description: task.description,
       affectedFiles: task.affectedFiles,
       verificationCommands: task.verificationCommands,
-      acceptanceCriteria: task.acceptanceCriteria
+      acceptanceCriteria: task.acceptanceCriteria,
+      dependsOn: task.dependsOn,
+      result: task.result,
+      updatedAt: task.updatedAt
     }));
+  const readyTasks = tasks.filter((task) => task.status === "ready");
   const warnings = blockers.filter((blocker) => blocker.severity === "warning").length;
   const blocking = blockers.length - warnings;
   const now = new Date().toISOString();
@@ -226,6 +232,7 @@ export async function collectDashboard(
     },
     runs,
     taskSummary: countBy(pkg.graph.tasks.map((task) => task.status)),
+    tasks,
     readyTasks,
     proposalSummary: countBy(proposals.map((proposal) => proposal.applyState)),
     stuckProposals,

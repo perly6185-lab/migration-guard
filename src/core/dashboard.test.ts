@@ -54,6 +54,8 @@ test("dashboard aggregates run index, ready tasks, proposals, progress and block
 
     assert.equal(report.runs.source, "index");
     assert.equal(report.readyTasks[0]?.taskId, "task-ready");
+    assert.equal(report.tasks.length, 2);
+    assert.equal(report.tasks.find((task) => task.taskId === "task-blocked")?.status, "blocked");
     assert.equal(report.proposalSummary["verification-failed"], 1);
     assert.equal(report.stuckProposals[0]?.proposalId, "patch-dashboard");
     assert.ok(blockerIds.includes("task:task-blocked"));
