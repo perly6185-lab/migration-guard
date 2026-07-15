@@ -6,6 +6,7 @@
 - Add project workflow progress and leased Scan, Baseline, Verify and Checkpoint actions to the operator UI.
 - Add a Recovery Center with checkpoint preflight plans, hash-confirmed apply and project run history.
 - Add reviewed single-task execution plans with path budgets, automatic checkpoints and post-task behavior verification.
+- Add provider-neutral AI Handoff Contract v1 with hashed evidence, explicit permissions, validation, explanation and redaction.
 - Fix UI smoke screenshots so fresh desktop/mobile captures are required instead of accepting stale files.
 - Discover built tests recursively with stable ordering and minimum file/test-count guards.
 - Split patch and issue-control pure models from orchestration and route CLI commands through a narrow registry.

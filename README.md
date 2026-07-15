@@ -90,6 +90,24 @@ low/medium-risk plan executes exactly one task, creates a checkpoint first, then
 captures and compares behavior evidence. High-risk tasks and stale plans fail closed;
 task execution jobs cannot be retried without creating a fresh plan.
 
+Create a provider-neutral, bounded AI handoff from one migration task, proposal
+replan, or the current one-shot next action. Each package writes JSON, Markdown
+and a compact prompt, carries explicit mutation permissions and path budgets,
+and references evidence by relative path plus SHA-256 instead of copying it:
+
+```bash
+node dist/cli.js handoff create --run latest --task <task-id>
+node dist/cli.js handoff create --run latest --proposal <proposal-id> --prompt
+node dist/cli.js handoff create --run latest --one-shot --max-changed-files 1
+node dist/cli.js handoff validate --input <handoff.json>
+node dist/cli.js handoff explain --input <handoff.json>
+node dist/cli.js handoff redact --input <handoff.json> --output <redacted.json>
+```
+
+`target-edit`, `github-mutation`, and `release-mutation` are distinct permissions.
+Generated packages deny remote and release mutations by default; those operations
+still require their existing reviewed confirmation flows.
+
 Evidence is written under `.migration-guard/releases/<release-run-id>/`. A
 skipped, missing, changed or historical pilot result is always NO-GO. Standalone
 pilot execution must pass the same run id to both commands:

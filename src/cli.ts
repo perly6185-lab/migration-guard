@@ -133,6 +133,7 @@ import {
 } from "./core/oneShot.js";
 import type { CompareReport, DiffDecisionClassification, Difference, MigrationAutomationMode, MigrationRun, ProposalGatePolicy, ProposedPatch } from "./types.js";
 import { dispatchCliCommand, type CliCommandRegistry } from "./core/cliDispatch.js";
+import { createHandoffContract, explainHandoffContract, readHandoffContract, redactHandoffContract, referenceHandoffArtifact, renderHandoffCompactPrompt, renderHandoffMarkdown, validateHandoffContract, writeHandoffContract } from "./core/handoff.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -175,13 +176,71 @@ async function main(argv: string[]): Promise<void> {
     "one-shot": commandOneShot, checkpoint: commandCheckpoint, resume: commandResume, rollback: commandRollback,
     task: commandTask, action: commandAction, proposal: commandProposal, "sync-issues": commandSyncIssues,
     "issue-control": commandIssueControl, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
-    preview: commandPreview, artifacts: commandArtifacts
+    preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff
   };
   if (!await dispatchCliCommand(args, handlers)) {
     console.error(`Unknown command: ${args.command}`);
     printHelp();
     process.exitCode = 1;
   }
+}
+
+async function commandHandoff(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "create";
+  const loaded = await loadFromArgs(args);
+  const input = stringOption(args, "input");
+  if (action === "validate" || action === "explain" || action === "redact") {
+    if (!input) throw new Error(`handoff ${action} requires --input <handoff.json>.`);
+    const contract = await readHandoffContract(path.resolve(process.cwd(), input));
+    if (action === "validate") {
+      const validation = await validateHandoffContract(contract);
+      console.log(JSON.stringify(validation, null, 2));
+      if (!validation.valid) process.exitCode = 1;
+      return;
+    }
+    if (action === "explain") { console.log(JSON.stringify(explainHandoffContract(contract), null, 2)); return; }
+    const redacted = redactHandoffContract(contract);
+    const output = path.resolve(process.cwd(), stringOption(args, "output") ?? `${input}.redacted.json`);
+    await writeJsonFile(output, redacted);
+    console.log(args.options.json ? JSON.stringify(redacted, null, 2) : `Wrote ${output}`);
+    return;
+  }
+  if (action !== "create") throw new Error(`Unknown handoff command: ${action}`);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const taskId = stringOption(args, "task");
+  const proposalId = stringOption(args, "proposal");
+  const oneShot = Boolean(args.options["one-shot"]);
+  if ([Boolean(taskId), Boolean(proposalId), oneShot].filter(Boolean).length !== 1) throw new Error("handoff create requires exactly one of --task <id>, --proposal <id>, or --one-shot.");
+  let task: { id: string; title: string; description: string; source: "task" | "proposal-replan" | "one-shot" };
+  let allowedPaths: string[] = [];
+  let commands: string[] = [];
+  let criteria: string[] = [];
+  const evidence = [];
+  const lineage: { runId?: string; taskId?: string; proposalId?: string } = { runId: pkg.run.id };
+  if (taskId) {
+    const item = pkg.graph.tasks.find((candidate) => candidate.id === taskId);
+    if (!item) throw new Error(`Task not found: ${taskId}`);
+    task = { id: item.id, title: item.title, description: item.description, source: "task" };
+    allowedPaths = item.affectedFiles; commands = item.verificationCommands; criteria = item.acceptanceCriteria; lineage.taskId = item.id;
+  } else if (proposalId) {
+    const proposal = (await listProposals(loaded, pkg)).find((candidate) => candidate.id === proposalId);
+    if (!proposal) throw new Error(`Proposal not found: ${proposalId}`);
+    task = { id: proposal.id, title: proposal.title, description: proposal.summary, source: "proposal-replan" };
+    allowedPaths = proposal.affectedFiles; commands = proposal.recommendedChecks; criteria = ["proposal verification passes", "behavior evidence has no unreviewed regression"]; lineage.proposalId = proposal.id; lineage.taskId = proposal.taskId;
+    for (const [filePath, kind] of [[proposal.replanBriefPath, "replan-brief"], [proposal.replanContextPath, "replan-context"], [proposal.patchPath, "patch"]] as const) if (filePath && await pathExists(filePath)) evidence.push(await referenceHandoffArtifact(pkg.run.targetRoot, filePath, kind));
+  } else {
+    const status = await collectOneShotStatus(loaded);
+    if (!status.nextAction) throw new Error("One-shot workflow has no pending next action.");
+    task = { id: status.nextAction.stepId, title: status.nextAction.title, description: status.nextAction.reason, source: "one-shot" };
+    commands = status.nextAction.command ? [status.nextAction.command] : []; criteria = ["the selected one-shot step is reported as passed"];
+    for (const [filePath, kind] of [[status.runbookPath, "one-shot-runbook"], [status.latestComparePath, "compare"]] as const) if (filePath && await pathExists(filePath)) evidence.push(await referenceHandoffArtifact(pkg.run.targetRoot, filePath, kind));
+  }
+  const maxChangedFiles = numberOption(args, "max-changed-files") ?? Math.max(allowedPaths.length, oneShot ? 1 : 0);
+  const contract = await createHandoffContract({ goal: pkg.run.goal, task, permissions: { granted: [allowedPaths.length || oneShot ? "target-edit" : "read-only"], denied: ["github-mutation", "release-mutation"] }, scope: { root: pkg.run.targetRoot, allowedPaths, maxChangedFiles }, forbiddenActions: ["edit files outside allowedPaths", "change credentials or secret stores", "push commits, tags, releases, or remote issues", "disable or bypass verification"], evidence, suggestedCommands: commands, acceptanceCriteria: criteria, budget: { maxChangedFiles, maxCommands: commands.length, note: stringOption(args, "budget") }, lineage });
+  const written = await writeHandoffContract(pkg.run.targetRoot, contract, stringOption(args, "output-dir") ?? path.join(loaded.artifactsDir, "migration-runs", pkg.run.id, "handoffs"));
+  if (args.options.json) console.log(JSON.stringify(written, null, 2));
+  else if (args.options.prompt) console.log(renderHandoffCompactPrompt(written));
+  else { console.log(renderHandoffMarkdown(written)); console.log(`Wrote ${written.output?.jsonPath}`); }
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -1975,6 +2034,9 @@ Usage:
   migration-guard tasks [--run <id|latest>] [--json]
   migration-guard actions [--run <id|latest>] [--json]
   migration-guard actions handoff [--run <id|latest>] [--create-replans] [--repair-briefs] [--json]
+  migration-guard handoff create [--run <id|latest>] (--task <id>|--proposal <id>|--one-shot) [--max-changed-files <n>] [--budget <text>] [--output-dir <path>] [--json|--prompt]
+  migration-guard handoff validate|explain --input <handoff.json>
+  migration-guard handoff redact --input <handoff.json> [--output <path>] [--json]
   migration-guard report [--run <id|latest>] [--json]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot runbook [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--json]

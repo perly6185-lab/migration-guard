@@ -173,6 +173,8 @@ Artifacts：
 
 目标：把现有 replan brief、one-shot context 和 issue-control handoff 收敛为一个 provider-neutral 协作协议。
 
+状态：已完成，见 `docs/PHASE_167_REPORT.md`。
+
 交付内容：
 
 - 定义 versioned handoff schema：目标、允许路径、禁止动作、输入证据、建议命令、验收标准、预算和 lineage。
