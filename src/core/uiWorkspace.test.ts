@@ -25,6 +25,14 @@ test("workspace preview rejects identical or nested source and target roots", as
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("recovery query returns an empty state before the first migration run", async () => {
+  const fixture = await workspaceFixture();
+  try {
+    assert.deepEqual(await collectUiRecovery(fixture.host), { version: 1, checkpoints: [] });
+    await assert.rejects(collectUiRecovery(fixture.host, "missing-run"), /not found|ENOENT/);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
 test("workspace creation writes detected config, initial run and atomic registry", async () => {
   const fixture = await workspaceFixture();
   try {

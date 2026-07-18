@@ -133,9 +133,12 @@ import {
 } from "./core/oneShot.js";
 import type { CompareReport, DiffDecisionClassification, Difference, MigrationAutomationMode, MigrationRun, ProposalGatePolicy, ProposedPatch } from "./types.js";
 import { dispatchCliCommand, type CliCommandRegistry } from "./core/cliDispatch.js";
+import { validateCliCommandRegistry } from "./core/cliRegistry.js";
 import { createHandoffContract, explainHandoffContract, readHandoffContract, redactHandoffContract, referenceHandoffArtifact, renderHandoffCompactPrompt, renderHandoffMarkdown, validateHandoffContract, writeHandoffContract } from "./core/handoff.js";
 import { applyHandoffResultImport, planHandoffResultImport, renderHandoffResultImportPlan } from "./core/handoffResult.js";
 import { listBuiltinPolicies } from "./core/policy.js";
+import { collectSelfRefactorInventory, createSelfRefactorDriver, createSelfRefactorPlan, selfRefactorPlanHash, writeSelfRefactorArtifact } from "./core/selfRefactor.js";
+import { createSelfRefactorPromotionHandoff, crossValidateSelfRefactor, rollbackSelfRefactorCheckpoint, runSelfRefactorStep } from "./core/selfRefactorExecution.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -177,14 +180,72 @@ async function main(argv: string[]): Promise<void> {
     tasks: commandTasks, actions: commandActions, report: commandReport, readiness: commandReadiness,
     "one-shot": commandOneShot, checkpoint: commandCheckpoint, resume: commandResume, rollback: commandRollback,
     task: commandTask, action: commandAction, proposal: commandProposal, "sync-issues": commandSyncIssues,
-    "issue-control": commandIssueControl, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
+    "issue-control": commandIssueControl, "self-refactor": commandSelfRefactor, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
     preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff, policy: commandPolicy
   };
+  validateCliCommandRegistry(handlers);
   if (!await dispatchCliCommand(args, handlers)) {
     console.error(`Unknown command: ${args.command}`);
     printHelp();
     process.exitCode = 1;
   }
+}
+
+async function commandSelfRefactor(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "plan";
+  const root = path.resolve(stringOption(args, "root") ?? process.cwd());
+  const artifactsDir = path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard");
+  if (action === "driver") {
+    console.log(JSON.stringify(await createSelfRefactorDriver(root, artifactsDir), null, 2));
+    return;
+  }
+  if (action === "run") {
+    const planPath = stringOption(args, "plan");
+    const driverEvidencePath = stringOption(args, "driver-evidence");
+    if (!planPath || !driverEvidencePath) throw new Error("self-refactor run requires --plan and --driver-evidence.");
+    console.log(JSON.stringify(await runSelfRefactorStep({ root, artifactsDir, planPath, driverEvidencePath, execute: Boolean(args.options.execute), taskId: stringOption(args, "task"), confirmation: stringOption(args, "confirm"), editCommand: stringOption(args, "edit-command"), maxChangedFiles: numberOption(args, "max-changed-files") }), null, 2));
+    return;
+  }
+  if (action === "cross-validate") {
+    const driverEvidencePath = stringOption(args, "driver-evidence");
+    const candidatePath = stringOption(args, "candidate");
+    const runReportPath = stringOption(args, "run-report");
+    if (!driverEvidencePath || !candidatePath || !runReportPath) throw new Error("self-refactor cross-validate requires --driver-evidence, --run-report and --candidate.");
+    console.log(JSON.stringify(await crossValidateSelfRefactor({ artifactsDir, driverEvidencePath, candidatePath, runReportPath }), null, 2));
+    return;
+  }
+  if (action === "promote") {
+    const crossValidationPath = stringOption(args, "cross-validation");
+    const confirmation = stringOption(args, "confirm");
+    if (!crossValidationPath || !confirmation) throw new Error("self-refactor promote requires --cross-validation and --confirm.");
+    console.log(JSON.stringify(await createSelfRefactorPromotionHandoff({ artifactsDir, crossValidationPath, confirmation }), null, 2));
+    return;
+  }
+  if (action === "rollback") {
+    const checkpointPath = stringOption(args, "checkpoint");
+    const confirmation = stringOption(args, "confirm");
+    if (!checkpointPath || !confirmation) throw new Error("self-refactor rollback requires --checkpoint and --confirm.");
+    console.log(JSON.stringify(await rollbackSelfRefactorCheckpoint(checkpointPath, confirmation), null, 2));
+    return;
+  }
+  const inventory = await collectSelfRefactorInventory(root, numberOption(args, "max-file-lines") ?? 700);
+  if (action === "inventory") {
+    if (args.options.apply) await writeSelfRefactorArtifact(artifactsDir, "latest-inventory.json", inventory);
+    console.log(JSON.stringify(inventory, null, 2));
+    return;
+  }
+  if (action === "plan") {
+    const target = stringOption(args, "target") ?? "issueControl";
+    const goal = stringOption(args, "goal") ?? `Split ${target} into bounded modules without behavior changes`;
+    const plan = createSelfRefactorPlan(inventory, target, goal);
+    if (args.options.apply) {
+      await writeSelfRefactorArtifact(artifactsDir, `${plan.id}.json`, plan);
+      await writeSelfRefactorArtifact(artifactsDir, "latest-plan.json", plan);
+    }
+    console.log(JSON.stringify({ ...plan, reviewHash: selfRefactorPlanHash(plan) }, null, 2));
+    return;
+  }
+  throw new Error(`Unknown self-refactor command: ${action}`);
 }
 
 async function commandPolicy(args: ParsedArgs): Promise<void> {
@@ -1580,6 +1641,7 @@ async function commandIssueControl(args: ParsedArgs): Promise<void> {
         sourceRoot,
         targetRoot,
         runIssueAuto: !args.options["skip-issue-auto"],
+        issueAutoRunner: autoIssueControl,
         issueAuto: {
           repo: stringOption(args, "repo"),
           state: issueStateOption(args),
@@ -2106,6 +2168,13 @@ Usage:
   migration-guard issue-control advance-scheduler [--input <state.json>] [--execute] [--json]
   migration-guard issue-control sync-gate [--input <state.json>] [--run <id|latest>] [--labels a,b] [--json]
   migration-guard issue-control bootstrap [--source <path>|config MG_SOURCE_ROOT] [--target <path>|config targetRoot] [--execute] [--verify] [--skip-issue-auto] [--json]
+  migration-guard self-refactor inventory [--root <path>] [--max-file-lines <n>] [--apply]
+  migration-guard self-refactor plan [--root <path>] [--target <module>] [--goal <text>] [--apply]
+  migration-guard self-refactor driver [--root <clean-repo>] [--artifacts-dir <path>]
+  migration-guard self-refactor run --plan <plan.json> --driver-evidence <driver.json> [--task <id>] [--execute --confirm <plan-hash> --edit-command <cmd> --max-changed-files <n>]
+  migration-guard self-refactor cross-validate --driver-evidence <driver.json> --run-report <passed-run.json> --candidate <candidate.tgz>
+  migration-guard self-refactor promote --cross-validation <report.json> --confirm <report-hash>
+  migration-guard self-refactor rollback --checkpoint <checkpoint.json> --confirm <checkpoint-hash>
   migration-guard ci verify --baseline <path> [--run <id|latest>]
   migration-guard contract capture --source <url>
   migration-guard contract test --target <url> --contract <path>

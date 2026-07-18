@@ -312,6 +312,21 @@ test("artifact migration freezes v1 schema and refuses unsupported future artifa
   }
 });
 
+test("loadConfig rejects malformed structures and unsafe numeric limits", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-invalid-config-"));
+  const configPath = path.join(dir, ".migration-guard.json");
+  try {
+    await writeFile(configPath, JSON.stringify({ schemaVersion: 1, targetRoot: 42, artifactsDir: ".migration-guard" }));
+    await assert.rejects(() => loadConfig(configPath), /targetRoot must be a non-empty string/);
+    await writeFile(configPath, JSON.stringify({ schemaVersion: 1, targetRoot: ".", artifactsDir: ".migration-guard", output: { maxOutputBytes: 0 } }));
+    await assert.rejects(() => loadConfig(configPath), /output\.maxOutputBytes must be a positive integer/);
+    await writeFile(configPath, JSON.stringify({ schemaVersion: 1, targetRoot: ".", artifactsDir: ".migration-guard", checks: [{ name: "test", command: "npm test", timeoutMs: "soon" }] }));
+    await assert.rejects(() => loadConfig(configPath), /checks\[0\]\.timeoutMs must be a positive integer/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("artifact migration wraps v1 snapshot, compare, and UI job artifacts in v2 envelopes", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-core-artifact-migrate-"));
   const configPath = path.join(dir, ".migration-guard.json");

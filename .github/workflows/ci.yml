@@ -58,3 +58,11 @@ jobs:
       - name: Install modes smoke
         if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
         run: npm run install:smoke
+
+      - name: Package golden path
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: npm run package:golden
+
+      - name: Beta readiness
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: npm run beta:readiness

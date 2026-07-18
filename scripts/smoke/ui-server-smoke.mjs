@@ -217,6 +217,20 @@ function findChrome() {
 }
 
 async function screenshot(chrome, url, windowSize, outputPath) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await captureScreenshot(chrome, url, windowSize, outputPath);
+      return;
+    } catch (error) {
+      lastError = error;
+      await rm(outputPath, { force: true });
+    }
+  }
+  throw lastError;
+}
+
+async function captureScreenshot(chrome, url, windowSize, outputPath) {
   const profile = await mkdtemp(path.join(os.tmpdir(), "migration-guard-chrome-"));
   await rm(outputPath, { force: true });
   const startedAt = Date.now();
@@ -256,7 +270,7 @@ async function screenshot(chrome, url, windowSize, outputPath) {
 }
 
 async function waitForScreenshot(outputPath) {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
     const stats = await import("node:fs/promises").then((fs) => fs.stat(outputPath)).catch(() => undefined);
     if (stats?.isFile() && stats.size > 1000) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
