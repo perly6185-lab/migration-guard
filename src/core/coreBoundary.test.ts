@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { createAddFilePatch, normalizePatchPath } from "./patchModel.js";
 import { parseIssueControlMetadata, proposalFromCommand, toIssueControlPlanItem, toIssueControlRemoteIssue } from "./issueControlModel.js";
 
@@ -39,4 +41,15 @@ test("issue-control model keeps external issues outside automated execution", ()
   }));
   assert.equal(plan.action, "review-external");
   assert.equal(plan.executable, false);
+});
+
+test("pure core models do not depend on IO or orchestration modules", async () => {
+  const forbidden = ["node:fs", "node:child_process", "./config.js", "./exec.js", "./issueControl.js", "./patch.js"];
+  for (const file of ["patchModel.ts", "issueControlModel.ts"]) {
+    const source = await readFile(path.join(process.cwd(), "src", "core", file), "utf8");
+    const runtimeImports = source.split(/\r?\n/).filter((line) => /^import (?!type\b)/.test(line)).join("\n");
+    for (const dependency of forbidden) {
+      assert.equal(runtimeImports.includes(`from \"${dependency}\"`), false, `${file} must not runtime-import ${dependency}`);
+    }
+  }
 });

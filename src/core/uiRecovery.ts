@@ -7,7 +7,7 @@ import type { LoadedConfig, MigrationCheckpoint } from "../types.js";
 
 export interface UiRecoveryReport {
   version: 1;
-  runId: string;
+  runId?: string;
   checkpoints: MigrationCheckpoint[];
 }
 
@@ -17,7 +17,13 @@ export interface UiRecoveryPlanArtifact extends CheckpointRollbackPlan {
 }
 
 export async function collectUiRecovery(loaded: LoadedConfig, runSelector = "latest"): Promise<UiRecoveryReport> {
-  const pkg = await loadRunPackage(loaded, runSelector);
+  const pkg = await loadRunPackage(loaded, runSelector).catch((error: unknown) => {
+    if (runSelector === "latest" && error instanceof Error && error.message.includes("No migration run found")) {
+      return undefined;
+    }
+    throw error;
+  });
+  if (!pkg) return { version: 1, checkpoints: [] };
   return { version: 1, runId: pkg.run.id, checkpoints: (await listCheckpoints(loaded, pkg.run.id)).reverse() };
 }
 

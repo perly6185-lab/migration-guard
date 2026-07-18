@@ -21,6 +21,9 @@ try {
   const help = await run(bin, ["--help"], tempRoot);
   assert.match(help.stdout, /Migration Guard/);
   assert.match(help.stdout, /migration-guard baseline/);
+  const selfInventory = JSON.parse((await run(bin, ["self-refactor", "inventory", "--root", tempRoot], tempRoot)).stdout);
+  assert.equal(selfInventory.version, 1);
+  assert.ok(Array.isArray(selfInventory.modules));
   await run(bin, ["init", "--target", "fixture"], tempRoot);
   const config = JSON.parse(await readFile(path.join(tempRoot, ".migration-guard.json"), "utf8"));
   assert.equal(config.targetRoot, "fixture");

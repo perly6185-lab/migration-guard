@@ -98,11 +98,12 @@ export async function loadConfig(configPath?: string, startDir = process.cwd(), 
     throw new Error(`Could not find ${CONFIG_FILE_NAME}. Run "migration-guard init" first.`);
   }
 
-  const raw = await readJsonFile<RawMigrationGuardConfig>(resolvedConfigPath);
+  const raw = await readJsonFile<unknown>(resolvedConfigPath);
   validateConfigSchema(raw, resolvedConfigPath);
   const baseDir = path.dirname(resolvedConfigPath);
   const selectedProfile = profileName ?? process.env.MG_PROFILE;
   const config = interpolateConfig(mergeWithDefaults(applyConfigProfile(raw, selectedProfile, resolvedConfigPath)));
+  validateResolvedConfig(config, resolvedConfigPath);
   const targetRoot = resolveMaybeRelative(baseDir, config.targetRoot);
   const artifactsDir = resolveMaybeRelative(baseDir, config.artifactsDir);
   const policy = await resolvePolicy(config.policy, baseDir);
@@ -171,11 +172,60 @@ function mergeWithDefaults(raw: RawMigrationGuardConfig): MigrationGuardConfig {
   };
 }
 
-function validateConfigSchema(raw: RawMigrationGuardConfig, configPath: string): void {
+function validateConfigSchema(raw: unknown, configPath: string): asserts raw is RawMigrationGuardConfig {
+  if (!isRecord(raw)) throw new Error(`Invalid config in ${configPath}: root must be an object.`);
   if (raw.schemaVersion !== undefined && raw.schemaVersion !== 1) {
     throw new Error(`Unsupported config schemaVersion ${String(raw.schemaVersion)} in ${configPath}. Expected 1.`);
   }
+  if (raw.profiles !== undefined && !isRecord(raw.profiles)) invalid(configPath, "profiles must be an object");
 }
+
+function validateResolvedConfig(config: MigrationGuardConfig, configPath: string): void {
+  requireString(config.targetRoot, "targetRoot", configPath);
+  requireString(config.artifactsDir, "artifactsDir", configPath);
+  requireStringArray(config.ignore, "ignore", configPath);
+  if (!Array.isArray(config.checks)) invalid(configPath, "checks must be an array");
+  config.checks.forEach((check, index) => {
+    if (!isRecord(check)) invalid(configPath, `checks[${index}] must be an object`);
+    requireString(check.name, `checks[${index}].name`, configPath);
+    requireString(check.command, `checks[${index}].command`, configPath);
+    optionalString(check.cwd, `checks[${index}].cwd`, configPath);
+    optionalPositiveInteger(check.timeoutMs, `checks[${index}].timeoutMs`, configPath);
+    optionalBoolean(check.critical, `checks[${index}].critical`, configPath);
+    optionalBoolean(check.enabled, `checks[${index}].enabled`, configPath);
+  });
+  if (!Array.isArray(config.probes)) invalid(configPath, "probes must be an array");
+  config.probes.forEach((probe, index) => {
+    if (!isRecord(probe)) invalid(configPath, `probes[${index}] must be an object`);
+    requireString(probe.name, `probes[${index}].name`, configPath);
+    if (probe.type !== "command" && probe.type !== "http") invalid(configPath, `probes[${index}].type must be command or http`);
+    requireString(probe.type === "command" ? probe.command : probe.url, `probes[${index}].${probe.type === "command" ? "command" : "url"}`, configPath);
+    optionalPositiveInteger(probe.timeoutMs, `probes[${index}].timeoutMs`, configPath);
+    optionalBoolean(probe.enabled, `probes[${index}].enabled`, configPath);
+  });
+  if (!isRecord(config.output)) invalid(configPath, "output must be an object");
+  requirePositiveInteger(config.output.maxOutputBytes, "output.maxOutputBytes", configPath);
+  if (!isRecord(config.compare)) invalid(configPath, "compare must be an object");
+  for (const key of ["failOnCheckRegression", "failOnProbeDiff", "allowInheritedFailures", "failOnChangedFailure"] as const) {
+    optionalBoolean(config.compare[key], `compare.${key}`, configPath, key === "failOnCheckRegression" || key === "failOnProbeDiff");
+  }
+  if (!isRecord(config.proposalGate)) invalid(configPath, "proposalGate must be an object");
+  for (const key of ["defaultPolicy", "batchPolicy"] as const) {
+    if (!(["fail-fast", "collect-all"] as unknown[]).includes(config.proposalGate[key])) invalid(configPath, `proposalGate.${key} must be fail-fast or collect-all`);
+  }
+  if (config.variables !== undefined) {
+    if (!isRecord(config.variables) || Object.values(config.variables).some((value) => typeof value !== "string")) invalid(configPath, "variables values must be strings");
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, any> { return value !== null && typeof value === "object" && !Array.isArray(value); }
+function invalid(configPath: string, message: string): never { throw new Error(`Invalid config in ${configPath}: ${message}.`); }
+function requireString(value: unknown, name: string, configPath: string): asserts value is string { if (typeof value !== "string" || value.length === 0) invalid(configPath, `${name} must be a non-empty string`); }
+function optionalString(value: unknown, name: string, configPath: string): void { if (value !== undefined) requireString(value, name, configPath); }
+function requireStringArray(value: unknown, name: string, configPath: string): void { if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) invalid(configPath, `${name} must be an array of strings`); }
+function requirePositiveInteger(value: unknown, name: string, configPath: string): void { if (!Number.isInteger(value) || Number(value) <= 0) invalid(configPath, `${name} must be a positive integer`); }
+function optionalPositiveInteger(value: unknown, name: string, configPath: string): void { if (value !== undefined) requirePositiveInteger(value, name, configPath); }
+function optionalBoolean(value: unknown, name: string, configPath: string, required = false): void { if ((required && value === undefined) || (value !== undefined && typeof value !== "boolean")) invalid(configPath, `${name} must be a boolean`); }
 
 function applyConfigProfile(
   raw: RawMigrationGuardConfig,

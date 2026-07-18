@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { spawn } from "node:child_process";
 
 const root = process.cwd();
 const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 assert.equal(pkg.version, "0.3.0-beta.1");
 const manifest = JSON.parse(await readFile(path.join(root, "scripts/ci/test-manifest.json"), "utf8"));
+await runTests();
 const checks = [
   await fileCheck("golden fixtures", "scripts/smoke/golden-path-smoke.mjs", ["single-typescript", "pnpm-workspace", "go-module", "python-package"]),
   await fileCheck("handoff contract", "src/core/handoff.test.ts", ["portable renderings", "redacts secrets"]),
@@ -14,7 +16,7 @@ const checks = [
   await fileCheck("failure repair", "src/core/repairLoopCli.test.ts", ["repair loop replans, retries, verifies, and accepts"]),
   await fileCheck("worker fencing", "src/core/uiJobStore.test.ts", ["stale fencing tokens"]),
   await fileCheck("policy presets", "src/core/policy.test.ts", ["cannot loosen", "work offline"]),
-  { id: "test-floor", passed: manifest.minimumTests >= 157, evidence: `minimumTests=${manifest.minimumTests}` }
+  { id: "test-suite", passed: true, evidence: `run-tests.mjs passed; minimumTests=${manifest.minimumTests}` }
 ];
 for (const name of ["js-ts-monorepo", "go-service", "conservative-migration"]) checks.push(await fileCheck(`preset:${name}`, `configs/policies/${name}.json`, ["maxChangedFiles", "artifactRetentionRuns"]));
 const compatibility = [
@@ -36,3 +38,4 @@ if (!passed) process.exitCode = 1;
 
 async function fileCheck(id, relative, needles) { const content = await readFile(path.join(root, relative), "utf8").catch(() => ""); const missing = needles.filter((needle) => !content.includes(needle)); return { id, passed: missing.length === 0, evidence: relative, ...(missing.length ? { missing } : {}) }; }
 function render(report) { return [`# 0.3.0 Beta Readiness`, "", `- Status: ${report.status}`, `- Version: ${report.packageVersion}`, `- Report hash: ${report.reportHash}`, "", "## Checks", "", ...report.checks.map((item) => `- ${item.passed ? "passed" : "failed"}: ${item.id} (${item.evidence})`), "", "## Compatibility", "", "| Artifact | Current | Reads | Writes |", "| --- | --- | --- | --- |", ...report.compatibility.map((item) => `| ${item.artifact} | ${item.current} | ${item.reads.join(", ")} | ${item.writes} |`), "", `Next: ${report.nextAction}`, ""].join("\n"); }
+function runTests() { return new Promise((resolve, reject) => { const child = spawn(process.execPath, ["scripts/ci/run-tests.mjs"], { cwd: root, stdio: "inherit", windowsHide: true }); child.on("error", reject); child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`test suite failed with ${code}`))); }); }

@@ -72,6 +72,47 @@ npm run release:gate
 npm run release:gate -- --resume <release-run-id>
 ```
 
+## Self-refactor foundation
+
+Migration Guard can inventory and plan a bounded refactor of its own source tree.
+Inventory and plan are read-only unless `--apply` is supplied:
+
+```bash
+node dist/cli.js self-refactor inventory --max-file-lines 700
+node dist/cli.js self-refactor plan --target issueControl --goal "Split issue control into bounded modules"
+node dist/cli.js self-refactor plan --target issueControl --goal "Split issue control into bounded modules" --apply
+```
+
+A stable self-refactor driver must come from a clean Git worktree. The driver
+command creates an npm tarball and binds its commit, package version and SHA-256
+to `.migration-guard/self-refactor/<driver-id>/driver.json`:
+
+```bash
+node dist/cli.js self-refactor driver
+```
+
+After a reviewed plan and immutable driver exist, one bounded task can be planned
+or executed, then a candidate tarball can be cross-validated and handed off for
+manual promotion:
+
+```bash
+node dist/cli.js self-refactor run --plan <plan.json> --driver-evidence <driver.json> --task <task-id>
+node dist/cli.js self-refactor run --plan <plan.json> --driver-evidence <driver.json> --task <task-id> --execute
+node dist/cli.js self-refactor cross-validate --driver-evidence <driver.json> --run-report <passed-run.json> --candidate <candidate.tgz>
+node dist/cli.js self-refactor promote --cross-validation <report.json> --confirm <report-hash>
+```
+
+Execution requires the `reviewHash` printed by `self-refactor plan` as
+`--confirm`. Extraction tasks also require a reviewed `--edit-command`; changes
+outside the task paths, new dependency cycles, runtime export drift, growth in
+already oversized modules, or more than the configured changed-file budget fail
+the run. Checkpoints include tracked patches and untracked file snapshots and can
+be restored with `self-refactor rollback` plus the checkpoint hash.
+
+The current foundation does not edit source, promote a candidate, publish, or
+tag. Later execution stages must use the immutable driver rather than the
+candidate workspace's changing `dist/` output.
+
 The operator UI starts with a project selector and a **New project** workflow.
 Enter separate local source and target repository directories plus the refactoring
 goal, run read-only detection, then confirm creation. Confirmation writes a detected

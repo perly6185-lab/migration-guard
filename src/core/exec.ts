@@ -24,6 +24,7 @@ export function runShellCommand(command: string, options: RunShellCommandOptions
     const child = spawn(command, {
       cwd: options.cwd,
       shell: true,
+      detached: process.platform !== "win32",
       windowsHide: true,
       env: options.env ? { ...process.env, ...options.env } : process.env
     });
@@ -52,7 +53,7 @@ export function runShellCommand(command: string, options: RunShellCommandOptions
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      terminateProcessTree(child.pid);
     }, options.timeoutMs);
 
     const finish = (result: Pick<CommandExecutionResult, "exitCode" | "signal" | "error">) => {
@@ -92,4 +93,33 @@ export function runShellCommand(command: string, options: RunShellCommandOptions
       });
     });
   });
+}
+
+function terminateProcessTree(pid: number | undefined): void {
+  if (pid === undefined) return;
+  if (process.platform === "win32") {
+    const killer = spawn("taskkill", ["/pid", String(pid), "/t", "/f"], {
+      stdio: "ignore",
+      windowsHide: true
+    });
+    killer.on("error", () => undefined);
+    return;
+  }
+
+  signalProcessGroup(pid, "SIGTERM");
+  const forceTimer = setTimeout(() => signalProcessGroup(pid, "SIGKILL"), 1000);
+  forceTimer.unref();
+}
+
+function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // The process may have exited between the group and direct kill attempts.
+    }
+  }
 }

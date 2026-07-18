@@ -31,7 +31,9 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "22.20.0",
+    "@types/node": "22.20.0"
+  },
+  "dependencies": {
     "typescript": "5.9.3"
   },
   "engines": {

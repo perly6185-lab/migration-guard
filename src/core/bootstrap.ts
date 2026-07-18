@@ -3,7 +3,6 @@ import path from "node:path";
 import { compareSnapshots } from "./compare.js";
 import { runShellCommand } from "./exec.js";
 import { ensureDir, pathExists, writeJsonFile, writeTextFile } from "./files.js";
-import { autoIssueControl, type IssueControlAutoReport, type IssueControlPullOptions } from "./issueControl.js";
 import { renderCompareReport } from "./markdown.js";
 import { captureSnapshot, saveSnapshot } from "./snapshot.js";
 import { writeCompareArtifactFile } from "./artifactV2.js";
@@ -20,7 +19,8 @@ export interface BootstrapMd2VerifyOptions {
   targetRoot?: string;
   pnpmCommand?: string;
   runIssueAuto?: boolean;
-  issueAuto?: Pick<IssueControlPullOptions, "repo" | "state" | "labels" | "fetchImpl" | "retry">;
+  issueAuto?: { repo?: string; state?: "open" | "closed" | "all"; labels?: string[]; fetchImpl?: typeof fetch; retry?: { maxAttempts?: number; baseDelayMs?: number; maxDelayMs?: number } };
+  issueAutoRunner?: (loaded: LoadedConfig, options: BootstrapMd2VerifyOptions["issueAuto"] & { execute: false; maxIterations: 1 }) => Promise<{ status: "planned" | "complete" | "failed" | "blocked"; outputPath?: string; markdownPath?: string }>;
 }
 
 export interface BootstrapMd2Manifest {
@@ -89,7 +89,7 @@ export interface BootstrapMd2VerifyReport {
   compareMarkdownPath?: string;
   issueAutoPath?: string;
   issueAutoMarkdownPath?: string;
-  issueAutoStatus?: IssueControlAutoReport["status"];
+  issueAutoStatus?: "planned" | "complete" | "failed" | "blocked";
   error?: string;
   recommendedNextActions: string[];
   outputPath?: string;
@@ -253,7 +253,8 @@ export async function verifyBootstrapMd2Target(
     });
 
     if (options.runIssueAuto) {
-      const auto = await autoIssueControl(verifyLoaded, {
+      if (!options.issueAutoRunner) throw new Error("Bootstrap issue auto requires an injected issueAutoRunner.");
+      const auto = await options.issueAutoRunner(verifyLoaded, {
         ...options.issueAuto,
         execute: false,
         maxIterations: 1
