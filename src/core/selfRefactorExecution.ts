@@ -342,8 +342,10 @@ async function inspectInstalledPackage(tarballPath: string): Promise<{ help: str
 
 export function normalizeSelfRefactorInitContract(output: string, fixtureRoot: string): string {
   const root = path.resolve(fixtureRoot);
+  const aliases = [...new Set([fixtureRoot, fixtureRoot.replace(/\\/g, "/"), fixtureRoot.replace(/\//g, "\\")])]
+    .sort((left, right) => right.length - left.length);
   try {
-    const normalized = normalizeInitContractValue(JSON.parse(output) as unknown, root);
+    const normalized = normalizeInitContractValue(JSON.parse(output) as unknown, root, aliases);
     return `${JSON.stringify(normalized)}\n`;
   } catch {
     return output.replace(/\r\n/g, "\n")
@@ -352,8 +354,14 @@ export function normalizeSelfRefactorInitContract(output: string, fixtureRoot: s
   }
 }
 
-function normalizeInitContractValue(value: unknown, fixtureRoot: string): unknown {
+function normalizeInitContractValue(value: unknown, fixtureRoot: string, aliases: string[]): unknown {
   if (typeof value === "string") {
+    for (const alias of aliases) {
+      if (value === alias) return "<fixture>";
+      if (value.startsWith(`${alias}/`) || value.startsWith(`${alias}\\`)) {
+        return `<fixture>/${value.slice(alias.length + 1).replace(/\\/g, "/")}`;
+      }
+    }
     const resolved = path.resolve(value);
     const relative = path.relative(fixtureRoot, resolved);
     if (value === fixtureRoot || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
@@ -364,12 +372,12 @@ function normalizeInitContractValue(value: unknown, fixtureRoot: string): unknow
       .split(fixtureRoot.replace(/\\/g, "/")).join("<fixture>");
   }
   if (Array.isArray(value)) {
-    return value.map((item) => normalizeInitContractValue(item, fixtureRoot));
+    return value.map((item) => normalizeInitContractValue(item, fixtureRoot, aliases));
   }
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value as Record<string, unknown>)
       .sort(([left], [right]) => left.localeCompare(right, "en"))
-      .map(([key, item]) => [key, normalizeInitContractValue(item, fixtureRoot)]));
+      .map(([key, item]) => [key, normalizeInitContractValue(item, fixtureRoot, aliases)]));
   }
   return value;
 }
