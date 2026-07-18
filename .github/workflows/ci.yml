@@ -34,6 +34,10 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Setup pnpm for workspace smoke
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: npm install --global pnpm@9
+
       - name: Test
         run: npm test
 
