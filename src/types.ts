@@ -618,7 +618,8 @@ export type MigrationActionPatchTemplate =
   | "ui-smoke-probe"
   | "ts-structural-probe"
   | "adapter-fixture-probe"
-  | "normalization-probe";
+  | "normalization-probe"
+  | "cross-language-contract-probe";
 export type ProposalCheckKind = "unit-test" | "type-check" | "ui-probe" | "contract-probe" | "build" | "lint" | "other";
 export type ProposalCheckPhase = "pre-preview" | "preview" | "post-preview";
 export type ProposalCheckResourceProfile = "default" | "cpu-bound" | "io-bound" | "browser";

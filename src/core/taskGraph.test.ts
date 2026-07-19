@@ -106,6 +106,12 @@ test("probe template registry selects shared TS before UI smoke and renders reas
   assert.match(shared.reason, /packages\/shared/);
   assert.equal(web.template, "ui-smoke-probe");
   assert.equal(getProbeTemplateDefinition("ui-smoke-probe").needsPreview, true);
+  const crossLanguage = selectProbeTemplate({
+    id: "action-cl4-port-missing-http-routes",
+    affectedFiles: ["src/main.py"]
+  });
+  assert.equal(crossLanguage.template, "cross-language-contract-probe");
+  assert.equal(getProbeTemplateDefinition("cross-language-contract-probe").defaultCheckKind, "contract-probe");
 
   const text = renderActionPlan({
     version: 1,

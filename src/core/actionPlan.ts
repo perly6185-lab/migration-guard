@@ -9,6 +9,9 @@ export function actionPlanPath(loaded: LoadedConfig, pkg: MigrationRunPackage): 
   if (pkg.run.adapter === "md-monorepo") {
     return path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "md-monorepo-action-plan.json");
   }
+  if (pkg.run.adapter === "cross-language-http") {
+    return path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "cross-language-http-action-plan.json");
+  }
   return path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "pnpm-vite-vue-action-plan.json");
 }
 

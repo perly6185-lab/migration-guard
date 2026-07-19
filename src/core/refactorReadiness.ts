@@ -331,6 +331,8 @@ function createTemplateCoverageCriterion(
 ): RefactorReadinessCriterion {
   const requiredTemplates: Array<NonNullable<MigrationAction["templateSelection"]>["template"]> = pkg.run.adapter === "md-monorepo"
     ? ["ts-structural-probe", "renderer-probe", "api-contract-probe"]
+    : pkg.run.adapter === "cross-language-http"
+      ? ["cross-language-contract-probe"]
     : [];
   if (requiredTemplates.length === 0) {
     return {
@@ -361,7 +363,9 @@ function createTemplateCoverageCriterion(
     title: "Template coverage",
     status: "blocked",
     summary: `missing required template(s): ${missing.join(", ")}`,
-    nextAction: "Regenerate or add proposals so shared TS, renderer, and API contract lanes are all represented."
+    nextAction: pkg.run.adapter === "cross-language-http"
+      ? "Regenerate or add proposals so the cross-language contract probe lane is represented."
+      : "Regenerate or add proposals so shared TS, renderer, and API contract lanes are all represented."
   };
 }
 
@@ -479,7 +483,9 @@ async function loadOptionalActionPlan(
 function actionPlanPath(loaded: LoadedConfig, pkg: MigrationRunPackage): string {
   const fileName = pkg.run.adapter === "md-monorepo"
     ? "md-monorepo-action-plan.json"
-    : "pnpm-vite-vue-action-plan.json";
+    : pkg.run.adapter === "cross-language-http"
+      ? "cross-language-http-action-plan.json"
+      : "pnpm-vite-vue-action-plan.json";
   return path.join(migrationRunDir(loaded, pkg.run.id), "adapter", fileName);
 }
 

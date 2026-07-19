@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathExists, readJsonFile, toPosixPath } from "./files.js";
+import type { MigrationAction, MigrationActionPlan } from "../types.js";
 
 export type CrossLanguageId =
   | "typescript-node"
@@ -85,6 +86,90 @@ export interface CrossLanguageMigrationSlicePlan {
     recommendedChecks: string[];
     acceptanceCriteria: string[];
   }>;
+}
+
+export type CrossLanguageCapabilityLevel = "CL1" | "CL2" | "CL3" | "CL4" | "CL5";
+export type CrossLanguageLevelStatus = "ready" | "partial" | "blocked";
+
+export interface CrossLanguageRecipePlan {
+  version: 1;
+  createdAt: string;
+  sourceLanguage: CrossLanguageId;
+  targetLanguage: CrossLanguageId;
+  recipeId: string;
+  supported: boolean;
+  confidence: "low" | "medium" | "high";
+  routeMappings: Array<{
+    name: string;
+    method: string;
+    path: string;
+    status: "can-replay" | "port-required" | "review-target-extra";
+    risk: "low" | "medium" | "high";
+    source?: { framework: string; file: string; line: number };
+    target?: { framework: string; file: string; line: number };
+    transformationHints: string[];
+  }>;
+  checklist: string[];
+  codeGenerationPolicy: {
+    mode: "proposal-only";
+    requires: string[];
+  };
+}
+
+export interface CrossLanguageContractCorpusDraft {
+  version: 1;
+  createdAt: string;
+  sourceBaseUrlPlaceholder: string;
+  targetBaseUrlPlaceholder: string;
+  requests: Array<{
+    name: string;
+    method: string;
+    path: string;
+    urlTemplate: string;
+    headers: Record<string, string>;
+    bodyTemplate?: string;
+    captureStatus: "ready" | "needs-route-port" | "target-only-review";
+    sourceFile?: string;
+    targetFile?: string;
+  }>;
+  coverage: {
+    readyForDualRun: number;
+    sourceOnly: number;
+    targetOnly: number;
+  };
+}
+
+export interface CrossLanguageIssuePlanItem {
+  id: string;
+  title: string;
+  type: "task" | "risk";
+  risk: "low" | "medium" | "high";
+  owner: "engine" | "ai" | "human";
+  actionId?: string;
+  affectedFiles: string[];
+  body: string;
+}
+
+export interface CrossLanguageReadinessReport {
+  version: 1;
+  createdAt: string;
+  achievedLevel: CrossLanguageCapabilityLevel;
+  levels: Array<{
+    level: CrossLanguageCapabilityLevel;
+    title: string;
+    status: CrossLanguageLevelStatus;
+    evidence: string[];
+    blockers: string[];
+  }>;
+  gates: Array<{
+    id: string;
+    title: string;
+    status: "ready" | "needs-runtime" | "needs-review";
+    command?: string;
+    reason: string;
+  }>;
+  issuePlan: CrossLanguageIssuePlanItem[];
+  recommendedNextCommands: string[];
 }
 
 interface SourceFile {
@@ -283,6 +368,272 @@ export function createMigrationSlicePlan(inventory: CrossLanguageHttpInventory):
   };
 }
 
+export function createRecipePlan(inventory: CrossLanguageHttpInventory): CrossLanguageRecipePlan {
+  const recipeId = `${inventory.source.primaryLanguage}-to-${inventory.target.primaryLanguage}`;
+  const supported = inventory.source.primaryLanguage !== "unknown"
+    && inventory.target.primaryLanguage !== "unknown"
+    && inventory.source.primaryLanguage !== inventory.target.primaryLanguage;
+  const confidence = supported && inventory.source.languageConfidence === "high" && inventory.target.languageConfidence === "high"
+    ? "high"
+    : supported
+      ? "medium"
+      : "low";
+
+  return {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    sourceLanguage: inventory.source.primaryLanguage,
+    targetLanguage: inventory.target.primaryLanguage,
+    recipeId,
+    supported,
+    confidence,
+    routeMappings: inventory.routeMatrix.map((route) => ({
+      name: `${route.method} ${route.path}`,
+      method: route.method,
+      path: route.path,
+      status: route.status === "matched"
+        ? "can-replay"
+        : route.status === "missing-target"
+          ? "port-required"
+          : "review-target-extra",
+      risk: riskForRouteMapping(route),
+      source: route.source ? routeLocation(route.source) : undefined,
+      target: route.target ? routeLocation(route.target) : undefined,
+      transformationHints: transformationHintsForRoute(inventory, route)
+    })),
+    checklist: [
+      "capture source HTTP responses before translating handler logic",
+      "map request path params, query params, headers, and JSON body explicitly",
+      "preserve status codes and intentional error shapes before body refactors",
+      "port validation and serialization separately from route wiring",
+      "run target checks before dual-run replay and classify every behavior difference"
+    ],
+    codeGenerationPolicy: {
+      mode: "proposal-only",
+      requires: [
+        "route inventory artifact",
+        "language-pair recipe plan",
+        "contract corpus draft",
+        "target checks in proposal gate",
+        "dual-run replay after source and target services are available"
+      ]
+    }
+  };
+}
+
+export function createContractCorpusDraft(inventory: CrossLanguageHttpInventory): CrossLanguageContractCorpusDraft {
+  const requests = inventory.routeMatrix.map((route) => {
+    const bodyTemplate = bodyTemplateForMethod(route.method);
+    const headers: Record<string, string> = bodyTemplate
+      ? { accept: "application/json", "content-type": "application/json" }
+      : { accept: "application/json" };
+    return {
+      name: `${route.method} ${route.path}`,
+      method: route.method,
+      path: route.path,
+      urlTemplate: `http://127.0.0.1:<source-port>${route.path}`,
+      headers,
+      bodyTemplate,
+      captureStatus: route.status === "matched"
+        ? "ready" as const
+        : route.status === "missing-target"
+          ? "needs-route-port" as const
+          : "target-only-review" as const,
+      sourceFile: route.source ? `${route.source.file}:${route.source.line}` : undefined,
+      targetFile: route.target ? `${route.target.file}:${route.target.line}` : undefined
+    };
+  });
+
+  return {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    sourceBaseUrlPlaceholder: "http://127.0.0.1:<source-port>",
+    targetBaseUrlPlaceholder: "http://127.0.0.1:<target-port>",
+    requests,
+    coverage: {
+      readyForDualRun: requests.filter((request) => request.captureStatus === "ready").length,
+      sourceOnly: requests.filter((request) => request.captureStatus === "needs-route-port").length,
+      targetOnly: requests.filter((request) => request.captureStatus === "target-only-review").length
+    }
+  };
+}
+
+export function createCrossLanguageActionPlan(
+  runId: string,
+  goal: string,
+  inventory: CrossLanguageHttpInventory,
+  recipePlan = createRecipePlan(inventory),
+  corpusDraft = createContractCorpusDraft(inventory)
+): MigrationActionPlan {
+  const targetChecks = inventory.target.recommendedChecks;
+  const targetAnchors = targetProjectAnchors(inventory);
+  const missingTargetRoutes = inventory.routeMatrix.filter((route) => route.status === "missing-target");
+  const matchedRoutes = inventory.routeMatrix.filter((route) => route.status === "matched");
+  const targetExtraRoutes = inventory.routeMatrix.filter((route) => route.status === "target-extra");
+  const actions: MigrationAction[] = [
+    crossLanguageAction({
+      id: "action-cl2-language-pair-recipe",
+      title: `Review ${recipePlan.recipeId} route translation recipe`,
+      summary: `Review the detected ${recipePlan.sourceLanguage} to ${recipePlan.targetLanguage} recipe before any generated source edit.`,
+      risk: recipePlan.supported ? "low" : "medium",
+      affectedFiles: targetAnchors,
+      recommendedChecks: targetChecks,
+      patchMode: "dry-run-only"
+    }),
+    crossLanguageAction({
+      id: "action-cl3-contract-corpus",
+      title: "Prepare cross-language HTTP contract corpus",
+      summary: `Prepare capture and replay coverage for ${corpusDraft.requests.length} HTTP exchange draft(s).`,
+      risk: corpusDraft.coverage.sourceOnly > 0 ? "medium" : "low",
+      affectedFiles: targetAnchors,
+      recommendedChecks: targetChecks,
+      patchMode: "dry-run-only"
+    })
+  ];
+
+  if (missingTargetRoutes.length > 0) {
+    actions.push(crossLanguageAction({
+      id: "action-cl4-port-missing-http-routes",
+      title: "Port source-only HTTP routes into target service",
+      summary: `Create target route candidates for ${missingTargetRoutes.length} source route(s) before dual-run parity can pass.`,
+      risk: missingTargetRoutes.length >= 5 ? "high" : "medium",
+      affectedFiles: targetAnchors,
+      recommendedChecks: targetChecks,
+      patchMode: "manual-approval-required"
+    }));
+  }
+
+  if (matchedRoutes.length > 0) {
+    actions.push(crossLanguageAction({
+      id: "action-cl4-replay-matched-http-routes",
+      title: "Replay matched HTTP route behavior",
+      summary: `Run contract replay for ${matchedRoutes.length} matched route(s) and classify drift before broader migration.`,
+      risk: "medium",
+      affectedFiles: routeFiles(matchedRoutes, "target").length > 0 ? routeFiles(matchedRoutes, "target") : targetAnchors,
+      recommendedChecks: targetChecks,
+      patchMode: "dry-run-only"
+    }));
+  }
+
+  if (targetExtraRoutes.length > 0) {
+    actions.push(crossLanguageAction({
+      id: "action-cl4-review-target-extra-routes",
+      title: "Review target-only HTTP routes",
+      summary: `Decide whether ${targetExtraRoutes.length} target-only route(s) are intentional additions or migration drift.`,
+      risk: "low",
+      affectedFiles: routeFiles(targetExtraRoutes, "target").length > 0 ? routeFiles(targetExtraRoutes, "target") : targetAnchors,
+      recommendedChecks: targetChecks,
+      patchMode: "dry-run-only"
+    }));
+  }
+
+  actions.push(crossLanguageAction({
+    id: "action-cl5-verification-issue-loop",
+    title: "Run CL5 verification and issue loop",
+    summary: "Gate cross-language code migration on target checks, dual-run replay, issue sync, and follow-up issue creation for unresolved drift.",
+    risk: "medium",
+    affectedFiles: targetAnchors,
+    recommendedChecks: targetChecks,
+    patchMode: "dry-run-only"
+  }));
+
+  return {
+    version: 1,
+    runId,
+    createdAt: new Date().toISOString(),
+    goal,
+    actions
+  };
+}
+
+export function createReadinessReport(
+  inventory: CrossLanguageHttpInventory,
+  recipePlan: CrossLanguageRecipePlan,
+  corpusDraft: CrossLanguageContractCorpusDraft,
+  actionPlan: MigrationActionPlan
+): CrossLanguageReadinessReport {
+  const issuePlan = createIssuePlan(inventory, recipePlan, actionPlan);
+  const levels: CrossLanguageReadinessReport["levels"] = [
+    {
+      level: "CL1",
+      title: "Inventory source and target languages/routes",
+      status: inventory.source.primaryLanguage !== "unknown" && inventory.target.primaryLanguage !== "unknown" ? "ready" : "partial",
+      evidence: ["adapter/cross-language-http-inventory.json"],
+      blockers: inventory.source.primaryLanguage === "unknown" || inventory.target.primaryLanguage === "unknown"
+        ? ["source or target language could not be detected confidently"]
+        : []
+    },
+    {
+      level: "CL2",
+      title: "Create language-pair migration recipe",
+      status: recipePlan.supported ? "ready" : "partial",
+      evidence: ["adapter/cross-language-http-recipe-plan.json"],
+      blockers: recipePlan.supported ? [] : ["language pair is same-language or unknown; recipe remains review-only"]
+    },
+    {
+      level: "CL3",
+      title: "Prepare HTTP contract corpus draft",
+      status: corpusDraft.requests.length > 0 ? "ready" : "blocked",
+      evidence: ["adapter/cross-language-http-contract-corpus-draft.json"],
+      blockers: corpusDraft.requests.length > 0 ? [] : ["no HTTP route candidates were detected"]
+    },
+    {
+      level: "CL4",
+      title: "Generate guarded migration actions",
+      status: actionPlan.actions.length > 0 ? "ready" : "blocked",
+      evidence: ["adapter/cross-language-http-action-plan.json"],
+      blockers: actionPlan.actions.length > 0 ? [] : ["no action plan entries were generated"]
+    },
+    {
+      level: "CL5",
+      title: "Close the verification and issue loop",
+      status: issuePlan.length > 0 ? "ready" : "partial",
+      evidence: ["adapter/cross-language-http-readiness-report.json", "issues.json"],
+      blockers: issuePlan.length > 0 ? [] : ["no issue candidates were generated"]
+    }
+  ];
+  const achieved = [...levels].reverse().find((level) => level.status !== "blocked")?.level ?? "CL1";
+  const firstAction = actionPlan.actions[0]?.id ?? "<action-id>";
+
+  return {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    achievedLevel: achieved,
+    levels,
+    gates: [
+      {
+        id: "target-checks",
+        title: "Target project checks",
+        status: inventory.target.recommendedChecks.length > 0 ? "ready" : "needs-review",
+        command: inventory.target.recommendedChecks.join(" && ") || undefined,
+        reason: inventory.target.recommendedChecks.length > 0
+          ? "target inventory found runnable project checks"
+          : "target inventory did not find known test/build/type-check commands"
+      },
+      {
+        id: "dual-run",
+        title: "HTTP behavior replay",
+        status: "needs-runtime",
+        command: "migration-guard dual-run --source <source-base-url> --target <target-base-url>",
+        reason: "requires source and target services to be running on known base URLs"
+      },
+      {
+        id: "issue-sync",
+        title: "Follow-up issue sync",
+        status: "ready",
+        command: "migration-guard sync-issues --run latest --provider github --dry-run",
+        reason: "local issue candidates are generated before live provider mutation"
+      }
+    ],
+    issuePlan,
+    recommendedNextCommands: [
+      "migration-guard actions --run latest",
+      `migration-guard action propose --run latest --action ${firstAction}`,
+      "migration-guard sync-issues --run latest --provider github --dry-run"
+    ]
+  };
+}
+
 export function renderCrossLanguageInventory(inventory: CrossLanguageHttpInventory): string {
   return [
     "# Cross-Language HTTP Inventory",
@@ -344,6 +695,109 @@ export function renderMigrationSlicePlan(plan: CrossLanguageMigrationSlicePlan):
   ].join("\n\n");
 }
 
+export function renderRecipePlan(plan: CrossLanguageRecipePlan): string {
+  return [
+    "# Cross-Language Recipe Plan",
+    "",
+    `- Recipe: ${plan.recipeId}`,
+    `- Supported: ${plan.supported ? "yes" : "review-only"}`,
+    `- Confidence: ${plan.confidence}`,
+    `- Route mappings: ${plan.routeMappings.length}`,
+    "",
+    "## Checklist",
+    "",
+    ...plan.checklist.map((item) => `- ${item}`),
+    "",
+    "## Route Mappings",
+    "",
+    plan.routeMappings.length > 0
+      ? plan.routeMappings.map((mapping) => [
+        `- [${mapping.status}/${mapping.risk}] ${mapping.method} ${mapping.path}`,
+        ...mapping.transformationHints.map((hint) => `  - ${hint}`)
+      ].join("\n")).join("\n")
+      : "No route mappings detected.",
+    "",
+    "## Code Generation Policy",
+    "",
+    `- Mode: ${plan.codeGenerationPolicy.mode}`,
+    ...plan.codeGenerationPolicy.requires.map((item) => `- Requires: ${item}`)
+  ].join("\n");
+}
+
+export function renderContractCorpusDraft(draft: CrossLanguageContractCorpusDraft): string {
+  return [
+    "# Cross-Language Contract Corpus Draft",
+    "",
+    `- Source base URL: ${draft.sourceBaseUrlPlaceholder}`,
+    `- Target base URL: ${draft.targetBaseUrlPlaceholder}`,
+    `- Ready for dual-run: ${draft.coverage.readyForDualRun}`,
+    `- Source-only: ${draft.coverage.sourceOnly}`,
+    `- Target-only: ${draft.coverage.targetOnly}`,
+    "",
+    "## Requests",
+    "",
+    draft.requests.length > 0
+      ? draft.requests.map((request) => `- [${request.captureStatus}] ${request.method} ${request.path} -> ${request.urlTemplate}`).join("\n")
+      : "No request drafts generated."
+  ].join("\n");
+}
+
+export function renderCrossLanguageActionPlan(plan: MigrationActionPlan): string {
+  return [
+    "# Cross-Language Action Plan",
+    "",
+    `- Run: ${plan.runId}`,
+    `- Goal: ${plan.goal}`,
+    `- Actions: ${plan.actions.length}`,
+    "",
+    ...plan.actions.map((action) => [
+      `## ${action.id}`,
+      "",
+      `- Title: ${action.title}`,
+      `- Risk: ${action.risk}`,
+      `- Patch mode: ${action.patchMode}`,
+      `- Template: ${action.patchTemplate ?? "auto"}`,
+      `- Affected files: ${action.affectedFiles.join(", ") || "none"}`,
+      "- Recommended checks:",
+      ...(action.recommendedChecks.length > 0 ? action.recommendedChecks.map((command) => `  - ${command}`) : ["  - none"])
+    ].join("\n"))
+  ].join("\n\n");
+}
+
+export function renderReadinessReport(report: CrossLanguageReadinessReport): string {
+  return [
+    "# Cross-Language CL5 Readiness",
+    "",
+    `- Achieved level: ${report.achievedLevel}`,
+    "",
+    "## Levels",
+    "",
+    ...report.levels.map((level) => [
+      `- ${level.level} [${level.status}] ${level.title}`,
+      ...level.evidence.map((item) => `  evidence: ${item}`),
+      ...level.blockers.map((item) => `  blocker: ${item}`)
+    ].join("\n")),
+    "",
+    "## Gates",
+    "",
+    ...report.gates.map((gate) => [
+      `- [${gate.status}] ${gate.id}: ${gate.title}`,
+      gate.command ? `  command: ${gate.command}` : undefined,
+      `  reason: ${gate.reason}`
+    ].filter(Boolean).join("\n")),
+    "",
+    "## Issue Plan",
+    "",
+    report.issuePlan.length > 0
+      ? report.issuePlan.map((issue) => `- [${issue.risk}/${issue.owner}] ${issue.title}`).join("\n")
+      : "No issue candidates generated.",
+    "",
+    "## Next Commands",
+    "",
+    ...report.recommendedNextCommands.map((command) => `- ${command}`)
+  ].join("\n");
+}
+
 function renderLanguageLines(inventory: CrossLanguageProjectInventory): string[] {
   if (inventory.languages.length === 0) {
     return ["- none detected"];
@@ -355,6 +809,175 @@ function renderLanguageLines(inventory: CrossLanguageProjectInventory): string[]
     language.buildFiles.length > 0 ? `  build-files: ${language.buildFiles.join(", ")}` : undefined,
     language.reasons.length > 0 ? `  reasons: ${language.reasons.join("; ")}` : undefined
   ].filter(Boolean).join("\n"));
+}
+
+function riskForRouteMapping(route: CrossLanguageRouteMatch): "low" | "medium" | "high" {
+  if (route.status === "target-extra") {
+    return "low";
+  }
+  if (route.status === "missing-target") {
+    return isMutatingMethod(route.method) ? "high" : "medium";
+  }
+  return isMutatingMethod(route.method) ? "medium" : "low";
+}
+
+function isMutatingMethod(method: string): boolean {
+  return ["POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase());
+}
+
+function routeLocation(route: CrossLanguageRouteCandidate): { framework: string; file: string; line: number } {
+  return {
+    framework: route.framework,
+    file: route.file,
+    line: route.line
+  };
+}
+
+function transformationHintsForRoute(inventory: CrossLanguageHttpInventory, route: CrossLanguageRouteMatch): string[] {
+  const hints = [
+    `${inventory.source.primaryLanguage} -> ${inventory.target.primaryLanguage}: keep HTTP method and normalized path stable`,
+    "map path params, query params, headers, and JSON body before changing handler internals",
+    "record expected status code and response shape in the contract corpus draft"
+  ];
+  if (route.status === "matched") {
+    hints.push("matched route can enter dual-run replay once both services are running");
+  } else if (route.status === "missing-target") {
+    hints.push("target route must be added behind normal target project checks before behavior replay");
+  } else {
+    hints.push("target-only route needs owner review before it is treated as intentional new behavior");
+  }
+  hints.push(languagePairHint(inventory.source.primaryLanguage, inventory.target.primaryLanguage));
+  return [...new Set(hints)];
+}
+
+function languagePairHint(source: CrossLanguageId, target: CrossLanguageId): string {
+  if (source === "python" && target === "typescript-node") {
+    return "translate FastAPI/Flask handlers into Node route handlers with explicit request body validation";
+  }
+  if (source === "typescript-node" && target === "python") {
+    return "translate middleware assumptions into FastAPI/Flask dependencies before handler logic";
+  }
+  if (source === "java" && target === "python") {
+    return "map Spring annotations, DTOs, and exception handlers into Python router, schema, and error layers";
+  }
+  if (source === "java" && target === "typescript-node") {
+    return "map Spring controller methods and DTOs into Node route modules plus typed schemas";
+  }
+  if (source === "go" && target === "typescript-node") {
+    return "map Go handler structs and net/http response writes into Node request/response helpers";
+  }
+  if (source === "typescript-node" && target === "go") {
+    return "map Node middleware and async handlers into Go routing, request decoding, and response writing";
+  }
+  return "treat framework lifecycle, dependency injection, validation, and error handling as separate migration slices";
+}
+
+function bodyTemplateForMethod(method: string): string | undefined {
+  if (["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase())) {
+    return undefined;
+  }
+  return "{}";
+}
+
+function targetProjectAnchors(inventory: CrossLanguageHttpInventory): string[] {
+  const anchors = uniqueStrings([
+    ...inventory.target.routes.map((route) => route.file),
+    ...inventory.target.languages.flatMap((language) => language.buildFiles)
+  ]);
+  return anchors.length > 0 ? anchors.slice(0, 12) : ["."];
+}
+
+function routeFiles(routes: CrossLanguageRouteMatch[], side: "source" | "target"): string[] {
+  return uniqueStrings(routes.flatMap((route) => {
+    const candidate = side === "source" ? route.source : route.target;
+    return candidate ? [candidate.file] : [];
+  }));
+}
+
+function crossLanguageAction(input: {
+  id: string;
+  title: string;
+  summary: string;
+  risk: MigrationAction["risk"];
+  affectedFiles: string[];
+  recommendedChecks: string[];
+  patchMode: MigrationAction["patchMode"];
+}): MigrationAction {
+  const recommendedChecks = uniqueStrings(input.recommendedChecks.filter(isRunnableTargetCheck));
+  return {
+    id: input.id,
+    title: input.title,
+    summary: input.summary,
+    risk: input.risk,
+    affectedFiles: uniqueStrings(input.affectedFiles).slice(0, 20),
+    recommendedChecks,
+    checkReadiness: recommendedChecks.map((command) => ({
+      command,
+      status: "ready",
+      reason: "detected from target project inventory"
+    })),
+    patchMode: input.patchMode,
+    patchTemplate: "cross-language-contract-probe"
+  };
+}
+
+function isRunnableTargetCheck(command: string): boolean {
+  return !/[<>]/.test(command) && !command.startsWith("source:") && !command.startsWith("target:");
+}
+
+function createIssuePlan(
+  inventory: CrossLanguageHttpInventory,
+  recipePlan: CrossLanguageRecipePlan,
+  actionPlan: MigrationActionPlan
+): CrossLanguageIssuePlanItem[] {
+  const actionIssues = actionPlan.actions.map((action): CrossLanguageIssuePlanItem => ({
+    id: `cl-issue-${action.id}`,
+    title: action.title,
+    type: "task",
+    risk: action.risk,
+    owner: action.patchMode === "manual-approval-required" ? "human" : "ai",
+    actionId: action.id,
+    affectedFiles: action.affectedFiles,
+    body: [
+      action.summary,
+      "",
+      `Recommended checks: ${action.recommendedChecks.join(", ") || "none"}`,
+      `Patch mode: ${action.patchMode}`,
+      "Generated from cross-language CL5 readiness planning."
+    ].join("\n")
+  }));
+  const riskIssues: CrossLanguageIssuePlanItem[] = [];
+
+  if (!recipePlan.supported) {
+    riskIssues.push({
+      id: "cl-issue-review-language-pair",
+      title: `Review unsupported or uncertain language pair: ${recipePlan.recipeId}`,
+      type: "risk",
+      risk: "medium",
+      owner: "human",
+      affectedFiles: targetProjectAnchors(inventory),
+      body: "The adapter could not confirm a true supported cross-language pair. Review inventory and recipe hints before source edits."
+    });
+  }
+
+  if (inventory.summary.missingTargetRouteCount > 0) {
+    riskIssues.push({
+      id: "cl-issue-missing-target-routes",
+      title: `Port ${inventory.summary.missingTargetRouteCount} source-only HTTP route(s)`,
+      type: "risk",
+      risk: inventory.summary.missingTargetRouteCount >= 5 ? "high" : "medium",
+      owner: "ai",
+      actionId: "action-cl4-port-missing-http-routes",
+      affectedFiles: targetProjectAnchors(inventory),
+      body: "Source-only routes block full dual-run parity. Add target route candidates behind contract replay and target checks."
+    });
+  }
+
+  return [...actionIssues, ...riskIssues];
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))].sort();
 }
 
 async function collectSourceFiles(root: string): Promise<SourceFile[]> {
@@ -618,7 +1241,7 @@ async function recommendedNodeChecks(root: string): Promise<string[]> {
   const pm = await detectNodePackageManager(root);
   return ["type-check", "test", "build"]
     .filter((script) => scripts.includes(script))
-    .map((script) => `${pm} ${script}`);
+    .map((script) => nodeScriptCommand(pm, script));
 }
 
 async function detectNodePackageManager(root: string): Promise<"npm" | "pnpm" | "yarn"> {
@@ -629,6 +1252,10 @@ async function detectNodePackageManager(root: string): Promise<"npm" | "pnpm" | 
     return "yarn";
   }
   return "npm";
+}
+
+function nodeScriptCommand(packageManager: "npm" | "pnpm" | "yarn", script: string): string {
+  return packageManager === "npm" ? `npm run ${script}` : `${packageManager} ${script}`;
 }
 
 function extractRoutesFromFile(file: SourceFile): CrossLanguageRouteCandidate[] {

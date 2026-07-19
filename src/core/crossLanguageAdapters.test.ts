@@ -5,9 +5,13 @@ import path from "node:path";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import {
   createContractPlan,
+  createContractCorpusDraft,
+  createCrossLanguageActionPlan,
   createCrossLanguageHttpInventory,
   createMigrationSlicePlan,
-  createProjectInventory
+  createProjectInventory,
+  createReadinessReport,
+  createRecipePlan
 } from "./crossLanguageAdapters.js";
 import { createTaskGraph, validateTaskGraph } from "./taskGraph.js";
 import type { ScanSummary } from "../types.js";
@@ -57,6 +61,7 @@ test("cross-language inventory aligns FastAPI source routes with Express target 
       missingTargetRouteCount: 1,
       targetExtraRouteCount: 1
     });
+    assert.deepEqual(inventory.target.recommendedChecks, ["npm run test", "npm run build"]);
 
     const contractPlan = createContractPlan(inventory);
     assert.ok(contractPlan.exchanges.some((exchange) => exchange.status === "ready-for-dual-run" && exchange.path === "/users"));
@@ -66,6 +71,24 @@ test("cross-language inventory aligns FastAPI source routes with Express target 
     assert.ok(slicePlan.slices.some((slice) => slice.id === "cl-slice-port-missing-routes"));
     assert.ok(slicePlan.slices.some((slice) => slice.id === "cl-slice-replay-matched-routes"));
     assert.ok(slicePlan.slices.some((slice) => slice.id === "cl-slice-review-target-extra-routes"));
+
+    const recipePlan = createRecipePlan(inventory);
+    assert.equal(recipePlan.recipeId, "python-to-typescript-node");
+    assert.equal(recipePlan.supported, true);
+    assert.ok(recipePlan.routeMappings.some((mapping) => mapping.status === "port-required"));
+
+    const corpusDraft = createContractCorpusDraft(inventory);
+    assert.equal(corpusDraft.coverage.readyForDualRun, 1);
+    assert.equal(corpusDraft.coverage.sourceOnly, 1);
+    assert.equal(corpusDraft.requests.find((request) => request.method === "POST")?.bodyTemplate, "{}");
+
+    const actionPlan = createCrossLanguageActionPlan("run-1", "Port API", inventory, recipePlan, corpusDraft);
+    assert.ok(actionPlan.actions.some((action) => action.id === "action-cl5-verification-issue-loop"));
+    assert.ok(actionPlan.actions.every((action) => action.patchTemplate === "cross-language-contract-probe"));
+
+    const readiness = createReadinessReport(inventory, recipePlan, corpusDraft, actionPlan);
+    assert.equal(readiness.achievedLevel, "CL5");
+    assert.ok(readiness.issuePlan.some((issue) => issue.actionId === "action-cl4-port-missing-http-routes"));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -109,14 +132,18 @@ test("project inventory extracts Spring and Go HTTP route candidates", async () 
   }
 });
 
-test("task graph creates cross-language HTTP inventory, contract, and slice tasks", () => {
+test("task graph creates cross-language HTTP CL1-CL5 tasks", () => {
   const graph = createTaskGraph("run-1", makeScan(), "Port legacy API into new service", "cross-language-http");
 
   assert.deepEqual(validateTaskGraph(graph), []);
   assert.ok(graph.tasks.some((task) => task.executor === "cross-language-http:inventory"));
+  assert.ok(graph.tasks.some((task) => task.executor === "cross-language-http:recipes"));
   assert.ok(graph.tasks.some((task) => task.executor === "cross-language-http:contracts"));
+  assert.ok(graph.tasks.some((task) => task.executor === "cross-language-http:corpus"));
   assert.ok(graph.tasks.some((task) => task.executor === "cross-language-http:slices"));
-  assert.deepEqual(graph.tasks.find((task) => task.id === "task-verify")?.dependsOn, ["task-cross-language-slices"]);
+  assert.ok(graph.tasks.some((task) => task.executor === "cross-language-http:actions"));
+  assert.ok(graph.tasks.some((task) => task.executor === "cross-language-http:readiness"));
+  assert.deepEqual(graph.tasks.find((task) => task.id === "task-verify")?.dependsOn, ["task-cross-language-readiness"]);
 });
 
 function makeScan(): ScanSummary {

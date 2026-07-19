@@ -1491,7 +1491,7 @@ async function collectSourceSnippetIndex(
 }
 
 async function collectReadableSourceFiles(root: string): Promise<string[]> {
-  const readableExtensions = new Set([".cjs", ".js", ".jsx", ".mjs", ".ts", ".tsx", ".vue"]);
+  const readableExtensions = new Set([".cjs", ".go", ".java", ".js", ".json", ".jsx", ".mjs", ".py", ".ts", ".tsx", ".vue"]);
   const ignoredDirectories = new Set([".git", "node_modules", "dist", "build", "coverage", ".wxt", ".output"]);
   const files: string[] = [];
   const stack = [root];
@@ -2847,7 +2847,7 @@ function createActionProbeScript(goal: string, action: MigrationAction): string 
     "    return [];",
     "  }",
     "  const ignoredDirectories = new Set([\".git\", \"node_modules\", \"dist\", \"build\", \"coverage\"]);",
-    "  const readableExtensions = new Set([\".cjs\", \".js\", \".json\", \".jsx\", \".mjs\", \".ts\", \".tsx\", \".vue\"]);",
+    "  const readableExtensions = new Set([\".cjs\", \".go\", \".java\", \".js\", \".json\", \".jsx\", \".mjs\", \".py\", \".ts\", \".tsx\", \".vue\"]);",
     "  const files = [];",
     "  const stack = [{ absolute: absolutePath, relative: relativePath }];",
     "  while (stack.length > 0) {",
@@ -3031,7 +3031,7 @@ function createUiSmokeProbeScript(goal: string, action: MigrationAction): string
     "    return [];",
     "  }",
     "  const ignoredDirectories = new Set([\".git\", \"node_modules\", \"dist\", \"build\", \"coverage\"]);",
-    "  const readableExtensions = new Set([\".cjs\", \".js\", \".json\", \".jsx\", \".mjs\", \".ts\", \".tsx\", \".vue\"]);",
+    "  const readableExtensions = new Set([\".cjs\", \".go\", \".java\", \".js\", \".json\", \".jsx\", \".mjs\", \".py\", \".ts\", \".tsx\", \".vue\"]);",
     "  const files = [];",
     "  const stack = [{ absolute: absolutePath, relative: relativePath }];",
     "  while (stack.length > 0) {",

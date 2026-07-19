@@ -33,12 +33,16 @@ export function createTaskGraph(runId: string, scan: ScanSummary, goal: string, 
       3,
       0,
       createTask("task-cross-language-inventory", "Inventory cross-language HTTP surfaces", "Detect source and target languages, framework signals, HTTP route candidates, and project checks before code generation.", "adapter", ["task-plan"], "engine", "medium", 40, [], ["cross-language inventory artifact exists"], createdAt, "cross-language-http:inventory"),
-      createTask("task-cross-language-contracts", "Create cross-language contract replay plan", "Convert detected HTTP routes into a contract capture and dual-run replay matrix.", "contract", ["task-cross-language-inventory"], "engine", "medium", 50, [], ["contract replay plan artifact exists"], createdAt, "cross-language-http:contracts"),
-      createTask("task-cross-language-slices", "Create guarded cross-language migration slices", "Create behavior-first migration slices from matched, missing, and target-only route candidates without modifying target source.", "adapter", ["task-cross-language-contracts"], "engine", "high", 60, [], ["cross-language migration slice plan exists"], createdAt, "cross-language-http:slices")
+      createTask("task-cross-language-recipes", "Create language-pair migration recipe", "Map source and target language/framework signals into a reviewable route translation recipe.", "adapter", ["task-cross-language-inventory"], "engine", "medium", 45, [], ["cross-language recipe plan artifact exists"], createdAt, "cross-language-http:recipes"),
+      createTask("task-cross-language-contracts", "Create cross-language contract replay plan", "Convert detected HTTP routes into a contract capture and dual-run replay matrix.", "contract", ["task-cross-language-recipes"], "engine", "medium", 50, [], ["contract replay plan artifact exists"], createdAt, "cross-language-http:contracts"),
+      createTask("task-cross-language-corpus", "Create cross-language contract corpus draft", "Create request templates that can be captured from source and replayed against target once services are running.", "contract", ["task-cross-language-contracts"], "engine", "medium", 55, [], ["contract corpus draft artifact exists"], createdAt, "cross-language-http:corpus"),
+      createTask("task-cross-language-slices", "Create guarded cross-language migration slices", "Create behavior-first migration slices from matched, missing, and target-only route candidates without modifying target source.", "adapter", ["task-cross-language-corpus"], "engine", "high", 60, [], ["cross-language migration slice plan exists"], createdAt, "cross-language-http:slices"),
+      createTask("task-cross-language-actions", "Create CL4 migration action plan", "Convert cross-language recipe, contract, and slice artifacts into proposal-ready actions.", "adapter", ["task-cross-language-slices"], "engine", "high", 65, [], ["cross-language action plan exists"], createdAt, "cross-language-http:actions"),
+      createTask("task-cross-language-readiness", "Create CL5 readiness and issue loop", "Summarize capability level, verification gates, and follow-up issue plan for guarded cross-language migration.", "adapter", ["task-cross-language-actions"], "engine", "high", 70, [], ["cross-language CL5 readiness report exists"], createdAt, "cross-language-http:readiness")
     );
     const verify = tasks.find((task) => task.id === "task-verify");
     if (verify) {
-      verify.dependsOn = ["task-cross-language-slices"];
+      verify.dependsOn = ["task-cross-language-readiness"];
     }
   } else if (adapter === "pnpm-vite-vue") {
     tasks.splice(

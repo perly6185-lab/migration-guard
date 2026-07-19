@@ -4,11 +4,19 @@ import { compareSnapshots } from "./compare.js";
 import { createCheckpoint } from "./checkpoint.js";
 import {
   createContractPlan,
+  createContractCorpusDraft,
+  createCrossLanguageActionPlan,
   createCrossLanguageHttpInventory,
   createMigrationSlicePlan,
+  createReadinessReport,
+  createRecipePlan,
   renderContractPlan,
+  renderContractCorpusDraft,
+  renderCrossLanguageActionPlan,
   renderCrossLanguageInventory,
-  renderMigrationSlicePlan
+  renderMigrationSlicePlan,
+  renderReadinessReport,
+  renderRecipePlan
 } from "./crossLanguageAdapters.js";
 import { decisionsForCompareReport, evaluateDiffDecisionPolicy, formatPolicyLine } from "./diffDecision.js";
 import { renderCompareReport } from "./markdown.js";
@@ -284,10 +292,18 @@ async function executeCrossLanguageHttpTask(loaded: LoadedConfig, pkg: Migration
   switch (task.executor) {
     case "cross-language-http:inventory":
       return writeCrossLanguageInventory(loaded, pkg);
+    case "cross-language-http:recipes":
+      return writeCrossLanguageRecipePlan(loaded, pkg);
     case "cross-language-http:contracts":
       return writeCrossLanguageContractPlan(loaded, pkg);
+    case "cross-language-http:corpus":
+      return writeCrossLanguageContractCorpusDraft(loaded, pkg);
     case "cross-language-http:slices":
       return writeCrossLanguageSlicePlan(loaded, pkg);
+    case "cross-language-http:actions":
+      return writeCrossLanguageActionPlan(loaded, pkg);
+    case "cross-language-http:readiness":
+      return writeCrossLanguageReadinessReport(loaded, pkg);
     default:
       return `No cross-language-http executor for ${task.executor}.`;
   }
@@ -301,6 +317,37 @@ async function loadOrCreateCrossLanguageInventory(loaded: LoadedConfig, pkg: Mig
   return createCrossLanguageHttpInventory(pkg.run.sourceRoot, pkg.run.targetRoot);
 }
 
+async function loadOrCreateCrossLanguageRecipePlan(loaded: LoadedConfig, pkg: MigrationRunPackage) {
+  const filePath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "cross-language-http-recipe-plan.json");
+  if (await pathExists(filePath)) {
+    return readJsonFile<ReturnType<typeof createRecipePlan>>(filePath);
+  }
+  return createRecipePlan(await loadOrCreateCrossLanguageInventory(loaded, pkg));
+}
+
+async function loadOrCreateCrossLanguageContractCorpusDraft(loaded: LoadedConfig, pkg: MigrationRunPackage) {
+  const filePath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "cross-language-http-contract-corpus-draft.json");
+  if (await pathExists(filePath)) {
+    return readJsonFile<ReturnType<typeof createContractCorpusDraft>>(filePath);
+  }
+  return createContractCorpusDraft(await loadOrCreateCrossLanguageInventory(loaded, pkg));
+}
+
+async function loadOrCreateCrossLanguageActionPlan(loaded: LoadedConfig, pkg: MigrationRunPackage) {
+  const filePath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "cross-language-http-action-plan.json");
+  if (await pathExists(filePath)) {
+    return readJsonFile<ReturnType<typeof createCrossLanguageActionPlan>>(filePath);
+  }
+  const inventory = await loadOrCreateCrossLanguageInventory(loaded, pkg);
+  return createCrossLanguageActionPlan(
+    pkg.run.id,
+    pkg.run.goal,
+    inventory,
+    await loadOrCreateCrossLanguageRecipePlan(loaded, pkg),
+    await loadOrCreateCrossLanguageContractCorpusDraft(loaded, pkg)
+  );
+}
+
 async function writeCrossLanguageInventory(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
   const inventory = await createCrossLanguageHttpInventory(pkg.run.sourceRoot, pkg.run.targetRoot);
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
@@ -309,6 +356,17 @@ async function writeCrossLanguageInventory(loaded: LoadedConfig, pkg: MigrationR
   await writeJsonFile(jsonPath, inventory);
   await writeTextFile(markdownPath, renderCrossLanguageInventory(inventory));
   return `Wrote cross-language HTTP inventory to ${jsonPath} and ${markdownPath}`;
+}
+
+async function writeCrossLanguageRecipePlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const inventory = await loadOrCreateCrossLanguageInventory(loaded, pkg);
+  const plan = createRecipePlan(inventory);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "cross-language-http-recipe-plan.json");
+  const markdownPath = path.join(dir, "cross-language-http-recipe-plan.md");
+  await writeJsonFile(jsonPath, plan);
+  await writeTextFile(markdownPath, renderRecipePlan(plan));
+  return `Wrote cross-language HTTP recipe plan to ${jsonPath} and ${markdownPath}`;
 }
 
 async function writeCrossLanguageContractPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
@@ -322,6 +380,17 @@ async function writeCrossLanguageContractPlan(loaded: LoadedConfig, pkg: Migrati
   return `Wrote cross-language HTTP contract plan to ${jsonPath} and ${markdownPath}`;
 }
 
+async function writeCrossLanguageContractCorpusDraft(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const inventory = await loadOrCreateCrossLanguageInventory(loaded, pkg);
+  const draft = createContractCorpusDraft(inventory);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "cross-language-http-contract-corpus-draft.json");
+  const markdownPath = path.join(dir, "cross-language-http-contract-corpus-draft.md");
+  await writeJsonFile(jsonPath, draft);
+  await writeTextFile(markdownPath, renderContractCorpusDraft(draft));
+  return `Wrote cross-language HTTP contract corpus draft to ${jsonPath} and ${markdownPath}`;
+}
+
 async function writeCrossLanguageSlicePlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
   const inventory = await loadOrCreateCrossLanguageInventory(loaded, pkg);
   const plan = createMigrationSlicePlan(inventory);
@@ -331,6 +400,59 @@ async function writeCrossLanguageSlicePlan(loaded: LoadedConfig, pkg: MigrationR
   await writeJsonFile(jsonPath, plan);
   await writeTextFile(markdownPath, renderMigrationSlicePlan(plan));
   return `Wrote cross-language HTTP migration slice plan to ${jsonPath} and ${markdownPath}`;
+}
+
+async function writeCrossLanguageActionPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const inventory = await loadOrCreateCrossLanguageInventory(loaded, pkg);
+  const recipePlan = await loadOrCreateCrossLanguageRecipePlan(loaded, pkg);
+  const corpusDraft = await loadOrCreateCrossLanguageContractCorpusDraft(loaded, pkg);
+  const actionPlan = createCrossLanguageActionPlan(pkg.run.id, pkg.run.goal, inventory, recipePlan, corpusDraft);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "cross-language-http-action-plan.json");
+  const markdownPath = path.join(dir, "cross-language-http-action-plan.md");
+  await writeJsonFile(jsonPath, actionPlan);
+  await writeTextFile(markdownPath, renderCrossLanguageActionPlan(actionPlan));
+  return `Wrote cross-language HTTP action plan with ${actionPlan.actions.length} action(s) to ${jsonPath} and ${markdownPath}`;
+}
+
+async function writeCrossLanguageReadinessReport(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const inventory = await loadOrCreateCrossLanguageInventory(loaded, pkg);
+  const recipePlan = await loadOrCreateCrossLanguageRecipePlan(loaded, pkg);
+  const corpusDraft = await loadOrCreateCrossLanguageContractCorpusDraft(loaded, pkg);
+  const actionPlan = await loadOrCreateCrossLanguageActionPlan(loaded, pkg);
+  const report = createReadinessReport(inventory, recipePlan, corpusDraft, actionPlan);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "cross-language-http-readiness-report.json");
+  const markdownPath = path.join(dir, "cross-language-http-readiness-report.md");
+  await writeJsonFile(jsonPath, report);
+  await writeTextFile(markdownPath, renderReadinessReport(report));
+  createCrossLanguageIssues(pkg, report.issuePlan);
+  await saveRunPackage(loaded, pkg);
+  return `Wrote cross-language HTTP CL5 readiness report to ${jsonPath} and ${markdownPath}`;
+}
+
+function createCrossLanguageIssues(pkg: MigrationRunPackage, issuePlan: ReturnType<typeof createReadinessReport>["issuePlan"]): void {
+  const existing = new Set(pkg.issues.map((issue) => `${issue.type}:${issue.title}`));
+  const now = new Date().toISOString();
+  for (const item of issuePlan) {
+    const issue: MigrationIssue = {
+      id: createId("issue"),
+      runId: pkg.run.id,
+      type: item.type,
+      title: item.title,
+      body: item.body,
+      status: "planned",
+      risk: item.risk,
+      owner: item.owner,
+      affectedFiles: item.affectedFiles,
+      createdAt: now,
+      updatedAt: now
+    };
+    if (!existing.has(`${issue.type}:${issue.title}`)) {
+      pkg.issues.push(issue);
+      existing.add(`${issue.type}:${issue.title}`);
+    }
+  }
 }
 
 interface MdRefactorTaskPlanItem {

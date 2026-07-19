@@ -110,6 +110,27 @@ const PROBE_TEMPLATE_REGISTRY: ProbeTemplateDefinition[] = [
     }
   },
   {
+    template: "cross-language-contract-probe",
+    description: "Inspect cross-language HTTP route, handler, schema, and response signals.",
+    needsPreview: false,
+    defaultCheckKind: "contract-probe",
+    failureHint: "Expected HTTP route declarations plus handler, schema, or response signals in target files.",
+    scriptBuilder: "structural",
+    checks: [
+      { name: "has-http-route-signal", pattern: "/(@(Get|Post|Put|Patch|Delete|RequestMapping)|\\.(get|post|put|patch|delete|options|head)\\(|http\\.HandleFunc|\\.(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\\()/i" },
+      { name: "has-handler-contract-signal", pattern: "/\\b(return|response|json|schema|interface|class|def|func|handler|controller|express|fastapi|flask|spring|gin|router)\\b/i" }
+    ],
+    match: (input) => {
+      if (input.id.includes("cl") || input.id.includes("cross-language")) {
+        return "action id references cross-language migration work.";
+      }
+      if (input.affectedFiles.some((file) => /\.(py|java|go)$/.test(file))) {
+        return "affected files include Python, Java, or Go source.";
+      }
+      return undefined;
+    }
+  },
+  {
     template: "adapter-fixture-probe",
     description: "Inspect package/workspace fixture signals for adapter-generated migration work.",
     needsPreview: false,
