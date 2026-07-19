@@ -5,6 +5,7 @@ export interface GitHubIssueInput {
   title: string;
   body: string;
   labels: string[];
+  state?: "open" | "closed";
 }
 
 export interface GitHubIssueAdapterOptions {
@@ -22,13 +23,15 @@ export interface GitHubIssueSyncResult {
   repo: string;
   createdCount: number;
   updatedCount: number;
+  closedCount: number;
+  reopenedCount: number;
   skippedCount: number;
   failedCount: number;
   plan: GitHubIssueLivePlan;
   rateLimit: GitHubRateLimitSnapshot[];
   issues: Array<{
     title: string;
-    action?: "created" | "updated" | "skipped" | "failed";
+    action?: "created" | "updated" | "closed" | "reopened" | "skipped" | "failed";
     url?: string;
     number?: number;
     bodyHash?: string;
@@ -84,10 +87,12 @@ export interface GitHubIssueRemote {
 export interface GitHubIssueLivePlan {
   provider: "github";
   repo: string;
-  matchingStrategy: "open-issue-body-mg_issue_id";
+  matchingStrategy: "open-issue-body-mg_issue_id" | "all-issues-body-mg_issue_id";
   createdAt: string;
   willCreate: number;
   willUpdate: number;
+  willClose: number;
+  willReopen: number;
   willSkip: number;
   mutationCount: number;
   planHash: string;
@@ -99,11 +104,13 @@ export interface GitHubIssueLivePlan {
 export interface GitHubIssueLivePlanItem {
   issueId?: string;
   title: string;
-  action: "create" | "update" | "skip";
+  action: "create" | "update" | "close" | "reopen" | "skip";
+  desiredState?: "open" | "closed";
   bodyHash: string;
   existingBodyHash?: string;
   existingNumber?: number;
   existingUrl?: string;
+  existingState?: "open" | "closed";
 }
 
 export interface GitHubRateLimitSnapshot {
@@ -141,8 +148,8 @@ export async function planGitHubIssues(options: GitHubIssuePlanOptions): Promise
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
-  const lookup = await findExistingGitHubIssues(options.repo, options.token, fetchImpl, options.retry);
-  const plan = createGitHubIssueLivePlan(options.repo, options.issues, lookup.issues, undefined, lookup.rateLimit);
+  const lookup = await findExistingGitHubIssues(options.repo, options.token, fetchImpl, gitHubLookupState(options.issues), options.retry);
+  const plan = createGitHubIssueLivePlan(options.repo, options.issues, lookup.issues, lookup.matchingStrategy, undefined, lookup.rateLimit);
   return {
     repo: options.repo,
     plan,
@@ -209,23 +216,23 @@ export async function createGitHubIssues(options: GitHubIssueAdapterOptions): Pr
   const fetchImpl = options.fetchImpl ?? fetch;
   const issues: GitHubIssueSyncResult["issues"] = [];
   const createUrl = `https://api.github.com/repos/${options.repo}/issues`;
-  const lookup = await findExistingGitHubIssues(options.repo, options.token, fetchImpl, options.retry);
+  const lookup = await findExistingGitHubIssues(options.repo, options.token, fetchImpl, gitHubLookupState(options.issues), options.retry);
   const rateLimit = [...lookup.rateLimit];
   const maxLiveMutations = options.maxLiveMutations ?? DEFAULT_MAX_LIVE_MUTATIONS;
-  const plan = createGitHubIssueLivePlan(options.repo, options.issues, lookup.issues, maxLiveMutations, rateLimit);
+  const plan = createGitHubIssueLivePlan(options.repo, options.issues, lookup.issues, lookup.matchingStrategy, maxLiveMutations, rateLimit);
   await options.onPlan?.(plan);
   if (options.livePlanConfirm !== undefined && options.livePlanConfirm !== plan.planHash) {
     throw new Error(`GitHub live plan confirmation mismatch. Expected --live-plan-confirm ${plan.planHash}.`);
   }
   if (plan.mutationCount > maxLiveMutations) {
-    throw new Error(`GitHub live mutation limit exceeded: plan has ${plan.mutationCount} create/update mutation(s), max is ${maxLiveMutations}. Review issue-sync/github-live-plan.json or pass --max-live-mutations <n>.`);
+    throw new Error(`GitHub live mutation limit exceeded: plan has ${plan.mutationCount} create/update/close/reopen mutation(s), max is ${maxLiveMutations}. Review issue-sync/github-live-plan.json or pass --max-live-mutations <n>.`);
   }
 
   for (let index = 0; index < options.issues.length; index += 1) {
     const issue = options.issues[index];
     const planItem = plan.issues[index];
     const existing = planItem?.existingNumber
-      ? { number: planItem.existingNumber, htmlUrl: planItem.existingUrl, bodyHash: planItem.existingBodyHash }
+      ? { number: planItem.existingNumber, htmlUrl: planItem.existingUrl, bodyHash: planItem.existingBodyHash, state: planItem.existingState }
       : undefined;
     if (planItem?.action === "skip") {
       issues.push({
@@ -242,13 +249,19 @@ export async function createGitHubIssues(options: GitHubIssueAdapterOptions): Pr
       : createUrl;
     try {
       const requestLabel = existing ? "PATCH issue" : "POST issue";
+      const desiredState = planItem?.action === "close"
+        ? "closed"
+        : planItem?.action === "reopen"
+          ? "open"
+          : undefined;
       const api = await fetchGitHubWithRetry(fetchImpl, url, {
         method: existing ? "PATCH" : "POST",
         headers: githubHeaders(options.token),
         body: JSON.stringify({
           title: issue.title,
           body: issue.body,
-          labels: issue.labels
+          labels: issue.labels,
+          state: desiredState
         })
       }, options.retry, requestLabel);
       rateLimit.push(...api.rateLimit);
@@ -266,7 +279,11 @@ export async function createGitHubIssues(options: GitHubIssueAdapterOptions): Pr
       }
       issues.push({
         title: issue.title,
-        action: existing ? "updated" : "created",
+        action: planItem?.action === "close"
+          ? "closed"
+          : planItem?.action === "reopen"
+            ? "reopened"
+            : existing ? "updated" : "created",
         url: typeof body?.html_url === "string" ? body.html_url : undefined,
         number: typeof body?.number === "number" ? body.number : undefined,
         bodyHash: planItem?.bodyHash,
@@ -285,6 +302,8 @@ export async function createGitHubIssues(options: GitHubIssueAdapterOptions): Pr
     repo: options.repo,
     createdCount: issues.filter((issue) => issue.action === "created").length,
     updatedCount: issues.filter((issue) => issue.action === "updated").length,
+    closedCount: issues.filter((issue) => issue.action === "closed").length,
+    reopenedCount: issues.filter((issue) => issue.action === "reopened").length,
     skippedCount: issues.filter((issue) => issue.action === "skipped").length,
     failedCount: issues.filter((issue) => issue.error).length,
     plan,
@@ -297,18 +316,20 @@ interface ExistingGitHubIssue {
   number: number;
   htmlUrl?: string;
   bodyHash: string;
+  state: "open" | "closed";
 }
 
 async function findExistingGitHubIssues(
   repo: string,
   token: string,
   fetchImpl: typeof fetch,
+  state: "open" | "all",
   retry?: GitHubRetryOptions
-): Promise<{ issues: Map<string, ExistingGitHubIssue>; rateLimit: GitHubRateLimitSnapshot[] }> {
-  const api = await fetchGitHubWithRetry(fetchImpl, `https://api.github.com/repos/${repo}/issues?state=open&per_page=100`, {
+): Promise<{ issues: Map<string, ExistingGitHubIssue>; matchingStrategy: GitHubIssueLivePlan["matchingStrategy"]; rateLimit: GitHubRateLimitSnapshot[] }> {
+  const api = await fetchGitHubWithRetry(fetchImpl, `https://api.github.com/repos/${repo}/issues?state=${state}&per_page=100`, {
     method: "GET",
     headers: githubHeaders(token)
-  }, retry, "GET open issues");
+  }, retry, state === "all" ? "GET all issues" : "GET open issues");
   const response = api.response;
   if (!response.ok) {
     throw new Error(`GitHub open issue lookup failed: GitHub API returned ${response.status}`);
@@ -317,6 +338,7 @@ async function findExistingGitHubIssues(
   if (!Array.isArray(body)) {
     return {
       issues: new Map(),
+      matchingStrategy: state === "all" ? "all-issues-body-mg_issue_id" : "open-issue-body-mg_issue_id",
       rateLimit: api.rateLimit
     };
   }
@@ -327,12 +349,14 @@ async function findExistingGitHubIssues(
       existing.set(issueId, {
         number: issue.number,
         htmlUrl: typeof issue?.html_url === "string" ? issue.html_url : undefined,
-        bodyHash: sha256(issue.body)
+        bodyHash: sha256(issue.body),
+        state: issue?.state === "closed" ? "closed" : "open"
       });
     }
   }
   return {
     issues: existing,
+    matchingStrategy: state === "all" ? "all-issues-body-mg_issue_id" : "open-issue-body-mg_issue_id",
     rateLimit: api.rateLimit
   };
 }
@@ -341,6 +365,7 @@ function createGitHubIssueLivePlan(
   repo: string,
   issues: GitHubIssueInput[],
   existingIssues: Map<string, ExistingGitHubIssue>,
+  matchingStrategy: GitHubIssueLivePlan["matchingStrategy"],
   maxLiveMutations?: number,
   rateLimit?: GitHubRateLimitSnapshot[]
 ): GitHubIssueLivePlan {
@@ -348,49 +373,75 @@ function createGitHubIssueLivePlan(
     const issueId = extractMigrationIssueId(issue.body);
     const bodyHash = sha256(issue.body);
     const existing = issueId ? existingIssues.get(issueId) : undefined;
-    const action = !existing
-      ? "create"
-      : existing.bodyHash === bodyHash
-        ? "skip"
-        : "update";
+    const desiredState = issue.state ?? "open";
+    const action = planGitHubIssueAction(existing, bodyHash, desiredState);
     return {
       issueId,
       title: issue.title,
       action,
+      desiredState,
       bodyHash,
       existingBodyHash: existing?.bodyHash,
       existingNumber: existing?.number,
-      existingUrl: existing?.htmlUrl
+      existingUrl: existing?.htmlUrl,
+      existingState: existing?.state
     };
   });
   const willCreate = planned.filter((issue) => issue.action === "create").length;
   const willUpdate = planned.filter((issue) => issue.action === "update").length;
+  const willClose = planned.filter((issue) => issue.action === "close").length;
+  const willReopen = planned.filter((issue) => issue.action === "reopen").length;
   const willSkip = planned.filter((issue) => issue.action === "skip").length;
   const planHash = hashGitHubIssueLivePlan({
     provider: "github",
     repo,
-    matchingStrategy: "open-issue-body-mg_issue_id",
+    matchingStrategy,
     willCreate,
     willUpdate,
+    willClose,
+    willReopen,
     willSkip,
-    mutationCount: willCreate + willUpdate,
+    mutationCount: willCreate + willUpdate + willClose + willReopen,
     issues: planned
   });
 
   return {
     provider: "github",
     repo,
-    matchingStrategy: "open-issue-body-mg_issue_id",
+    matchingStrategy,
     createdAt: new Date().toISOString(),
     willCreate,
     willUpdate,
+    willClose,
+    willReopen,
     willSkip,
-    mutationCount: willCreate + willUpdate,
+    mutationCount: willCreate + willUpdate + willClose + willReopen,
     planHash,
     maxLiveMutations,
     rateLimit,
     issues: planned
   };
+}
+
+function gitHubLookupState(issues: GitHubIssueInput[]): "open" | "all" {
+  return issues.some((issue) => issue.state) ? "all" : "open";
+}
+
+function planGitHubIssueAction(
+  existing: ExistingGitHubIssue | undefined,
+  bodyHash: string,
+  desiredState: "open" | "closed"
+): GitHubIssueLivePlanItem["action"] {
+  if (!existing) {
+    return desiredState === "closed" ? "skip" : "create";
+  }
+  if (desiredState === "closed" && existing.state === "open") {
+    return "close";
+  }
+  if (desiredState === "open" && existing.state === "closed") {
+    return "reopen";
+  }
+  return existing.bodyHash === bodyHash ? "skip" : "update";
 }
 
 function hashGitHubIssueLivePlan(plan: Omit<GitHubIssueLivePlan, "createdAt" | "planHash" | "maxLiveMutations" | "rateLimit">): string {

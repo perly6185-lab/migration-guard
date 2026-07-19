@@ -3,7 +3,7 @@ import type { LoadedConfig } from "../../types.js";
 import { executeTask } from "../executor.js";
 import { proposalFromCommand } from "../issueControlModel.js";
 import { loadRunPackage } from "../migrationRun.js";
-import { repairProposal } from "../patch.js";
+import { proposeActionPatch, repairProposal } from "../patch.js";
 import type { IssueControlPlanItem, IssueControlRunItem, IssueControlRunOptions } from "../issueControl.js";
 
 export async function runIssueControlPlanItem(
@@ -43,6 +43,24 @@ export async function runIssueControlPlanItem(
           status: task.status === "done" ? "executed" : "failed",
           reason: `Task ${task.id} finished with status ${task.status}.`,
           result: task.result
+        };
+      }
+      case "propose-action": {
+        const runId = item.runId ?? options.runId;
+        if (!runId) {
+          return { ...base, status: "blocked", reason: "propose-action requires a run id from the issue or --run." };
+        }
+        if (!item.actionId) {
+          return { ...base, status: "blocked", reason: "propose-action requires mg_action_id or a matching action plan title." };
+        }
+        const pkg = await loadRunPackage(loaded, runId);
+        const proposal = await proposeActionPatch(loaded, pkg, item.actionId);
+        return {
+          ...base,
+          status: "executed",
+          reason: `Created proposal ${proposal.id} for action ${item.actionId}.`,
+          result: proposal.summary,
+          artifactPath: proposal.patchPath
         };
       }
       case "repair-proposal": {
@@ -109,4 +127,3 @@ function resolveIssueControlBootstrapSourceRoot(loaded: LoadedConfig): string | 
   const value = loaded.config.variables?.MG_SOURCE_ROOT;
   return value ? path.resolve(loaded.baseDir, value) : undefined;
 }
-

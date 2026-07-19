@@ -12,9 +12,10 @@ const actionPriority: Record<IssueControlAction, number> = {
   "bootstrap-target": 0,
   "repair-proposal": 1,
   "execute-task": 2,
-  "classify-risk": 3,
-  "review-external": 4,
-  "track": 5
+  "propose-action": 3,
+  "classify-risk": 4,
+  "review-external": 5,
+  "track": 6
 };
 
 export function selectIssueControlAutoItem(
@@ -76,8 +77,9 @@ function isRiskAllowed(item: IssueControlPlanItem, options: { allowHighRisk: boo
 
 function isAutoSelectable(item: IssueControlPlanItem, options: { allowHighRisk: boolean; trustTier?: IssueControlTrustTier }): boolean {
   if (!item.executable || !item.issueId || !isRiskAllowed(item, options)) return false;
-  if (!["bootstrap-target", "repair-proposal", "execute-task"].includes(item.action)) return false;
+  if (!["bootstrap-target", "repair-proposal", "execute-task", "propose-action"].includes(item.action)) return false;
   if (item.action === "execute-task" && (!item.runId || !item.taskId)) return false;
+  if (item.action === "propose-action" && (!item.runId || !item.actionId)) return false;
   return item.action !== "repair-proposal" || Boolean(item.runId && proposalFromCommand(item.recommendedCommand));
 }
 
@@ -89,8 +91,9 @@ function autoSelectionReason(item: IssueControlPlanItem, options: { allowHighRis
       ? "Unattended trust tier only selects low-risk issues."
       : "High risk item skipped; rerun with --allow-high-risk to select it.";
   }
-  if (!["bootstrap-target", "repair-proposal", "execute-task"].includes(item.action)) return `Action ${item.action} is not auto-selectable.`;
+  if (!["bootstrap-target", "repair-proposal", "execute-task", "propose-action"].includes(item.action)) return `Action ${item.action} is not auto-selectable.`;
   if (item.action === "execute-task" && (!item.runId || !item.taskId)) return "execute-task requires mg_run_id and mg_task_id.";
+  if (item.action === "propose-action" && (!item.runId || !item.actionId)) return "propose-action requires mg_run_id and mg_action_id or a matching action plan title.";
   if (item.action === "repair-proposal" && (!item.runId || !proposalFromCommand(item.recommendedCommand))) return "repair-proposal requires mg_run_id and proposal id.";
   return "Selectable but lower priority than the selected issue.";
 }

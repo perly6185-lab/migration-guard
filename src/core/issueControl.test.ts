@@ -211,6 +211,58 @@ test("issue-control plan maps md2 issues into guarded execution actions", async 
   }
 });
 
+test("issue-control plan maps adapter action issues into proposal actions", async () => {
+  const pull = {
+    version: 1 as const,
+    id: "issue-control-pull-action",
+    provider: "github" as const,
+    repo: "perly6185-lab/md2",
+    state: "open" as const,
+    labels: [],
+    createdAt: "2026-07-11T00:00:00.000Z",
+    issueCount: 1,
+    rateLimit: [],
+    issues: [{
+      number: 22,
+      title: "Prepare Consolidate shared configs, types, and editor utilities",
+      body: "mg_issue_id: issue-shared\nmg_run_id: run-md2\nmg_issue_type: task\nmg_status: planned\nmg_risk: medium",
+      bodyHash: "hash-action",
+      state: "open" as const,
+      labels: ["mg-risk:medium"],
+      migrationGuard: {
+        runId: "run-md2",
+        issueId: "issue-shared",
+        issueType: "task" as const,
+        status: "planned",
+        risk: "medium" as const
+      }
+    }]
+  };
+
+  const plan = collectIssueControlPlan(pull, {
+    actionPlans: [{
+      version: 1,
+      runId: "run-md2",
+      createdAt: "2026-07-11T00:00:00.000Z",
+      goal: "Refactor md into md2",
+      actions: [{
+        id: "action-md-shared-contracts",
+        title: "Prepare Consolidate shared configs, types, and editor utilities",
+        summary: "Create a probe/review proposal for packages/shared before source edits.",
+        risk: "medium",
+        affectedFiles: ["packages/shared/src"],
+        recommendedChecks: ["pnpm type-check:packages"],
+        patchMode: "dry-run-only"
+      }]
+    }]
+  });
+
+  assert.equal(plan.summary.executableCount, 1);
+  assert.equal(plan.items[0]?.action, "propose-action");
+  assert.equal(plan.items[0]?.actionId, "action-md-shared-contracts");
+  assert.match(plan.items[0]?.recommendedCommand ?? "", /action propose/);
+});
+
 test("issue-control run dry-runs a single executable issue without executing", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-issue-run-dry-"));
   const configPath = path.join(dir, ".migration-guard.json");
@@ -371,6 +423,118 @@ test("issue-control run executes one selected task issue", async () => {
     assert.equal(report.items[0]?.status, "executed");
     assert.match(report.items[0]?.result ?? "", /Manual or AI code-change task/);
     assert.match(report.recommendedNextActions[0] ?? "", /sync-issues --live-plan --only-issue issue-manual/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("issue-control run executes one selected action proposal issue", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-issue-run-action-"));
+  const configPath = path.join(dir, ".migration-guard.json");
+  const targetRoot = path.join(dir, "target");
+  try {
+    await writeFile(configPath, JSON.stringify({
+      schemaVersion: 1,
+      targetRoot,
+      artifactsDir: ".migration-guard",
+      checks: [],
+      probes: []
+    }), "utf8");
+    const loaded = await loadConfig(configPath);
+    await mkdir(targetRoot, { recursive: true });
+    const now = "2026-07-11T00:00:00.000Z";
+    const runId = "run-md2";
+    const runDir = path.join(loaded.artifactsDir, "migration-runs", runId);
+    await writeJsonFile(path.join(runDir, "run.json"), {
+      version: 1,
+      id: runId,
+      goal: "issue-control action proposal test",
+      sourceRoot: targetRoot,
+      targetRoot,
+      artifactsDir: runDir,
+      status: "running",
+      mode: "dry-run",
+      adapter: "md-monorepo",
+      issueProvider: "github",
+      createdAt: now,
+      updatedAt: now,
+      estimate: {
+        sourceFiles: 0,
+        testFiles: 0,
+        taskCount: 1,
+        riskLevel: "medium",
+        confidence: "high",
+        estimatedVerificationRounds: 1,
+        notes: [],
+        updatedAt: now
+      }
+    });
+    await writeJsonFile(path.join(runDir, "task-graph.json"), {
+      version: 1,
+      runId,
+      createdAt: now,
+      updatedAt: now,
+      tasks: []
+    });
+    await writeJsonFile(path.join(runDir, "issues.json"), []);
+    await writeJsonFile(path.join(runDir, "adapter", "md-monorepo-action-plan.json"), {
+      version: 1,
+      runId,
+      createdAt: now,
+      goal: "issue-control action proposal test",
+      actions: [{
+        id: "action-md-shared-contracts",
+        title: "Prepare shared contracts",
+        summary: "Create a structural probe proposal before source edits.",
+        risk: "medium",
+        affectedFiles: ["packages/shared/src"],
+        recommendedChecks: [],
+        patchMode: "dry-run-only",
+        patchTemplate: "ts-structural-probe"
+      }]
+    });
+    const plan = {
+      version: 1 as const,
+      id: "issue-control-plan-action",
+      provider: "github" as const,
+      repo: "perly6185-lab/md2",
+      sourcePullId: "pull-test",
+      createdAt: now,
+      summary: {
+        issueCount: 1,
+        mappedCount: 1,
+        executableCount: 1,
+        bootstrapCount: 0,
+        repairCount: 0,
+        externalReviewCount: 0
+      },
+      items: [{
+        issueNumber: 22,
+        title: "Prepare shared contracts",
+        issueId: "issue-shared",
+        runId,
+        actionId: "action-md-shared-contracts",
+        issueType: "task" as const,
+        status: "planned",
+        risk: "medium" as const,
+        labels: [],
+        action: "propose-action" as const,
+        executable: true,
+        reason: "Adapter action issue can create a bounded proposal artifact before any source edit.",
+        recommendedCommand: "node dist/cli.js action propose --config configs/md2-fast.migration-guard.json --run run-md2 --action action-md-shared-contracts"
+      }]
+    };
+
+    const report = await runIssueControlPlan(loaded, plan, {
+      execute: true,
+      onlyIssue: "issue-shared"
+    });
+
+    assert.equal(report.status, "complete");
+    assert.equal(report.summary.executedCount, 1);
+    assert.equal(report.items[0]?.status, "executed");
+    assert.match(report.items[0]?.reason, /Created proposal patch-/);
+    assert.match(report.items[0]?.artifactPath ?? "", /patch\.diff$/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -2275,6 +2439,85 @@ test("issue-control sync-gate writes reviewed live-plan handoff when scheduler i
     assert.match(report.recommendedSyncCommand ?? "", /--live-plan/);
     assert.match(report.recommendedSyncCommand ?? "", /--only-issue issue-done/);
     assert.match(report.recommendedSyncCommand ?? "", /team:migration,source:md,target:md2/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("issue-control sync-gate prefers latest ready progress over stale advance state", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-sync-gate-latest-progress-"));
+  const configPath = path.join(dir, ".migration-guard.json");
+  try {
+    await writeFile(configPath, JSON.stringify({
+      schemaVersion: 1,
+      targetRoot: ".",
+      artifactsDir: ".migration-guard",
+      issueSync: {
+        githubRepo: "perly6185-lab/md2"
+      }
+    }), "utf8");
+    const loaded = await loadConfig(configPath);
+    const issueControlDir = path.join(loaded.artifactsDir, "issue-control");
+    const statePath = path.join(issueControlDir, "issue-control-advance-loop-state.json");
+    await writeJsonFile(statePath, {
+      version: 1,
+      id: "issue-control-advance-loop-state",
+      updatedAt: "2026-07-11T00:00:00.000Z",
+      mode: "execute",
+      maxSteps: 3,
+      status: "complete",
+      stopReason: "Reached max steps 3.",
+      lastLoopId: "issue-control-advance-loop-stale",
+      repeatedTerminalCount: 0,
+      repeatGuardActive: false,
+      nextAction: "Continue the bounded loop.",
+      outputPath: statePath,
+      markdownPath: statePath.replace(/\.json$/, ".md")
+    });
+    const ledgerPath = path.join(issueControlDir, "issue-control-supervise-progress-latest.json");
+    await writeJsonFile(ledgerPath, {
+      version: 1,
+      id: "issue-control-supervise-progress-latest",
+      createdAt: "2026-07-12T00:00:00.000Z",
+      sourceSuperviseId: "issue-control-supervise-latest",
+      provider: "github",
+      repo: "perly6185-lab/md2",
+      mode: "execute",
+      status: "complete",
+      summary: {
+        issueCount: 1,
+        selectedCount: 1,
+        reachedCount: 1,
+        unreachedSelectedCount: 0,
+        recoveredCount: 0,
+        continuedCount: 0,
+        unresolvedCount: 0
+      },
+      items: [{
+        issueNumber: 29,
+        issueId: "issue-newly-done",
+        runId: "run-md2",
+        title: "Newly completed issue",
+        action: "propose-action",
+        selected: true,
+        reached: true,
+        state: "executed",
+        reason: "Created proposal for the latest supervised iteration.",
+        artifactPaths: [],
+        events: []
+      }]
+    });
+
+    const report = await issueControlSyncGate(loaded, {
+      labels: ["team:migration"]
+    });
+
+    assert.equal(report.status, "ready");
+    assert.equal(report.schedulerDecision.action, "sync-issues");
+    assert.equal(report.sourceLedgerPath, ledgerPath);
+    assert.equal(report.sourceStatePath, undefined);
+    assert.deepEqual(report.completedIssueIds, ["issue-newly-done"]);
+    assert.match(report.recommendedSyncCommand ?? "", /--only-issue issue-newly-done/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

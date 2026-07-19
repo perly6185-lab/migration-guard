@@ -41,7 +41,8 @@ export async function syncIssues(
         issues: exported.map((issue) => ({
           title: String(issue.title),
           body: String(issue.body),
-          labels: Array.isArray(issue.labels) ? issue.labels.map(String) : []
+          labels: Array.isArray(issue.labels) ? issue.labels.map(String) : [],
+          state: gitHubIssueState(issue.status)
         })),
         fetchImpl: effectiveOptions.fetchImpl,
         retry: effectiveOptions.retry
@@ -55,6 +56,8 @@ export async function syncIssues(
         mutationCount: result.plan.mutationCount,
         willCreate: result.plan.willCreate,
         willUpdate: result.plan.willUpdate,
+        willClose: result.plan.willClose,
+        willReopen: result.plan.willReopen,
         willSkip: result.plan.willSkip,
         rateLimit: result.rateLimit
       });
@@ -67,7 +70,8 @@ export async function syncIssues(
         issues: exported.map((issue) => ({
           title: String(issue.title),
           body: String(issue.body),
-          labels: Array.isArray(issue.labels) ? issue.labels.map(String) : []
+          labels: Array.isArray(issue.labels) ? issue.labels.map(String) : [],
+          state: gitHubIssueState(issue.status)
         })),
         fetchImpl: effectiveOptions.fetchImpl,
         maxLiveMutations: effectiveOptions.maxLiveMutations,
@@ -83,6 +87,8 @@ export async function syncIssues(
         repo: result.repo,
         createdCount: result.createdCount,
         updatedCount: result.updatedCount,
+        closedCount: result.closedCount,
+        reopenedCount: result.reopenedCount,
         skippedCount: result.skippedCount,
         failedCount: result.failedCount,
         planPath: livePlanPath,
@@ -420,6 +426,10 @@ function normalizeExtraLabels(labels: string[] | undefined): string[] {
 
 function uniqueLabels(labels: string[]): string[] {
   return [...new Set(labels)];
+}
+
+function gitHubIssueState(status: unknown): "open" | "closed" {
+  return status === "done" || status === "closed" ? "closed" : "open";
 }
 
 function contextForIssue(issue: MigrationIssue, context: IssueSyncContext): ProposalGateContext | undefined {

@@ -2,12 +2,15 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { readGitHubIssues, type GitHubRetryOptions } from "./githubIssueAdapter.js";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
+import { loadActionPlan } from "./actionPlan.js";
 import { selectRepairStrategy, summarizeRepairStrategy, type RepairStrategySummary } from "./repairStrategy.js";
 import {
+  type IssueControlPlanModelContext,
   toIssueControlPlanItem as modelToIssueControlPlanItem,
   toIssueControlRemoteIssue as modelToIssueControlRemoteIssue
 } from "./issueControlModel.js";
 import type { LoadedConfig, MigrationIssueType } from "../types.js";
+import { loadRunPackage } from "./migrationRun.js";
 import { writeIssueControlRecoveryExecution, writeIssueControlRecoveryPlan } from "./issueControl/recoveryArtifacts.js";
 import { appendIssueControlAudit, issueControlAuditLogPath } from "./issueControl/audit.js";
 import { resolveIssueControlGitHubRepo } from "./issueControl/githubConfig.js";
@@ -98,6 +101,7 @@ export type IssueControlAction =
   | "bootstrap-target"
   | "repair-proposal"
   | "execute-task"
+  | "propose-action"
   | "classify-risk"
   | "review-external"
   | "track";
@@ -145,6 +149,7 @@ export interface IssueControlMetadata {
   runId?: string;
   issueId?: string;
   taskId?: string;
+  actionId?: string;
   issueType?: MigrationIssueType;
   status?: string;
   risk?: "low" | "medium" | "high";
@@ -179,6 +184,7 @@ export interface IssueControlPlanItem {
   issueId?: string;
   runId?: string;
   taskId?: string;
+  actionId?: string;
   issueType?: MigrationIssueType;
   status?: string;
   risk?: "low" | "medium" | "high";
@@ -839,7 +845,9 @@ export async function loadIssueControlPlanReport(filePath: string): Promise<Issu
 }
 
 export async function writeIssueControlPlan(loaded: LoadedConfig, pull: IssueControlPullReport): Promise<IssueControlPlanReport> {
-  const report = collectIssueControlPlan(pull);
+  const report = collectIssueControlPlan(pull, {
+    actionPlans: await loadIssueControlActionPlans(loaded, pull)
+  });
   const dir = path.join(loaded.artifactsDir, "issue-control");
   const outputPath = path.join(dir, `${report.id}.json`);
   const markdownPath = outputPath.replace(/\.json$/, ".md");
@@ -850,8 +858,8 @@ export async function writeIssueControlPlan(loaded: LoadedConfig, pull: IssueCon
   return report;
 }
 
-export function collectIssueControlPlan(pull: IssueControlPullReport): IssueControlPlanReport {
-  const items = pull.issues.map(modelToIssueControlPlanItem);
+export function collectIssueControlPlan(pull: IssueControlPullReport, context: IssueControlPlanModelContext = {}): IssueControlPlanReport {
+  const items = pull.issues.map((issue) => modelToIssueControlPlanItem(issue, context));
   return {
     version: 1,
     id: `issue-control-plan-${new Date().toISOString().replace(/[:.]/g, "-")}`,
@@ -869,6 +877,20 @@ export function collectIssueControlPlan(pull: IssueControlPullReport): IssueCont
     },
     items
   };
+}
+
+async function loadIssueControlActionPlans(loaded: LoadedConfig, pull: IssueControlPullReport): Promise<IssueControlPlanModelContext["actionPlans"]> {
+  const runIds = [...new Set(pull.issues.map((issue) => issue.migrationGuard.runId).filter(Boolean))] as string[];
+  const plans: NonNullable<IssueControlPlanModelContext["actionPlans"]> = [];
+  for (const runId of runIds) {
+    try {
+      const pkg = await loadRunPackage(loaded, runId);
+      plans.push(await loadActionPlan(loaded, pkg));
+    } catch {
+      // Remote issue planning should stay usable even if a referenced run is stale or local-only.
+    }
+  }
+  return plans;
 }
 
 export async function runIssueControlPlan(
@@ -1469,16 +1491,16 @@ export async function issueControlSyncGate(
   loaded: LoadedConfig,
   options: IssueControlSyncGateOptions = {}
 ): Promise<IssueControlSyncGateReport> {
-  const state = await issueControlAdvanceLoopStatus(loaded, { input: options.input });
-  const decision = state.schedulerDecision ?? createIssueControlAdvanceLoopSchedulerDecision(state);
+  const source = await resolveIssueControlSyncGateSource(loaded, options);
+  const decision = source.schedulerDecision;
   const now = new Date().toISOString();
   const base: IssueControlSyncGateReport = {
     version: 1,
     id: `issue-control-sync-gate-${now.replace(/[:.]/g, "-")}`,
     createdAt: now,
     status: "not-ready",
-    sourceStatePath: state.outputPath ?? options.input,
-    sourceLoopPath: state.lastLoopPath,
+    sourceStatePath: source.sourceStatePath,
+    sourceLoopPath: source.sourceLoopPath,
     schedulerDecision: decision,
     completedIssueIds: [],
     unresolvedIssueIds: [],
@@ -1494,7 +1516,7 @@ export async function issueControlSyncGate(
     });
   }
 
-  const ledgerPath = await resolveIssueControlSyncGateLedgerPath(state);
+  const ledgerPath = source.ledgerPath ?? (source.state ? await resolveIssueControlSyncGateLedgerPath(source.state) : undefined);
   if (!ledgerPath) {
     return writeIssueControlSyncGateReport(loaded, {
       ...base,
@@ -1807,6 +1829,71 @@ async function loadIssueControlAdvanceLoopState(loaded: LoadedConfig): Promise<I
     return undefined;
   }
   return readJsonFile<IssueControlAdvanceLoopState>(filePath);
+}
+
+
+interface IssueControlSyncGateSource {
+  state?: IssueControlAdvanceLoopState;
+  sourceStatePath?: string;
+  sourceLoopPath?: string;
+  ledgerPath?: string;
+  schedulerDecision: IssueControlAdvanceLoopSchedulerDecision;
+}
+
+async function resolveIssueControlSyncGateSource(
+  loaded: LoadedConfig,
+  options: IssueControlSyncGateOptions
+): Promise<IssueControlSyncGateSource> {
+  if (!options.input) {
+    const progress = await latestIssueControlSyncReadyProgress(loaded);
+    if (progress) {
+      return {
+        ledgerPath: progress.sourceLedgerPath,
+        schedulerDecision: createIssueControlSyncGateSchedulerDecisionFromProgress(progress)
+      };
+    }
+  }
+  const state = await issueControlAdvanceLoopStatus(loaded, { input: options.input });
+  return {
+    state,
+    sourceStatePath: state.outputPath ?? options.input,
+    sourceLoopPath: state.lastLoopPath,
+    schedulerDecision: state.schedulerDecision ?? createIssueControlAdvanceLoopSchedulerDecision(state)
+  };
+}
+
+async function latestIssueControlSyncReadyProgress(
+  loaded: LoadedConfig
+): Promise<IssueControlProgressStatusReport | undefined> {
+  const ledgerPath = await latestIssueControlSuperviseProgressLedgerPath(loaded);
+  if (!ledgerPath) {
+    return undefined;
+  }
+  const ledger = await loadIssueControlSuperviseProgressLedger(ledgerPath);
+  const progress = createIssueControlProgressStatusReport(ledger, ledgerPath);
+  return isIssueControlProgressSyncReady(progress) ? progress : undefined;
+}
+
+function isIssueControlProgressSyncReady(progress: IssueControlProgressStatusReport): boolean {
+  return progress.automationDecision.disposition === "ready-to-sync"
+    || progress.automationDecision.disposition === "complete";
+}
+
+function createIssueControlSyncGateSchedulerDecisionFromProgress(
+  progress: IssueControlProgressStatusReport
+): IssueControlAdvanceLoopSchedulerDecision {
+  const decision = progress.automationDecision;
+  return {
+    action: "sync-issues",
+    canRunUnattended: false,
+    requiresHuman: false,
+    trustTier: decision.trustTier,
+    safetyEnvelope: decision.safetyEnvelope,
+    adaptiveGate: decision.adaptiveGate,
+    exitCode: 0,
+    reason: `Latest supervisor progress ${progress.sourceSuperviseId} is ready for issue sync. ${decision.reason}`,
+    nextCommand: decision.nextCommand
+  };
 }
 
 
