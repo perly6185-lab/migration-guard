@@ -28,6 +28,18 @@ export function createTaskGraph(runId: string, scan: ScanSummary, goal: string, 
     if (verify) {
       verify.dependsOn = ["task-md-monorepo-actions"];
     }
+  } else if (adapter === "cross-language-http") {
+    tasks.splice(
+      3,
+      0,
+      createTask("task-cross-language-inventory", "Inventory cross-language HTTP surfaces", "Detect source and target languages, framework signals, HTTP route candidates, and project checks before code generation.", "adapter", ["task-plan"], "engine", "medium", 40, [], ["cross-language inventory artifact exists"], createdAt, "cross-language-http:inventory"),
+      createTask("task-cross-language-contracts", "Create cross-language contract replay plan", "Convert detected HTTP routes into a contract capture and dual-run replay matrix.", "contract", ["task-cross-language-inventory"], "engine", "medium", 50, [], ["contract replay plan artifact exists"], createdAt, "cross-language-http:contracts"),
+      createTask("task-cross-language-slices", "Create guarded cross-language migration slices", "Create behavior-first migration slices from matched, missing, and target-only route candidates without modifying target source.", "adapter", ["task-cross-language-contracts"], "engine", "high", 60, [], ["cross-language migration slice plan exists"], createdAt, "cross-language-http:slices")
+    );
+    const verify = tasks.find((task) => task.id === "task-verify");
+    if (verify) {
+      verify.dependsOn = ["task-cross-language-slices"];
+    }
   } else if (adapter === "pnpm-vite-vue") {
     tasks.splice(
       3,

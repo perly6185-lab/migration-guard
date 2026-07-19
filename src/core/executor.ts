@@ -2,6 +2,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { compareSnapshots } from "./compare.js";
 import { createCheckpoint } from "./checkpoint.js";
+import {
+  createContractPlan,
+  createCrossLanguageHttpInventory,
+  createMigrationSlicePlan,
+  renderContractPlan,
+  renderCrossLanguageInventory,
+  renderMigrationSlicePlan
+} from "./crossLanguageAdapters.js";
 import { decisionsForCompareReport, evaluateDiffDecisionPolicy, formatPolicyLine } from "./diffDecision.js";
 import { renderCompareReport } from "./markdown.js";
 import { captureSnapshot, latestBaselinePath, loadSnapshot, saveSnapshot } from "./snapshot.js";
@@ -120,6 +128,9 @@ async function runTaskBody(loaded: LoadedConfig, pkg: MigrationRunPackage, task:
   }
   if (task.executor?.startsWith("pnpm-vite-vue:")) {
     return executePnpmViteVueTask(loaded, pkg, task);
+  }
+  if (task.executor?.startsWith("cross-language-http:")) {
+    return executeCrossLanguageHttpTask(loaded, pkg, task);
   }
 
   switch (task.type) {
@@ -267,6 +278,59 @@ async function executeMdMonorepoTask(loaded: LoadedConfig, pkg: MigrationRunPack
     default:
       return `No md-monorepo executor for ${task.executor}.`;
   }
+}
+
+async function executeCrossLanguageHttpTask(loaded: LoadedConfig, pkg: MigrationRunPackage, task: MigrationTask): Promise<string> {
+  switch (task.executor) {
+    case "cross-language-http:inventory":
+      return writeCrossLanguageInventory(loaded, pkg);
+    case "cross-language-http:contracts":
+      return writeCrossLanguageContractPlan(loaded, pkg);
+    case "cross-language-http:slices":
+      return writeCrossLanguageSlicePlan(loaded, pkg);
+    default:
+      return `No cross-language-http executor for ${task.executor}.`;
+  }
+}
+
+async function loadOrCreateCrossLanguageInventory(loaded: LoadedConfig, pkg: MigrationRunPackage) {
+  const inventoryPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "cross-language-http-inventory.json");
+  if (await pathExists(inventoryPath)) {
+    return readJsonFile<Awaited<ReturnType<typeof createCrossLanguageHttpInventory>>>(inventoryPath);
+  }
+  return createCrossLanguageHttpInventory(pkg.run.sourceRoot, pkg.run.targetRoot);
+}
+
+async function writeCrossLanguageInventory(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const inventory = await createCrossLanguageHttpInventory(pkg.run.sourceRoot, pkg.run.targetRoot);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "cross-language-http-inventory.json");
+  const markdownPath = path.join(dir, "cross-language-http-inventory.md");
+  await writeJsonFile(jsonPath, inventory);
+  await writeTextFile(markdownPath, renderCrossLanguageInventory(inventory));
+  return `Wrote cross-language HTTP inventory to ${jsonPath} and ${markdownPath}`;
+}
+
+async function writeCrossLanguageContractPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const inventory = await loadOrCreateCrossLanguageInventory(loaded, pkg);
+  const plan = createContractPlan(inventory);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "cross-language-http-contract-plan.json");
+  const markdownPath = path.join(dir, "cross-language-http-contract-plan.md");
+  await writeJsonFile(jsonPath, plan);
+  await writeTextFile(markdownPath, renderContractPlan(plan));
+  return `Wrote cross-language HTTP contract plan to ${jsonPath} and ${markdownPath}`;
+}
+
+async function writeCrossLanguageSlicePlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const inventory = await loadOrCreateCrossLanguageInventory(loaded, pkg);
+  const plan = createMigrationSlicePlan(inventory);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "cross-language-http-slice-plan.json");
+  const markdownPath = path.join(dir, "cross-language-http-slice-plan.md");
+  await writeJsonFile(jsonPath, plan);
+  await writeTextFile(markdownPath, renderMigrationSlicePlan(plan));
+  return `Wrote cross-language HTTP migration slice plan to ${jsonPath} and ${markdownPath}`;
 }
 
 interface MdRefactorTaskPlanItem {
