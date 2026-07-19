@@ -192,6 +192,15 @@ const SOURCE_EXTENSIONS = new Set([
   ".go"
 ]);
 
+const SUPPORTED_RECIPE_PAIRS = new Set([
+  "python-to-typescript-node",
+  "typescript-node-to-python",
+  "java-to-python",
+  "java-to-typescript-node",
+  "go-to-typescript-node",
+  "typescript-node-to-go"
+]);
+
 export async function createCrossLanguageHttpInventory(sourceRoot: string, targetRoot: string): Promise<CrossLanguageHttpInventory> {
   const source = await createProjectInventory(sourceRoot);
   const target = await createProjectInventory(targetRoot);
@@ -370,9 +379,7 @@ export function createMigrationSlicePlan(inventory: CrossLanguageHttpInventory):
 
 export function createRecipePlan(inventory: CrossLanguageHttpInventory): CrossLanguageRecipePlan {
   const recipeId = `${inventory.source.primaryLanguage}-to-${inventory.target.primaryLanguage}`;
-  const supported = inventory.source.primaryLanguage !== "unknown"
-    && inventory.target.primaryLanguage !== "unknown"
-    && inventory.source.primaryLanguage !== inventory.target.primaryLanguage;
+  const supported = isSupportedRecipePair(inventory.source.primaryLanguage, inventory.target.primaryLanguage);
   const confidence = supported && inventory.source.languageConfidence === "high" && inventory.target.languageConfidence === "high"
     ? "high"
     : supported
@@ -553,46 +560,65 @@ export function createReadinessReport(
   actionPlan: MigrationActionPlan
 ): CrossLanguageReadinessReport {
   const issuePlan = createIssuePlan(inventory, recipePlan, actionPlan);
+  const cl1Ready = inventory.source.primaryLanguage !== "unknown" && inventory.target.primaryLanguage !== "unknown";
+  const cl2Ready = cl1Ready && recipePlan.supported;
+  const cl3Ready = cl2Ready && corpusDraft.requests.length > 0;
+  const cl4Ready = cl3Ready && actionPlan.actions.length > 0;
+  const cl5Ready = cl4Ready && issuePlan.length > 0;
   const levels: CrossLanguageReadinessReport["levels"] = [
     {
       level: "CL1",
       title: "Inventory source and target languages/routes",
-      status: inventory.source.primaryLanguage !== "unknown" && inventory.target.primaryLanguage !== "unknown" ? "ready" : "partial",
+      status: cl1Ready ? "ready" : "partial",
       evidence: ["adapter/cross-language-http-inventory.json"],
-      blockers: inventory.source.primaryLanguage === "unknown" || inventory.target.primaryLanguage === "unknown"
+      blockers: cl1Ready
+        ? []
+        : inventory.source.primaryLanguage === "unknown" || inventory.target.primaryLanguage === "unknown"
         ? ["source or target language could not be detected confidently"]
         : []
     },
     {
       level: "CL2",
       title: "Create language-pair migration recipe",
-      status: recipePlan.supported ? "ready" : "partial",
+      status: cl2Ready ? "ready" : "partial",
       evidence: ["adapter/cross-language-http-recipe-plan.json"],
-      blockers: recipePlan.supported ? [] : ["language pair is same-language or unknown; recipe remains review-only"]
+      blockers: [
+        ...(!cl1Ready ? ["CL1 language inventory is not ready"] : []),
+        ...(!recipePlan.supported ? [`language pair ${recipePlan.recipeId} is not in the supported recipe set; recipe remains review-only`] : [])
+      ]
     },
     {
       level: "CL3",
       title: "Prepare HTTP contract corpus draft",
-      status: corpusDraft.requests.length > 0 ? "ready" : "blocked",
+      status: corpusDraft.requests.length === 0 ? "blocked" : cl3Ready ? "ready" : "partial",
       evidence: ["adapter/cross-language-http-contract-corpus-draft.json"],
-      blockers: corpusDraft.requests.length > 0 ? [] : ["no HTTP route candidates were detected"]
+      blockers: [
+        ...(!cl2Ready ? ["CL2 language-pair recipe is not ready"] : []),
+        ...(corpusDraft.requests.length > 0 ? [] : ["no HTTP route candidates were detected"])
+      ]
     },
     {
       level: "CL4",
       title: "Generate guarded migration actions",
-      status: actionPlan.actions.length > 0 ? "ready" : "blocked",
+      status: actionPlan.actions.length === 0 ? "blocked" : cl4Ready ? "ready" : "partial",
       evidence: ["adapter/cross-language-http-action-plan.json"],
-      blockers: actionPlan.actions.length > 0 ? [] : ["no action plan entries were generated"]
+      blockers: [
+        ...(!cl3Ready ? ["CL3 contract corpus draft is not ready"] : []),
+        ...(actionPlan.actions.length > 0 ? [] : ["no action plan entries were generated"])
+      ]
     },
     {
       level: "CL5",
       title: "Close the verification and issue loop",
-      status: issuePlan.length > 0 ? "ready" : "partial",
+      status: cl5Ready ? "ready" : issuePlan.length > 0 ? "partial" : "blocked",
       evidence: ["adapter/cross-language-http-readiness-report.json", "issues.json"],
-      blockers: issuePlan.length > 0 ? [] : ["no issue candidates were generated"]
+      blockers: [
+        ...(!cl4Ready ? ["CL4 migration action plan is not ready"] : []),
+        ...(issuePlan.length > 0 ? [] : ["no issue candidates were generated"])
+      ]
     }
   ];
-  const achieved = [...levels].reverse().find((level) => level.status !== "blocked")?.level ?? "CL1";
+  const achieved = highestContiguousReadyLevel(levels);
   const firstAction = actionPlan.actions[0]?.id ?? "<action-id>";
 
   return {
@@ -809,6 +835,21 @@ function renderLanguageLines(inventory: CrossLanguageProjectInventory): string[]
     language.buildFiles.length > 0 ? `  build-files: ${language.buildFiles.join(", ")}` : undefined,
     language.reasons.length > 0 ? `  reasons: ${language.reasons.join("; ")}` : undefined
   ].filter(Boolean).join("\n"));
+}
+
+function isSupportedRecipePair(source: CrossLanguageId, target: CrossLanguageId): boolean {
+  return SUPPORTED_RECIPE_PAIRS.has(`${source}-to-${target}`);
+}
+
+function highestContiguousReadyLevel(levels: CrossLanguageReadinessReport["levels"]): CrossLanguageCapabilityLevel {
+  let achieved: CrossLanguageCapabilityLevel = "CL1";
+  for (const level of levels) {
+    if (level.status !== "ready") {
+      break;
+    }
+    achieved = level.level;
+  }
+  return achieved;
 }
 
 function riskForRouteMapping(route: CrossLanguageRouteMatch): "low" | "medium" | "high" {

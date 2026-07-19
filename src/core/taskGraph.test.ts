@@ -110,8 +110,13 @@ test("probe template registry selects shared TS before UI smoke and renders reas
     id: "action-cl4-port-missing-http-routes",
     affectedFiles: ["src/main.py"]
   });
+  const cleanup = selectProbeTemplate({
+    id: "action-cleanup-config",
+    affectedFiles: ["src/config.js"]
+  });
   assert.equal(crossLanguage.template, "cross-language-contract-probe");
   assert.equal(getProbeTemplateDefinition("cross-language-contract-probe").defaultCheckKind, "contract-probe");
+  assert.notEqual(cleanup.template, "cross-language-contract-probe");
 
   const text = renderActionPlan({
     version: 1,

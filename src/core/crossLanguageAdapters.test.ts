@@ -94,6 +94,89 @@ test("cross-language inventory aligns FastAPI source routes with Express target 
   }
 });
 
+test("readiness does not report CL5 when no HTTP contract corpus can be drafted", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-cross-language-empty-"));
+  const source = path.join(dir, "source");
+  const target = path.join(dir, "target");
+
+  try {
+    await mkdir(source, { recursive: true });
+    await mkdir(target, { recursive: true });
+    await writeFile(path.join(source, "requirements.txt"), "fastapi\npytest\n");
+    await writeFile(path.join(source, "main.py"), [
+      "from fastapi import FastAPI",
+      "app = FastAPI()"
+    ].join("\n"));
+    await writeFile(path.join(target, "package.json"), JSON.stringify({
+      scripts: { test: "vitest" },
+      dependencies: { express: "^5.0.0" }
+    }));
+    await writeFile(path.join(target, "app.ts"), [
+      "import express from 'express'",
+      "const app = express()"
+    ].join("\n"));
+
+    const inventory = await createCrossLanguageHttpInventory(source, target);
+    const recipePlan = createRecipePlan(inventory);
+    const corpusDraft = createContractCorpusDraft(inventory);
+    const actionPlan = createCrossLanguageActionPlan("run-empty", "Port API", inventory, recipePlan, corpusDraft);
+    const readiness = createReadinessReport(inventory, recipePlan, corpusDraft, actionPlan);
+    const statuses = new Map(readiness.levels.map((level) => [level.level, level.status]));
+
+    assert.equal(recipePlan.supported, true);
+    assert.equal(corpusDraft.requests.length, 0);
+    assert.equal(statuses.get("CL3"), "blocked");
+    assert.equal(statuses.get("CL5"), "partial");
+    assert.equal(readiness.achievedLevel, "CL2");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("recipe support is limited to explicit language-pair recipes", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-cross-language-unsupported-"));
+  const source = path.join(dir, "source");
+  const target = path.join(dir, "target");
+
+  try {
+    await mkdir(source, { recursive: true });
+    await mkdir(path.join(target, "src", "main", "java", "demo"), { recursive: true });
+    await writeFile(path.join(source, "go.mod"), "module example.com/demo\n\ngo 1.22\nrequire github.com/gin-gonic/gin v1.0.0\n");
+    await writeFile(path.join(source, "main.go"), [
+      "package main",
+      "import \"github.com/gin-gonic/gin\"",
+      "func main() {",
+      "  r := gin.Default()",
+      "  r.GET(\"/health\", health)",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(target, "pom.xml"), "<project></project>\n");
+    await writeFile(path.join(target, "src", "main", "java", "demo", "HealthController.java"), [
+      "import org.springframework.web.bind.annotation.GetMapping;",
+      "@RestController",
+      "class HealthController {",
+      "  @GetMapping('/health')",
+      "  String health() { return \"ok\"; }",
+      "}"
+    ].join("\n"));
+
+    const inventory = await createCrossLanguageHttpInventory(source, target);
+    const recipePlan = createRecipePlan(inventory);
+    const corpusDraft = createContractCorpusDraft(inventory);
+    const actionPlan = createCrossLanguageActionPlan("run-unsupported", "Port API", inventory, recipePlan, corpusDraft);
+    const readiness = createReadinessReport(inventory, recipePlan, corpusDraft, actionPlan);
+    const statuses = new Map(readiness.levels.map((level) => [level.level, level.status]));
+
+    assert.equal(recipePlan.recipeId, "go-to-java");
+    assert.equal(recipePlan.supported, false);
+    assert.equal(recipePlan.confidence, "low");
+    assert.equal(statuses.get("CL2"), "partial");
+    assert.equal(readiness.achievedLevel, "CL1");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("project inventory extracts Spring and Go HTTP route candidates", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-route-inventory-"));
   const spring = path.join(dir, "spring");

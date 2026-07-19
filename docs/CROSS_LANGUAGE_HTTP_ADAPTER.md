@@ -12,6 +12,8 @@ It does not translate code automatically. It inventories source and target proje
 - CL4: create proposal-ready migration actions that stay behind patch review and target checks.
 - CL5: create a readiness report with verification gates, local issue candidates, and next commands for proposal and issue sync.
 
+Capability levels are sequential: CL4 and CL5 cannot be reported as achieved when CL3 is blocked.
+
 ## Current scope
 
 - Detect primary language signals for TypeScript/Node, Python, Java, and Go projects.
@@ -22,6 +24,13 @@ It does not translate code automatically. It inventories source and target proje
   - Go: net/http, Gin, Chi, Fiber
 - Extract route candidates from common route declarations.
 - Compare source and target route surfaces by `METHOD path`.
+- Mark language-pair recipes as supported only for explicit pairs:
+  - `python-to-typescript-node`
+  - `typescript-node-to-python`
+  - `java-to-python`
+  - `java-to-typescript-node`
+  - `go-to-typescript-node`
+  - `typescript-node-to-go`
 - Generate:
   - `cross-language-http-inventory.json|md`
   - `cross-language-http-recipe-plan.json|md`

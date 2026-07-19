@@ -121,7 +121,7 @@ const PROBE_TEMPLATE_REGISTRY: ProbeTemplateDefinition[] = [
       { name: "has-handler-contract-signal", pattern: "/\\b(return|response|json|schema|interface|class|def|func|handler|controller|express|fastapi|flask|spring|gin|router)\\b/i" }
     ],
     match: (input) => {
-      if (input.id.includes("cl") || input.id.includes("cross-language")) {
+      if (isCrossLanguageActionId(input.id)) {
         return "action id references cross-language migration work.";
       }
       if (input.affectedFiles.some((file) => /\.(py|java|go)$/.test(file))) {
@@ -219,4 +219,11 @@ export function selectProbeTemplateForAction(action: MigrationAction): Migration
 
 function allFilesStartWith(files: string[], prefix: string): boolean {
   return files.length > 0 && files.every((file) => file.replace(/\\/g, "/").startsWith(prefix));
+}
+
+function isCrossLanguageActionId(id: string): boolean {
+  const normalized = id.toLowerCase();
+  return normalized.includes("cross-language")
+    || normalized.includes("cross_language")
+    || /(^|[-_])cl\d+([-_]|$)/.test(normalized);
 }
