@@ -20,6 +20,15 @@ import {
 } from "./crossLanguageAdapters.js";
 import { decisionsForCompareReport, evaluateDiffDecisionPolicy, formatPolicyLine } from "./diffDecision.js";
 import { renderCompareReport } from "./markdown.js";
+import {
+  createMethodRefactorActionPlan,
+  createMethodRefactorInventory,
+  createMethodRefactorPlan,
+  extractMethodSymbolFromGoal,
+  renderMethodRefactorActionPlan,
+  renderMethodRefactorInventory,
+  renderMethodRefactorPlan
+} from "./methodRefactor.js";
 import { captureSnapshot, latestBaselinePath, loadSnapshot, saveSnapshot } from "./snapshot.js";
 import { scanProject } from "./scan.js";
 import { updateTaskStatus, insertFailureTask, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
@@ -139,6 +148,9 @@ async function runTaskBody(loaded: LoadedConfig, pkg: MigrationRunPackage, task:
   }
   if (task.executor?.startsWith("cross-language-http:")) {
     return executeCrossLanguageHttpTask(loaded, pkg, task);
+  }
+  if (task.executor?.startsWith("method-refactor:")) {
+    return executeMethodRefactorTask(loaded, pkg, task);
   }
 
   switch (task.type) {
@@ -285,6 +297,99 @@ async function executeMdMonorepoTask(loaded: LoadedConfig, pkg: MigrationRunPack
       return createMdMonorepoActionPlan(loaded, pkg);
     default:
       return `No md-monorepo executor for ${task.executor}.`;
+  }
+}
+
+async function executeMethodRefactorTask(loaded: LoadedConfig, pkg: MigrationRunPackage, task: MigrationTask): Promise<string> {
+  switch (task.executor) {
+    case "method-refactor:inventory":
+      return writeMethodRefactorInventory(loaded, pkg);
+    case "method-refactor:plan":
+      return writeMethodRefactorPlan(loaded, pkg);
+    case "method-refactor:actions":
+      return writeMethodRefactorActionPlan(loaded, pkg);
+    default:
+      return `No method-refactor executor for ${task.executor}.`;
+  }
+}
+
+function methodSymbolForRun(pkg: MigrationRunPackage): string {
+  const symbol = extractMethodSymbolFromGoal(pkg.run.goal);
+  if (!symbol) {
+    throw new Error("method-refactor requires a method symbol in the goal, for example: method symbol=UserService.createUser");
+  }
+  return symbol;
+}
+
+async function loadOrCreateMethodRefactorPlan(loaded: LoadedConfig, pkg: MigrationRunPackage) {
+  const planPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "method-refactor-plan.json");
+  if (await pathExists(planPath)) {
+    return readJsonFile<Awaited<ReturnType<typeof createMethodRefactorPlan>>>(planPath);
+  }
+  return createMethodRefactorPlan(pkg.run.targetRoot, methodSymbolForRun(pkg));
+}
+
+async function writeMethodRefactorInventory(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const symbol = methodSymbolForRun(pkg);
+  const inventory = await createMethodRefactorInventory(pkg.run.targetRoot, symbol);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "method-refactor-inventory.json");
+  const markdownPath = path.join(dir, "method-refactor-inventory.md");
+  await writeJsonFile(jsonPath, inventory);
+  await writeTextFile(markdownPath, renderMethodRefactorInventory(inventory));
+  return `Wrote method refactor inventory for ${symbol} to ${jsonPath} and ${markdownPath}`;
+}
+
+async function writeMethodRefactorPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const plan = await createMethodRefactorPlan(pkg.run.targetRoot, methodSymbolForRun(pkg));
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "method-refactor-plan.json");
+  const markdownPath = path.join(dir, "method-refactor-plan.md");
+  await writeJsonFile(jsonPath, plan);
+  await writeTextFile(markdownPath, renderMethodRefactorPlan(plan));
+  return `Wrote method refactor plan for ${plan.selected.symbol} to ${jsonPath} and ${markdownPath}`;
+}
+
+async function writeMethodRefactorActionPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
+  const plan = await loadOrCreateMethodRefactorPlan(loaded, pkg);
+  const actionPlan = createMethodRefactorActionPlan(pkg.run.id, pkg.run.goal, plan);
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const jsonPath = path.join(dir, "method-refactor-action-plan.json");
+  const markdownPath = path.join(dir, "method-refactor-action-plan.md");
+  await writeJsonFile(jsonPath, actionPlan);
+  await writeTextFile(markdownPath, renderMethodRefactorActionPlan(actionPlan));
+  createMethodRefactorIssues(pkg, actionPlan.actions);
+  await saveRunPackage(loaded, pkg);
+  return `Wrote method refactor action plan with ${actionPlan.actions.length} action(s) to ${jsonPath} and ${markdownPath}`;
+}
+
+function createMethodRefactorIssues(pkg: MigrationRunPackage, actions: MigrationAction[]): void {
+  const existing = new Set(pkg.issues.map((issue) => `${issue.type}:${issue.title}`));
+  const now = new Date().toISOString();
+  for (const action of actions) {
+    const issue: MigrationIssue = {
+      id: createId("issue"),
+      runId: pkg.run.id,
+      type: "task",
+      title: action.title,
+      body: [
+        action.summary,
+        "",
+        `Recommended checks: ${action.recommendedChecks.join(", ") || "none"}`,
+        `Patch mode: ${action.patchMode}`,
+        `Patch template: ${action.patchTemplate ?? "auto"}`
+      ].join("\n"),
+      status: "planned",
+      risk: action.risk,
+      owner: action.risk === "high" ? "human" : "ai",
+      affectedFiles: action.affectedFiles,
+      createdAt: now,
+      updatedAt: now
+    };
+    if (!existing.has(`${issue.type}:${issue.title}`)) {
+      pkg.issues.push(issue);
+      existing.add(`${issue.type}:${issue.title}`);
+    }
   }
 }
 

@@ -44,6 +44,18 @@ export function createTaskGraph(runId: string, scan: ScanSummary, goal: string, 
     if (verify) {
       verify.dependsOn = ["task-cross-language-readiness"];
     }
+  } else if (adapter === "method-refactor") {
+    tasks.splice(
+      3,
+      0,
+      createTask("task-method-refactor-inventory", "Inventory requested method symbol", "Find the requested function or method symbol, file location, signature, and language before any source edit.", "adapter", ["task-plan"], "engine", "medium", 40, [], ["method inventory artifact exists"], createdAt, "method-refactor:inventory"),
+      createTask("task-method-refactor-plan", "Create method-level refactor plan", "Estimate call-site impact, method contract hints, risk, checks, and acceptance criteria for the requested symbol.", "adapter", ["task-method-refactor-inventory"], "engine", "medium", 45, [], ["method refactor plan artifact exists"], createdAt, "method-refactor:plan"),
+      createTask("task-method-refactor-actions", "Create method-level action plan", "Create a proposal-ready method refactor action without widening to unrelated project files.", "adapter", ["task-method-refactor-plan"], "engine", "high", 50, [], ["method refactor action plan exists"], createdAt, "method-refactor:actions")
+    );
+    const verify = tasks.find((task) => task.id === "task-verify");
+    if (verify) {
+      verify.dependsOn = ["task-method-refactor-actions"];
+    }
   } else if (adapter === "pnpm-vite-vue") {
     tasks.splice(
       3,

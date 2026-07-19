@@ -1670,6 +1670,8 @@ function actionPlanArtifactPath(loaded: LoadedConfig, pkg: MigrationRunPackage):
     ? "md-monorepo-action-plan.json"
     : pkg.run.adapter === "cross-language-http"
       ? "cross-language-http-action-plan.json"
+      : pkg.run.adapter === "method-refactor"
+        ? "method-refactor-action-plan.json"
       : "pnpm-vite-vue-action-plan.json";
   return path.join(migrationRunDir(loaded, pkg.run.id), "adapter", fileName);
 }

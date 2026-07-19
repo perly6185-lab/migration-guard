@@ -26,6 +26,24 @@ export interface ProbeTemplateDefinition {
 
 const PROBE_TEMPLATE_REGISTRY: ProbeTemplateDefinition[] = [
   {
+    template: "method-contract-probe",
+    description: "Inspect a bounded method/function refactor surface without requiring a browser preview.",
+    needsPreview: false,
+    defaultCheckKind: "other",
+    failureHint: "Expected a method/function declaration plus implementation structure in the affected source file.",
+    scriptBuilder: "structural",
+    checks: [
+      { name: "has-method-declaration-signal", pattern: "/\\b(function|def|func|class)\\b|=>|\\b(public|private|protected)\\b/" },
+      { name: "has-method-implementation-signal", pattern: "/\\b(return|throw|raise|await|if|for|while|switch|const|let|var)\\b/i" }
+    ],
+    match: (input) => {
+      if (input.id.startsWith("method-action-") || input.id.includes("method-refactor")) {
+        return "action id references method-level refactor work.";
+      }
+      return undefined;
+    }
+  },
+  {
     template: "ts-structural-probe",
     description: "Inspect TypeScript module and structure signals without requiring a browser preview.",
     needsPreview: false,

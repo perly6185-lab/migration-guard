@@ -35,6 +35,16 @@ test("createTaskGraph builds an md monorepo task-planning graph", () => {
   assert.deepEqual(graph.tasks.find((task) => task.id === "task-verify")?.dependsOn, ["task-md-monorepo-actions"]);
 });
 
+test("createTaskGraph builds a method refactor graph", () => {
+  const graph = createTaskGraph("run-1", makeScan(), "method symbol=UserService.createUser: simplify", "method-refactor");
+
+  assert.deepEqual(validateTaskGraph(graph), []);
+  assert.ok(graph.tasks.some((task) => task.executor === "method-refactor:inventory"));
+  assert.ok(graph.tasks.some((task) => task.executor === "method-refactor:plan"));
+  assert.ok(graph.tasks.some((task) => task.executor === "method-refactor:actions"));
+  assert.deepEqual(graph.tasks.find((task) => task.id === "task-verify")?.dependsOn, ["task-method-refactor-actions"]);
+});
+
 test("createPnpmViteVueActions includes low-risk proposal candidates", () => {
   const actions = createPnpmViteVueActions({
     ...makeScan(),
@@ -114,9 +124,14 @@ test("probe template registry selects shared TS before UI smoke and renders reas
     id: "action-cleanup-config",
     affectedFiles: ["src/config.js"]
   });
+  const method = selectProbeTemplate({
+    id: "method-action-userservice-createuser",
+    affectedFiles: ["src/userService.ts"]
+  });
   assert.equal(crossLanguage.template, "cross-language-contract-probe");
   assert.equal(getProbeTemplateDefinition("cross-language-contract-probe").defaultCheckKind, "contract-probe");
   assert.notEqual(cleanup.template, "cross-language-contract-probe");
+  assert.equal(method.template, "method-contract-probe");
 
   const text = renderActionPlan({
     version: 1,
