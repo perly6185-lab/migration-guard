@@ -7,6 +7,7 @@ import { loadConfig } from "./config.js";
 import { saveRunPackage, type MigrationRunPackage } from "./migrationRun.js";
 import { startUiServer } from "./uiServer.js";
 import { readUiJob } from "./uiJobStore.js";
+import { planOrphanUiJobs } from "./uiJobService.js";
 
 test("ui server exposes read-only dashboard data and guarded dry-run actions", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-ui-"));
@@ -66,7 +67,7 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
     try {
       const html = await (await fetch(`${handle.url}/`)).text();
       assert.match(html, /Migration Guard/);
-      assert.match(html, /Guarded Actions/);
+      assert.match(html, /Advanced guarded actions/);
       assert.match(html, /Run selector/);
       assert.match(html, /Project Workflow/);
       assert.match(html, /Auto advance/);
@@ -75,13 +76,13 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /Capture Baseline/);
       assert.match(html, /Create Checkpoint/);
       assert.match(html, /Recovery Center/);
-      assert.match(html, /Project History/);
+      assert.match(html, /Project history/);
       assert.match(html, /Review plan/);
       assert.match(html, /Task Board/);
       assert.match(html, /data-workflow-task-action/);
       assert.match(html, /data-safe-task/);
       assert.match(html, /Execute task/);
-      assert.match(html, /Run Detail/);
+      assert.match(html, /Run details/);
       assert.match(html, /Diff status filter/);
       assert.match(html, /issueMaxIterations/);
       assert.match(html, /data-diff-decision/);
@@ -108,6 +109,9 @@ test("ui server exposes read-only dashboard data and guarded dry-run actions", a
       assert.match(html, /Refactored target directory/);
       assert.match(html, /data-job-cancel/);
       assert.match(html, /jobGcPlan/);
+      assert.match(html, /Apply this reviewed recovery plan/);
+      assert.match(html, /preferredWorkView/);
+      assert.match(html, /Show .* more blockers/);
       const securityResponse = await fetch(`${handle.url}/`);
       assert.equal(securityResponse.headers.get("x-frame-options"), "DENY");
       assert.match(securityResponse.headers.get("content-security-policy") ?? "", /default-src/);
@@ -465,6 +469,10 @@ test("ui server recovers orphan queued and running jobs on startup", async () =>
       artifactPaths: [],
       events: [{ at: now, type: "started", message: "Started before restart." }]
     }), "utf8");
+
+    const recoveryPlan = await planOrphanUiJobs(loaded);
+    assert.equal(recoveryPlan.candidateCount, 2);
+    assert.deepEqual(recoveryPlan.candidates.map((item) => item.decision).sort(), ["cancel", "fail"]);
 
     const handle = await startUiServer(loaded, { port: 0 });
     try {

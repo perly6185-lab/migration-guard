@@ -3,6 +3,7 @@
   "version": "0.3.0-beta.1",
   "description": "A behavior-consistency guardrail CLI for refactoring and migration work.",
   "type": "module",
+  "main": "dist/desktop/main.js",
   "bin": {
     "migration-guard": "./dist/cli.js"
   },
@@ -10,6 +11,10 @@
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node scripts/ci/run-tests.mjs",
     "ui:smoke": "npm run build && node scripts/smoke/ui-server-smoke.mjs",
+    "desktop:dev": "npm run build && node scripts/desktop/electron-launch.mjs .",
+    "desktop:smoke": "npm run build && node scripts/smoke/electron-desktop-smoke.mjs",
+    "desktop:pack": "npm run build && electron-builder --dir",
+    "desktop:dist": "npm run build && electron-builder",
     "start": "node dist/cli.js",
     "prepack": "npm run build",
     "package:smoke": "npm run build && node scripts/smoke/package-install-smoke.mjs",
@@ -31,13 +36,64 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "22.20.0"
+    "@types/node": "22.20.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "typescript": "5.9.3"
   },
   "engines": {
     "node": ">=20"
+  },
+  "build": {
+    "appId": "com.migrationguard.desktop",
+    "productName": "Migration Guard",
+    "asar": true,
+    "npmRebuild": false,
+    "extraMetadata": {
+      "main": "dist/desktop/main.js"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/**/*.test.js",
+      "!dist/**/*.test.d.ts",
+      "package.json",
+      "README.md"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName} Setup ${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    }
   },
   "files": [
     "dist/**/*.js",

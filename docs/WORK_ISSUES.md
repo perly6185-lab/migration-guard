@@ -1,10 +1,83 @@
-# Completed Work Issues
+# Work Issues
 
-Updated: 2026-07-18
+Updated: 2026-07-19
 
 This list tracks the work required to move the current `0.3.0-beta.1`
 workspace from locally validated development changes to a reviewable release
 candidate. Remote publication, Git tags and GitHub mutation remain manual.
+
+## MG-180: Execute verified TypeScript method extraction end to end
+
+- Priority: P0
+- Status: planned
+- Scope: extend the planning-only `method-refactor` adapter with TypeScript AST
+  eligibility analysis, data-flow contracts, atomic source patches, generated
+  contract tests, temporary verification, rollback and layered execution.
+- Safety boundary: Version 1 supports only statically provable TypeScript statement
+  ranges. Unsupported or ambiguous control/data flow blocks without source mutation.
+- Delivery order: MG-180A/B read-only analysis; MG-180C patch generation; MG-180D/E
+  contract and temporary verification; MG-180F reviewed apply; MG-180G call-chain execution.
+- Acceptance: a supported extraction must pass compiler, test, build and behavior
+  comparison gates; failures reject apply or restore the exact checkpoint.
+- Detailed plan: [METHOD_REFACTOR_EXECUTION_ISSUE.md](METHOD_REFACTOR_EXECUTION_ISSUE.md).
+- Remote tracking: epic [#55](https://github.com/perly6185-lab/migration-guard/issues/55),
+  development issues [#56](https://github.com/perly6185-lab/migration-guard/issues/56)
+  through [#62](https://github.com/perly6185-lab/migration-guard/issues/62).
+
+## MG-179: Expose operational troubleshooting through the Node CLI
+
+- Priority: P1
+- Status: completed
+- Scope: provide scriptable diagnostics for configuration, runs, blockers,
+  artifacts, local UI service ports and persisted UI jobs.
+- Acceptance:
+  - `troubleshoot` aggregates causes and recommended next commands without mutation.
+  - Job list/inspect/recovery/cancel/retry/GC workflows are available from the CLI.
+  - Recovery and GC are plan-first; cancellation and retry require explicit job-id confirmation.
+  - Artifact and serve diagnostics support CI-friendly JSON output and exit codes.
+- Evidence: focused diagnostics and orphan recovery tests pass; all commands are
+  registered in the public CLI catalog and documented in the operator guide.
+  The full suite passes with the manifest floor raised to 184 tests.
+
+## MG-176: Make desktop work-view navigation deterministic
+
+- Priority: P1
+- Status: completed
+- Scope: preserve URL-selected views through asynchronous workspace loading and
+  verify that desktop smoke captures the requested view.
+- Acceptance:
+  - `?view=execution|monitoring|reports` remains active after data loads.
+  - A user-selected tab remains active across refreshes during the session.
+  - UI smoke fails when the requested desktop view is not active.
+- Evidence: desktop screenshots for Workspace, Execution, Monitoring and Reports
+  are asserted pairwise distinct; updated UI smoke passed on 2026-07-18.
+
+## MG-177: Reduce desktop workspace first-screen density
+
+- Priority: P1
+- Status: completed
+- Scope: keep the current workflow action and primary blocker visible while
+  collapsing secondary run metadata, history and additional blockers.
+- Acceptance:
+  - The current step and its primary action remain immediately visible.
+  - Only the highest-priority blocker is expanded initially.
+  - Run details and project history remain available without dominating the page.
+- Evidence: desktop review confirms the current step and primary blocker remain
+  visible while secondary blockers, run details and history are collapsed.
+
+## MG-178: Separate advanced and high-impact controls
+
+- Priority: P1
+- Status: completed
+- Scope: move expert execution controls behind progressive disclosure and retain
+  explicit confirmation for recovery execution.
+- Acceptance:
+  - Advanced guarded actions are collapsed by default.
+  - Recovery execution presents an impact warning before applying a reviewed plan.
+  - Unit and UI smoke tests cover both controls.
+- Evidence: advanced guarded actions are collapsed in the Execution view; the
+  existing recovery impact confirmation is covered by unit and smoke assertions.
+  The full suite passed 182/182 tests on 2026-07-18.
 
 ## MG-171: Close the current core-refactor change set
 

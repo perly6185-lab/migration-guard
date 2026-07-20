@@ -511,6 +511,9 @@ open through `/api/artifact`, which only serves files under the configured
 `artifactsDir`. Diff report rows can be classified from the board as
 intentional, accidental or unknown; the UI writes the same diff decision ledger
 as `migration-guard diff decide`.
+
+Desktop UI operators can follow the Chinese step-by-step guide in
+[`docs/UI_OPERATOR_GUIDE_ZH.md`](docs/UI_OPERATOR_GUIDE_ZH.md).
 `issue-control dashboard` writes a single JSON/Markdown control view over the
 latest run, run-index, ready tasks, stuck proposals, readiness, progress ledger
 and target git status. `issue-control blockers` extracts the global blocker

@@ -138,15 +138,9 @@ async function withUiJobCreationLock<T>(key: string, operation: () => Promise<T>
 
 export async function recoverOrphanUiJobs(loaded: LoadedConfig): Promise<void> {
   const recoveredAt = new Date().toISOString();
-  for (const job of await readAllUiJobs(loaded)) {
-    if (job.status !== "queued" && job.status !== "running") {
-      continue;
-    }
-    const inspection = await inspectUiJobClaim(loaded, job.id).catch(() => ({ claimed: false as const, claim: undefined }));
-    const reason = classifyUiJobClaim(inspection.claim);
-    if (!reason) {
-      continue;
-    }
+  for (const candidate of (await planOrphanUiJobs(loaded)).candidates) {
+    const job = await readUiJob(loaded, candidate.id);
+    const reason = candidate.reason;
     const planPath = path.join(uiJobsDir(loaded), "recovery-plans", `${job.id}-${recoveredAt.replace(/[:.]/g, "-")}.json`);
     await writeJsonFile(planPath, {
       version: 1,
@@ -177,6 +171,17 @@ export async function recoverOrphanUiJobs(loaded: LoadedConfig): Promise<void> {
     };
     await writeUiJob(loaded, recovered);
   }
+}
+
+export async function planOrphanUiJobs(loaded: LoadedConfig) {
+  const candidates = [] as Array<{ id: string; action: UiActionId; status: "queued" | "running"; reason: NonNullable<UiJob["recoveryReason"]>; decision: "cancel" | "fail" }>;
+  for (const job of await readAllUiJobs(loaded)) {
+    if (job.status !== "queued" && job.status !== "running") continue;
+    const inspection = await inspectUiJobClaim(loaded, job.id).catch(() => ({ claimed: false as const, claim: undefined }));
+    const reason = classifyUiJobClaim(inspection.claim);
+    if (reason) candidates.push({ id: job.id, action: job.action, status: job.status, reason, decision: job.status === "queued" ? "cancel" : "fail" });
+  }
+  return { version: 1 as const, candidateCount: candidates.length, candidates };
 }
 
 export async function listUiJobs(loaded: LoadedConfig, searchParams: URLSearchParams): Promise<UiJobsReport> {

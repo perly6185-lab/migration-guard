@@ -24,11 +24,26 @@ import {
   createMethodRefactorActionPlan,
   createMethodRefactorInventory,
   createMethodRefactorPlan,
+  extractMethodCallDepthFromGoal,
   extractMethodSymbolFromGoal,
   renderMethodRefactorActionPlan,
   renderMethodRefactorInventory,
   renderMethodRefactorPlan
 } from "./methodRefactor.js";
+import {
+  createMethodExtractionContract,
+  createMethodExtractionEligibility,
+  createMethodExtractionPatchPlan,
+  extractMethodExtractionNameFromGoal,
+  extractMethodExtractionRangeFromGoal,
+  renderMethodExtractionContract,
+  renderMethodExtractionEligibility,
+  renderMethodExtractionPatchPlan
+} from "./methodExtraction.js";
+import { createMethodExtractionTestPlan, renderMethodExtractionTestPlan } from "./methodExtractionTest.js";
+import type { MethodExtractionPatchPlan } from "./methodExtraction.js";
+import type { MethodExtractionTestPlan } from "./methodExtractionTest.js";
+import { renderMethodExtractionVerification, verifyMethodExtractionTemporarily } from "./methodExtractionVerification.js";
 import { captureSnapshot, latestBaselinePath, loadSnapshot, saveSnapshot } from "./snapshot.js";
 import { scanProject } from "./scan.js";
 import { updateTaskStatus, insertFailureTask, getReadyTasks, validateTaskGraph } from "./taskGraph.js";
@@ -316,17 +331,25 @@ async function executeMethodRefactorTask(loaded: LoadedConfig, pkg: MigrationRun
 function methodSymbolForRun(pkg: MigrationRunPackage): string {
   const symbol = extractMethodSymbolFromGoal(pkg.run.goal);
   if (!symbol) {
-    throw new Error("method-refactor requires a method symbol in the goal, for example: method symbol=UserService.createUser");
+    throw new Error("method-refactor requires a method symbol in the goal, for example: method symbol=UserService.createUser call-depth=6");
   }
   return symbol;
 }
 
+function methodCallDepthForRun(pkg: MigrationRunPackage): number | undefined {
+  return extractMethodCallDepthFromGoal(pkg.run.goal);
+}
+
 async function loadOrCreateMethodRefactorPlan(loaded: LoadedConfig, pkg: MigrationRunPackage) {
   const planPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "method-refactor-plan.json");
+  const callDepth = methodCallDepthForRun(pkg);
   if (await pathExists(planPath)) {
-    return readJsonFile<Awaited<ReturnType<typeof createMethodRefactorPlan>>>(planPath);
+    const plan = await readJsonFile<Awaited<ReturnType<typeof createMethodRefactorPlan>>>(planPath);
+    if (plan.callGraph && plan.callDepth?.requested === (callDepth ?? 0)) {
+      return plan;
+    }
   }
-  return createMethodRefactorPlan(pkg.run.targetRoot, methodSymbolForRun(pkg));
+  return createMethodRefactorPlan(pkg.run.targetRoot, methodSymbolForRun(pkg), { callDepth });
 }
 
 async function writeMethodRefactorInventory(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
@@ -341,13 +364,41 @@ async function writeMethodRefactorInventory(loaded: LoadedConfig, pkg: Migration
 }
 
 async function writeMethodRefactorPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
-  const plan = await createMethodRefactorPlan(pkg.run.targetRoot, methodSymbolForRun(pkg));
+  const plan = await createMethodRefactorPlan(pkg.run.targetRoot, methodSymbolForRun(pkg), { callDepth: methodCallDepthForRun(pkg) });
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
   const jsonPath = path.join(dir, "method-refactor-plan.json");
   const markdownPath = path.join(dir, "method-refactor-plan.md");
   await writeJsonFile(jsonPath, plan);
   await writeTextFile(markdownPath, renderMethodRefactorPlan(plan));
-  return `Wrote method refactor plan for ${plan.selected.symbol} to ${jsonPath} and ${markdownPath}`;
+  const extractionRange = extractMethodExtractionRangeFromGoal(pkg.run.goal);
+  if (!extractionRange) {
+    return `Wrote method refactor plan for ${plan.selected.symbol} to ${jsonPath} and ${markdownPath}`;
+  }
+  const eligibility = await createMethodExtractionEligibility(pkg.run.targetRoot, plan.selected.symbol, extractionRange);
+  const eligibilityJsonPath = path.join(dir, "method-extraction-eligibility.json");
+  const eligibilityMarkdownPath = path.join(dir, "method-extraction-eligibility.md");
+  await writeJsonFile(eligibilityJsonPath, eligibility);
+  await writeTextFile(eligibilityMarkdownPath, renderMethodExtractionEligibility(eligibility));
+  const contract = await createMethodExtractionContract(eligibility);
+  await writeJsonFile(path.join(dir, "method-extraction-contract.json"), contract);
+  await writeTextFile(path.join(dir, "method-extraction-contract.md"), renderMethodExtractionContract(contract));
+  const extractedName = extractMethodExtractionNameFromGoal(pkg.run.goal);
+  if (!extractedName) {
+    return `Wrote method refactor plan for ${plan.selected.symbol}, extraction eligibility (${eligibility.reasonCode}), and contract (${contract.reasonCode}) to ${dir}`;
+  }
+  const patchPlan = await createMethodExtractionPatchPlan(contract, extractedName);
+  await writeJsonFile(path.join(dir, "method-extraction-patch.json"), patchPlan);
+  await writeTextFile(path.join(dir, "method-extraction-patch.md"), renderMethodExtractionPatchPlan(patchPlan));
+  if (patchPlan.ready && patchPlan.patch) {
+    await writeTextFile(path.join(dir, "method-extraction-patch.diff"), patchPlan.patch);
+  }
+  const testPlan = await createMethodExtractionTestPlan(contract, patchPlan);
+  await writeJsonFile(path.join(dir, "method-extraction-test-plan.json"), testPlan);
+  await writeTextFile(path.join(dir, "method-extraction-test-plan.md"), renderMethodExtractionTestPlan(testPlan));
+  if (testPlan.generatedTest) {
+    await writeTextFile(path.join(dir, testPlan.generatedTest.artifactFileName), testPlan.generatedTest.content);
+  }
+  return `Wrote method refactor plan for ${plan.selected.symbol}, atomic patch (${patchPlan.reasonCode}), and contract test plan (${testPlan.reasonCode}) to ${dir}`;
 }
 
 async function writeMethodRefactorActionPlan(loaded: LoadedConfig, pkg: MigrationRunPackage): Promise<string> {
@@ -360,7 +411,28 @@ async function writeMethodRefactorActionPlan(loaded: LoadedConfig, pkg: Migratio
   await writeTextFile(markdownPath, renderMethodRefactorActionPlan(actionPlan));
   createMethodRefactorIssues(pkg, actionPlan.actions);
   await saveRunPackage(loaded, pkg);
-  return `Wrote method refactor action plan with ${actionPlan.actions.length} action(s) to ${jsonPath} and ${markdownPath}`;
+  const verification = await writeMethodExtractionVerificationIfPlanned(loaded, pkg, plan.recommendedChecks);
+  return `Wrote method refactor action plan with ${actionPlan.actions.length} action(s) to ${jsonPath} and ${markdownPath}${verification ? `; extraction verification: ${verification}` : ""}`;
+}
+
+async function writeMethodExtractionVerificationIfPlanned(
+  loaded: LoadedConfig,
+  pkg: MigrationRunPackage,
+  recommendedChecks: string[]
+): Promise<string | undefined> {
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  const patchPath = path.join(dir, "method-extraction-patch.json");
+  const testPath = path.join(dir, "method-extraction-test-plan.json");
+  if (!await pathExists(patchPath) || !await pathExists(testPath)) return undefined;
+  const patchPlan = await readJsonFile<MethodExtractionPatchPlan>(patchPath);
+  const testPlan = await readJsonFile<MethodExtractionTestPlan>(testPath);
+  const report = await verifyMethodExtractionTemporarily(patchPlan, testPlan, {
+    commands: recommendedChecks,
+    maxOutputBytes: loaded.config.output.maxOutputBytes
+  });
+  await writeJsonFile(path.join(dir, "method-extraction-verification.json"), report);
+  await writeTextFile(path.join(dir, "method-extraction-verification.md"), renderMethodExtractionVerification(report));
+  return report.status;
 }
 
 function createMethodRefactorIssues(pkg: MigrationRunPackage, actions: MigrationAction[]): void {

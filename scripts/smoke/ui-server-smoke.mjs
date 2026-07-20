@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -36,7 +36,7 @@ try {
   assertIncludes(html, "data-stage=\"baseline\"", "refactoring stage strip");
   assertIncludes(html, "Current step", "guided workflow focus");
   assertIncludes(html, "CLI and advanced next actions", "advanced CLI fallback");
-  assertIncludes(html, "Guarded Actions", "guarded actions");
+  assertIncludes(html, "Advanced guarded actions", "advanced guarded actions");
   assertIncludes(html, "Project Workflow", "project workflow");
   assertIncludes(html, "Auto advance", "safe workflow auto advance");
   assertIncludes(html, "Project Portfolio", "project portfolio");
@@ -45,13 +45,13 @@ try {
   assertIncludes(html, "Capture Baseline", "baseline action");
   assertIncludes(html, "Create Checkpoint", "checkpoint action");
   assertIncludes(html, "Recovery Center", "recovery center");
-  assertIncludes(html, "Project History", "project history");
+  assertIncludes(html, "Project history", "project history");
   assertIncludes(html, "Review plan", "task execution planning");
   assertIncludes(html, "Task Board", "complete task board");
   assertIncludes(html, "data-workflow-task-action", "ready workflow task start action");
   assertIncludes(html, "data-safe-task", "safe task start action");
   assertIncludes(html, "Execute task", "task execution confirmation");
-  assertIncludes(html, "Run Detail", "run detail");
+  assertIncludes(html, "Run details", "run detail");
   assertIncludes(html, "Recent Jobs", "recent jobs");
   assertIncludes(html, "Job status filter", "job status filter");
   assertIncludes(html, "Job run filter", "job run filter");
@@ -66,6 +66,7 @@ try {
   assertIncludes(html, "aria-label=\"Run selector\"", "run selector aria label");
   assertIncludes(html, "aria-label=\"Job status filter\"", "job status aria label");
   assertIncludes(html, "aria-label=\"Job timeline\"", "job timeline aria label");
+  assertIncludes(html, "Apply this reviewed recovery plan", "recovery confirmation");
 
   const session = await getJson(`${url}/api/session`);
   if (typeof session.csrfToken !== "string" || session.csrfToken.length < 16) {
@@ -129,6 +130,7 @@ try {
       await screenshot(chrome, `${url}?view=${view}`, "1365,900", path.join(outputDir, `ui-${view}-desktop.png`));
       await assertScreenshot(path.join(outputDir, `ui-${view}-desktop.png`));
     }
+    await assertDistinctDesktopViews(outputDir);
     await screenshot(chrome, `${url}?view=monitoring`, "390,844", path.join(outputDir, "ui-monitoring-mobile.png"));
     await assertScreenshot(path.join(outputDir, "ui-monitoring-mobile.png"));
     console.log(`Screenshots: ${outputDir}`);
@@ -144,6 +146,18 @@ async function assertScreenshot(outputPath) {
   const stats = await import("node:fs/promises").then((fs) => fs.stat(outputPath));
   if (!stats.isFile() || stats.size < 1000) {
     throw new Error(`Screenshot was not captured correctly: ${outputPath}`);
+  }
+}
+
+async function assertDistinctDesktopViews(outputDir) {
+  const names = ["ui-desktop.png", "ui-execution-desktop.png", "ui-monitoring-desktop.png", "ui-reports-desktop.png"];
+  const images = await Promise.all(names.map((name) => readFile(path.join(outputDir, name))));
+  for (let left = 0; left < images.length; left += 1) {
+    for (let right = left + 1; right < images.length; right += 1) {
+      if (images[left].equals(images[right])) {
+        throw new Error(`Desktop views rendered the same screenshot: ${names[left]} and ${names[right]}.`);
+      }
+    }
   }
 }
 

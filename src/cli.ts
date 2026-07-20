@@ -12,6 +12,7 @@ import { renderCompareReport, renderScanSummary, renderSnapshotSummary } from ".
 import {
   createMigrationRun,
   loadRunPackage,
+  migrationRunDir,
   renderIssues,
   renderRunReport,
   renderRunStatus,
@@ -113,6 +114,22 @@ import {
   writeRunsListReport
 } from "./core/dashboard.js";
 import { startUiServer } from "./core/uiServer.js";
+import { cancelUiJob, collectUiJobDetail, createUiActionJob, createUiJobRunner, gcUiJobs, listUiJobs, planOrphanUiJobs, readUiJob, recoverOrphanUiJobs, uiJobSearchParams } from "./core/uiJobService.js";
+import { collectTroubleshootReport, diagnoseServe, inspectRunArtifacts } from "./core/troubleshoot.js";
+import { applyVerifiedMethodExtraction, renderMethodExtractionApply } from "./core/methodExtractionApply.js";
+import type { MethodExtractionPatchPlan } from "./core/methodExtraction.js";
+import type { MethodExtractionTestPlan } from "./core/methodExtractionTest.js";
+import type { MethodExtractionVerificationReport } from "./core/methodExtractionVerification.js";
+import {
+  applyNextMethodExtractionLayer,
+  createMethodExtractionExecutionLedger,
+  extractMethodExtractionLayersFromGoal,
+  prepareNextMethodExtractionLayer,
+  readMethodExtractionExecutionLedger,
+  renderMethodExtractionExecutionLedger,
+  writeMethodExtractionExecutionLedger
+} from "./core/methodExtractionChain.js";
+import type { MethodRefactorPlan } from "./core/methodRefactor.js";
 import {
   createOneShotRunbook,
   collectOneShotSessionNextAction,
@@ -177,9 +194,9 @@ async function main(argv: string[]): Promise<void> {
     scan: commandScan, baseline: commandBaseline, verify: commandVerify, compare: commandCompare,
     diff: commandDiff, plan: commandPlan, "ai-brief": commandAiBrief, run: commandRun,
     status: commandStatus, issues: commandIssues, runs: commandRuns, serve: commandServe,
-    tasks: commandTasks, actions: commandActions, report: commandReport, readiness: commandReadiness,
+    tasks: commandTasks, actions: commandActions, jobs: commandJobs, troubleshoot: commandTroubleshoot, report: commandReport, readiness: commandReadiness,
     "one-shot": commandOneShot, checkpoint: commandCheckpoint, resume: commandResume, rollback: commandRollback,
-    task: commandTask, action: commandAction, proposal: commandProposal, "sync-issues": commandSyncIssues,
+    task: commandTask, action: commandAction, proposal: commandProposal, "method-extraction": commandMethodExtraction, "sync-issues": commandSyncIssues,
     "issue-control": commandIssueControl, "self-refactor": commandSelfRefactor, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
     preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff, policy: commandPolicy
   };
@@ -717,6 +734,12 @@ async function commandRuns(args: ParsedArgs): Promise<void> {
 }
 
 async function commandServe(args: ParsedArgs): Promise<void> {
+  if (args.positionals[0] === "doctor") {
+    const report = await diagnoseServe(stringOption(args, "host") ?? "127.0.0.1", nonNegativeIntegerOption(args, "port") ?? 8787);
+    console.log(JSON.stringify(report, null, 2));
+    if (report.status === "occupied" || report.status === "unreachable") process.exitCode = 1;
+    return;
+  }
   const loaded = await loadFromArgs(args);
   const handle = await startUiServer(loaded, {
     host: stringOption(args, "host") ?? "127.0.0.1",
@@ -724,6 +747,69 @@ async function commandServe(args: ParsedArgs): Promise<void> {
   });
   console.log(`Migration Guard UI: ${handle.url}`);
   console.log("Press Ctrl+C to stop.");
+}
+
+async function commandJobs(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "list";
+  const loaded = await loadFromArgs(args);
+  if (action === "list") {
+    const params = new URLSearchParams();
+    params.set("status", stringOption(args, "status") ?? "all");
+    params.set("limit", String(numberOption(args, "limit") ?? 20));
+    if (stringOption(args, "run")) params.set("run", stringOption(args, "run") as string);
+    console.log(JSON.stringify(await listUiJobs(loaded, params), null, 2));
+    return;
+  }
+  const jobId = stringOption(args, "job") ?? args.positionals[1];
+  if (action === "inspect") {
+    if (!jobId) throw new Error("jobs inspect requires --job <job-id>.");
+    console.log(JSON.stringify(await collectUiJobDetail(loaded, jobId), null, 2));
+    return;
+  }
+  if (action === "recover") {
+    const plan = await planOrphanUiJobs(loaded);
+    if (args.options.apply) await recoverOrphanUiJobs(loaded);
+    console.log(JSON.stringify({ ...plan, apply: Boolean(args.options.apply), recoveredCount: args.options.apply ? plan.candidateCount : 0 }, null, 2));
+    return;
+  }
+  if (action === "cancel") {
+    if (!jobId) throw new Error("jobs cancel requires --job <job-id>.");
+    if (stringOption(args, "confirm") !== jobId) throw new Error("jobs cancel requires --confirm <job-id>.");
+    console.log(JSON.stringify(await cancelUiJob(loaded, jobId), null, 2));
+    return;
+  }
+  if (action === "retry") {
+    if (!jobId) throw new Error("jobs retry requires --job <job-id>.");
+    if (stringOption(args, "confirm") !== jobId) throw new Error("jobs retry requires --confirm <job-id>.");
+    const previous = await readUiJob(loaded, jobId);
+    if (previous.status !== "failed") throw new Error("Only failed jobs can be retried.");
+    const runner = createUiJobRunner(0);
+    const created = await createUiActionJob(loaded, { jobRunner: runner }, previous.action, uiJobSearchParams(previous), { retryOf: previous.id });
+    await runner.drain();
+    console.log(JSON.stringify(await collectUiJobDetail(loaded, created.jobId), null, 2));
+    return;
+  }
+  if (action === "gc") {
+    const params = new URLSearchParams({
+      keepLatest: String(numberOption(args, "keep") ?? 50),
+      status: stringOption(args, "status") ?? "terminal",
+      apply: String(Boolean(args.options.apply))
+    });
+    console.log(JSON.stringify(await gcUiJobs(loaded, params), null, 2));
+    return;
+  }
+  throw new Error(`Unknown jobs command: ${action}`);
+}
+
+async function commandTroubleshoot(args: ParsedArgs): Promise<void> {
+  const loaded = await loadFromArgs(args);
+  const report = await collectTroubleshootReport(loaded, {
+    run: stringOption(args, "run") ?? "latest",
+    host: stringOption(args, "host") ?? "127.0.0.1",
+    port: nonNegativeIntegerOption(args, "port") ?? 8787
+  });
+  console.log(JSON.stringify(report, null, 2));
+  if (report.status !== "ok") process.exitCode = 1;
 }
 
 async function commandTasks(args: ParsedArgs): Promise<void> {
@@ -1139,6 +1225,63 @@ async function commandAction(args: ParsedArgs): Promise<void> {
   }
 
   throw new Error(`Unknown action command: ${action}`);
+}
+
+async function commandMethodExtraction(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "status";
+  const loaded = await loadFromArgs(args);
+  const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
+  const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  if (action === "chain") {
+    const chainAction = args.positionals[1] ?? "status";
+    const plan = await readJsonFile<MethodRefactorPlan>(path.join(dir, "method-refactor-plan.json"));
+    if (chainAction === "plan") {
+      const ledgerPath = path.join(dir, "method-extraction-chain", "method-extraction-execution-ledger.json");
+      if (await pathExists(ledgerPath)) throw new Error("A layered extraction ledger already exists; inspect or resume it instead of overwriting it.");
+      const ledger = createMethodExtractionExecutionLedger(pkg.run.id, plan, extractMethodExtractionLayersFromGoal(pkg.run.goal));
+      await writeMethodExtractionExecutionLedger(loaded, ledger);
+      await prepareNextMethodExtractionLayer(loaded, pkg, ledger, plan.recommendedChecks);
+      console.log(renderMethodExtractionExecutionLedger(ledger));
+      return;
+    }
+    const ledger = await readMethodExtractionExecutionLedger(loaded, pkg.run.id);
+    if (chainAction === "status") {
+      console.log(args.options.json ? JSON.stringify(ledger, null, 2) : renderMethodExtractionExecutionLedger(ledger));
+      return;
+    }
+    if (chainAction === "next") {
+      const confirmPatchHash = stringOption(args, "confirm");
+      if (!confirmPatchHash) throw new Error("method-extraction chain next requires --confirm <patch-hash>.");
+      await applyNextMethodExtractionLayer(loaded, pkg, ledger, confirmPatchHash, plan.recommendedChecks);
+      if (ledger.state === "planned") await prepareNextMethodExtractionLayer(loaded, pkg, ledger, plan.recommendedChecks);
+      console.log(renderMethodExtractionExecutionLedger(ledger));
+      if (ledger.state === "stopped" || ledger.state === "blocked") process.exitCode = 1;
+      return;
+    }
+    throw new Error(`Unknown method-extraction chain command: ${chainAction}`);
+  }
+  if (action === "status") {
+    const reportPath = path.join(dir, "method-extraction-apply.json");
+    if (!await pathExists(reportPath)) {
+      console.log(JSON.stringify({ status: "not-applied", runId: pkg.run.id }, null, 2));
+      return;
+    }
+    console.log(JSON.stringify(await readJsonFile(reportPath), null, 2));
+    return;
+  }
+  if (action !== "apply") throw new Error(`Unknown method-extraction command: ${action}`);
+  const confirmPatchHash = stringOption(args, "confirm");
+  if (!confirmPatchHash) throw new Error("method-extraction apply requires --confirm <patch-hash>.");
+  const patchPlan = await readJsonFile<MethodExtractionPatchPlan>(path.join(dir, "method-extraction-patch.json"));
+  const testPlan = await readJsonFile<MethodExtractionTestPlan>(path.join(dir, "method-extraction-test-plan.json"));
+  const verification = await readJsonFile<MethodExtractionVerificationReport>(path.join(dir, "method-extraction-verification.json"));
+  const plan = await readJsonFile<{ recommendedChecks?: string[] }>(path.join(dir, "method-refactor-plan.json"));
+  const report = await applyVerifiedMethodExtraction(loaded, pkg, patchPlan, testPlan, verification, {
+    confirmPatchHash,
+    commands: plan.recommendedChecks ?? []
+  });
+  console.log(renderMethodExtractionApply(report));
+  if (!report.passed) process.exitCode = 1;
 }
 
 async function commandProposal(args: ParsedArgs): Promise<void> {
@@ -1778,6 +1921,12 @@ async function commandArtifacts(args: ParsedArgs): Promise<void> {
     }
     return;
   }
+  if (action === "inspect") {
+    const report = await inspectRunArtifacts(loaded, stringOption(args, "run") ?? "latest");
+    console.log(JSON.stringify(report, null, 2));
+    if (report.missingCount > 0) process.exitCode = 1;
+    return;
+  }
   throw new Error(`Unknown artifacts command: ${action}`);
 }
 
@@ -2120,6 +2269,14 @@ Usage:
   migration-guard status [--run <id|latest>]
   migration-guard runs list [--json]
   migration-guard serve [--host <host>] [--port <port>]
+  migration-guard serve doctor [--host <host>] [--port <port>] [--json]
+  migration-guard troubleshoot [--run <id|latest>] [--host <host>] [--port <port>] [--json]
+  migration-guard jobs list [--status all|active|queued|running|succeeded|failed|cancelled] [--run <id|latest>] [--limit <n>] [--json]
+  migration-guard jobs inspect --job <job-id> [--json]
+  migration-guard jobs recover [--apply] [--json]
+  migration-guard jobs cancel --job <job-id> --confirm <job-id> [--json]
+  migration-guard jobs retry --job <job-id> --confirm <job-id> [--json]
+  migration-guard jobs gc [--keep <n>] [--status terminal|all|queued|running|succeeded|failed|cancelled] [--apply] [--json]
   migration-guard issues [--run <id|latest>] [--json]
   migration-guard tasks [--run <id|latest>] [--json]
   migration-guard actions [--run <id|latest>] [--json]
@@ -2145,6 +2302,10 @@ Usage:
   migration-guard task apply [--run <id|latest>] --proposal <id> [--behavior-diff]
   migration-guard action propose [--run <id|latest>] --action <id> [--allow-no-op-risk]
   migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks] [--rollback-on-fail] [--gate-policy fail-fast|collect-all] [--behavior-diff]
+  migration-guard method-extraction status [--run <id|latest>] [--json]
+  migration-guard method-extraction apply [--run <id|latest>] --confirm <patch-hash> [--json]
+  migration-guard method-extraction chain plan|status [--run <id|latest>] [--json]
+  migration-guard method-extraction chain next [--run <id|latest>] --confirm <patch-hash> [--json]
   migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--gate-policy fail-fast|collect-all] [--json]
   migration-guard proposal list [--run <id|latest>] [--state <state>] [--action <action-id>] [--risk low|medium|high] [--json]
   migration-guard proposal status [--run <id|latest>] --proposal <id> [--json]
@@ -2182,6 +2343,7 @@ Usage:
   migration-guard preview --command <command> [--url <url>] [--timeout-ms <ms>]
   migration-guard artifacts gc [--config <path>] [--profile <name>] [--keep-runs <n>] [--apply] [--json]
   migration-guard artifacts migrate [--config <path>] [--profile <name>] [--apply] [--apply-confirm <plan-hash>] [--json]
+  migration-guard artifacts inspect [--run <id|latest>] [--json]
 
 Behavior consistency workflow:
   1. init      Create .migration-guard.json

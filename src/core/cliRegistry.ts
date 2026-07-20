@@ -2,9 +2,9 @@ import type { CliCommandRegistry, CliCommandRequest } from "./cliDispatch.js";
 
 export const CLI_COMMAND_NAMES = [
   "help", "--help", "-h", "init", "doctor", "config", "health-debt", "scan", "baseline", "verify",
-  "compare", "diff", "plan", "ai-brief", "run", "status", "issues", "runs", "serve", "tasks", "actions",
+  "compare", "diff", "plan", "ai-brief", "run", "status", "issues", "runs", "serve", "tasks", "actions", "jobs", "troubleshoot",
   "report", "readiness", "one-shot", "checkpoint", "resume", "rollback", "task", "action", "proposal",
-  "sync-issues", "issue-control", "self-refactor", "ci", "contract", "dual-run", "preview", "artifacts", "handoff", "policy"
+  "method-extraction", "sync-issues", "issue-control", "self-refactor", "ci", "contract", "dual-run", "preview", "artifacts", "handoff", "policy"
 ] as const;
 
 export type CliCommandName = typeof CLI_COMMAND_NAMES[number];

@@ -26,6 +26,47 @@ export interface MethodReference {
   excerpt: string;
 }
 
+export interface MethodRefactorCallDepth {
+  requested: number;
+  applied: number;
+  max: number;
+}
+
+export interface MethodCallSite {
+  callName: string;
+  receiver?: string;
+  file: string;
+  line: number;
+  excerpt: string;
+}
+
+export interface MethodCallGraphNode {
+  depth: number;
+  candidate: MethodSymbolCandidate;
+  referenceCount: number;
+  sideEffectHints: string[];
+  risk: "low" | "medium" | "high";
+}
+
+export interface MethodCallGraphEdge {
+  from: string;
+  to: string;
+  callName: string;
+  file: string;
+  line: number;
+  excerpt: string;
+}
+
+export interface MethodUnresolvedCall {
+  from: string;
+  callName: string;
+  receiver?: string;
+  file: string;
+  line: number;
+  excerpt: string;
+  reason: string;
+}
+
 export interface MethodRefactorInventory {
   version: 1;
   createdAt: string;
@@ -42,6 +83,13 @@ export interface MethodRefactorPlan {
   root: string;
   requestedSymbol: string;
   selected: MethodSymbolCandidate;
+  callDepth: MethodRefactorCallDepth;
+  callGraph: {
+    nodes: MethodCallGraphNode[];
+    edges: MethodCallGraphEdge[];
+    unresolvedCalls: MethodUnresolvedCall[];
+    truncated: boolean;
+  };
   impact: {
     referenceCount: number;
     references: MethodReference[];
@@ -57,6 +105,10 @@ export interface MethodRefactorPlan {
   acceptanceCriteria: string[];
 }
 
+export interface MethodRefactorPlanOptions {
+  callDepth?: number;
+}
+
 interface SourceFile {
   absolutePath: string;
   relativePath: string;
@@ -65,14 +117,28 @@ interface SourceFile {
   language: MethodLanguageId;
 }
 
+export const MAX_METHOD_CALL_DEPTH = 6;
+
+const MAX_METHOD_GRAPH_NODES = 64;
 const SOURCE_EXTENSIONS = new Set([".cjs", ".go", ".java", ".js", ".jsx", ".mjs", ".py", ".ts", ".tsx"]);
 const IGNORED_DIRECTORIES = new Set([".git", ".migration-guard", "node_modules", "dist", "build", "target", "__pycache__", "coverage"]);
 const JS_METHOD_KEYWORDS = new Set(["if", "for", "while", "switch", "catch", "function", "return"]);
+const CALL_NAME_BLOCKLIST = new Set([
+  "Array", "Boolean", "Date", "Error", "JSON", "Map", "Math", "Number", "Object", "Promise", "Set", "String",
+  "append", "catch", "console", "delete", "entries", "filter", "finally", "for", "forEach", "get", "if", "includes",
+  "join", "keys", "log", "map", "parse", "push", "raise", "reduce", "return", "set", "slice", "sort", "switch",
+  "then", "throw", "values", "while"
+]);
 
 export function extractMethodSymbolFromGoal(goal: string): string | undefined {
   return goal.match(/\bsymbol\s*=\s*([A-Za-z_$][\w$]*(?:[.#][A-Za-z_$][\w$]*)*)/i)?.[1]
     ?? goal.match(/\bmethod\s+([A-Za-z_$][\w$]*(?:[.#][A-Za-z_$][\w$]*)*)/i)?.[1]
     ?? goal.match(/\bfunction\s+([A-Za-z_$][\w$]*(?:[.#][A-Za-z_$][\w$]*)*)/i)?.[1];
+}
+
+export function extractMethodCallDepthFromGoal(goal: string): number | undefined {
+  const match = goal.match(/\b(?:call-depth|callDepth|depth)\s*=\s*(\d+)\b/i);
+  return match ? Number(match[1]) : undefined;
 }
 
 export async function createMethodRefactorInventory(root: string, requestedSymbol: string): Promise<MethodRefactorInventory> {
@@ -90,7 +156,11 @@ export async function createMethodRefactorInventory(root: string, requestedSymbo
   };
 }
 
-export async function createMethodRefactorPlan(root: string, requestedSymbol: string): Promise<MethodRefactorPlan> {
+export async function createMethodRefactorPlan(
+  root: string,
+  requestedSymbol: string,
+  options: MethodRefactorPlanOptions = {}
+): Promise<MethodRefactorPlan> {
   const files = await collectSourceFiles(root);
   const symbols = files.flatMap((file) => extractSymbolsFromFile(file));
   const matches = symbols.filter((symbol) => methodSymbolMatches(symbol, requestedSymbol));
@@ -104,7 +174,9 @@ export async function createMethodRefactorPlan(root: string, requestedSymbol: st
   const selected = matches[0]!;
   const references = collectReferences(files, selected).slice(0, 50);
   const sideEffectHints = collectSideEffectHints(files.find((file) => file.relativePath === selected.file)?.content ?? "", selected);
-  const risk = riskForMethod(selected, references, sideEffectHints);
+  const callDepth = normalizeMethodCallDepth(options.callDepth);
+  const callGraph = createMethodCallGraph(files, symbols, selected, callDepth.applied);
+  const risk = riskForCallGraph(selected, references, sideEffectHints, callGraph);
   const checks = await recommendedChecksForMethod(root, selected.language);
 
   return {
@@ -113,11 +185,13 @@ export async function createMethodRefactorPlan(root: string, requestedSymbol: st
     root,
     requestedSymbol,
     selected,
+    callDepth,
+    callGraph,
     impact: {
       referenceCount: references.length,
       references,
       risk,
-      reasons: impactReasons(selected, references, sideEffectHints)
+      reasons: impactReasons(selected, references, sideEffectHints, callGraph)
     },
     contract: {
       signature: selected.signature,
@@ -127,6 +201,7 @@ export async function createMethodRefactorPlan(root: string, requestedSymbol: st
     recommendedChecks: checks,
     acceptanceCriteria: [
       "only the selected method and directly required local helpers are modified",
+      "downstream call-chain changes stay within the planned call-depth budget",
       "method signature and documented behavior stay stable unless intentionally changed",
       "call-site references remain valid",
       "recommended checks pass before applying the proposal"
@@ -135,13 +210,22 @@ export async function createMethodRefactorPlan(root: string, requestedSymbol: st
 }
 
 export function createMethodRefactorActionPlan(runId: string, goal: string, plan: MethodRefactorPlan): MigrationActionPlan {
-  const action = createMethodAction(plan);
+  const nodes = plan.callGraph?.nodes?.length
+    ? plan.callGraph.nodes
+    : [{
+      depth: 0,
+      candidate: plan.selected,
+      referenceCount: plan.impact.referenceCount,
+      sideEffectHints: plan.contract.sideEffectHints,
+      risk: plan.impact.risk
+    }];
+  const actions = nodes.map((node) => createMethodAction(plan, node));
   return {
     version: 1,
     runId,
     createdAt: new Date().toISOString(),
     goal,
-    actions: [action]
+    actions
   };
 }
 
@@ -171,6 +255,7 @@ export function renderMethodRefactorPlan(plan: MethodRefactorPlan): string {
     `- Location: ${plan.selected.file}:${plan.selected.line}-${plan.selected.endLine}`,
     `- Risk: ${plan.impact.risk}`,
     `- References: ${plan.impact.referenceCount}`,
+    `- Call depth: ${plan.callDepth.applied}/${plan.callDepth.max} (requested ${plan.callDepth.requested})`,
     "",
     "## Contract",
     "",
@@ -181,6 +266,24 @@ export function renderMethodRefactorPlan(plan: MethodRefactorPlan): string {
     "## Checks",
     "",
     ...(plan.recommendedChecks.length > 0 ? plan.recommendedChecks.map((command) => `- ${command}`) : ["- none"]),
+    "",
+    "## Call Graph",
+    "",
+    ...(plan.callGraph.nodes.length > 0
+      ? plan.callGraph.nodes.map((node) => `- depth ${node.depth}: ${node.candidate.symbol} [${node.risk}] ${node.candidate.file}:${node.candidate.line}-${node.candidate.endLine}`)
+      : ["- none"]),
+    "",
+    "## Call Edges",
+    "",
+    ...(plan.callGraph.edges.length > 0
+      ? plan.callGraph.edges.map((edge) => `- ${edge.from} -> ${edge.to} via ${edge.callName} at ${edge.file}:${edge.line}`)
+      : ["- none"]),
+    "",
+    "## Unresolved Calls",
+    "",
+    ...(plan.callGraph.unresolvedCalls.length > 0
+      ? plan.callGraph.unresolvedCalls.slice(0, 25).map((call) => `- ${call.from} -> ${call.receiver ? `${call.receiver}.` : ""}${call.callName} at ${call.file}:${call.line}: ${call.reason}`)
+      : ["- none"]),
     "",
     "## Acceptance",
     "",
@@ -210,17 +313,19 @@ export function renderMethodRefactorActionPlan(plan: MigrationActionPlan): strin
   ].join("\n\n");
 }
 
-function createMethodAction(plan: MethodRefactorPlan): MigrationAction {
+function createMethodAction(plan: MethodRefactorPlan, node: MethodCallGraphNode): MigrationAction {
+  const candidate = node.candidate;
   return {
-    id: `method-action-${sanitizeId(plan.selected.symbol)}`,
-    title: `Refactor method ${plan.selected.symbol}`,
+    id: `method-action-${sanitizeId(candidate.symbol)}`,
+    title: `Refactor method ${candidate.symbol}`,
     summary: [
-      `Refactor ${plan.selected.symbol} in ${plan.selected.file}:${plan.selected.line}-${plan.selected.endLine}.`,
-      `Reference count: ${plan.impact.referenceCount}.`,
+      `Refactor ${candidate.symbol} in ${candidate.file}:${candidate.line}-${candidate.endLine}.`,
+      `Call-chain depth: ${node.depth}/${plan.callDepth.applied}.`,
+      `Reference count: ${node.referenceCount}.`,
       `Contract probe: ${plan.contract.recommendedProbe}.`
     ].join(" "),
-    risk: plan.impact.risk,
-    affectedFiles: [plan.selected.file],
+    risk: node.risk,
+    affectedFiles: [candidate.file],
     recommendedChecks: plan.recommendedChecks,
     checkReadiness: plan.recommendedChecks.map((command) => ({
       command,
@@ -479,6 +584,185 @@ function collectReferences(files: SourceFile[], selected: MethodSymbolCandidate)
   return refs.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
 }
 
+function createMethodCallGraph(
+  files: SourceFile[],
+  symbols: MethodSymbolCandidate[],
+  selected: MethodSymbolCandidate,
+  maxDepth: number
+): MethodRefactorPlan["callGraph"] {
+  const nodes: MethodCallGraphNode[] = [];
+  const edges: MethodCallGraphEdge[] = [];
+  const unresolvedCalls: MethodUnresolvedCall[] = [];
+  const visited = new Set<string>();
+  const queued = new Set<string>([selected.symbol]);
+  const queue: Array<{ candidate: MethodSymbolCandidate; depth: number }> = [{ candidate: selected, depth: 0 }];
+  let truncated = false;
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    queued.delete(current.candidate.symbol);
+    if (visited.has(current.candidate.symbol)) {
+      continue;
+    }
+    visited.add(current.candidate.symbol);
+
+    const references = collectReferences(files, current.candidate);
+    const sideEffectHints = collectSideEffectHints(sourceContentForCandidate(files, current.candidate), current.candidate);
+    const node: MethodCallGraphNode = {
+      depth: current.depth,
+      candidate: current.candidate,
+      referenceCount: references.length,
+      sideEffectHints,
+      risk: riskForMethod(current.candidate, references, sideEffectHints)
+    };
+    nodes.push(node);
+
+    if (current.depth >= maxDepth) {
+      continue;
+    }
+
+    const calls = collectMethodCalls(files, current.candidate);
+    for (const call of calls) {
+      const resolved = resolveMethodCall(symbols, current.candidate, call);
+      if (!resolved.candidate) {
+        unresolvedCalls.push({
+          from: current.candidate.symbol,
+          callName: call.callName,
+          receiver: call.receiver,
+          file: call.file,
+          line: call.line,
+          excerpt: call.excerpt,
+          reason: resolved.reason
+        });
+        continue;
+      }
+      if (resolved.candidate.symbol === current.candidate.symbol) {
+        continue;
+      }
+
+      edges.push({
+        from: current.candidate.symbol,
+        to: resolved.candidate.symbol,
+        callName: call.callName,
+        file: call.file,
+        line: call.line,
+        excerpt: call.excerpt
+      });
+
+      if (!visited.has(resolved.candidate.symbol) && !queued.has(resolved.candidate.symbol)) {
+        if (nodes.length + queue.length >= MAX_METHOD_GRAPH_NODES) {
+          truncated = true;
+          continue;
+        }
+        queue.push({ candidate: resolved.candidate, depth: current.depth + 1 });
+        queued.add(resolved.candidate.symbol);
+      }
+    }
+  }
+
+  return {
+    nodes: nodes.sort((a, b) => a.depth - b.depth || a.candidate.symbol.localeCompare(b.candidate.symbol)),
+    edges: edges.sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.line - b.line),
+    unresolvedCalls: unresolvedCalls.sort((a, b) => a.from.localeCompare(b.from) || a.file.localeCompare(b.file) || a.line - b.line),
+    truncated
+  };
+}
+
+function collectMethodCalls(files: SourceFile[], selected: MethodSymbolCandidate): MethodCallSite[] {
+  const file = files.find((item) => item.relativePath === selected.file);
+  if (!file) {
+    return [];
+  }
+  const calls: MethodCallSite[] = [];
+  for (const line of methodBodyLines(file, selected)) {
+    for (const call of callsFromLine(file.language, line.text)) {
+      calls.push({
+        ...call,
+        file: selected.file,
+        line: line.line,
+        excerpt: line.text.trim().slice(0, 180)
+      });
+    }
+  }
+  return uniqueCalls(calls);
+}
+
+function callsFromLine(language: MethodLanguageId, line: string): Array<Pick<MethodCallSite, "callName" | "receiver">> {
+  const withoutStrings = stripStringLiterals(line);
+  const pattern = language === "python"
+    ? /\b(?:(self|cls|[A-Za-z_]\w*)\.)?([A-Za-z_]\w*)\s*\(/g
+    : /\b(?:(this|super|[A-Za-z_$][\w$]*)\.)?([A-Za-z_$][\w$]*)\s*\(/g;
+  const calls: Array<Pick<MethodCallSite, "callName" | "receiver">> = [];
+  for (const match of withoutStrings.matchAll(pattern)) {
+    const callName = match[2] ?? "";
+    const receiver = match[1];
+    if (!callName || CALL_NAME_BLOCKLIST.has(callName)) {
+      continue;
+    }
+    calls.push({ callName, receiver });
+  }
+  return calls;
+}
+
+function resolveMethodCall(
+  symbols: MethodSymbolCandidate[],
+  current: MethodSymbolCandidate,
+  call: MethodCallSite
+): { candidate?: MethodSymbolCandidate; reason: string } {
+  const matches = symbols.filter((symbol) => symbol.name === call.callName);
+  if (matches.length === 0) {
+    return { reason: "not a known local method/function symbol" };
+  }
+
+  const sameContainer = matches.filter((symbol) => symbol.container && symbol.container === current.container);
+  if ((call.receiver === "this" || call.receiver === "self" || call.receiver === "cls" || call.receiver === "super") && sameContainer.length === 1) {
+    return { candidate: sameContainer[0], reason: "resolved in the current class container" };
+  }
+
+  if (call.receiver) {
+    const containerMatches = matches.filter((symbol) => symbol.container === call.receiver);
+    if (containerMatches.length === 1) {
+      return { candidate: containerMatches[0], reason: "resolved by explicit receiver name" };
+    }
+  }
+
+  if (matches.length === 1) {
+    return { candidate: matches[0], reason: "resolved by unique local symbol name" };
+  }
+
+  return { reason: `ambiguous local symbol name; candidates: ${matches.map((symbol) => symbol.symbol).sort().join(", ")}` };
+}
+
+function methodBodyLines(file: SourceFile, selected: MethodSymbolCandidate): Array<{ line: number; text: string }> {
+  const lines = file.content.split(/\r?\n/);
+  const startIndex = Math.min(lines.length, selected.line);
+  const endIndex = Math.max(startIndex, selected.endLine - 1);
+  return lines.slice(startIndex, endIndex).map((text, index) => ({
+    line: startIndex + index + 1,
+    text
+  }));
+}
+
+function sourceContentForCandidate(files: SourceFile[], selected: MethodSymbolCandidate): string {
+  return files.find((file) => file.relativePath === selected.file)?.content ?? "";
+}
+
+function uniqueCalls(calls: MethodCallSite[]): MethodCallSite[] {
+  const seen = new Set<string>();
+  return calls.filter((call) => {
+    const key = `${call.file}:${call.line}:${call.receiver ?? ""}:${call.callName}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function stripStringLiterals(value: string): string {
+  return value.replace(/(["'`])(?:\\.|(?!\1).)*\1/g, "");
+}
+
 function collectSideEffectHints(content: string, selected: MethodSymbolCandidate): string[] {
   const lines = content.split(/\r?\n/).slice(selected.line - 1, selected.endLine).join("\n").toLowerCase();
   const hints: string[] = [];
@@ -518,12 +802,44 @@ function riskForMethod(
   return "low";
 }
 
-function impactReasons(selected: MethodSymbolCandidate, references: MethodReference[], sideEffectHints: string[]): string[] {
+function riskForCallGraph(
+  selected: MethodSymbolCandidate,
+  references: MethodReference[],
+  sideEffectHints: string[],
+  callGraph: MethodRefactorPlan["callGraph"]
+): "low" | "medium" | "high" {
+  const rootRisk = riskForMethod(selected, references, sideEffectHints);
+  if (rootRisk === "high" || callGraph.nodes.some((node) => node.risk === "high")) {
+    return "high";
+  }
+  if (callGraph.nodes.length > 10 || callGraph.unresolvedCalls.length > 0 || rootRisk === "medium" || callGraph.nodes.some((node) => node.risk === "medium")) {
+    return "medium";
+  }
+  return "low";
+}
+
+function impactReasons(
+  selected: MethodSymbolCandidate,
+  references: MethodReference[],
+  sideEffectHints: string[],
+  callGraph: MethodRefactorPlan["callGraph"]
+): string[] {
   return [
     `${Math.max(1, selected.endLine - selected.line + 1)} line method range`,
     `${references.length} reference(s) found`,
+    `call graph nodes: ${callGraph.nodes.length}, edges: ${callGraph.edges.length}, unresolved: ${callGraph.unresolvedCalls.length}`,
+    callGraph.truncated ? `call graph truncated at ${MAX_METHOD_GRAPH_NODES} nodes` : "call graph not truncated",
     sideEffectHints.length > 0 ? `side-effect hints: ${sideEffectHints.join(", ")}` : "no side-effect hints detected"
   ];
+}
+
+function normalizeMethodCallDepth(value: number | undefined): MethodRefactorCallDepth {
+  const requested = Number.isFinite(value) ? Math.max(0, Math.floor(Number(value))) : 0;
+  return {
+    requested,
+    applied: Math.min(requested, MAX_METHOD_CALL_DEPTH),
+    max: MAX_METHOD_CALL_DEPTH
+  };
 }
 
 async function recommendedChecksForMethod(root: string, language: MethodLanguageId): Promise<string[]> {

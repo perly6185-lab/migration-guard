@@ -574,14 +574,14 @@ function renderUiHtml(csrfToken: string): string {
       </div></section>
       <section data-views="workspace"><div class="panel-head"><h2>Project Portfolio</h2></div><div id="workspacePortfolio"><p class="muted">Loading...</p></div></section>
       <section data-views="workspace monitoring" data-requires-workspace><div class="panel-head"><h2>Status</h2></div><div id="stats" class="grid"><p class="muted">Loading...</p></div><p id="runMeta" class="run-meta"></p></section>
-      <section data-views="execution" data-requires-workspace><div class="panel-head"><h2>Guarded Actions</h2></div><div class="actions">
+      <section data-views="execution" data-requires-workspace><details><summary>Advanced guarded actions</summary><div class="actions job-actions">
         <button data-action="readiness">Write Readiness</button>
         <button data-action="issue-control-dry-run">Issue Dry-run</button>
       </div><div class="action-form">
         <label class="field">Repo <input id="issueRepo" placeholder="owner/name"></label>
         <label class="field">Labels <input id="issueLabels" placeholder="label-a,label-b"></label>
         <label class="field">Max iterations <input id="issueMaxIterations" type="number" min="1" max="10" value="3"></label>
-      </div><p class="action-note">Snapshot writes an artifact. Issue control stays dry-run.</p><div id="actionHints" class="status-line" hidden></div><div id="actionStatus" class="status-line" hidden></div></section>
+      </div><p class="action-note">These controls write readiness evidence or prepare an issue-control dry run.</p><div id="actionHints" class="status-line" hidden></div><div id="actionStatus" class="status-line" hidden></div></details></section>
       <section data-views="monitoring" data-requires-workspace><div class="panel-head"><h2>Recent Jobs</h2><div class="toolbar compact">
         <select id="jobStatusFilter" aria-label="Job status filter">
           <option value="all">all jobs</option>
@@ -603,11 +603,11 @@ function renderUiHtml(csrfToken: string): string {
     </aside>
     <div class="stack">
       <section data-views="workspace" data-requires-workspace><details><summary>CLI and advanced next actions</summary><div id="nextActions" class="job-actions"><p class="muted">Loading...</p></div></details></section>
-      <section data-views="workspace" data-requires-workspace><div class="panel-head"><h2>Run Detail</h2></div><div id="runDetail"><p class="muted">Loading...</p></div></section>
+      <section data-views="workspace" data-requires-workspace><details><summary>Run details</summary><div id="runDetail" class="job-actions"><p class="muted">Loading...</p></div></details></section>
       <section data-views="monitoring" data-requires-workspace><div class="panel-head"><h2>Job Detail</h2><button id="clearJobDetail">Clear</button></div><div id="jobDetail"><p class="muted">Select a job.</p></div></section>
       <section data-views="execution monitoring" data-requires-workspace><div class="panel-head"><h2>Recovery Center</h2></div><div id="recovery"><p class="muted">Loading...</p></div><div id="recoveryPlan" class="status-line" hidden></div></section>
       <section data-views="workspace monitoring" data-requires-workspace><div class="panel-head"><h2>Blockers</h2></div><div id="blockers"><p class="muted">Loading...</p></div></section>
-      <section data-views="workspace reports" data-requires-workspace><div class="panel-head"><h2>Project History</h2></div><div id="runs"><p class="muted">Loading...</p></div></section>
+      <section data-views="workspace reports" data-requires-workspace><details><summary>Project history</summary><div id="runs" class="job-actions"><p class="muted">Loading...</p></div></details></section>
       <section data-views="execution" data-requires-workspace><div class="panel-head"><h2>Task Board</h2></div><div id="tasks"><p class="muted">Loading...</p></div><div id="taskExecutionPlan" class="status-line" hidden></div></section>
       <section data-views="execution" data-requires-workspace><div class="panel-head"><h2>Stuck Proposals</h2></div><div id="proposals"><p class="muted">Loading...</p></div></section>
       <section data-views="reports" data-requires-workspace><div class="panel-head"><h2>Deliverables</h2></div><div id="reportArtifacts"><p class="muted">Loading...</p></div></section>
@@ -641,6 +641,10 @@ function renderUiHtml(csrfToken: string): string {
     let currentWorkflowStage = 'registered';
     let autoAdvanceRunning = false;
     let latestDashboardTasks = [];
+    const initialWorkView = new URLSearchParams(window.location.search).get('view');
+    let preferredWorkView = ['workspace', 'execution', 'monitoring', 'reports'].includes(initialWorkView)
+      ? initialWorkView
+      : localStorage.getItem('migrationGuardWorkView') || 'workspace';
 
     async function json(path, options) {
       const requestOptions = options || {};
@@ -730,6 +734,7 @@ function renderUiHtml(csrfToken: string): string {
     }
     function setWorkView(view, remember = true) {
       const requested = ['workspace', 'execution', 'monitoring', 'reports'].includes(view) ? view : 'workspace';
+      preferredWorkView = requested;
       const selected = workspaceManaged || requested === 'workspace' ? requested : 'workspace';
       document.querySelectorAll('[data-work-view]').forEach(button => {
         const active = button.dataset.workView === selected;
@@ -788,7 +793,7 @@ function renderUiHtml(csrfToken: string): string {
       workspaceManaged = Boolean(report.managed && report.workspace);
       const stage = renderRefactoringStages(report);
       document.getElementById('workspaceActions').hidden = !report.managed;
-      setWorkView(localStorage.getItem('migrationGuardWorkView') || 'workspace', false);
+      setWorkView(preferredWorkView, false);
       if (!report.managed || !report.workspace) {
         container.innerHTML = workflowFocus(stage) + '<p class="muted">Register a source and target project to track a refactoring workflow.</p>';
         return;
@@ -1087,7 +1092,7 @@ function renderUiHtml(csrfToken: string): string {
     }
     function renderBlockers(report) {
       if (!report.blockers.length) return empty();
-      return '<div class="blocker-list">' + report.blockers.map(blocker => {
+      const rendered = report.blockers.map(blocker => {
         const evidence = blocker.evidence?.length
           ? '<ul class="evidence">' + blocker.evidence.map(item => '<li>' + artifactHtml(item) + '</li>').join('') + '</ul>'
           : '';
@@ -1098,7 +1103,11 @@ function renderUiHtml(csrfToken: string): string {
           badge(blocker.severity, toneFor(blocker.severity)) + badge(blocker.scope, '') +
           '<strong>' + escapeHtml(blocker.title) + '</strong></div>' +
           '<div>' + escapeHtml(blocker.reason) + '</div>' + evidence + next + '</article>';
-      }).join('') + '</div>';
+      });
+      const remaining = rendered.length > 1
+        ? '<details><summary>Show ' + escapeHtml(String(rendered.length - 1)) + ' more blockers</summary><div class="blocker-list job-actions">' + rendered.slice(1).join('') + '</div></details>'
+        : '';
+      return '<div class="blocker-list">' + rendered[0] + remaining + '</div>';
     }
     function renderDiffs(diffs) {
       const statusFilter = document.getElementById('diffStatusFilter')?.value || 'all';
@@ -1734,7 +1743,7 @@ function renderUiHtml(csrfToken: string): string {
     if (new URLSearchParams(window.location.search).get('newProject') === '1') {
       document.getElementById('workspaceDialog').showModal();
     }
-    setWorkView(new URLSearchParams(window.location.search).get('view') || localStorage.getItem('migrationGuardWorkView') || 'workspace', false);
+    setWorkView(preferredWorkView, false);
     Promise.all([loadWorkspaces(), load()]).catch(error => { document.getElementById('monitor').textContent = error.stack || error.message; });
   </script>
 </body>

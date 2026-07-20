@@ -7,6 +7,9 @@ test("CLI command catalog remains complete and unique", () => {
   assert.deepEqual(CLI_COMMAND_NAMES.slice(0, 3), ["help", "--help", "-h"]);
   assert.ok(CLI_COMMAND_NAMES.includes("issue-control"));
   assert.ok(CLI_COMMAND_NAMES.includes("proposal"));
+  assert.ok(CLI_COMMAND_NAMES.includes("jobs"));
+  assert.ok(CLI_COMMAND_NAMES.includes("troubleshoot"));
+  assert.ok(CLI_COMMAND_NAMES.includes("method-extraction"));
 });
 
 test("CLI registry validation detects missing and unexpected commands", () => {
