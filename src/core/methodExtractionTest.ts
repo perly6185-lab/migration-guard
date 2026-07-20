@@ -1,4 +1,6 @@
 import path from "node:path";
+import { promises as fs } from "node:fs";
+import ts from "typescript";
 import { pathExists, readJsonFile, toPosixPath } from "./files.js";
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
@@ -67,15 +69,7 @@ export async function createMethodExtractionTestPlan(
   if (!patchPlan.ready || patchPlan.contractHash !== contractHash) {
     return blocked(base, "patch-blocked", "A ready patch bound to the exact extraction contract is required.");
   }
-  if (!contract.selected?.exported) {
-    const code = contract.selected?.kind === "method" ? "unsupported-method-construction" : "symbol-not-exported";
-    return blocked(base, code, code === "unsupported-method-construction"
-      ? "Instance construction and dependency injection cannot be derived safely for this method."
-      : "The selected function is not exported and cannot be invoked by a generated external characterization test.");
-  }
-  if (contract.selected.kind !== "function") {
-    return blocked(base, "unsupported-method-construction", "The first generated test boundary supports exported top-level functions only.");
-  }
+  if (!contract.selected?.exported) return blocked(base, "symbol-not-exported", "The selected function or containing class is not exported and cannot be invoked by a generated external characterization test.");
   if (discovery.framework === "unknown") {
     return blocked(base, "unknown-test-framework", "No supported Vitest, Jest or Node Test command was detected.");
   }
@@ -88,7 +82,9 @@ export async function createMethodExtractionTestPlan(
     }
     fixtures[input.name] = fixture;
   }
-  const generated = generateCharacterizationTest(contract, discovery.framework, fixtures);
+  const invocation = contract.selected.kind === "method" ? await inspectMethodInvocation(contract) : { importName: contract.selected.name, expression: contract.selected.name };
+  if (!invocation) return blocked(base, "unsupported-method-construction", "The exported class requires constructor dependencies or the selected method is not publicly callable.");
+  const generated = generateCharacterizationTest(contract, discovery.framework, fixtures, invocation);
   return {
     ...base,
     ready: true,
@@ -193,7 +189,8 @@ function fixtureForType(input: MethodExtractionValueContract): string | undefine
 function generateCharacterizationTest(
   contract: MethodExtractionContract,
   framework: Exclude<MethodExtractionTestFramework, "unknown">,
-  fixtures: Record<string, string>
+  fixtures: Record<string, string>,
+  invocation: { importName: string; expression: string }
 ): NonNullable<MethodExtractionTestPlan["generatedTest"]> {
   const selected = contract.selected!;
   const parsed = path.posix.parse(toPosixPath(selected.file));
@@ -213,12 +210,12 @@ function generateCharacterizationTest(
       : "  assert.match(observation.status, /^(returned|threw)$/);";
   const content = [
     imports,
-    `import { ${selected.name} } from ${JSON.stringify(modulePath)};`,
+    `import { ${invocation.importName} } from ${JSON.stringify(modulePath)};`,
     "",
     `test(${JSON.stringify(`characterizes ${selected.symbol} for method extraction`)}, async () => {`,
     "  let observation: { status: \"returned\" | \"threw\"; value: unknown };",
     "  try {",
-    `    observation = { status: "returned", value: await ${selected.name}(${args}) };`,
+    `    observation = { status: "returned", value: await ${invocation.expression}(${args}) };`,
     "  } catch (error) {",
     "    observation = { status: \"threw\", value: error instanceof Error ? { name: error.name, message: error.message } : error };",
     "  }",
@@ -235,6 +232,28 @@ function generateCharacterizationTest(
     inputFixtures: fixtures,
     observationMarker: marker
   };
+}
+
+async function inspectMethodInvocation(contract: MethodExtractionContract): Promise<{ importName: string; expression: string } | undefined> {
+  const selected = contract.selected!;
+  if (!selected.container) return undefined;
+  const source = await fs.readFile(path.join(contract.root, selected.file), "utf8");
+  const sourceFile = ts.createSourceFile(selected.file, source, ts.ScriptTarget.Latest, true, selected.file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  let result: { importName: string; expression: string } | undefined;
+  for (const statement of sourceFile.statements) {
+    if (!ts.isClassDeclaration(statement) || statement.name?.text !== selected.container) continue;
+    const exported = ts.getModifiers(statement)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+    if (!exported) return undefined;
+    const method = statement.members.find((member): member is ts.MethodDeclaration => ts.isMethodDeclaration(member)
+      && ts.isIdentifier(member.name) && member.name.text === selected.name);
+    if (!method || ts.getModifiers(method)?.some((modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword || modifier.kind === ts.SyntaxKind.ProtectedKeyword)) return undefined;
+    const isStatic = ts.getModifiers(method)?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
+    if (isStatic) return { importName: selected.container, expression: `${selected.container}.${selected.name}` };
+    const constructor = statement.members.find(ts.isConstructorDeclaration);
+    if (constructor?.parameters.some((parameter) => !parameter.questionToken && !parameter.initializer && !parameter.dotDotDotToken)) return undefined;
+    result = { importName: selected.container, expression: `new ${selected.container}().${selected.name}` };
+  }
+  return result;
 }
 
 function blocked(

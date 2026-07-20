@@ -9,6 +9,14 @@
 
 ## Unreleased
 
+- Complete guarded TypeScript Extract Method execution with AST/data-flow contracts,
+  generated characterization tests, temporary verification and exact rollback.
+- Add ranked extraction candidates, conflict-free name suggestions and stable AST
+  anchors that survive line movement while rejecting semantic drift.
+- Add restart-safe method extraction sessions with manual, supervised and unattended
+  trust tiers and a single explicit next action.
+- Add separate behavior, structural-quality and operational-risk decisions plus
+  optional coverage, mutation, benchmark, memory, bundle and API compatibility gates.
 - Add local refactoring project registration, stack preview, project switching and initial-run creation to the operator UI.
 - Add project workflow progress and leased Scan, Baseline, Verify and Checkpoint actions to the operator UI.
 - Add a Recovery Center with checkpoint preflight plans, hash-confirmed apply and project run history.

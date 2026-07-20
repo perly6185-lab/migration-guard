@@ -131,6 +131,13 @@ import {
 } from "./core/methodExtractionChain.js";
 import type { MethodRefactorPlan } from "./core/methodRefactor.js";
 import {
+  executeMethodExtractionSession,
+  readMethodExtractionSession,
+  renderMethodExtractionSession,
+  type MethodExtractionTrustTier
+} from "./core/methodExtractionSession.js";
+import type { AdvancedGateKind, MethodAdvancedGateConfig } from "./core/methodExtractionQuality.js";
+import {
   createOneShotRunbook,
   collectOneShotSessionNextAction,
   collectOneShotStatus,
@@ -1232,6 +1239,27 @@ async function commandMethodExtraction(args: ParsedArgs): Promise<void> {
   const loaded = await loadFromArgs(args);
   const pkg = await loadRunPackage(loaded, stringOption(args, "run") ?? "latest");
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
+  if (action === "execute") {
+    const plan = await readJsonFile<MethodRefactorPlan>(path.join(dir, "method-refactor-plan.json"));
+    const session = await executeMethodExtractionSession(loaded, pkg, plan.selected.symbol, {
+      trustTier: methodExtractionTrustTierOption(args),
+      candidateIndex: Math.max(0, (nonNegativeIntegerOption(args, "candidate") ?? 1) - 1),
+      extractedName: stringOption(args, "extract-name"),
+      confirmPatchHash: stringOption(args, "confirm"),
+      recommendedChecks: plan.recommendedChecks,
+      advancedGates: methodAdvancedGateOptions(args)
+    });
+    console.log(args.options.json ? JSON.stringify(session, null, 2) : renderMethodExtractionSession(session));
+    if (session.state === "blocked" || session.state === "rolled-back") process.exitCode = 1;
+    return;
+  }
+  if (action === "session") {
+    const sessionAction = args.positionals[1] ?? "status";
+    if (sessionAction !== "status") throw new Error(`Unknown method-extraction session command: ${sessionAction}`);
+    const session = await readMethodExtractionSession(loaded, pkg.run.id);
+    console.log(args.options.json ? JSON.stringify(session, null, 2) : renderMethodExtractionSession(session));
+    return;
+  }
   if (action === "chain") {
     const chainAction = args.positionals[1] ?? "status";
     const plan = await readJsonFile<MethodRefactorPlan>(path.join(dir, "method-refactor-plan.json"));
@@ -2127,6 +2155,22 @@ function trustTierOption(args: ParsedArgs): IssueControlTrustTier | undefined {
   return value;
 }
 
+function methodExtractionTrustTierOption(args: ParsedArgs): MethodExtractionTrustTier | undefined {
+  return trustTierOption(args);
+}
+
+function methodAdvancedGateOptions(args: ParsedArgs): MethodAdvancedGateConfig[] {
+  const kinds: AdvancedGateKind[] = ["coverage", "mutation", "benchmark", "memory", "bundle", "api-compatibility"];
+  const required = new Set((stringOption(args, "require-gates") ?? "").split(",").map((value) => value.trim()).filter(Boolean));
+  for (const value of required) {
+    if (!kinds.includes(value as AdvancedGateKind)) throw new Error(`Unsupported required method evaluation gate: ${value}`);
+  }
+  const tolerancePercent = numberOption(args, "gate-tolerance-percent");
+  if (tolerancePercent !== undefined && tolerancePercent < 0) throw new Error("--gate-tolerance-percent must be non-negative.");
+  return kinds.map((kind) => ({ kind, command: stringOption(args, `${kind}-command`), required: required.has(kind), tolerancePercent }))
+    .filter((config) => config.command || config.required);
+}
+
 function stringListOption(args: ParsedArgs, name: string): string[] | undefined {
   const value = stringOption(args, name);
   if (!value) {
@@ -2304,6 +2348,8 @@ Usage:
   migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks] [--rollback-on-fail] [--gate-policy fail-fast|collect-all] [--behavior-diff]
   migration-guard method-extraction status [--run <id|latest>] [--json]
   migration-guard method-extraction apply [--run <id|latest>] --confirm <patch-hash> [--json]
+  migration-guard method-extraction execute [--run <id|latest>] [--candidate <1-based-index>] [--extract-name <name>] [--trust-tier manual|supervised|unattended] [--confirm <patch-hash>] [--coverage-command <cmd>] [--mutation-command <cmd>] [--benchmark-command <cmd>] [--memory-command <cmd>] [--bundle-command <cmd>] [--api-compatibility-command <cmd>] [--require-gates <comma-list>] [--gate-tolerance-percent <n>] [--json]
+  migration-guard method-extraction session status [--run <id|latest>] [--json]
   migration-guard method-extraction chain plan|status [--run <id|latest>] [--json]
   migration-guard method-extraction chain next [--run <id|latest>] --confirm <patch-hash> [--json]
   migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--gate-policy fail-fast|collect-all] [--json]

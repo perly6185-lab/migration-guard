@@ -1,6 +1,6 @@
 # MG-180: Execute Verified TypeScript Method Extraction End to End
 
-Status: planned
+Status: completed in `5ad3b33`; automation follow-up MG-181 through MG-190 is in progress.
 
 Priority: P0
 
@@ -17,10 +17,9 @@ Remote tracking:
 
 ## Problem
 
-The `method-refactor` adapter can discover a requested symbol, expand a bounded
-local call graph and create method-specific actions. Its current proposal only
-adds a structural probe. It does not generate an Extract Method source patch or
-prove that an extracted method preserves the original contract.
+The original `method-refactor` adapter discovered symbols and produced structural
+probes only. MG-180 now generates hash-bound Extract Method patches and proves
+their contracts through temporary and post-apply verification.
 
 ## Outcome
 
@@ -64,7 +63,7 @@ artifacts and requires replanning.
 Build a TypeScript compiler-program adapter that resolves the selected symbol and
 statement range by AST identity rather than regular expressions.
 
-Implementation status: completed locally on 2026-07-19; pending review and commit.
+Implementation status: completed and merged in `5ad3b33`.
 
 Acceptance:
 
@@ -88,7 +87,7 @@ Evidence:
 
 Compute the extraction boundary before generating any source edit.
 
-Implementation status: completed locally on 2026-07-19; pending review and commit.
+Implementation status: completed and merged in `5ad3b33`.
 
 Acceptance:
 
@@ -113,7 +112,7 @@ Evidence:
 
 Generate a real source patch from the reviewed extraction contract.
 
-Implementation status: completed locally on 2026-07-19; pending review and commit.
+Implementation status: completed and merged in `5ad3b33`.
 
 Acceptance:
 
@@ -143,7 +142,7 @@ Evidence:
 
 Generate focused evidence for the original entry point and extraction boundary.
 
-Implementation status: completed locally on 2026-07-19; pending review and commit.
+Implementation status: completed and merged in `5ad3b33`.
 
 Acceptance:
 
@@ -172,7 +171,7 @@ Evidence:
 
 Verify the complete patch without leaving persistent target changes.
 
-Implementation status: completed locally on 2026-07-19; pending review and commit.
+Implementation status: completed and merged in `5ad3b33`.
 
 Acceptance:
 
@@ -204,7 +203,7 @@ Evidence:
 
 Connect verified extraction proposals to the guarded apply workflow.
 
-Implementation status: completed locally on 2026-07-19; pending review and commit.
+Implementation status: completed and merged in `5ad3b33`.
 
 Acceptance:
 

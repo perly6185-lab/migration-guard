@@ -46,7 +46,7 @@ test("method extraction test plan generates executable function characterization
   }
 });
 
-test("method extraction test plan detects Vitest and blocks instance construction", async () => {
+test("method extraction test plan detects Vitest and constructs safe exported class instances", async () => {
   const dir = await createFixture("vitest run");
   try {
     await writeFile(path.join(dir, "service.ts"), [
@@ -59,10 +59,32 @@ test("method extraction test plan detects Vitest and blocks instance constructio
     ].join("\n"));
     const pipeline = await extractionPipeline(dir, "Service.run", { startLine: 3, endLine: 3 }, "calculateResult");
     const plan = await createMethodExtractionTestPlan(pipeline.contract, pipeline.patch);
-    assert.equal(plan.ready, false);
+    assert.equal(plan.ready, true);
     assert.equal(plan.framework, "vitest");
+    assert.equal(plan.reasonCode, "test-ready");
+    assert.equal(plan.coverage.structuralOnly, false);
+    assert.match(plan.generatedTest?.content ?? "", /new Service\(\)\.run/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("method extraction test plan blocks exported classes with required constructor dependencies", async () => {
+  const dir = await createFixture("node --test");
+  try {
+    await writeFile(path.join(dir, "service.ts"), [
+      "export class Service {",
+      "  constructor(private readonly offset: number) {}",
+      "  run(input: number): number {",
+      "    const result = input + this.offset;",
+      "    return result;",
+      "  }",
+      "}"
+    ].join("\n"));
+    const pipeline = await extractionPipeline(dir, "Service.run", { startLine: 4, endLine: 4 }, "calculateResult");
+    const plan = await createMethodExtractionTestPlan(pipeline.contract, pipeline.patch);
+    assert.equal(plan.ready, false);
     assert.equal(plan.reasonCode, "unsupported-method-construction");
-    assert.equal(plan.coverage.structuralOnly, true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

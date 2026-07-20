@@ -7,9 +7,10 @@ release gate with all configured real-project pilots available.
 Migration Guard is a behavior-consistency guardrail CLI for important refactoring
 and migration projects.
 
-It does not rewrite code in the first version. It helps you prove that behavior
-stayed consistent by capturing a baseline, running repeatable checks and probes,
-and comparing later runs against that baseline.
+It captures baselines, runs repeatable checks and probes, and compares later runs
+against that evidence. Guarded execution lanes can also apply reviewed patches;
+TypeScript method extraction supports AST planning, temporary verification,
+checkpointed apply and automatic rollback.
 
 The long-term product direction is larger: Migration Guard should become an AI
 autonomous migration runner for large repositories. Users submit a source

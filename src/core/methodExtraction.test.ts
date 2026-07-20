@@ -11,12 +11,69 @@ import {
   createMethodExtractionPatchPlan,
   extractMethodExtractionNameFromGoal,
   extractMethodExtractionRangeFromGoal,
+  resolveMethodExtractionAnchor,
   renderMethodExtractionContract,
   renderMethodExtractionEligibility,
-  renderMethodExtractionPatchPlan
+  renderMethodExtractionPatchPlan,
+  suggestMethodExtractionCandidates
 } from "./methodExtraction.js";
 
 const execFileAsync = promisify(execFile);
+
+test("method extraction suggestions rank safe cohesive ranges and propose conflict-free names", async () => {
+  const dir = await fixtureDir("method-extraction-suggestions");
+  try {
+    await writeFile(path.join(dir, "service.ts"), [
+      "export function createUser(input: string): string {",
+      "  const normalized = input.trim();",
+      "  if (!normalized) {",
+      "    throw new Error('invalid user');",
+      "  }",
+      "  const result = normalized.toUpperCase();",
+      "  return result;",
+      "}"
+    ].join("\n"));
+    const report = await suggestMethodExtractionCandidates(dir, "createUser", 3);
+    assert.equal(report.candidates.length, 3);
+    assert.equal(report.candidates[0]?.executable, true);
+    assert.ok((report.candidates[0]?.confidence ?? 0) > 0.5);
+    assert.ok((report.candidates[0]?.suggestedNames.length ?? 0) > 0);
+    assert.ok(report.candidates.every((candidate) => candidate.anchor.symbol === "createUser"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("method extraction anchors survive line movement and reject semantic drift", async () => {
+  const dir = await fixtureDir("method-extraction-anchor");
+  const file = path.join(dir, "service.ts");
+  try {
+    await writeFile(file, [
+      "export function calculate(input: number): number {",
+      "  const doubled = input * 2;",
+      "  const result = doubled + 1;",
+      "  return result;",
+      "}"
+    ].join("\n"));
+    const report = await suggestMethodExtractionCandidates(dir, "calculate", 3);
+    const selected = report.candidates.find((candidate) => candidate.range.startLine === 2 && candidate.range.endLine === 3);
+    assert.ok(selected);
+    await writeFile(file, [
+      "// formatting moved the declaration down",
+      "",
+      "export function calculate(input: number): number {",
+      "  const doubled = input * 2;",
+      "  const result = doubled + 1;",
+      "  return result;",
+      "}"
+    ].join("\n"));
+    assert.deepEqual(await resolveMethodExtractionAnchor(dir, selected!.anchor), { startLine: 4, endLine: 5 });
+    await writeFile(file, (await readFile(file, "utf8")).replace("doubled + 1", "doubled + 2"));
+    await assert.rejects(resolveMethodExtractionAnchor(dir, selected!.anchor), /semantic drift or ambiguity/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("method extraction eligibility resolves class methods and exact statement ranges", async () => {
   const dir = await fixtureDir("method-extraction-method");

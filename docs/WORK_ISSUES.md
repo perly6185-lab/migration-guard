@@ -1,6 +1,6 @@
 # Work Issues
 
-Updated: 2026-07-19
+Updated: 2026-07-20
 
 This list tracks the work required to move the current `0.3.0-beta.1`
 workspace from locally validated development changes to a reviewable release
@@ -9,7 +9,7 @@ candidate. Remote publication, Git tags and GitHub mutation remain manual.
 ## MG-180: Execute verified TypeScript method extraction end to end
 
 - Priority: P0
-- Status: planned
+- Status: completed
 - Scope: extend the planning-only `method-refactor` adapter with TypeScript AST
   eligibility analysis, data-flow contracts, atomic source patches, generated
   contract tests, temporary verification, rollback and layered execution.
@@ -23,6 +23,36 @@ candidate. Remote publication, Git tags and GitHub mutation remain manual.
 - Remote tracking: epic [#55](https://github.com/perly6185-lab/migration-guard/issues/55),
   development issues [#56](https://github.com/perly6185-lab/migration-guard/issues/56)
   through [#62](https://github.com/perly6185-lab/migration-guard/issues/62).
+- Evidence: implementation commit `5ad3b33`; 227/227 tests passed before merge.
+
+## MG-181 through MG-190: Method automation and evaluation
+
+- MG-181 (P0, completed): align work status, operator documentation and changelog
+  with the shipped MG-180 execution boundary.
+- MG-182 (P0, in progress): execute repeatable real-repository pilots for a plain
+  function, an async class method and a three-layer call chain, including drift,
+  failed-check and behavior-change rollback cases.
+- MG-183 (P0, in progress): produce clean-checkout test, beta readiness, package,
+  desktop and release-gate evidence for the automation release.
+- MG-184 (P0, implemented, validation in progress): rank bounded AST extraction
+  candidates and write stable JSON/Markdown suggestions without mutation.
+- MG-185 (P1, implemented, validation in progress): propose deterministic,
+  conflict-free extracted names from calls, values, validation and method context.
+- MG-186 (P0, implemented, validation in progress): bind candidates to AST kind,
+  normalized text and adjacent-statement fingerprints; relocate line-only drift
+  and reject semantic drift or ambiguity.
+- MG-187 (P0, implemented, validation in progress): provide an idempotent method
+  extraction session with explicit states, one next action and restart-safe ledger.
+- MG-188 (P1, implemented, validation in progress): enforce manual, supervised and
+  unattended apply policies with progressively stricter automatic-mutation budgets.
+- MG-189 (P1, implemented, validation in progress): report behavior confidence,
+  structural improvement and operational risk as separate decisions.
+- MG-190 (P2, implemented, validation in progress): run optional coverage,
+  mutation, benchmark, memory, bundle and API-compatibility commands; missing gates
+  are `not-evaluated`, and missing or failed required gates roll back the apply.
+
+Detailed implementation and release evidence will be recorded in
+[METHOD_AUTOMATION_181_190_REPORT.md](METHOD_AUTOMATION_181_190_REPORT.md).
 
 ## MG-179: Expose operational troubleshooting through the Node CLI
 
