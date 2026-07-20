@@ -16,6 +16,10 @@ const checks = [
   await fileCheck("failure repair", "src/core/repairLoopCli.test.ts", ["repair loop replans, retries, verifies, and accepts"]),
   await fileCheck("worker fencing", "src/core/uiJobStore.test.ts", ["stale fencing tokens"]),
   await fileCheck("policy presets", "src/core/policy.test.ts", ["cannot loosen", "work offline"]),
+  await fileCheck("method candidate and anchors", "src/core/methodExtraction.test.ts", ["rank safe cohesive ranges", "reject semantic drift"]),
+  await fileCheck("method automation session", "src/core/methodExtractionSession.test.ts", ["pauses for exact confirmation", "required quality gate"]),
+  await fileCheck("method quality evaluation", "src/core/methodExtractionQuality.test.ts", ["structural improvement", "not evaluated"]),
+  await fileCheck("method real pilot", "scripts/smoke/method-extraction-real-pilot.mjs", ["at least three real-repository cases", "originalRepositoryUnchanged"]),
   { id: "test-suite", passed: true, evidence: `run-tests.mjs passed; minimumTests=${manifest.minimumTests}` }
 ];
 for (const name of ["js-ts-monorepo", "go-service", "conservative-migration"]) checks.push(await fileCheck(`preset:${name}`, `configs/policies/${name}.json`, ["maxChangedFiles", "artifactRetentionRuns"]));

@@ -264,3 +264,48 @@ node dist/cli.js jobs cancel --job <job-id> --confirm <job-id> --json
 node dist/cli.js jobs gc --keep 50 --json
 node dist/cli.js jobs gc --keep 50 --apply --json
 ```
+
+## 12. 方法级自动重构
+
+先创建只读方法运行。未指定 `extract-lines` 时会自动生成最多三个候选：
+
+```powershell
+node dist/cli.js run --source D:\project --target D:\project --adapter method-refactor --goal "method symbol=UserService.createUser" --auto
+```
+
+候选保存在当前 run 的 `adapter/method-extraction-suggestions.json|md`。
+审查范围、风险、输入输出和建议名称后启动会话：
+
+```powershell
+node dist/cli.js method-extraction execute --run latest --candidate 1 --trust-tier manual
+node dist/cli.js method-extraction session status --run latest
+node dist/cli.js method-extraction execute --run latest --candidate 1 --trust-tier manual --confirm <patch-hash>
+```
+
+信任等级：
+
+- `manual`：验证后始终等待精确 patch hash。
+- `supervised`：只有低风险、单文件、完整行为验证的候选可以自动应用。
+- `unattended`：在 supervised 条件上增加置信度、输入输出和语句数量预算。
+
+高级门禁命令必须向 stdout 输出单个数字或 `{ "value": number }`。覆盖率和
+mutation score 默认不得下降；benchmark、memory 和 bundle 默认不得上升；
+API compatibility 输出必须完全一致。允许用 `--gate-tolerance-percent` 设置容差：
+
+```powershell
+node dist/cli.js method-extraction execute --run latest --trust-tier supervised `
+  --coverage-command "npm run coverage:metric" `
+  --benchmark-command "npm run benchmark:metric" `
+  --api-compatibility-command "npm run api:snapshot" `
+  --require-gates coverage,api-compatibility `
+  --gate-tolerance-percent 2
+```
+
+未配置的指标记录为 `not-evaluated`，不会伪装成通过。required 指标缺失、执行失败
+或相对基线退化时，正式补丁会自动回滚。会话完成后查看：
+
+```text
+adapter/method-extraction-session/method-extraction-session.json
+adapter/method-extraction-session/method-extraction-quality.json
+adapter/method-extraction-session/method-extraction-quality.md
+```

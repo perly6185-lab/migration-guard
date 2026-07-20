@@ -726,6 +726,11 @@ function resolveMethodCall(
     }
   }
 
+  const sameFile = matches.filter((symbol) => symbol.file === current.file);
+  if (sameFile.length === 1) {
+    return { candidate: sameFile[0], reason: "resolved by unique symbol name in the current file" };
+  }
+
   if (matches.length === 1) {
     return { candidate: matches[0], reason: "resolved by unique local symbol name" };
   }

@@ -68,6 +68,7 @@ const steps = [
   { id: "test", command: "npm", args: ["test"] },
   { id: "beta-readiness", command: "npm", args: ["run", "beta:readiness"] },
   { id: "ui-smoke", command: "npm", args: ["run", "ui:smoke"] },
+  { id: "desktop-smoke", command: "npm", args: ["run", "desktop:smoke"] },
   { id: "package-audit", command: "npm", args: ["run", "package:audit"] },
   { id: "package-smoke", command: "npm", args: ["run", "package:smoke"] },
   { id: "package-golden", command: "npm", args: ["run", "package:golden"] },
@@ -75,6 +76,7 @@ const steps = [
   { id: "diff-check", command: "git", args: ["diff", "--check"] },
   { id: "pilot-smoke", command: process.execPath, args: ["scripts/smoke/real-project-pilot.mjs", "--release-run", releaseRunId] },
   { id: "pilot-report", command: process.execPath, args: ["scripts/smoke/rc-feedback-report.mjs", "--release-run", releaseRunId], alwaysRun: true },
+  { id: "method-extraction-pilot", command: process.execPath, args: ["scripts/smoke/method-extraction-real-pilot.mjs", "--release-run", releaseRunId] },
   { id: "ga-candidate", command: process.execPath, args: ["scripts/release/candidate.mjs"] }
 ];
 
@@ -82,6 +84,7 @@ try {
   for (const definition of steps) await runGate(definition);
   manifest.evidence.pilotSmoke = await describeArtifact(path.join(runDir, "pilot-smoke.json"), workspace);
   manifest.evidence.pilotReport = await describeArtifact(path.join(runDir, "pilot-report.json"), workspace);
+  manifest.evidence.methodExtractionPilot = await describeArtifact(path.join(runDir, "method-extraction-pilot.json"), workspace);
   manifest.evidence.gaCandidate = await describeArtifact(path.join(runDir, "ga-candidate.json"), workspace);
   manifest.evidence.publishHandoff = await describeArtifact(path.join(runDir, "PUBLISH_HANDOFF.md"), workspace);
   const resumeContext = await collectContext();

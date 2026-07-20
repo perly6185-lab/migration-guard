@@ -38,7 +38,9 @@ import {
   extractMethodExtractionRangeFromGoal,
   renderMethodExtractionContract,
   renderMethodExtractionEligibility,
-  renderMethodExtractionPatchPlan
+  renderMethodExtractionPatchPlan,
+  renderMethodExtractionSuggestionReport,
+  suggestMethodExtractionCandidates
 } from "./methodExtraction.js";
 import { createMethodExtractionTestPlan, renderMethodExtractionTestPlan } from "./methodExtractionTest.js";
 import type { MethodExtractionPatchPlan } from "./methodExtraction.js";
@@ -372,9 +374,12 @@ async function writeMethodRefactorPlan(loaded: LoadedConfig, pkg: MigrationRunPa
   await writeTextFile(markdownPath, renderMethodRefactorPlan(plan));
   const extractionRange = extractMethodExtractionRangeFromGoal(pkg.run.goal);
   if (!extractionRange) {
-    return `Wrote method refactor plan for ${plan.selected.symbol} to ${jsonPath} and ${markdownPath}`;
+    const suggestions = await suggestMethodExtractionCandidates(pkg.run.targetRoot, plan.selected.symbol, 3, plan.selected.file);
+    await writeJsonFile(path.join(dir, "method-extraction-suggestions.json"), suggestions);
+    await writeTextFile(path.join(dir, "method-extraction-suggestions.md"), renderMethodExtractionSuggestionReport(suggestions));
+    return `Wrote method refactor plan and ${suggestions.candidates.length} extraction suggestion(s) for ${plan.selected.symbol} to ${dir}`;
   }
-  const eligibility = await createMethodExtractionEligibility(pkg.run.targetRoot, plan.selected.symbol, extractionRange);
+  const eligibility = await createMethodExtractionEligibility(pkg.run.targetRoot, plan.selected.symbol, extractionRange, undefined, plan.selected.file);
   const eligibilityJsonPath = path.join(dir, "method-extraction-eligibility.json");
   const eligibilityMarkdownPath = path.join(dir, "method-extraction-eligibility.md");
   await writeJsonFile(eligibilityJsonPath, eligibility);

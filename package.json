@@ -20,6 +20,7 @@
     "package:smoke": "npm run build && node scripts/smoke/package-install-smoke.mjs",
     "package:golden": "npm run build && node scripts/smoke/golden-path-smoke.mjs",
     "pilot:smoke": "npm run build && node scripts/smoke/real-project-pilot.mjs",
+    "method:pilot": "npm run build && node scripts/smoke/method-extraction-real-pilot.mjs",
     "package:audit": "npm run build && node scripts/ci/audit-package.mjs",
     "pilot:report": "node scripts/smoke/rc-feedback-report.mjs",
     "install:smoke": "npm run build && node scripts/smoke/install-modes-smoke.mjs",

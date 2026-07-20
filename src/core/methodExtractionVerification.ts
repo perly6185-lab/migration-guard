@@ -4,6 +4,7 @@ import path from "node:path";
 import { runShellCommand } from "./exec.js";
 import { pathExists, writeTextFile } from "./files.js";
 import { sha256 } from "./hash.js";
+import { stableStringify } from "./normalize.js";
 import type { CommandExecutionResult } from "../types.js";
 import type { MethodExtractionPatchPlan } from "./methodExtraction.js";
 import type { MethodExtractionTestPlan } from "./methodExtractionTest.js";
@@ -48,6 +49,7 @@ export interface MethodExtractionVerificationReport {
     fallbackSourceRestoreUsed: boolean;
     sourceRestored: boolean;
     testRemoved: boolean;
+    observationRemoved: boolean;
   };
 }
 
@@ -80,6 +82,7 @@ export async function verifyMethodExtractionTemporarily(
   const root = path.resolve(patchPlan.root);
   const sourcePath = safeTargetPath(root, patchPlan.file);
   const testPath = safeTargetPath(root, testPlan.generatedTest.targetPath);
+  const observationPath = safeTargetPath(root, testPlan.generatedTest.observationFile);
   if (await pathExists(testPath)) {
     return { ...base, status: "blocked", reason: `Generated test target already exists: ${testPlan.generatedTest.targetPath}` };
   }
@@ -100,9 +103,11 @@ export async function verifyMethodExtractionTemporarily(
     await fs.mkdir(path.dirname(testPath), { recursive: true });
     await fs.writeFile(testPath, testPlan.generatedTest.content, "utf8");
     report.temporaryApply.testWritten = true;
+    await fs.rm(observationPath, { force: true });
     baselineResult = await runVerificationCommand(testPlan.testCommand, root, timeoutMs, maxOutputBytes);
     report.commands.push(commandEvidence("baseline", baselineResult));
-    report.behavior.baseline = extractObservation(baselineResult.stdout, testPlan.generatedTest.observationMarker);
+    report.behavior.baseline = await readObservation(observationPath)
+      ?? extractObservation(baselineResult.stdout, testPlan.generatedTest.observationMarker);
     report.behavior.baselineHash = report.behavior.baseline ? sha256(report.behavior.baseline) : undefined;
     if (!commandPassed(baselineResult) || !report.behavior.baseline) {
       report.reason = `Baseline characterization command failed or produced no observation: ${baselineResult.stderr || baselineResult.stdout || baselineResult.error || "no output"}`.slice(0, 2000);
@@ -119,6 +124,7 @@ export async function verifyMethodExtractionTemporarily(
     }
 
     let currentTestResult: CommandExecutionResult | undefined;
+    await fs.rm(observationPath, { force: true });
     for (const command of commands) {
       const result = await runVerificationCommand(command, root, timeoutMs, maxOutputBytes);
       report.commands.push(commandEvidence("current", result));
@@ -129,7 +135,8 @@ export async function verifyMethodExtractionTemporarily(
       }
     }
     report.behavior.current = currentTestResult
-      ? extractObservation(currentTestResult.stdout, testPlan.generatedTest.observationMarker)
+      ? await readObservation(observationPath)
+        ?? extractObservation(currentTestResult.stdout, testPlan.generatedTest.observationMarker)
       : undefined;
     report.behavior.currentHash = report.behavior.current ? sha256(report.behavior.current) : undefined;
     report.behavior.equal = Boolean(report.behavior.baseline && report.behavior.baseline === report.behavior.current);
@@ -157,8 +164,10 @@ export async function verifyMethodExtractionTemporarily(
     report.restoration.sourceRestored = (await fs.readFile(sourcePath)).equals(originalSource);
     await fs.rm(testPath, { force: true }).catch(() => undefined);
     report.restoration.testRemoved = !(await pathExists(testPath));
+    await fs.rm(observationPath, { force: true }).catch(() => undefined);
+    report.restoration.observationRemoved = !(await pathExists(observationPath));
     await fs.rm(patchDir, { recursive: true, force: true }).catch(() => undefined);
-    if (!report.restoration.sourceRestored || !report.restoration.testRemoved) {
+    if (!report.restoration.sourceRestored || !report.restoration.testRemoved || !report.restoration.observationRemoved) {
       report.status = "failed";
       report.passed = false;
       report.reason = "Temporary verification could not fully restore the target workspace.";
@@ -180,6 +189,7 @@ export function renderMethodExtractionVerification(report: MethodExtractionVerif
     `- Behavior equal: ${report.behavior.equal}`,
     `- Source restored: ${report.restoration.sourceRestored}`,
     `- Test removed: ${report.restoration.testRemoved}`,
+    `- Observation removed: ${report.restoration.observationRemoved}`,
     "",
     "## Commands",
     "",
@@ -209,7 +219,8 @@ function baseReport(patchPlan: MethodExtractionPatchPlan, testPlan: MethodExtrac
       reversePatchPassed: false,
       fallbackSourceRestoreUsed: false,
       sourceRestored: false,
-      testRemoved: false
+      testRemoved: false,
+      observationRemoved: false
     }
   };
 }
@@ -225,9 +236,17 @@ function safeTargetPath(root: string, relativePath: string): string {
 
 function runVerificationCommand(command: string, root: string, timeoutMs: number, maxOutputBytes: number) {
   const isolatedCommand = process.platform === "win32"
-    ? `set "NODE_TEST_CONTEXT=" && ${command}`
-    : `env -u NODE_TEST_CONTEXT ${command}`;
+    ? `set "NODE_TEST_CONTEXT=" && set "MG_METHOD_OBSERVATION_ROOT=${escapeWindowsEnvValue(root)}" && ${command}`
+    : `env -u NODE_TEST_CONTEXT MG_METHOD_OBSERVATION_ROOT=${shellQuote(root)} ${command}`;
   return runShellCommand(isolatedCommand, { cwd: root, timeoutMs, maxOutputBytes });
+}
+
+function escapeWindowsEnvValue(value: string): string {
+  return value.replace(/"/g, "\"\"");
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function commandPassed(result: CommandExecutionResult): boolean {
@@ -255,4 +274,14 @@ function extractObservation(stdout: string, marker: string): string | undefined 
     if (value) return value;
   }
   return undefined;
+}
+
+async function readObservation(observationPath: string): Promise<string | undefined> {
+  const content = await fs.readFile(observationPath, "utf8").catch(() => undefined);
+  if (!content) return undefined;
+  try {
+    return stableStringify(JSON.parse(content));
+  } catch {
+    return undefined;
+  }
 }

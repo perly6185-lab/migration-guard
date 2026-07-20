@@ -11,12 +11,69 @@ import {
   createMethodExtractionPatchPlan,
   extractMethodExtractionNameFromGoal,
   extractMethodExtractionRangeFromGoal,
+  resolveMethodExtractionAnchor,
   renderMethodExtractionContract,
   renderMethodExtractionEligibility,
-  renderMethodExtractionPatchPlan
+  renderMethodExtractionPatchPlan,
+  suggestMethodExtractionCandidates
 } from "./methodExtraction.js";
 
 const execFileAsync = promisify(execFile);
+
+test("method extraction suggestions rank safe cohesive ranges and propose conflict-free names", async () => {
+  const dir = await fixtureDir("method-extraction-suggestions");
+  try {
+    await writeFile(path.join(dir, "service.ts"), [
+      "export function createUser(input: string): string {",
+      "  const normalized = input.trim();",
+      "  if (!normalized) {",
+      "    throw new Error('invalid user');",
+      "  }",
+      "  const result = normalized.toUpperCase();",
+      "  return result;",
+      "}"
+    ].join("\n"));
+    const report = await suggestMethodExtractionCandidates(dir, "createUser", 3);
+    assert.equal(report.candidates.length, 3);
+    assert.equal(report.candidates[0]?.executable, true);
+    assert.ok((report.candidates[0]?.confidence ?? 0) > 0.5);
+    assert.ok((report.candidates[0]?.suggestedNames.length ?? 0) > 0);
+    assert.ok(report.candidates.every((candidate) => candidate.anchor.symbol === "createUser"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("method extraction anchors survive line movement and reject semantic drift", async () => {
+  const dir = await fixtureDir("method-extraction-anchor");
+  const file = path.join(dir, "service.ts");
+  try {
+    await writeFile(file, [
+      "export function calculate(input: number): number {",
+      "  const doubled = input * 2;",
+      "  const result = doubled + 1;",
+      "  return result;",
+      "}"
+    ].join("\n"));
+    const report = await suggestMethodExtractionCandidates(dir, "calculate", 3);
+    const selected = report.candidates.find((candidate) => candidate.range.startLine === 2 && candidate.range.endLine === 3);
+    assert.ok(selected);
+    await writeFile(file, [
+      "// formatting moved the declaration down",
+      "",
+      "export function calculate(input: number): number {",
+      "  const doubled = input * 2;",
+      "  const result = doubled + 1;",
+      "  return result;",
+      "}"
+    ].join("\n"));
+    assert.deepEqual(await resolveMethodExtractionAnchor(dir, selected!.anchor), { startLine: 4, endLine: 5 });
+    await writeFile(file, (await readFile(file, "utf8")).replace("doubled + 1", "doubled + 2"));
+    await assert.rejects(resolveMethodExtractionAnchor(dir, selected!.anchor), /semantic drift or ambiguity/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("method extraction eligibility resolves class methods and exact statement ranges", async () => {
   const dir = await fixtureDir("method-extraction-method");
@@ -236,6 +293,66 @@ test("method extraction patch atomically extracts a class-method range", async (
     const applied = await readFile(sourcePath, "utf8");
     assert.match(applied, /total = await this\.calculateTotal\(input, total\);/);
     assert.match(applied, /return total;\r?\n  }\r?\n\r?\n  private async calculateTotal/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("method extraction patch uses output type for non-terminal helper returns", async () => {
+  const dir = await fixtureDir("method-extraction-output-return-type");
+  try {
+    await writeFile(path.join(dir, "parse.ts"), [
+      "export async function parse(input: string): Promise<number> {",
+      "  const raw = input || undefined;",
+      "  return raw ? Number(raw) : 0;",
+      "}"
+    ].join("\n"));
+    const eligibility = await createMethodExtractionEligibility(dir, "parse", { startLine: 2, endLine: 2 });
+    const contract = await createMethodExtractionContract(eligibility);
+    const plan = await createMethodExtractionPatchPlan(contract, "readRaw");
+    assert.equal(plan.ready, true, plan.diagnostics.join("\n"));
+    assert.match(plan.patch ?? "", /const raw = await readRaw\(input\);/);
+    assert.match(plan.patch ?? "", /async function readRaw\(input: string\): Promise<string \| undefined>/);
+    assert.doesNotMatch(plan.patch ?? "", /readRaw\(input: string\): Promise<number>/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("method extraction contract treats object shorthand values as inputs", async () => {
+  const dir = await fixtureDir("method-extraction-shorthand");
+  try {
+    await writeFile(path.join(dir, "service.ts"), [
+      "export async function get(id: string): Promise<object> {",
+      "  return Promise.resolve({ id });",
+      "}"
+    ].join("\n"));
+    const eligibility = await createMethodExtractionEligibility(dir, "get", { startLine: 2, endLine: 2 });
+    const contract = await createMethodExtractionContract(eligibility);
+    assert.deepEqual(contract.inputs.map((input) => input.name), ["id"]);
+    const patch = await createMethodExtractionPatchPlan(contract, "getStep");
+    assert.equal(patch.ready, true, patch.diagnostics.join("\n"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("method extraction patch preserves static async class method context", async () => {
+  const dir = await fixtureDir("method-extraction-static-method");
+  try {
+    await writeFile(path.join(dir, "service.ts"), [
+      "export class Service {",
+      "  static async get(id: string): Promise<string> {",
+      "    return Promise.resolve(id);",
+      "  }",
+      "}"
+    ].join("\n"));
+    const eligibility = await createMethodExtractionEligibility(dir, "Service.get", { startLine: 3, endLine: 3 });
+    const contract = await createMethodExtractionContract(eligibility);
+    const patch = await createMethodExtractionPatchPlan(contract, "getStep");
+    assert.equal(patch.ready, true, patch.diagnostics.join("\n"));
+    assert.match(patch.patch ?? "", /private static async getStep\(id: string\)/);
+    assert.match(patch.patch ?? "", /return await this\.getStep\(id\)/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

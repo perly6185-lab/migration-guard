@@ -1,4 +1,6 @@
 import path from "node:path";
+import { promises as fs } from "node:fs";
+import ts from "typescript";
 import { pathExists, readJsonFile, toPosixPath } from "./files.js";
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
@@ -33,6 +35,7 @@ export interface MethodExtractionTestPlan {
     contentHash: string;
     inputFixtures: Record<string, string>;
     observationMarker: string;
+    observationFile: string;
   };
   coverage: {
     callable: boolean;
@@ -49,7 +52,7 @@ export async function createMethodExtractionTestPlan(
   patchPlan: MethodExtractionPatchPlan
 ): Promise<MethodExtractionTestPlan> {
   const contractHash = sha256(stableStringify(contract));
-  const discovery = await discoverTestFramework(contract.root);
+  const discovery = await discoverTestFramework(contract.root, contract.selected?.file);
   const existingTests = contract.selected
     ? await findRelatedTests(contract.root, contract.selected.file)
     : [];
@@ -67,15 +70,7 @@ export async function createMethodExtractionTestPlan(
   if (!patchPlan.ready || patchPlan.contractHash !== contractHash) {
     return blocked(base, "patch-blocked", "A ready patch bound to the exact extraction contract is required.");
   }
-  if (!contract.selected?.exported) {
-    const code = contract.selected?.kind === "method" ? "unsupported-method-construction" : "symbol-not-exported";
-    return blocked(base, code, code === "unsupported-method-construction"
-      ? "Instance construction and dependency injection cannot be derived safely for this method."
-      : "The selected function is not exported and cannot be invoked by a generated external characterization test.");
-  }
-  if (contract.selected.kind !== "function") {
-    return blocked(base, "unsupported-method-construction", "The first generated test boundary supports exported top-level functions only.");
-  }
+  if (!contract.selected?.exported) return blocked(base, "symbol-not-exported", "The selected function or containing class is not exported and cannot be invoked by a generated external characterization test.");
   if (discovery.framework === "unknown") {
     return blocked(base, "unknown-test-framework", "No supported Vitest, Jest or Node Test command was detected.");
   }
@@ -88,9 +83,12 @@ export async function createMethodExtractionTestPlan(
     }
     fixtures[input.name] = fixture;
   }
-  const generated = generateCharacterizationTest(contract, discovery.framework, fixtures);
+  const invocation = contract.selected.kind === "method" ? await inspectMethodInvocation(contract) : { importName: contract.selected.name, expression: contract.selected.name };
+  if (!invocation) return blocked(base, "unsupported-method-construction", "The exported class requires constructor dependencies or the selected method is not publicly callable.");
+  const generated = generateCharacterizationTest(contract, discovery.framework, fixtures, invocation);
   return {
     ...base,
+    testCommand: focusedTestCommand(discovery.framework, discovery.command!, generated.targetPath, discovery.packageDir),
     ready: true,
     reasonCode: "test-ready",
     findings: [{
@@ -150,18 +148,50 @@ export function renderMethodExtractionTestPlan(plan: MethodExtractionTestPlan): 
   ].join("\n");
 }
 
-async function discoverTestFramework(root: string): Promise<{ framework: MethodExtractionTestFramework; command?: string }> {
-  const packageJson = await readJsonFile<{
-    scripts?: Record<string, string>;
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-  }>(path.join(root, "package.json")).catch(() => undefined);
-  const test = packageJson?.scripts?.test;
-  const dependencies = { ...packageJson?.dependencies, ...packageJson?.devDependencies };
-  if (test?.includes("vitest") || dependencies.vitest) return { framework: "vitest", command: "npm test" };
-  if (test?.includes("jest") || dependencies.jest) return { framework: "jest", command: "npm test" };
-  if (test?.includes("node --test")) return { framework: "node-test", command: "npm test" };
-  return { framework: "unknown", command: test ? "npm test" : undefined };
+async function discoverTestFramework(root: string, sourceFile?: string): Promise<{ framework: MethodExtractionTestFramework; command?: string; packageDir?: string }> {
+  const resolvedRoot = path.resolve(root);
+  const directories: string[] = [];
+  let current = sourceFile ? path.dirname(path.join(root, sourceFile)) : root;
+  while (pathInsideOrEqual(resolvedRoot, current)) {
+    if (!directories.includes(current)) directories.push(current);
+    if (current === resolvedRoot) break;
+    current = path.dirname(current);
+  }
+  for (const directory of directories) {
+    const packageJson = await readJsonFile<{
+      scripts?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    }>(path.join(directory, "package.json")).catch(() => undefined);
+    if (!packageJson) continue;
+    const packageDir = toPosixPath(path.relative(root, directory));
+    const test = packageJson.scripts?.test;
+    const testRun = packageJson.scripts?.["test:run"];
+    const testCi = packageJson.scripts?.["test:ci"];
+    const testFast = packageJson.scripts?.["test:fast"];
+    const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
+    if (test?.includes("vitest") || testRun?.includes("vitest") || testCi?.includes("vitest") || testFast?.includes("vitest") || dependencies.vitest) {
+      if (testRun) return { framework: "vitest", command: await packageScriptCommand(root, packageDir, "test:run"), packageDir };
+      if (testCi) return { framework: "vitest", command: await packageScriptCommand(root, packageDir, "test:ci"), packageDir };
+      if (testFast?.includes("vitest") && /(?:--run|\brun\b)/.test(testFast)) {
+        return { framework: "vitest", command: await packageScriptCommand(root, packageDir, "test:fast"), packageDir };
+      }
+      const command = await packageScriptCommand(root, packageDir, "test");
+      return { framework: "vitest", command: /(?:--run|\brun\b)/.test(test ?? "") ? command : `${command} -- --run`, packageDir };
+    }
+    if (test?.includes("jest") || dependencies.jest) return { framework: "jest", command: await packageScriptCommand(root, packageDir, "test"), packageDir };
+    if (test?.includes("node --test")) return { framework: "node-test", command: await packageScriptCommand(root, packageDir, "test"), packageDir };
+  }
+  return { framework: "unknown" };
+}
+
+async function packageScriptCommand(root: string, packageDir: string, script: string): Promise<string> {
+  const manager = await pathExists(path.join(root, "pnpm-lock.yaml")) ? "pnpm" : await pathExists(path.join(root, "yarn.lock")) ? "yarn" : "npm";
+  if (!packageDir) return manager === "npm" ? (script === "test" ? "npm test" : `npm run ${script}`) : `${manager} run ${script}`;
+  const quoted = JSON.stringify(packageDir);
+  if (manager === "pnpm") return `pnpm --dir ${quoted} run ${script}`;
+  if (manager === "yarn") return `yarn --cwd ${quoted} run ${script}`;
+  return `npm --prefix ${quoted} run ${script}`;
 }
 
 async function findRelatedTests(root: string, sourceFile: string): Promise<string[]> {
@@ -193,7 +223,8 @@ function fixtureForType(input: MethodExtractionValueContract): string | undefine
 function generateCharacterizationTest(
   contract: MethodExtractionContract,
   framework: Exclude<MethodExtractionTestFramework, "unknown">,
-  fixtures: Record<string, string>
+  fixtures: Record<string, string>,
+  invocation: { importName: string; expression: string }
 ): NonNullable<MethodExtractionTestPlan["generatedTest"]> {
   const selected = contract.selected!;
   const parsed = path.posix.parse(toPosixPath(selected.file));
@@ -201,6 +232,7 @@ function generateCharacterizationTest(
   const modulePath = framework === "node-test" ? `./${parsed.name}.ts` : `./${parsed.name}.js`;
   const args = contract.inputs.map((input) => fixtures[input.name]).join(", ");
   const marker = `migration-guard-method-contract:${selected.symbol}`;
+  const observationFile = `.migration-guard/method-observations/${sha256(marker).slice(0, 16)}.json`;
   const imports = framework === "vitest"
     ? `import { expect, test } from "vitest";`
     : framework === "jest"
@@ -213,17 +245,23 @@ function generateCharacterizationTest(
       : "  assert.match(observation.status, /^(returned|threw)$/);";
   const content = [
     imports,
-    `import { ${selected.name} } from ${JSON.stringify(modulePath)};`,
+    `import { mkdirSync, writeFileSync } from "node:fs";`,
+    `import { dirname, resolve } from "node:path";`,
+    `import { ${invocation.importName} } from ${JSON.stringify(modulePath)};`,
     "",
     `test(${JSON.stringify(`characterizes ${selected.symbol} for method extraction`)}, async () => {`,
     "  let observation: { status: \"returned\" | \"threw\"; value: unknown };",
     "  try {",
-    `    observation = { status: "returned", value: await ${selected.name}(${args}) };`,
+    `    observation = { status: "returned", value: await ${invocation.expression}(${args}) };`,
     "  } catch (error) {",
     "    observation = { status: \"threw\", value: error instanceof Error ? { name: error.name, message: error.message } : error };",
     "  }",
     assertion,
-    `  console.log(${JSON.stringify(marker)}, JSON.stringify(observation));`,
+    `  const observationRoot = process.env.MG_METHOD_OBSERVATION_ROOT ?? process.cwd();`,
+    `  const observationPath = resolve(observationRoot, ${JSON.stringify(observationFile)});`,
+    `  mkdirSync(dirname(observationPath), { recursive: true });`,
+    `  writeFileSync(observationPath, JSON.stringify(observation), "utf8");`,
+    `  process.stdout.write(${JSON.stringify(marker)} + "\\n");`,
     "});",
     ""
   ].filter((line, index) => line || index > 0).join("\n");
@@ -233,8 +271,51 @@ function generateCharacterizationTest(
     content,
     contentHash: sha256(content),
     inputFixtures: fixtures,
-    observationMarker: marker
+    observationMarker: marker,
+    observationFile
   };
+}
+
+function focusedTestCommand(framework: Exclude<MethodExtractionTestFramework, "unknown">, command: string, targetPath: string, packageDir?: string): string {
+  const relativeTarget = packageDir ? path.posix.relative(toPosixPath(packageDir), toPosixPath(targetPath)) : toPosixPath(targetPath);
+  const quotedPath = JSON.stringify(relativeTarget);
+  if (framework === "node-test") {
+    const loaderUrl = new URL("./typescriptTestLoader.js", import.meta.url).href;
+    return `node --loader ${JSON.stringify(loaderUrl)} --test ${JSON.stringify(toPosixPath(targetPath))}`;
+  }
+  const requiresSeparator = command.startsWith("npm ");
+  if (framework === "jest") return requiresSeparator
+    ? `${command} -- --runTestsByPath ${quotedPath}`
+    : `${command} --runTestsByPath ${quotedPath}`;
+  if (command === "npm test -- --run") return `${command} ${quotedPath}`;
+  return requiresSeparator ? `${command} -- ${quotedPath}` : `${command} ${quotedPath}`;
+}
+
+function pathInsideOrEqual(root: string, candidate: string): boolean {
+  const relative = path.relative(root, path.resolve(candidate));
+  return !relative || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+async function inspectMethodInvocation(contract: MethodExtractionContract): Promise<{ importName: string; expression: string } | undefined> {
+  const selected = contract.selected!;
+  if (!selected.container) return undefined;
+  const source = await fs.readFile(path.join(contract.root, selected.file), "utf8");
+  const sourceFile = ts.createSourceFile(selected.file, source, ts.ScriptTarget.Latest, true, selected.file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  let result: { importName: string; expression: string } | undefined;
+  for (const statement of sourceFile.statements) {
+    if (!ts.isClassDeclaration(statement) || statement.name?.text !== selected.container) continue;
+    const exported = ts.getModifiers(statement)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+    if (!exported) return undefined;
+    const method = statement.members.find((member): member is ts.MethodDeclaration => ts.isMethodDeclaration(member)
+      && ts.isIdentifier(member.name) && member.name.text === selected.name);
+    if (!method || ts.getModifiers(method)?.some((modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword || modifier.kind === ts.SyntaxKind.ProtectedKeyword)) return undefined;
+    const isStatic = ts.getModifiers(method)?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
+    if (isStatic) return { importName: selected.container, expression: `${selected.container}.${selected.name}` };
+    const constructor = statement.members.find(ts.isConstructorDeclaration);
+    if (constructor?.parameters.some((parameter) => !parameter.questionToken && !parameter.initializer && !parameter.dotDotDotToken)) return undefined;
+    result = { importName: selected.container, expression: `new ${selected.container}().${selected.name}` };
+  }
+  return result;
 }
 
 function blocked(
