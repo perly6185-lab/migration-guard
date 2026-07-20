@@ -27,6 +27,7 @@ test("method extraction test plan generates executable function characterization
     const plan = await createMethodExtractionTestPlan(pipeline.contract, pipeline.patch);
     assert.equal(plan.ready, true);
     assert.equal(plan.framework, "node-test");
+    assert.match(plan.testCommand ?? "", /node --loader ".*typescriptTestLoader\.js" --test "calculate\.migration-guard-contract\.test\.ts"/);
     assert.deepEqual(plan.existingTests, ["calculate.test.ts"]);
     assert.deepEqual(plan.generatedTest?.inputFixtures, { input: "7" });
     assert.equal(plan.coverage.structuralOnly, false);
@@ -149,7 +150,7 @@ test("method extraction test plan keeps node-test workspace paths root-relative"
     const pipeline = await extractionPipeline(dir, "calculate", { startLine: 2, endLine: 2 }, "calculateResult");
     const plan = await createMethodExtractionTestPlan(pipeline.contract, pipeline.patch);
     assert.equal(plan.framework, "node-test");
-    assert.equal(plan.testCommand, "node --test \"packages/core/src/calculate.migration-guard-contract.test.ts\"");
+    assert.match(plan.testCommand ?? "", /node --loader ".*typescriptTestLoader\.js" --test "packages\/core\/src\/calculate\.migration-guard-contract\.test\.ts"/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

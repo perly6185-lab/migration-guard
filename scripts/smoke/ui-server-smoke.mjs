@@ -1,8 +1,12 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const root = process.cwd();
 const outputDir = process.env.MG_UI_SMOKE_OUTPUT_DIR
@@ -10,8 +14,9 @@ const outputDir = process.env.MG_UI_SMOKE_OUTPUT_DIR
   : path.join(os.tmpdir(), "migration-guard-ui-smoke");
 
 await mkdir(outputDir, { recursive: true });
+const fixture = await createWorkspaceFixture();
 
-const server = spawn(process.execPath, ["dist/cli.js", "serve", "--port", "0"], {
+const server = spawn(process.execPath, ["dist/cli.js", "serve", "--port", "0", "--config", fixture.hostConfig], {
   cwd: root,
   stdio: ["ignore", "pipe", "pipe"]
 });
@@ -81,8 +86,16 @@ try {
   if (!Array.isArray(workspaces.workspaces)) {
     throw new Error("/api/workspaces did not return a workspace registry.");
   }
+  const workspace = await postJson(`${url}/api/workspaces`, session.csrfToken, fixture.workspace);
+  if (workspace.status !== "active") {
+    throw new Error("/api/workspaces did not create an active smoke workspace.");
+  }
+  const activeWorkspace = await getJson(`${url}/api/workspaces/active`);
+  if (!activeWorkspace.managed || activeWorkspace.workspace?.id !== workspace.id) {
+    throw new Error("/api/workspaces/active did not select the smoke workspace.");
+  }
   const portfolio = await getJson(`${url}/api/workspaces/portfolio`);
-  if (!Array.isArray(portfolio.projects)) {
+  if (!Array.isArray(portfolio.projects) || !portfolio.projects.some((project) => project.id === workspace.id)) {
     throw new Error("/api/workspaces/portfolio did not return projects.");
   }
 
@@ -139,7 +152,50 @@ try {
   }
   console.log("UI smoke passed.");
 } finally {
+  await stopServer(server);
+  await rm(fixture.root, { recursive: true, force: true });
+}
+
+async function createWorkspaceFixture() {
+  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "migration-guard-ui-fixture-"));
+  const hostRoot = path.join(fixtureRoot, "host");
+  const sourceRoot = path.join(fixtureRoot, "source");
+  const targetRoot = path.join(fixtureRoot, "target");
+  await Promise.all([mkdir(hostRoot), mkdir(sourceRoot), mkdir(targetRoot)]);
+  await mkdir(path.join(sourceRoot, ".git"));
+  await writeFile(path.join(targetRoot, "package.json"), JSON.stringify({
+    name: "migration-guard-ui-smoke-target",
+    version: "1.0.0",
+    scripts: { build: "node -e \"\"", test: "node --test" }
+  }));
+  await execFileAsync("git", ["init"], { cwd: targetRoot });
+  await execFileAsync("git", ["add", "package.json"], { cwd: targetRoot });
+  await execFileAsync("git", ["-c", "user.name=Migration Guard", "-c", "user.email=guard@example.test", "commit", "-m", "initial"], { cwd: targetRoot });
+  const hostConfig = path.join(hostRoot, ".migration-guard.json");
+  await writeFile(hostConfig, JSON.stringify({
+    schemaVersion: 1,
+    targetRoot: ".",
+    artifactsDir: ".migration-guard",
+    checks: [],
+    probes: []
+  }));
+  return {
+    root: fixtureRoot,
+    hostConfig,
+    workspace: {
+      name: "UI smoke refactor",
+      sourceRoot,
+      targetRoot,
+      goal: "Preserve behavior while validating all workspace views"
+    }
+  };
+}
+
+async function stopServer(server) {
+  if (server.exitCode !== null) return;
+  const exited = once(server, "exit");
   server.kill();
+  await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5000))]);
 }
 
 async function assertScreenshot(outputPath) {

@@ -279,7 +279,10 @@ function generateCharacterizationTest(
 function focusedTestCommand(framework: Exclude<MethodExtractionTestFramework, "unknown">, command: string, targetPath: string, packageDir?: string): string {
   const relativeTarget = packageDir ? path.posix.relative(toPosixPath(packageDir), toPosixPath(targetPath)) : toPosixPath(targetPath);
   const quotedPath = JSON.stringify(relativeTarget);
-  if (framework === "node-test") return `node --test ${JSON.stringify(toPosixPath(targetPath))}`;
+  if (framework === "node-test") {
+    const loaderUrl = new URL("./typescriptTestLoader.js", import.meta.url).href;
+    return `node --loader ${JSON.stringify(loaderUrl)} --test ${JSON.stringify(toPosixPath(targetPath))}`;
+  }
   const requiresSeparator = command.startsWith("npm ");
   if (framework === "jest") return requiresSeparator
     ? `${command} -- --runTestsByPath ${quotedPath}`
