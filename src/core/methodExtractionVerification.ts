@@ -236,9 +236,17 @@ function safeTargetPath(root: string, relativePath: string): string {
 
 function runVerificationCommand(command: string, root: string, timeoutMs: number, maxOutputBytes: number) {
   const isolatedCommand = process.platform === "win32"
-    ? `set "NODE_TEST_CONTEXT=" && ${command}`
-    : `env -u NODE_TEST_CONTEXT ${command}`;
+    ? `set "NODE_TEST_CONTEXT=" && set "MG_METHOD_OBSERVATION_ROOT=${escapeWindowsEnvValue(root)}" && ${command}`
+    : `env -u NODE_TEST_CONTEXT MG_METHOD_OBSERVATION_ROOT=${shellQuote(root)} ${command}`;
   return runShellCommand(isolatedCommand, { cwd: root, timeoutMs, maxOutputBytes });
+}
+
+function escapeWindowsEnvValue(value: string): string {
+  return value.replace(/"/g, "\"\"");
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function commandPassed(result: CommandExecutionResult): boolean {

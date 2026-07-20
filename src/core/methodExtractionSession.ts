@@ -56,6 +56,7 @@ export interface ExecuteMethodExtractionSessionOptions {
   confirmPatchHash?: string;
   recommendedChecks?: string[];
   advancedGates?: MethodAdvancedGateConfig[];
+  sourceFileHint?: string;
 }
 
 export async function executeMethodExtractionSession(
@@ -76,7 +77,7 @@ export async function executeMethodExtractionSession(
   const suggestionsPath = path.join(migrationRunDir(loaded, pkg.run.id), "adapter", "method-extraction-suggestions.json");
   const suggestions = await pathExists(suggestionsPath)
     ? await readJsonFile<MethodExtractionSuggestionReport>(suggestionsPath)
-    : await suggestMethodExtractionCandidates(pkg.run.targetRoot, requestedSymbol, Math.max(3, session.candidateIndex + 1));
+    : await suggestMethodExtractionCandidates(pkg.run.targetRoot, requestedSymbol, Math.max(3, session.candidateIndex + 1), options.sourceFileHint);
   const candidate = suggestions.candidates[session.candidateIndex];
   if (!candidate || !candidate.executable) return persistSession(dir, block(session, candidate?.blockedReason ?? "Selected extraction candidate is unavailable or blocked."));
   session.candidate = candidate;

@@ -168,10 +168,14 @@ async function discoverTestFramework(root: string, sourceFile?: string): Promise
     const test = packageJson.scripts?.test;
     const testRun = packageJson.scripts?.["test:run"];
     const testCi = packageJson.scripts?.["test:ci"];
+    const testFast = packageJson.scripts?.["test:fast"];
     const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
-    if (test?.includes("vitest") || dependencies.vitest) {
+    if (test?.includes("vitest") || testRun?.includes("vitest") || testCi?.includes("vitest") || testFast?.includes("vitest") || dependencies.vitest) {
       if (testRun) return { framework: "vitest", command: await packageScriptCommand(root, packageDir, "test:run"), packageDir };
       if (testCi) return { framework: "vitest", command: await packageScriptCommand(root, packageDir, "test:ci"), packageDir };
+      if (testFast?.includes("vitest") && /(?:--run|\brun\b)/.test(testFast)) {
+        return { framework: "vitest", command: await packageScriptCommand(root, packageDir, "test:fast"), packageDir };
+      }
       const command = await packageScriptCommand(root, packageDir, "test");
       return { framework: "vitest", command: /(?:--run|\brun\b)/.test(test ?? "") ? command : `${command} -- --run`, packageDir };
     }
@@ -229,7 +233,6 @@ function generateCharacterizationTest(
   const args = contract.inputs.map((input) => fixtures[input.name]).join(", ");
   const marker = `migration-guard-method-contract:${selected.symbol}`;
   const observationFile = `.migration-guard/method-observations/${sha256(marker).slice(0, 16)}.json`;
-  const observationRelative = path.posix.relative(path.posix.dirname(targetPath), observationFile);
   const imports = framework === "vitest"
     ? `import { expect, test } from "vitest";`
     : framework === "jest"
@@ -243,6 +246,7 @@ function generateCharacterizationTest(
   const content = [
     imports,
     `import { mkdirSync, writeFileSync } from "node:fs";`,
+    `import { dirname, resolve } from "node:path";`,
     `import { ${invocation.importName} } from ${JSON.stringify(modulePath)};`,
     "",
     `test(${JSON.stringify(`characterizes ${selected.symbol} for method extraction`)}, async () => {`,
@@ -253,9 +257,10 @@ function generateCharacterizationTest(
     "    observation = { status: \"threw\", value: error instanceof Error ? { name: error.name, message: error.message } : error };",
     "  }",
     assertion,
-    `  const observationUrl = new URL(${JSON.stringify(observationRelative)}, import.meta.url);`,
-    `  mkdirSync(new URL(".", observationUrl), { recursive: true });`,
-    `  writeFileSync(observationUrl, JSON.stringify(observation), "utf8");`,
+    `  const observationRoot = process.env.MG_METHOD_OBSERVATION_ROOT ?? process.cwd();`,
+    `  const observationPath = resolve(observationRoot, ${JSON.stringify(observationFile)});`,
+    `  mkdirSync(dirname(observationPath), { recursive: true });`,
+    `  writeFileSync(observationPath, JSON.stringify(observation), "utf8");`,
     `  process.stdout.write(${JSON.stringify(marker)} + "\\n");`,
     "});",
     ""

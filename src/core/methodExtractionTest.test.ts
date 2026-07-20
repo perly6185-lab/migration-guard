@@ -89,6 +89,31 @@ test("method extraction test plan prefers a non-watch Vitest script", async () =
   }
 });
 
+test("method extraction test plan can use a focused Vitest fast script", async () => {
+  const dir = await createFixture("node scripts/test-parallel.mjs");
+  try {
+    const packageJsonPath = path.join(dir, "package.json");
+    await writeFile(packageJsonPath, JSON.stringify({
+      scripts: {
+        test: "node scripts/test-parallel.mjs",
+        "test:fast": "vitest run --config vitest.unit.config.ts"
+      },
+      devDependencies: { vitest: "latest" }
+    }));
+    await writeFile(path.join(dir, "calculate.ts"), [
+      "export function calculate(input: number): number {",
+      "  const result = input + 1;",
+      "  return result;",
+      "}"
+    ].join("\n"));
+    const pipeline = await extractionPipeline(dir, "calculate", { startLine: 2, endLine: 2 }, "calculateResult");
+    const plan = await createMethodExtractionTestPlan(pipeline.contract, pipeline.patch);
+    assert.equal(plan.testCommand, "npm run test:fast -- \"calculate.migration-guard-contract.test.ts\"");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("method extraction test plan discovers the nearest pnpm workspace test package", async () => {
   const dir = await createFixture("workspace-check");
   try {

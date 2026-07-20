@@ -48,9 +48,7 @@ async function runCase(item) {
     if (originalStatus) throw new Error(`Real pilot source repository must be clean: ${originalRoot}`);
     await run("git", ["clone", "--local", "--no-hardlinks", originalRoot, clone], repoRoot, 120_000);
     if (item.reuseNodeModules) {
-      const sourceModules = path.join(originalRoot, "node_modules");
-      await access(sourceModules);
-      await symlink(sourceModules, path.join(clone, "node_modules"), "junction");
+      await linkReusableNodeModules(originalRoot, clone, item.reuseNodeModulesPaths);
     }
     if (item.setupCommand !== false) await shell(item.setupCommand ?? "npm ci", clone, item.timeoutMs ?? 600_000);
     const configPath = path.join(clone, ".migration-guard.json");
@@ -66,8 +64,9 @@ async function runCase(item) {
     const migrationRunId = path.basename(runDir);
     let session;
     let quality;
+    const checkArgs = item.skipRecommendedChecks ? ["--skip-recommended-checks"] : [];
     if (Array.isArray(item.layers)) {
-      await run(process.execPath, [cli, "method-extraction", "chain", "plan", "--config", configPath, "--run", migrationRunId], clone, item.timeoutMs ?? 600_000);
+      await run(process.execPath, [cli, "method-extraction", "chain", "plan", "--config", configPath, "--run", migrationRunId, ...checkArgs], clone, item.timeoutMs ?? 600_000);
       const ledgerPath = path.join(runDir, "adapter", "method-extraction-chain", "method-extraction-execution-ledger.json");
       for (let index = 0; index < item.layers.length; index += 1) {
         const ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
@@ -76,13 +75,14 @@ async function runCase(item) {
           const detail = ledger.steps.map((step) => `${step.symbol}:${step.status}:${step.reason ?? "no reason"}`).join("; ");
           throw new Error(`Layered pilot expected one ready step, found ${ready.length}. ${detail}`);
         }
-        await run(process.execPath, [cli, "method-extraction", "chain", "next", "--config", configPath, "--run", migrationRunId, "--confirm", ready[0].patchHash], clone, item.timeoutMs ?? 600_000);
+        await run(process.execPath, [cli, "method-extraction", "chain", "next", "--config", configPath, "--run", migrationRunId, "--confirm", ready[0].patchHash, ...checkArgs], clone, item.timeoutMs ?? 600_000);
       }
       session = JSON.parse(await readFile(ledgerPath, "utf8"));
     } else {
       const executeArgs = [cli, "method-extraction", "execute", "--config", configPath, "--run", migrationRunId, "--trust-tier", item.trustTier ?? "supervised"];
       if (item.candidate) executeArgs.push("--candidate", String(item.candidate));
       if (item.extractName) executeArgs.push("--extract-name", item.extractName);
+      executeArgs.push(...checkArgs);
       await run(process.execPath, executeArgs, clone, item.timeoutMs ?? 600_000);
       const sessionPath = path.join(runDir, "adapter", "method-extraction-session", "method-extraction-session.json");
       const qualityPath = path.join(runDir, "adapter", "method-extraction-session", "method-extraction-quality.json");
@@ -126,6 +126,17 @@ async function runCase(item) {
         }
       }
     }
+  }
+}
+
+async function linkReusableNodeModules(originalRoot, clone, extraPaths = []) {
+  const modulePaths = ["node_modules", ...extraPaths];
+  for (const relativePath of modulePaths) {
+    const sourceModules = path.join(originalRoot, relativePath);
+    await access(sourceModules);
+    const targetModules = path.join(clone, relativePath);
+    await mkdir(path.dirname(targetModules), { recursive: true });
+    await symlink(sourceModules, targetModules, "junction");
   }
 }
 

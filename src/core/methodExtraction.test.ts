@@ -298,6 +298,27 @@ test("method extraction patch atomically extracts a class-method range", async (
   }
 });
 
+test("method extraction patch uses output type for non-terminal helper returns", async () => {
+  const dir = await fixtureDir("method-extraction-output-return-type");
+  try {
+    await writeFile(path.join(dir, "parse.ts"), [
+      "export async function parse(input: string): Promise<number> {",
+      "  const raw = input || undefined;",
+      "  return raw ? Number(raw) : 0;",
+      "}"
+    ].join("\n"));
+    const eligibility = await createMethodExtractionEligibility(dir, "parse", { startLine: 2, endLine: 2 });
+    const contract = await createMethodExtractionContract(eligibility);
+    const plan = await createMethodExtractionPatchPlan(contract, "readRaw");
+    assert.equal(plan.ready, true, plan.diagnostics.join("\n"));
+    assert.match(plan.patch ?? "", /const raw = await readRaw\(input\);/);
+    assert.match(plan.patch ?? "", /async function readRaw\(input: string\): Promise<string \| undefined>/);
+    assert.doesNotMatch(plan.patch ?? "", /readRaw\(input: string\): Promise<number>/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("method extraction contract treats object shorthand values as inputs", async () => {
   const dir = await fixtureDir("method-extraction-shorthand");
   try {

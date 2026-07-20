@@ -901,7 +901,8 @@ function transformExtractionSource(
   if (output && !terminalReturn) helperBody = `${helperBody}\n${bodyIndent}return ${output.name};`;
   const parameters = contract.inputs.map((input) => `${input.name}: ${input.type}`).join(", ");
   const asyncKeyword = contract.controlFlow.async ? "async " : "";
-  const returnType = contract.returnType ? `: ${contract.returnType}` : "";
+  const helperReturnType = returnTypeForExtractedHelper(contract, output, terminalReturn);
+  const returnType = helperReturnType ? `: ${helperReturnType}` : "";
   const staticKeyword = candidate.descriptor.kind === "method"
     && ts.getModifiers(candidate.declaration)?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)
     ? "static "
@@ -913,6 +914,22 @@ function transformExtractionSource(
   const insertionShift = replacement.length - (replaceEnd - replaceStart);
   const insertAt = candidate.declaration.getEnd() + insertionShift;
   return replaced.slice(0, insertAt) + helper + replaced.slice(insertAt);
+}
+
+function returnTypeForExtractedHelper(
+  contract: MethodExtractionContract,
+  output: MethodExtractionValueContract | undefined,
+  terminalReturn: boolean
+): string | undefined {
+  if (output) {
+    return contract.controlFlow.async ? asyncReturnType(output.type) : output.type;
+  }
+  return terminalReturn ? contract.returnType : undefined;
+}
+
+function asyncReturnType(type: string): string {
+  const trimmed = type.trim();
+  return /^Promise(?:<|$)/.test(trimmed) ? trimmed : `Promise<${trimmed}>`;
 }
 
 function reindentBlock(value: string, indent: string): string {
