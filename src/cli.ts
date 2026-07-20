@@ -163,6 +163,7 @@ import { applyHandoffResultImport, planHandoffResultImport, renderHandoffResultI
 import { listBuiltinPolicies } from "./core/policy.js";
 import { collectSelfRefactorInventory, createSelfRefactorDriver, createSelfRefactorPlan, selfRefactorPlanHash, writeSelfRefactorArtifact } from "./core/selfRefactor.js";
 import { createSelfRefactorPromotionHandoff, crossValidateSelfRefactor, rollbackSelfRefactorCheckpoint, runSelfRefactorStep } from "./core/selfRefactorExecution.js";
+import { analyzeJavaEndpoint, renderJavaEndpointAnalysisReport, writeJavaEndpointAnalysisReport } from "./core/javaEndpointAnalysis.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -204,13 +205,44 @@ async function main(argv: string[]): Promise<void> {
     tasks: commandTasks, actions: commandActions, jobs: commandJobs, troubleshoot: commandTroubleshoot, report: commandReport, readiness: commandReadiness,
     "one-shot": commandOneShot, checkpoint: commandCheckpoint, resume: commandResume, rollback: commandRollback,
     task: commandTask, action: commandAction, proposal: commandProposal, "method-extraction": commandMethodExtraction, "sync-issues": commandSyncIssues,
-    "issue-control": commandIssueControl, "self-refactor": commandSelfRefactor, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
+    "issue-control": commandIssueControl, "self-refactor": commandSelfRefactor, "java-endpoint": commandJavaEndpoint, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
     preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff, policy: commandPolicy
   };
   validateCliCommandRegistry(handlers);
   if (!await dispatchCliCommand(args, handlers)) {
     console.error(`Unknown command: ${args.command}`);
     printHelp();
+    process.exitCode = 1;
+  }
+}
+
+async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "analyze";
+  if (action !== "analyze") {
+    throw new Error(`Unknown java-endpoint command: ${action}`);
+  }
+  const endpoint = stringOption(args, "endpoint") ?? args.positionals[1];
+  if (!endpoint) {
+    throw new Error("java-endpoint analyze requires --endpoint <path>.");
+  }
+  const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
+  const report = await analyzeJavaEndpoint({
+    root,
+    endpoint,
+    method: stringOption(args, "method") ?? "POST",
+    maxDepth: numberOption(args, "max-depth"),
+    maxEdges: numberOption(args, "max-edges"),
+    includeTests: Boolean(args.options["include-tests"])
+  });
+  const result = args.options.apply
+    ? await writeJavaEndpointAnalysisReport(report, path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard"))
+    : report;
+  if (args.options.json || !args.options.apply) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(renderJavaEndpointAnalysisReport(result));
+  }
+  if (result.summary.highRiskCount > 0 && args.options.strict) {
     process.exitCode = 1;
   }
 }
@@ -1241,13 +1273,15 @@ async function commandMethodExtraction(args: ParsedArgs): Promise<void> {
   const dir = path.join(migrationRunDir(loaded, pkg.run.id), "adapter");
   if (action === "execute") {
     const plan = await readJsonFile<MethodRefactorPlan>(path.join(dir, "method-refactor-plan.json"));
+    const recommendedChecks = methodExtractionRecommendedChecks(args, plan.recommendedChecks);
     const session = await executeMethodExtractionSession(loaded, pkg, plan.selected.symbol, {
       trustTier: methodExtractionTrustTierOption(args),
       candidateIndex: Math.max(0, (nonNegativeIntegerOption(args, "candidate") ?? 1) - 1),
       extractedName: stringOption(args, "extract-name"),
       confirmPatchHash: stringOption(args, "confirm"),
-      recommendedChecks: plan.recommendedChecks,
-      advancedGates: methodAdvancedGateOptions(args)
+      recommendedChecks,
+      advancedGates: methodAdvancedGateOptions(args),
+      sourceFileHint: plan.selected.file
     });
     console.log(args.options.json ? JSON.stringify(session, null, 2) : renderMethodExtractionSession(session));
     if (session.state === "blocked" || session.state === "rolled-back") process.exitCode = 1;
@@ -1263,12 +1297,13 @@ async function commandMethodExtraction(args: ParsedArgs): Promise<void> {
   if (action === "chain") {
     const chainAction = args.positionals[1] ?? "status";
     const plan = await readJsonFile<MethodRefactorPlan>(path.join(dir, "method-refactor-plan.json"));
+    const recommendedChecks = methodExtractionRecommendedChecks(args, plan.recommendedChecks);
     if (chainAction === "plan") {
       const ledgerPath = path.join(dir, "method-extraction-chain", "method-extraction-execution-ledger.json");
       if (await pathExists(ledgerPath)) throw new Error("A layered extraction ledger already exists; inspect or resume it instead of overwriting it.");
       const ledger = createMethodExtractionExecutionLedger(pkg.run.id, plan, extractMethodExtractionLayersFromGoal(pkg.run.goal));
       await writeMethodExtractionExecutionLedger(loaded, ledger);
-      await prepareNextMethodExtractionLayer(loaded, pkg, ledger, plan.recommendedChecks);
+      await prepareNextMethodExtractionLayer(loaded, pkg, ledger, recommendedChecks);
       console.log(renderMethodExtractionExecutionLedger(ledger));
       return;
     }
@@ -1280,8 +1315,8 @@ async function commandMethodExtraction(args: ParsedArgs): Promise<void> {
     if (chainAction === "next") {
       const confirmPatchHash = stringOption(args, "confirm");
       if (!confirmPatchHash) throw new Error("method-extraction chain next requires --confirm <patch-hash>.");
-      await applyNextMethodExtractionLayer(loaded, pkg, ledger, confirmPatchHash, plan.recommendedChecks);
-      if (ledger.state === "planned") await prepareNextMethodExtractionLayer(loaded, pkg, ledger, plan.recommendedChecks);
+      await applyNextMethodExtractionLayer(loaded, pkg, ledger, confirmPatchHash, recommendedChecks);
+      if (ledger.state === "planned") await prepareNextMethodExtractionLayer(loaded, pkg, ledger, recommendedChecks);
       console.log(renderMethodExtractionExecutionLedger(ledger));
       if (ledger.state === "stopped" || ledger.state === "blocked") process.exitCode = 1;
       return;
@@ -1306,10 +1341,14 @@ async function commandMethodExtraction(args: ParsedArgs): Promise<void> {
   const plan = await readJsonFile<{ recommendedChecks?: string[] }>(path.join(dir, "method-refactor-plan.json"));
   const report = await applyVerifiedMethodExtraction(loaded, pkg, patchPlan, testPlan, verification, {
     confirmPatchHash,
-    commands: plan.recommendedChecks ?? []
+    commands: methodExtractionRecommendedChecks(args, plan.recommendedChecks ?? [])
   });
   console.log(renderMethodExtractionApply(report));
   if (!report.passed) process.exitCode = 1;
+}
+
+function methodExtractionRecommendedChecks(args: ParsedArgs, checks: string[]): string[] {
+  return args.options["skip-recommended-checks"] ? [] : checks;
 }
 
 async function commandProposal(args: ParsedArgs): Promise<void> {
@@ -2347,11 +2386,11 @@ Usage:
   migration-guard action propose [--run <id|latest>] --action <id> [--allow-no-op-risk]
   migration-guard action apply [--run <id|latest>] --proposal <id> [--skip-checks] [--rollback-on-fail] [--gate-policy fail-fast|collect-all] [--behavior-diff]
   migration-guard method-extraction status [--run <id|latest>] [--json]
-  migration-guard method-extraction apply [--run <id|latest>] --confirm <patch-hash> [--json]
-  migration-guard method-extraction execute [--run <id|latest>] [--candidate <1-based-index>] [--extract-name <name>] [--trust-tier manual|supervised|unattended] [--confirm <patch-hash>] [--coverage-command <cmd>] [--mutation-command <cmd>] [--benchmark-command <cmd>] [--memory-command <cmd>] [--bundle-command <cmd>] [--api-compatibility-command <cmd>] [--require-gates <comma-list>] [--gate-tolerance-percent <n>] [--json]
+  migration-guard method-extraction apply [--run <id|latest>] --confirm <patch-hash> [--skip-recommended-checks] [--json]
+  migration-guard method-extraction execute [--run <id|latest>] [--candidate <1-based-index>] [--extract-name <name>] [--trust-tier manual|supervised|unattended] [--confirm <patch-hash>] [--skip-recommended-checks] [--coverage-command <cmd>] [--mutation-command <cmd>] [--benchmark-command <cmd>] [--memory-command <cmd>] [--bundle-command <cmd>] [--api-compatibility-command <cmd>] [--require-gates <comma-list>] [--gate-tolerance-percent <n>] [--json]
   migration-guard method-extraction session status [--run <id|latest>] [--json]
-  migration-guard method-extraction chain plan|status [--run <id|latest>] [--json]
-  migration-guard method-extraction chain next [--run <id|latest>] --confirm <patch-hash> [--json]
+  migration-guard method-extraction chain plan|status [--run <id|latest>] [--skip-recommended-checks] [--json]
+  migration-guard method-extraction chain next [--run <id|latest>] --confirm <patch-hash> [--skip-recommended-checks] [--json]
   migration-guard proposal verify [--run <id|latest>] --proposal <id> [--checks] [--gate-policy fail-fast|collect-all] [--json]
   migration-guard proposal list [--run <id|latest>] [--state <state>] [--action <action-id>] [--risk low|medium|high] [--json]
   migration-guard proposal status [--run <id|latest>] --proposal <id> [--json]
@@ -2382,6 +2421,7 @@ Usage:
   migration-guard self-refactor cross-validate --driver-evidence <driver.json> --run-report <passed-run.json> --candidate <candidate.tgz>
   migration-guard self-refactor promote --cross-validation <report.json> --confirm <report-hash>
   migration-guard self-refactor rollback --checkpoint <checkpoint.json> --confirm <checkpoint-hash>
+  migration-guard java-endpoint analyze --root <java-project> --endpoint <path> [--method POST] [--max-depth <n>] [--max-edges <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--strict] [--json]
   migration-guard ci verify --baseline <path> [--run <id|latest>]
   migration-guard contract capture --source <url>
   migration-guard contract test --target <url> --contract <path>

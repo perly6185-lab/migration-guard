@@ -6,6 +6,27 @@ This list tracks the work required to move the current `0.3.0-beta.1`
 workspace from locally validated development changes to a reviewable release
 candidate. Remote publication, Git tags and GitHub mutation remain manual.
 
+## MG-191 through MG-201: Full Java-to-Rust endpoint replacement
+
+- Priority: P0
+- Status: planned; remote Epic [#63](https://github.com/perly6185-lab/migration-guard/issues/63)
+  and child issues [#64](https://github.com/perly6185-lab/migration-guard/issues/64)
+  through [#73](https://github.com/perly6185-lab/migration-guard/issues/73) are open
+- Goal: prove that a selected Java endpoint can be served directly by Rust with
+  no callback into the migrated Java controller, application method, or Java-owned
+  post-step.
+- MG-192 adds Rust inventory, routes, Cargo checks, and the Java-to-Rust recipe.
+- MG-193 adds a fail-closed replacement closure manifest.
+- MG-194 and MG-195 make runtime context and ordered side effects explicit.
+- MG-196 upgrades golden cases from pure-kernel extraction to full target ownership.
+- MG-197 and MG-198 add runtime drivers and stateful replay comparison.
+- MG-199 verifies deterministic concurrency, lease, crash, and fault semantics.
+- MG-200 adds FR1-FR5 readiness and a source-off cutover gate.
+- MG-201 validates the model on the zboss `/refreshSync` endpoint.
+- Safety boundary: stateful replay uses isolated fixtures; production routing,
+  remote issue creation, publishing, and releases remain reviewed manual operations.
+- Detailed plan: [FULL_REPLACEMENT_JAVA_RUST_ISSUES.md](FULL_REPLACEMENT_JAVA_RUST_ISSUES.md).
+
 ## MG-180: Execute verified TypeScript method extraction end to end
 
 - Priority: P0
