@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import ts from "typescript";
 import {
   createMethodExtractionContract,
@@ -61,9 +61,70 @@ test("method extraction test plan detects Vitest and constructs safe exported cl
     const plan = await createMethodExtractionTestPlan(pipeline.contract, pipeline.patch);
     assert.equal(plan.ready, true);
     assert.equal(plan.framework, "vitest");
+    assert.equal(plan.testCommand, "npm test -- \"service.migration-guard-contract.test.ts\"");
     assert.equal(plan.reasonCode, "test-ready");
     assert.equal(plan.coverage.structuralOnly, false);
     assert.match(plan.generatedTest?.content ?? "", /new Service\(\)\.run/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("method extraction test plan prefers a non-watch Vitest script", async () => {
+  const dir = await createFixture("vitest");
+  try {
+    const packageJsonPath = path.join(dir, "package.json");
+    await writeFile(packageJsonPath, JSON.stringify({ scripts: { test: "vitest", "test:run": "vitest run" }, devDependencies: { vitest: "latest" } }));
+    await writeFile(path.join(dir, "calculate.ts"), [
+      "export function calculate(input: number): number {",
+      "  const result = input + 1;",
+      "  return result;",
+      "}"
+    ].join("\n"));
+    const pipeline = await extractionPipeline(dir, "calculate", { startLine: 2, endLine: 2 }, "calculateResult");
+    const plan = await createMethodExtractionTestPlan(pipeline.contract, pipeline.patch);
+    assert.equal(plan.testCommand, "npm run test:run -- \"calculate.migration-guard-contract.test.ts\"");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("method extraction test plan discovers the nearest pnpm workspace test package", async () => {
+  const dir = await createFixture("workspace-check");
+  try {
+    await writeFile(path.join(dir, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    await mkdir(path.join(dir, "packages", "core", "src"), { recursive: true });
+    await writeFile(path.join(dir, "packages", "core", "package.json"), JSON.stringify({ scripts: { test: "vitest run" }, devDependencies: { vitest: "latest" } }));
+    await writeFile(path.join(dir, "packages", "core", "src", "calculate.ts"), [
+      "export function calculate(input: number): number {",
+      "  const result = input + 1;",
+      "  return result;",
+      "}"
+    ].join("\n"));
+    const pipeline = await extractionPipeline(dir, "calculate", { startLine: 2, endLine: 2 }, "calculateResult");
+    const plan = await createMethodExtractionTestPlan(pipeline.contract, pipeline.patch);
+    assert.equal(plan.framework, "vitest");
+    assert.equal(plan.testCommand, "pnpm --dir \"packages/core\" run test \"src/calculate.migration-guard-contract.test.ts\"");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("method extraction test plan keeps node-test workspace paths root-relative", async () => {
+  const dir = await createFixture("workspace-node-test");
+  try {
+    await mkdir(path.join(dir, "packages", "core", "src"), { recursive: true });
+    await writeFile(path.join(dir, "packages", "core", "package.json"), JSON.stringify({ scripts: { test: "node --test" } }));
+    await writeFile(path.join(dir, "packages", "core", "src", "calculate.ts"), [
+      "export function calculate(input: number): number {",
+      "  const result = input + 1;",
+      "  return result;",
+      "}"
+    ].join("\n"));
+    const pipeline = await extractionPipeline(dir, "calculate", { startLine: 2, endLine: 2 }, "calculateResult");
+    const plan = await createMethodExtractionTestPlan(pipeline.contract, pipeline.patch);
+    assert.equal(plan.framework, "node-test");
+    assert.equal(plan.testCommand, "node --test \"packages/core/src/calculate.migration-guard-contract.test.ts\"");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

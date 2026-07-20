@@ -35,6 +35,7 @@ export interface MethodExtractionTestPlan {
     contentHash: string;
     inputFixtures: Record<string, string>;
     observationMarker: string;
+    observationFile: string;
   };
   coverage: {
     callable: boolean;
@@ -51,7 +52,7 @@ export async function createMethodExtractionTestPlan(
   patchPlan: MethodExtractionPatchPlan
 ): Promise<MethodExtractionTestPlan> {
   const contractHash = sha256(stableStringify(contract));
-  const discovery = await discoverTestFramework(contract.root);
+  const discovery = await discoverTestFramework(contract.root, contract.selected?.file);
   const existingTests = contract.selected
     ? await findRelatedTests(contract.root, contract.selected.file)
     : [];
@@ -87,6 +88,7 @@ export async function createMethodExtractionTestPlan(
   const generated = generateCharacterizationTest(contract, discovery.framework, fixtures, invocation);
   return {
     ...base,
+    testCommand: focusedTestCommand(discovery.framework, discovery.command!, generated.targetPath, discovery.packageDir),
     ready: true,
     reasonCode: "test-ready",
     findings: [{
@@ -146,18 +148,46 @@ export function renderMethodExtractionTestPlan(plan: MethodExtractionTestPlan): 
   ].join("\n");
 }
 
-async function discoverTestFramework(root: string): Promise<{ framework: MethodExtractionTestFramework; command?: string }> {
-  const packageJson = await readJsonFile<{
-    scripts?: Record<string, string>;
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-  }>(path.join(root, "package.json")).catch(() => undefined);
-  const test = packageJson?.scripts?.test;
-  const dependencies = { ...packageJson?.dependencies, ...packageJson?.devDependencies };
-  if (test?.includes("vitest") || dependencies.vitest) return { framework: "vitest", command: "npm test" };
-  if (test?.includes("jest") || dependencies.jest) return { framework: "jest", command: "npm test" };
-  if (test?.includes("node --test")) return { framework: "node-test", command: "npm test" };
-  return { framework: "unknown", command: test ? "npm test" : undefined };
+async function discoverTestFramework(root: string, sourceFile?: string): Promise<{ framework: MethodExtractionTestFramework; command?: string; packageDir?: string }> {
+  const resolvedRoot = path.resolve(root);
+  const directories: string[] = [];
+  let current = sourceFile ? path.dirname(path.join(root, sourceFile)) : root;
+  while (pathInsideOrEqual(resolvedRoot, current)) {
+    if (!directories.includes(current)) directories.push(current);
+    if (current === resolvedRoot) break;
+    current = path.dirname(current);
+  }
+  for (const directory of directories) {
+    const packageJson = await readJsonFile<{
+      scripts?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    }>(path.join(directory, "package.json")).catch(() => undefined);
+    if (!packageJson) continue;
+    const packageDir = toPosixPath(path.relative(root, directory));
+    const test = packageJson.scripts?.test;
+    const testRun = packageJson.scripts?.["test:run"];
+    const testCi = packageJson.scripts?.["test:ci"];
+    const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
+    if (test?.includes("vitest") || dependencies.vitest) {
+      if (testRun) return { framework: "vitest", command: await packageScriptCommand(root, packageDir, "test:run"), packageDir };
+      if (testCi) return { framework: "vitest", command: await packageScriptCommand(root, packageDir, "test:ci"), packageDir };
+      const command = await packageScriptCommand(root, packageDir, "test");
+      return { framework: "vitest", command: /(?:--run|\brun\b)/.test(test ?? "") ? command : `${command} -- --run`, packageDir };
+    }
+    if (test?.includes("jest") || dependencies.jest) return { framework: "jest", command: await packageScriptCommand(root, packageDir, "test"), packageDir };
+    if (test?.includes("node --test")) return { framework: "node-test", command: await packageScriptCommand(root, packageDir, "test"), packageDir };
+  }
+  return { framework: "unknown" };
+}
+
+async function packageScriptCommand(root: string, packageDir: string, script: string): Promise<string> {
+  const manager = await pathExists(path.join(root, "pnpm-lock.yaml")) ? "pnpm" : await pathExists(path.join(root, "yarn.lock")) ? "yarn" : "npm";
+  if (!packageDir) return manager === "npm" ? (script === "test" ? "npm test" : `npm run ${script}`) : `${manager} run ${script}`;
+  const quoted = JSON.stringify(packageDir);
+  if (manager === "pnpm") return `pnpm --dir ${quoted} run ${script}`;
+  if (manager === "yarn") return `yarn --cwd ${quoted} run ${script}`;
+  return `npm --prefix ${quoted} run ${script}`;
 }
 
 async function findRelatedTests(root: string, sourceFile: string): Promise<string[]> {
@@ -198,6 +228,8 @@ function generateCharacterizationTest(
   const modulePath = framework === "node-test" ? `./${parsed.name}.ts` : `./${parsed.name}.js`;
   const args = contract.inputs.map((input) => fixtures[input.name]).join(", ");
   const marker = `migration-guard-method-contract:${selected.symbol}`;
+  const observationFile = `.migration-guard/method-observations/${sha256(marker).slice(0, 16)}.json`;
+  const observationRelative = path.posix.relative(path.posix.dirname(targetPath), observationFile);
   const imports = framework === "vitest"
     ? `import { expect, test } from "vitest";`
     : framework === "jest"
@@ -210,6 +242,7 @@ function generateCharacterizationTest(
       : "  assert.match(observation.status, /^(returned|threw)$/);";
   const content = [
     imports,
+    `import { mkdirSync, writeFileSync } from "node:fs";`,
     `import { ${invocation.importName} } from ${JSON.stringify(modulePath)};`,
     "",
     `test(${JSON.stringify(`characterizes ${selected.symbol} for method extraction`)}, async () => {`,
@@ -220,7 +253,10 @@ function generateCharacterizationTest(
     "    observation = { status: \"threw\", value: error instanceof Error ? { name: error.name, message: error.message } : error };",
     "  }",
     assertion,
-    `  console.log(${JSON.stringify(marker)}, JSON.stringify(observation));`,
+    `  const observationUrl = new URL(${JSON.stringify(observationRelative)}, import.meta.url);`,
+    `  mkdirSync(new URL(".", observationUrl), { recursive: true });`,
+    `  writeFileSync(observationUrl, JSON.stringify(observation), "utf8");`,
+    `  process.stdout.write(${JSON.stringify(marker)} + "\\n");`,
     "});",
     ""
   ].filter((line, index) => line || index > 0).join("\n");
@@ -230,8 +266,26 @@ function generateCharacterizationTest(
     content,
     contentHash: sha256(content),
     inputFixtures: fixtures,
-    observationMarker: marker
+    observationMarker: marker,
+    observationFile
   };
+}
+
+function focusedTestCommand(framework: Exclude<MethodExtractionTestFramework, "unknown">, command: string, targetPath: string, packageDir?: string): string {
+  const relativeTarget = packageDir ? path.posix.relative(toPosixPath(packageDir), toPosixPath(targetPath)) : toPosixPath(targetPath);
+  const quotedPath = JSON.stringify(relativeTarget);
+  if (framework === "node-test") return `node --test ${JSON.stringify(toPosixPath(targetPath))}`;
+  const requiresSeparator = command.startsWith("npm ");
+  if (framework === "jest") return requiresSeparator
+    ? `${command} -- --runTestsByPath ${quotedPath}`
+    : `${command} --runTestsByPath ${quotedPath}`;
+  if (command === "npm test -- --run") return `${command} ${quotedPath}`;
+  return requiresSeparator ? `${command} -- ${quotedPath}` : `${command} ${quotedPath}`;
+}
+
+function pathInsideOrEqual(root: string, candidate: string): boolean {
+  const relative = path.relative(root, path.resolve(candidate));
+  return !relative || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 async function inspectMethodInvocation(contract: MethodExtractionContract): Promise<{ importName: string; expression: string } | undefined> {

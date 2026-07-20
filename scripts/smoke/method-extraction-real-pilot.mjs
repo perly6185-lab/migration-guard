@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, readFile, readdir, rm, writeFile, mkdir } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm, symlink, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -41,27 +41,57 @@ async function runCase(item) {
   const temp = await mkdtemp(path.join(os.tmpdir(), `mg-method-pilot-${sanitize(item.name)}-`));
   const clone = path.join(temp, "project");
   const startedAt = new Date().toISOString();
+  let preserve = false;
+  let result;
   try {
+    const originalStatus = (await run("git", ["status", "--porcelain"], originalRoot)).stdout.trim();
+    if (originalStatus) throw new Error(`Real pilot source repository must be clean: ${originalRoot}`);
     await run("git", ["clone", "--local", "--no-hardlinks", originalRoot, clone], repoRoot, 120_000);
+    if (item.reuseNodeModules) {
+      const sourceModules = path.join(originalRoot, "node_modules");
+      await access(sourceModules);
+      await symlink(sourceModules, path.join(clone, "node_modules"), "junction");
+    }
     if (item.setupCommand !== false) await shell(item.setupCommand ?? "npm ci", clone, item.timeoutMs ?? 600_000);
     const configPath = path.join(clone, ".migration-guard.json");
     await writeFile(configPath, `${JSON.stringify({ schemaVersion: 1, sourceRoot: ".", targetRoot: ".", artifactsDir: ".migration-guard" }, null, 2)}\n`);
     await run("git", ["add", ".migration-guard.json"], clone);
     await run("git", ["-c", "user.name=Migration Guard Pilot", "-c", "user.email=pilot@example.invalid", "commit", "-m", "chore: add pilot config"], clone);
-    const goal = `method symbol=${item.symbol}${item.callDepth ? ` call-depth=${item.callDepth}` : ""}`;
+    const layerGoal = Array.isArray(item.layers)
+      ? item.layers.map((layer) => ` extract-layer=${layer.symbol}@${layer.startLine}-${layer.endLine}@${layer.extractName}`).join("")
+      : "";
+    const goal = `method symbol=${item.symbol}${item.callDepth ? ` call-depth=${item.callDepth}` : ""}${layerGoal}`;
     await run(process.execPath, [cli, "run", "--config", configPath, "--source", clone, "--target", clone, "--goal", goal, "--adapter", "method-refactor", "--auto"], clone, item.timeoutMs ?? 600_000);
     const runDir = await latestRunDir(path.join(clone, ".migration-guard", "migration-runs"));
     const migrationRunId = path.basename(runDir);
-    const executeArgs = [cli, "method-extraction", "execute", "--config", configPath, "--run", migrationRunId, "--trust-tier", item.trustTier ?? "supervised"];
-    if (item.candidate) executeArgs.push("--candidate", String(item.candidate));
-    if (item.extractName) executeArgs.push("--extract-name", item.extractName);
-    await run(process.execPath, executeArgs, clone, item.timeoutMs ?? 600_000);
-    const sessionPath = path.join(runDir, "adapter", "method-extraction-session", "method-extraction-session.json");
-    const qualityPath = path.join(runDir, "adapter", "method-extraction-session", "method-extraction-quality.json");
-    const session = JSON.parse(await readFile(sessionPath, "utf8"));
-    const quality = await readFile(qualityPath, "utf8").then(JSON.parse).catch(() => undefined);
+    let session;
+    let quality;
+    if (Array.isArray(item.layers)) {
+      await run(process.execPath, [cli, "method-extraction", "chain", "plan", "--config", configPath, "--run", migrationRunId], clone, item.timeoutMs ?? 600_000);
+      const ledgerPath = path.join(runDir, "adapter", "method-extraction-chain", "method-extraction-execution-ledger.json");
+      for (let index = 0; index < item.layers.length; index += 1) {
+        const ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
+        const ready = ledger.steps.filter((step) => step.status === "ready");
+        if (ready.length !== 1 || !ready[0].patchHash) {
+          const detail = ledger.steps.map((step) => `${step.symbol}:${step.status}:${step.reason ?? "no reason"}`).join("; ");
+          throw new Error(`Layered pilot expected one ready step, found ${ready.length}. ${detail}`);
+        }
+        await run(process.execPath, [cli, "method-extraction", "chain", "next", "--config", configPath, "--run", migrationRunId, "--confirm", ready[0].patchHash], clone, item.timeoutMs ?? 600_000);
+      }
+      session = JSON.parse(await readFile(ledgerPath, "utf8"));
+    } else {
+      const executeArgs = [cli, "method-extraction", "execute", "--config", configPath, "--run", migrationRunId, "--trust-tier", item.trustTier ?? "supervised"];
+      if (item.candidate) executeArgs.push("--candidate", String(item.candidate));
+      if (item.extractName) executeArgs.push("--extract-name", item.extractName);
+      await run(process.execPath, executeArgs, clone, item.timeoutMs ?? 600_000);
+      const sessionPath = path.join(runDir, "adapter", "method-extraction-session", "method-extraction-session.json");
+      const qualityPath = path.join(runDir, "adapter", "method-extraction-session", "method-extraction-quality.json");
+      session = JSON.parse(await readFile(sessionPath, "utf8"));
+      quality = await readFile(qualityPath, "utf8").then(JSON.parse).catch(() => undefined);
+    }
     const expectedState = item.expectedState ?? "completed";
-    return {
+    const originalRepositoryUnchanged = (await run("git", ["status", "--porcelain"], originalRoot)).stdout.trim() === originalStatus;
+    result = {
       name: item.name,
       sourceRoot: originalRoot,
       sourceHead: (await run("git", ["rev-parse", "HEAD"], originalRoot)).stdout.trim(),
@@ -70,18 +100,32 @@ async function runCase(item) {
       finishedAt: new Date().toISOString(),
       state: session.state,
       expectedState,
-      passed: session.state === expectedState,
-      patchHash: session.patchHash,
-      sessionHash: session.sessionHash,
+      passed: session.state === expectedState && originalRepositoryUnchanged,
+      patchHash: session.patchHash ?? session.steps?.at(-1)?.patchHash,
+      sessionHash: session.sessionHash ?? session.planHash,
       qualityHash: quality?.reportHash,
       behaviorConfidence: quality?.behaviorConfidence,
       structuralImprovement: quality?.structuralImprovement,
-      originalRepositoryUnchanged: (await run("git", ["status", "--porcelain"], originalRoot)).stdout.trim() === ""
+      originalRepositoryUnchanged
     };
+    return result;
   } catch (error) {
-    return { name: item.name, sourceRoot: originalRoot, symbol: item.symbol, startedAt, finishedAt: new Date().toISOString(), passed: false, error: error instanceof Error ? error.message : String(error) };
+    preserve = Boolean(item.preserveOnFailure);
+    result = { name: item.name, sourceRoot: originalRoot, symbol: item.symbol, startedAt, finishedAt: new Date().toISOString(), passed: false, preservedClone: preserve ? clone : undefined, error: error instanceof Error ? error.message : String(error) };
+    return result;
   } finally {
-    await rm(temp, { recursive: true, force: true });
+    if (!preserve) {
+      try {
+        await rm(temp, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+        if (result) result.temporaryCloneRemoved = true;
+      } catch (error) {
+        if (result) {
+          result.passed = false;
+          result.temporaryCloneRemoved = false;
+          result.cleanupError = error instanceof Error ? error.message : String(error);
+        }
+      }
+    }
   }
 }
 
@@ -100,7 +144,8 @@ async function run(file, args, cwd, timeout = 120_000) {
   try {
     return await execFileAsync(file, args, { cwd, timeout, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
   } catch (error) {
-    throw new Error(`${file} ${args.join(" ")} failed: ${error.stderr ?? error.stdout ?? error.message}`);
+    const detail = [error.stderr, error.stdout, error.message].find((value) => typeof value === "string" && value.trim()) ?? "unknown error";
+    throw new Error(`${file} ${args.join(" ")} failed: ${detail}`);
   }
 }
 

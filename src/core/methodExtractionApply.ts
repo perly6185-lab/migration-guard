@@ -41,6 +41,7 @@ export interface MethodExtractionApplyReport {
   };
   cleanup: {
     testRemoved: boolean;
+    observationRemoved: boolean;
     rollbackAttempted: boolean;
     rollbackPassed: boolean;
     fallbackSourceRestoreUsed: boolean;
@@ -71,6 +72,7 @@ export async function applyVerifiedMethodExtraction(
   const root = path.resolve(pkg.run.targetRoot);
   const sourcePath = safeTargetPath(root, patchPlan.file!);
   const testPath = safeTargetPath(root, testPlan.generatedTest!.targetPath);
+  const observationPath = safeTargetPath(root, testPlan.generatedTest!.observationFile);
   if (await pathExists(testPath)) {
     return persistApplyReport(loaded, pkg, { ...report, status: "rejected", reason: `Generated test target already exists: ${testPlan.generatedTest!.targetPath}` });
   }
@@ -97,6 +99,7 @@ export async function applyVerifiedMethodExtraction(
   try {
     await fs.mkdir(path.dirname(testPath), { recursive: true });
     await fs.writeFile(testPath, testPlan.generatedTest!.content, "utf8");
+    await fs.rm(observationPath, { force: true });
     const commands = [...new Set([testPlan.testCommand!, ...(options.commands ?? [])])];
     let characterization: CommandExecutionResult | undefined;
     for (const command of commands) {
@@ -110,7 +113,8 @@ export async function applyVerifiedMethodExtraction(
       }
     }
     report.behavior.current = characterization
-      ? extractObservation(characterization.stdout, testPlan.generatedTest!.observationMarker)
+      ? await readObservation(observationPath)
+        ?? extractObservation(characterization.stdout, testPlan.generatedTest!.observationMarker)
       : undefined;
     report.behavior.equal = Boolean(report.behavior.baseline && report.behavior.current === report.behavior.baseline);
     if (!shouldRollback && !report.behavior.equal) {
@@ -128,6 +132,8 @@ export async function applyVerifiedMethodExtraction(
   } finally {
     await fs.rm(testPath, { force: true }).catch(() => undefined);
     report.cleanup.testRemoved = !(await pathExists(testPath));
+    await fs.rm(observationPath, { force: true }).catch(() => undefined);
+    report.cleanup.observationRemoved = !(await pathExists(observationPath));
   }
 
   if (shouldRollback) {
@@ -141,7 +147,7 @@ export async function applyVerifiedMethodExtraction(
       current = await fs.readFile(sourcePath).catch(() => undefined);
     }
     report.cleanup.sourceMatchesBefore = Boolean(current?.equals(before));
-    report.status = report.cleanup.rollbackPassed && report.cleanup.sourceMatchesBefore && report.cleanup.testRemoved
+    report.status = report.cleanup.rollbackPassed && report.cleanup.sourceMatchesBefore && report.cleanup.testRemoved && report.cleanup.observationRemoved
       ? "rolled-back"
       : "rollback-failed";
     report.passed = false;
@@ -166,6 +172,7 @@ export function renderMethodExtractionApply(report: MethodExtractionApplyReport)
     `- Checkpoint: ${report.checkpointId ?? "none"}`,
     `- Behavior equal: ${report.behavior.equal}`,
     `- Test removed: ${report.cleanup.testRemoved}`,
+    `- Observation removed: ${report.cleanup.observationRemoved}`,
     `- Rollback attempted: ${report.cleanup.rollbackAttempted}`,
     `- Rollback passed: ${report.cleanup.rollbackPassed}`,
     `- Fallback source restore: ${report.cleanup.fallbackSourceRestoreUsed}`,
@@ -188,7 +195,7 @@ function validateApplyEvidence(
   if (!patchPlan.ready || !patchPlan.patch || !patchPlan.patchHash || !patchPlan.file) return "Extraction patch is not ready.";
   if (!testPlan.ready || !testPlan.generatedTest || !testPlan.testCommand) return "Executable characterization coverage is not ready.";
   if (!verification.passed || verification.status !== "passed") return "A passing temporary verification is required.";
-  if (!verification.restoration.sourceRestored || !verification.restoration.testRemoved) return "Temporary verification restoration evidence is incomplete.";
+  if (!verification.restoration.sourceRestored || !verification.restoration.testRemoved || !verification.restoration.observationRemoved) return "Temporary verification restoration evidence is incomplete.";
   if (options.confirmPatchHash !== patchPlan.patchHash) return "Explicit confirmation must equal the planned patch hash.";
   if (sha256(patchPlan.patch) !== patchPlan.patchHash) return "Patch content hash mismatch.";
   if (sha256(testPlan.generatedTest.content) !== testPlan.generatedTest.contentHash) return "Generated test content hash mismatch.";
@@ -237,7 +244,7 @@ function baseReport(
     verificationHash: sha256(stableStringify(verification)),
     commands: [],
     behavior: { baseline: verification.behavior.baseline, equal: false },
-    cleanup: { testRemoved: false, rollbackAttempted: false, rollbackPassed: false, fallbackSourceRestoreUsed: false, sourceMatchesBefore: false }
+    cleanup: { testRemoved: false, observationRemoved: false, rollbackAttempted: false, rollbackPassed: false, fallbackSourceRestoreUsed: false, sourceMatchesBefore: false }
   };
 }
 
@@ -275,4 +282,14 @@ function extractObservation(stdout: string, marker: string): string | undefined 
     if (index >= 0) return line.slice(index + marker.length).trim() || undefined;
   }
   return undefined;
+}
+
+async function readObservation(observationPath: string): Promise<string | undefined> {
+  const content = await fs.readFile(observationPath, "utf8").catch(() => undefined);
+  if (!content) return undefined;
+  try {
+    return stableStringify(JSON.parse(content));
+  } catch {
+    return undefined;
+  }
 }

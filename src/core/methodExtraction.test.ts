@@ -298,6 +298,45 @@ test("method extraction patch atomically extracts a class-method range", async (
   }
 });
 
+test("method extraction contract treats object shorthand values as inputs", async () => {
+  const dir = await fixtureDir("method-extraction-shorthand");
+  try {
+    await writeFile(path.join(dir, "service.ts"), [
+      "export async function get(id: string): Promise<object> {",
+      "  return Promise.resolve({ id });",
+      "}"
+    ].join("\n"));
+    const eligibility = await createMethodExtractionEligibility(dir, "get", { startLine: 2, endLine: 2 });
+    const contract = await createMethodExtractionContract(eligibility);
+    assert.deepEqual(contract.inputs.map((input) => input.name), ["id"]);
+    const patch = await createMethodExtractionPatchPlan(contract, "getStep");
+    assert.equal(patch.ready, true, patch.diagnostics.join("\n"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("method extraction patch preserves static async class method context", async () => {
+  const dir = await fixtureDir("method-extraction-static-method");
+  try {
+    await writeFile(path.join(dir, "service.ts"), [
+      "export class Service {",
+      "  static async get(id: string): Promise<string> {",
+      "    return Promise.resolve(id);",
+      "  }",
+      "}"
+    ].join("\n"));
+    const eligibility = await createMethodExtractionEligibility(dir, "Service.get", { startLine: 3, endLine: 3 });
+    const contract = await createMethodExtractionContract(eligibility);
+    const patch = await createMethodExtractionPatchPlan(contract, "getStep");
+    assert.equal(patch.ready, true, patch.diagnostics.join("\n"));
+    assert.match(patch.patch ?? "", /private static async getStep\(id: string\)/);
+    assert.match(patch.patch ?? "", /return await this\.getStep\(id\)/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("method extraction patch returns a declared output from a sibling function", async () => {
   const dir = await fixtureDir("method-extraction-patch-function");
   try {

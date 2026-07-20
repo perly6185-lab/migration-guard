@@ -108,6 +108,7 @@ export function createMethodExtractionExecutionLedger(
       ...item.spec,
       index,
       depth: item.depth,
+      sourceFile: nodes.get(item.spec.symbol)?.candidate.file,
       status: "pending",
       artifactDir: `${String(index + 1).padStart(2, "0")}-${sanitize(item.spec.symbol)}`
     })),
@@ -153,7 +154,7 @@ export async function prepareNextMethodExtractionLayer(
   const eligibility = await createMethodExtractionEligibility(pkg.run.targetRoot, step.symbol, {
     startLine: step.startLine,
     endLine: step.endLine
-  });
+  }, undefined, step.sourceFile);
   const contract = await createMethodExtractionContract(eligibility);
   const patchPlan = await createMethodExtractionPatchPlan(contract, step.extractedName);
   const testPlan = await createMethodExtractionTestPlan(contract, patchPlan);

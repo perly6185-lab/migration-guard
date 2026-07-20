@@ -86,6 +86,7 @@ export interface MethodExtractionContract {
   eligibilityHash: string;
   sourceHash?: string;
   anchor?: MethodExtractionAnchor;
+  returnType?: string;
   eligible: boolean;
   reasonCode: MethodExtractionContractReasonCode;
   findings: Array<{ code: MethodExtractionContractReasonCode; message: string; line?: number }>;
@@ -178,9 +179,10 @@ export function extractMethodExtractionRangeFromGoal(goal: string): MethodExtrac
 export async function suggestMethodExtractionCandidates(
   root: string,
   requestedSymbol: string,
-  limit = 3
+  limit = 3,
+  sourceFileHint?: string
 ): Promise<MethodExtractionSuggestionReport> {
-  const project = await loadTypeScriptProject(root);
+  const project = await loadTypeScriptProject(root, sourceFileHint);
   const matches = collectAstSymbols(project.program, root)
     .filter((candidate) => candidate.body && ts.isBlock(candidate.body) && symbolMatches(candidate.descriptor, requestedSymbol));
   const report: MethodExtractionSuggestionReport = {
@@ -290,9 +292,10 @@ export async function createMethodExtractionEligibility(
   root: string,
   requestedSymbol: string,
   requestedRange: MethodExtractionRange,
-  projectOverride?: Awaited<ReturnType<typeof loadTypeScriptProject>>
+  projectOverride?: Awaited<ReturnType<typeof loadTypeScriptProject>>,
+  sourceFileHint?: string
 ): Promise<MethodExtractionEligibility> {
-  const project = projectOverride ?? await loadTypeScriptProject(root);
+  const project = projectOverride ?? await loadTypeScriptProject(root, sourceFileHint);
   const compilerOptionsHash = sha256(stableStringify(project.compilerOptions));
   const base = {
     version: 1 as const,
@@ -396,7 +399,7 @@ export async function createMethodExtractionContract(
     return blockedContract(base, "eligibility-blocked", "AST eligibility must pass before extraction contract analysis.");
   }
 
-  const project = projectOverride ?? await loadTypeScriptProject(eligibility.root);
+  const project = projectOverride ?? await loadTypeScriptProject(eligibility.root, eligibility.selected?.file);
   const candidates = collectAstSymbols(project.program, eligibility.root).filter((candidate) =>
     candidate.descriptor.symbol === eligibility.selected!.symbol
     && candidate.descriptor.file === eligibility.selected!.file
@@ -437,7 +440,7 @@ export async function createMethodExtractionContract(
     const nextDepth = ts.isFunctionLike(node) && node !== candidate.declaration ? nestedFunctionDepth + 1 : nestedFunctionDepth;
     if (nextDepth > 0 && ts.isIdentifier(node) && identifierIsValueReference(node)) nestedClosure = true;
     if (ts.isIdentifier(node) && identifierIsValueReference(node)) {
-      const symbol = checker.getSymbolAtLocation(node);
+      const symbol = valueSymbolAtIdentifier(node, checker);
       if (symbol) addSymbolUse(isWriteIdentifier(node) ? writes : reads, symbol, node, line);
     }
     ts.forEachChild(node, (child) => visitSelected(child, nextDepth));
@@ -478,6 +481,9 @@ export async function createMethodExtractionContract(
   };
   const analyzed = {
     ...base,
+    returnType: checker.getSignatureFromDeclaration(candidate.declaration)
+      ? checker.typeToString(checker.getReturnTypeOfSignature(checker.getSignatureFromDeclaration(candidate.declaration)!))
+      : undefined,
     inputs: uniqueValueContracts(inputs),
     outputs: uniqueValueContracts(outputs),
     captures: { this: capturesThis, super: capturesSuper, nestedClosure },
@@ -562,7 +568,7 @@ export async function createMethodExtractionPatchPlan(
     return blockedPatch(base, "unsupported-output-shape", "The first patch generator supports at most one value crossing the extraction boundary.");
   }
 
-  const project = await loadTypeScriptProject(contract.root);
+  const project = await loadTypeScriptProject(contract.root, contract.selected?.file);
   const candidates = collectAstSymbols(project.program, contract.root).filter((candidate) =>
     candidate.descriptor.symbol === contract.selected!.symbol
     && candidate.descriptor.file === contract.selected!.file
@@ -658,12 +664,14 @@ export function renderMethodExtractionEligibility(result: MethodExtractionEligib
   ].join("\n");
 }
 
-async function loadTypeScriptProject(root: string): Promise<{
+async function loadTypeScriptProject(root: string, sourceFileHint?: string): Promise<{
   program: ts.Program;
   compilerOptions: ts.CompilerOptions;
   tsconfigPath?: string;
 }> {
-  const tsconfigPath = ts.findConfigFile(root, ts.sys.fileExists, "tsconfig.json");
+  const tsconfigPath = sourceFileHint
+    ? await findContainingTsconfig(root, sourceFileHint)
+    : ts.findConfigFile(root, ts.sys.fileExists, "tsconfig.json");
   if (tsconfigPath) {
     const loaded = ts.readConfigFile(tsconfigPath, ts.sys.readFile);
     if (loaded.error) throw new Error(formatDiagnostic(loaded.error));
@@ -893,9 +901,14 @@ function transformExtractionSource(
   if (output && !terminalReturn) helperBody = `${helperBody}\n${bodyIndent}return ${output.name};`;
   const parameters = contract.inputs.map((input) => `${input.name}: ${input.type}`).join(", ");
   const asyncKeyword = contract.controlFlow.async ? "async " : "";
+  const returnType = contract.returnType ? `: ${contract.returnType}` : "";
+  const staticKeyword = candidate.descriptor.kind === "method"
+    && ts.getModifiers(candidate.declaration)?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)
+    ? "static "
+    : "";
   const helper = candidate.descriptor.kind === "method"
-    ? `\n\n${declarationIndent}private ${asyncKeyword}${extractedName}(${parameters}) {\n${helperBody}\n${declarationIndent}}`
-    : `\n\n${declarationIndent}${asyncKeyword}function ${extractedName}(${parameters}) {\n${helperBody}\n${declarationIndent}}`;
+    ? `\n\n${declarationIndent}private ${staticKeyword}${asyncKeyword}${extractedName}(${parameters})${returnType} {\n${helperBody}\n${declarationIndent}}`
+    : `\n\n${declarationIndent}${asyncKeyword}function ${extractedName}(${parameters})${returnType} {\n${helperBody}\n${declarationIndent}}`;
   const replaced = source.slice(0, replaceStart) + replacement + source.slice(replaceEnd);
   const insertionShift = replacement.length - (replaceEnd - replaceStart);
   const insertAt = candidate.declaration.getEnd() + insertionShift;
@@ -977,7 +990,7 @@ function collectDeclaredSymbols(statements: readonly ts.Statement[], checker: ts
   const symbols = new Set<ts.Symbol>();
   const visit = (node: ts.Node): void => {
     if (isDeclarationName(node)) {
-      const symbol = checker.getSymbolAtLocation(node);
+      const symbol = valueSymbolAtIdentifier(node, checker);
       if (symbol) symbols.add(symbol);
     }
     ts.forEachChild(node, visit);
@@ -1028,7 +1041,7 @@ function collectLaterSymbolUses(
       return;
     }
     if (ts.isIdentifier(node) && identifierIsValueReference(node)) {
-      const symbol = checker.getSymbolAtLocation(node);
+      const symbol = valueSymbolAtIdentifier(node, checker);
       if (symbol) addSymbolUse(uses, symbol, node, nodeLineRange(sourceFile, node).startLine);
     }
     ts.forEachChild(node, visit);
@@ -1152,6 +1165,39 @@ function isExportedDeclaration(node: ts.Node): boolean {
     && Boolean(ts.getModifiers(declaration)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword));
 }
 
+async function findContainingTsconfig(root: string, sourceFileHint: string): Promise<string | undefined> {
+  const resolvedRoot = path.resolve(root);
+  const resolvedSource = path.resolve(root, sourceFileHint);
+  let directory = path.dirname(resolvedSource);
+  while (pathInsideOrEqual(resolvedRoot, directory)) {
+    const names = await fs.readdir(directory).catch(() => []);
+    const configs = names.filter((name) => /^tsconfig(?:\.[\w-]+)?\.json$/i.test(name))
+      .sort((a, b) => Number(a !== "tsconfig.json") - Number(b !== "tsconfig.json") || a.localeCompare(b));
+    for (const name of configs) {
+      const configPath = path.join(directory, name);
+      const loaded = ts.readConfigFile(configPath, ts.sys.readFile);
+      if (loaded.error) continue;
+      const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, directory);
+      if (parsed.fileNames.some((file) => path.resolve(file) === resolvedSource)) return configPath;
+    }
+    if (directory === resolvedRoot) break;
+    directory = path.dirname(directory);
+  }
+  return ts.findConfigFile(root, ts.sys.fileExists, "tsconfig.json");
+}
+
+function pathInsideOrEqual(root: string, candidate: string): boolean {
+  const relative = path.relative(root, path.resolve(candidate));
+  return !relative || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function valueSymbolAtIdentifier(node: ts.Identifier, checker: ts.TypeChecker): ts.Symbol | undefined {
+  if (ts.isShorthandPropertyAssignment(node.parent) && node.parent.name === node) {
+    return checker.getShorthandAssignmentValueSymbol(node.parent) ?? checker.getSymbolAtLocation(node);
+  }
+  return checker.getSymbolAtLocation(node);
+}
+
 function createExtractionAnchor(
   candidate: AstSymbolCandidate,
   statements: readonly ts.Statement[],
@@ -1205,6 +1251,9 @@ function suggestNamesForStatements(statements: readonly ts.Statement[], sourceFi
   const existing = new Set<string>();
   const collectNames = (node: ts.Node): void => {
     if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isVariableDeclaration(node)) && node.name && ts.isIdentifier(node.name)) existing.add(node.name.text);
+    if (ts.isImportSpecifier(node)) existing.add(node.name.text);
+    if (ts.isImportClause(node) && node.name) existing.add(node.name.text);
+    if (ts.isNamespaceImport(node)) existing.add(node.name.text);
     ts.forEachChild(node, collectNames);
   };
   collectNames(sourceFile);

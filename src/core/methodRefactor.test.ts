@@ -142,6 +142,28 @@ test("method refactor plan expands local TypeScript call chains up to six layers
   }
 });
 
+test("method refactor call graph prefers a unique same-file function over an unrelated duplicate", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "method-refactor-same-file-resolution-"));
+  try {
+    await mkdir(path.join(dir, "bench"));
+    await writeFile(path.join(dir, "main.ts"), [
+      "export function entry(): string {",
+      "  return helper();",
+      "}",
+      "export function helper(): string {",
+      "  return 'main';",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "bench", "fixture.ts"), "export function helper(): string { return 'bench'; }\n");
+    const plan = await createMethodRefactorPlan(dir, "entry", { callDepth: 1 });
+    assert.deepEqual(plan.callGraph.nodes.map((node) => node.candidate.symbol), ["entry", "helper"]);
+    assert.equal(plan.callGraph.nodes[1]?.candidate.file, "main.ts");
+    assert.equal(plan.callGraph.unresolvedCalls.length, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("method refactor call depth is capped at the supported six layers", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-method-refactor-depth-cap-"));
   try {

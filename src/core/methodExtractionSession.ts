@@ -88,7 +88,7 @@ export async function executeMethodExtractionSession(
     range = await resolveMethodExtractionAnchor(pkg.run.targetRoot, candidate.anchor);
   }
   transition(session, "planning", `Planning candidate ${session.candidateIndex + 1} at ${range.startLine}-${range.endLine}.`);
-  const eligibility = await createMethodExtractionEligibility(pkg.run.targetRoot, requestedSymbol, range);
+  const eligibility = await createMethodExtractionEligibility(pkg.run.targetRoot, requestedSymbol, range, undefined, candidate.anchor.file);
   const contract = await createMethodExtractionContract(eligibility);
   const patchPlan = await createMethodExtractionPatchPlan(contract, session.extractedName);
   const testPlan = await createMethodExtractionTestPlan(contract, patchPlan);
@@ -96,7 +96,10 @@ export async function executeMethodExtractionSession(
   await writeJsonFile(path.join(dir, "method-extraction-contract.json"), contract);
   await writeJsonFile(path.join(dir, "method-extraction-patch.json"), patchPlan);
   await writeJsonFile(path.join(dir, "method-extraction-test-plan.json"), testPlan);
-  if (!patchPlan.ready || !testPlan.ready) return persistSession(dir, block(session, patchPlan.findings[0]?.message ?? testPlan.findings[0]?.message ?? "Extraction planning is blocked."));
+  if (!patchPlan.ready || !testPlan.ready) {
+    const diagnosticDetail = patchPlan.diagnostics.length ? ` ${patchPlan.diagnostics.join("; ")}` : "";
+    return persistSession(dir, block(session, `${patchPlan.findings[0]?.message ?? testPlan.findings[0]?.message ?? "Extraction planning is blocked."}${diagnosticDetail}`));
+  }
 
   transition(session, "verifying", "Running temporary baseline, patch, checks and behavior comparison.");
   const verification = await verifyMethodExtractionTemporarily(patchPlan, testPlan, {

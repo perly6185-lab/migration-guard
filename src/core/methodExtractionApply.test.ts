@@ -31,8 +31,10 @@ test("verified method extraction apply persists the atomic patch after post-appl
     assert.ok(report.checkpointId);
     assert.equal(report.behavior.equal, true);
     assert.equal(report.cleanup.testRemoved, true);
+    assert.equal(report.cleanup.observationRemoved, true);
     assert.match(await readFile(fixture.sourcePath, "utf8"), /function calculateResult\(input: number\)/);
     assert.equal(await pathExists(path.join(fixture.dir, pipeline.testPlan.generatedTest!.targetPath)), false);
+    assert.equal(await pathExists(path.join(fixture.dir, pipeline.testPlan.generatedTest!.observationFile)), false);
     assert.match(renderMethodExtractionApply(report), /Status: applied/);
   } finally {
     await rm(fixture.dir, { recursive: true, force: true });
@@ -69,6 +71,7 @@ test("method extraction apply rolls back when post-apply verification fails", as
     assert.equal(report.cleanup.rollbackPassed, true);
     assert.equal(report.cleanup.sourceMatchesBefore, true);
     assert.equal(report.cleanup.testRemoved, true);
+    assert.equal(report.cleanup.observationRemoved, true);
     assert.equal(await readFile(fixture.sourcePath, "utf8"), fixture.source);
   } finally {
     await rm(fixture.dir, { recursive: true, force: true });

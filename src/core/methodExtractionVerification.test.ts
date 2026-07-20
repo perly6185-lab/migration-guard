@@ -27,8 +27,10 @@ test("temporary extraction verification compares behavior and fully restores the
     assert.equal(report.restoration.reversePatchPassed, true);
     assert.equal(report.restoration.sourceRestored, true);
     assert.equal(report.restoration.testRemoved, true);
+    assert.equal(report.restoration.observationRemoved, true);
     assert.equal(await readFile(fixture.sourcePath, "utf8"), fixture.source);
     assert.equal(await pathExists(path.join(fixture.dir, pipeline.testPlan.generatedTest!.targetPath)), false);
+    assert.equal(await pathExists(path.join(fixture.dir, pipeline.testPlan.generatedTest!.observationFile)), false);
     assert.match(renderMethodExtractionVerification(report), /Status: passed/);
   } finally {
     await rm(fixture.dir, { recursive: true, force: true });
@@ -48,6 +50,7 @@ test("temporary extraction verification rejects failed checks and restores sourc
     assert.equal(report.passed, false);
     assert.equal(report.restoration.sourceRestored, true);
     assert.equal(report.restoration.testRemoved, true);
+    assert.equal(report.restoration.observationRemoved, true);
     assert.equal(await readFile(fixture.sourcePath, "utf8"), fixture.source);
   } finally {
     await rm(fixture.dir, { recursive: true, force: true });
