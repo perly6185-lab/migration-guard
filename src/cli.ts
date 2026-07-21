@@ -197,6 +197,7 @@ import { runEndpointRuntimeDriver, type EndpointRuntimeDriverConfig } from "./co
 import type { EndpointReplacementEvidence, EndpointReplacementPlan, ReplacementScenario } from "./core/endpointReplacementModel.js";
 import { assessJavaControllersForRust, renderControllerRustAssessment } from "./core/controllerRustAssessment.js";
 import { assessJavaServicesForRust, renderServiceRustAssessment } from "./core/serviceRustAssessment.js";
+import { assessJavaRepositoriesForRust, renderRepositoryRustAssessment } from "./core/repositoryRustAssessment.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -251,6 +252,14 @@ async function main(argv: string[]): Promise<void> {
 
 async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
   const action = args.positionals[0] ?? "analyze";
+  if (action === "assess-repositories") {
+    const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
+    const report = await assessJavaRepositoriesForRust({ root, maxDepth: numberOption(args, "max-depth"), maxEdges: numberOption(args, "max-edges"), limit: numberOption(args, "limit"), includeTests: Boolean(args.options["include-tests"]), adaptive: Boolean(args.options.adaptive), maxExpansionDepth: numberOption(args, "max-expansion-depth"), maxExpansionEdges: numberOption(args, "max-expansion-edges"), maxExpansionRounds: numberOption(args, "max-expansion-rounds") });
+    if (args.options.apply) await writeFullReplacementArtifact("repository-rust-assessment", report, path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderRepositoryRustAssessment(report));
+    console.log(args.options.json || !args.options.apply ? JSON.stringify(report, null, 2) : renderRepositoryRustAssessment(report));
+    if (report.summary.blocked > 0) process.exitCode = 1;
+    return;
+  }
   if (action === "assess-services") {
     const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
     const report = await assessJavaServicesForRust({
@@ -2594,6 +2603,7 @@ Usage:
   migration-guard java-endpoint analyze --root <java-project> --endpoint <path> [--method POST] [--max-depth <n>] [--max-edges <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--strict] [--json]
   migration-guard java-endpoint assess-controllers --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-services --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard java-endpoint assess-repositories --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement closure --java-analysis <json> --rust-root <path> [--evidence <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement plan --java-analysis <json> [--ownership <json>] [--ownership-policy <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement endpoint-driver --config <driver.json> --scenario <scenario.json> [--fault <id>] [--apply] [--artifacts-dir <path>] [--json]

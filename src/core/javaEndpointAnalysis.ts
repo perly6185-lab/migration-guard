@@ -18,9 +18,12 @@ export interface JavaEndpointAnalyzer {
   root: string;
   routes: JavaEndpointRouteCandidate[];
   serviceMethods: JavaServiceMethodCandidate[];
+  repositoryMethods: JavaRepositoryMethodCandidate[];
   analyze(options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">): JavaEndpointAnalysisReport;
   analyzeServiceMethod(candidate: JavaServiceMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
   analyzeServiceMethodAdaptive(candidate: JavaServiceMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
+  analyzeRepositoryMethod(candidate: JavaRepositoryMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
+  analyzeRepositoryMethodAdaptive(candidate: JavaRepositoryMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
 }
 
 export interface AdaptiveJavaAnalysisOptions {
@@ -50,6 +53,32 @@ export interface JavaServiceMethodCandidate {
   line: number;
 }
 
+export interface JavaRepositoryMethodCandidate extends JavaServiceMethodCandidate {
+  role: "repository" | "mapper" | "dao";
+  implementation: "concrete" | "default" | "sql-source" | "generated-boundary";
+}
+
+export type JavaSqlSourceKind = "annotation" | "mapper-xml" | "base-mapper" | "provider";
+export type JavaSqlOperation = "read" | "write" | "delete" | "ddl" | "dynamic-sql" | "unknown";
+
+export interface JavaSqlSourceInfo {
+  id: string;
+  ownerId: string;
+  ownerClassName: string;
+  ownerQualifiedClassName: string;
+  ownerMethodName: string;
+  source: JavaSqlSourceKind;
+  operation: JavaSqlOperation;
+  dynamic: boolean;
+  transactional: boolean;
+  contextSignals: string[];
+  tables: string[];
+  file: string;
+  line: number;
+  statementId?: string;
+  statement?: string;
+}
+
 export interface JavaEndpointRouteCandidate {
   method: JavaEndpointHttpMethod;
   path: string;
@@ -63,7 +92,7 @@ export interface JavaEndpointRouteCandidate {
   framework: "Spring";
   confidence: "low" | "medium" | "high";
   annotations?: string[];
-  entryKind?: "controller" | "service";
+  entryKind?: "controller" | "service" | "repository";
 }
 
 export interface JavaEndpointCallGraphNode {
@@ -160,6 +189,7 @@ export interface JavaEndpointAnalysisReport {
       unexpandedBoundaryNodes: string[];
     };
   };
+  sqlSources: JavaSqlSourceInfo[];
   requestModel?: {
     className: string;
     file: string;
@@ -182,9 +212,12 @@ interface JavaSourceFile {
 interface JavaProjectModel {
   root: string;
   files: JavaSourceFile[];
+  xmlFiles: JavaSourceFile[];
   types: JavaTypeInfo[];
   typesByName: Map<string, JavaTypeInfo[]>;
   implementationsByInterface: Map<string, JavaTypeInfo[]>;
+  sqlSources: JavaSqlSourceInfo[];
+  sqlSourcesByMethodKey: Map<string, JavaSqlSourceInfo[]>;
 }
 
 interface JavaTypeInfo {
@@ -240,7 +273,13 @@ interface GraphTraceState {
   type: JavaTypeInfo;
   method: JavaMethodInfo;
   depth: number;
+  transactional: boolean;
+  contextSignals: string[];
 }
+
+type JavaCallGraphBuildResult = JavaEndpointAnalysisReport["callGraph"] & {
+  sqlSources: JavaSqlSourceInfo[];
+};
 
 const DEFAULT_MAX_DEPTH = 5;
 const MAX_EDGES_PER_METHOD = 40;
@@ -314,13 +353,17 @@ export async function createJavaEndpointAnalyzer(rootValue: string, includeTests
   const project = await collectJavaProject(root, includeTests);
   const routes = extractSpringRoutes(project);
   const serviceMethods = extractServiceMethods(project);
+  const repositoryMethods = extractRepositoryMethods(project);
   return {
     root,
     routes,
     serviceMethods,
+    repositoryMethods,
     analyze: (options) => analyzeJavaEndpointModel(project, routes, options),
     analyzeServiceMethod: (candidate, options = {}) => analyzeJavaServiceMethodModel(project, routes, candidate, options),
-    analyzeServiceMethodAdaptive: (candidate, options = {}) => analyzeJavaServiceMethodAdaptive(project, routes, candidate, options)
+    analyzeServiceMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "service", options),
+    analyzeRepositoryMethod: (candidate, options = {}) => analyzeJavaMethodModel(project, routes, candidate, "repository", options),
+    analyzeRepositoryMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "repository", options)
   };
 }
 
@@ -330,13 +373,23 @@ function analyzeJavaServiceMethodAdaptive(
   candidate: JavaServiceMethodCandidate,
   options: AdaptiveJavaAnalysisOptions
 ): AdaptiveJavaAnalysisResult {
+  return analyzeJavaMethodAdaptive(project, routes, candidate, "service", options);
+}
+
+function analyzeJavaMethodAdaptive(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  candidate: JavaServiceMethodCandidate,
+  entryKind: "service" | "repository",
+  options: AdaptiveJavaAnalysisOptions
+): AdaptiveJavaAnalysisResult {
   let depth = positiveInteger(options.initialDepth, DEFAULT_MAX_DEPTH);
   let edges = positiveInteger(options.initialEdges, DEFAULT_MAX_TOTAL_EDGES);
   const maxDepth = positiveInteger(options.maxDepth, Math.max(depth, 16));
   const maxEdges = positiveInteger(options.maxEdges, Math.max(edges, 5000));
   const maxRounds = positiveInteger(options.maxRounds, 4);
   const rounds: AdaptiveJavaAnalysisResult["rounds"] = [];
-  let report = analyzeJavaServiceMethodModel(project, routes, candidate, { maxDepth: depth, maxEdges: edges });
+  let report = analyzeJavaMethodModel(project, routes, candidate, entryKind, { maxDepth: depth, maxEdges: edges });
   for (let round = 1; round <= maxRounds; round += 1) {
     const truncation = report.callGraph.truncation;
     const complete = !truncation.edgeCapHit && !truncation.depthCapHit && truncation.unexpandedBoundaryNodes.length === 0;
@@ -348,9 +401,47 @@ function analyzeJavaServiceMethodAdaptive(
     if (nextDepth === depth && nextEdges === edges) break;
     depth = nextDepth;
     edges = nextEdges;
-    report = analyzeJavaServiceMethodModel(project, routes, candidate, { maxDepth: depth, maxEdges: edges });
+    report = analyzeJavaMethodModel(project, routes, candidate, entryKind, { maxDepth: depth, maxEdges: edges });
   }
   return { report, status: "budget-exhausted", rounds };
+}
+
+function extractRepositoryMethods(project: JavaProjectModel): JavaRepositoryMethodCandidate[] {
+  return project.types
+    .filter(isPersistenceType)
+    .flatMap((type) => type.methods
+      .filter((method) => method.hasBody || (type.kind === "interface" && !hasConcreteImplementation(project, type, method)))
+      .map((method): JavaRepositoryMethodCandidate => ({
+        id: methodId(type, method), className: type.name, qualifiedClassName: type.qualifiedName,
+        methodName: method.name, signature: method.signature, returnType: method.returnType,
+        parameterTypes: method.params.map((param) => param.typeName), annotations: [...type.annotations, ...method.annotations],
+        file: method.file, line: method.line, role: persistenceRole(type),
+        implementation: method.hasBody ? (type.kind === "interface" ? "default" : "concrete") : hasSqlSource(project, type, method) ? "sql-source" : "generated-boundary"
+      })))
+    .sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.id.localeCompare(b.id));
+}
+
+function hasConcreteImplementation(project: JavaProjectModel, type: JavaTypeInfo, method: JavaMethodInfo): boolean {
+  const implementations = project.implementationsByInterface.get(type.name) ?? [];
+  return implementations.some((implementation) => implementation.methods.some((candidate) =>
+    candidate.hasBody && candidate.name === method.name && candidate.params.length === method.params.length
+  ));
+}
+
+function isPersistenceType(type: JavaTypeInfo): boolean {
+  const location = `${type.packageName ?? ""}.${type.name}`;
+  const mapperPackage = /(?:^|\.)mapper(?:\.|$)/i.test(location);
+  const repositoryName = /(?:Repository|Dao)(?:Impl)?$/i.test(type.name);
+  const mapperName = /Mapper$/.test(type.name);
+  const persistenceBase = [...type.extends, ...type.implements].some((name) => /(?:BaseMapper|MapperX|Repository|Dao)/i.test(name));
+  const repositoryAnnotation = type.annotations.some((annotation) => /@Repository\b/.test(annotation));
+  return repositoryName || repositoryAnnotation || persistenceBase || (mapperPackage && mapperName);
+}
+
+function persistenceRole(type: JavaTypeInfo): JavaRepositoryMethodCandidate["role"] {
+  if (/Dao(?:Impl)?$/i.test(type.name) || /(?:^|\.)dao(?:\.|$)/i.test(type.packageName ?? "")) return "dao";
+  if (/Mapper$/.test(type.name) || /(?:^|\.)mapper(?:\.|$)/i.test(type.packageName ?? "")) return "mapper";
+  return "repository";
 }
 
 function extractServiceMethods(project: JavaProjectModel): JavaServiceMethodCandidate[] {
@@ -379,7 +470,17 @@ function analyzeJavaServiceMethodModel(
   candidate: JavaServiceMethodCandidate,
   options: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">
 ): JavaEndpointAnalysisReport {
-  const endpoint = normalizeRoutePath(`/__service/${candidate.qualifiedClassName}/${candidate.methodName}/${candidate.line}`);
+  return analyzeJavaMethodModel(project, routes, candidate, "service", options);
+}
+
+function analyzeJavaMethodModel(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  candidate: JavaServiceMethodCandidate,
+  entryKind: "service" | "repository",
+  options: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">
+): JavaEndpointAnalysisReport {
+  const endpoint = normalizeRoutePath(`/__${entryKind}/${candidate.qualifiedClassName}/${candidate.methodName}/${candidate.line}`);
   const selectedRoute: JavaEndpointRouteCandidate = {
     method: "ALL",
     path: endpoint,
@@ -391,7 +492,7 @@ function analyzeJavaServiceMethodModel(
     framework: "Spring",
     confidence: "high",
     annotations: candidate.annotations,
-    entryKind: "service"
+    entryKind
   };
   return analyzeJavaEndpointModel(project, routes, { endpoint, method: "ALL", ...options }, selectedRoute);
 }
@@ -442,6 +543,7 @@ function analyzeJavaEndpointModel(
     matches,
     selectedRoute,
     callGraph: graph,
+    sqlSources: graph.sqlSources,
     requestModel,
     riskSignals,
     goldenCasePlan,
@@ -467,6 +569,7 @@ export async function writeJavaEndpointAnalysisReport(
 }
 
 export function renderJavaEndpointAnalysisReport(report: JavaEndpointAnalysisReport): string {
+  const sqlSources = report.sqlSources ?? [];
   const lines = [
     `# Java Endpoint Analysis: ${report.endpoint.method} ${report.endpoint.path}`,
     "",
@@ -500,6 +603,12 @@ export function renderJavaEndpointAnalysisReport(report: JavaEndpointAnalysisRep
     ...(report.callGraph.truncation.unexpandedBoundaryNodes.length > 0
       ? [`- Unexpanded boundary nodes: ${report.callGraph.truncation.unexpandedBoundaryNodes.slice(0, 25).join(", ")}`]
       : []),
+    "",
+    "## SQL Sources",
+    "",
+    ...(sqlSources.length > 0
+      ? sqlSources.map((source) => `- ${source.source} ${source.operation}${source.dynamic ? " dynamic" : ""}: ${source.ownerQualifiedClassName}.${source.ownerMethodName} (${source.file}:${source.line})`)
+      : ["- none"]),
     "",
     "## Risks",
     "",
@@ -546,6 +655,17 @@ async function collectJavaProject(root: string, includeTests: boolean): Promise<
     const content = stat.size <= 2 * 1024 * 1024 ? await fs.readFile(absolutePath, "utf8") : "";
     files.push({ absolutePath, relativePath, content, isTest });
   }
+  const xmlFiles: JavaSourceFile[] = [];
+  for (const absolutePath of await walkXmlFiles(root)) {
+    const relativePath = toPosixPath(path.relative(root, absolutePath));
+    const isTest = /(^|\/)src\/test\//.test(relativePath) || /Test\.(xml|java)$/.test(relativePath);
+    if (isTest && !includeTests) {
+      continue;
+    }
+    const stat = await fs.stat(absolutePath);
+    const content = stat.size <= 2 * 1024 * 1024 ? await fs.readFile(absolutePath, "utf8") : "";
+    xmlFiles.push({ absolutePath, relativePath, content, isTest });
+  }
 
   const types = files.flatMap((file) => parseJavaTypes(file));
   const typesByName = new Map<string, JavaTypeInfo[]>();
@@ -558,7 +678,23 @@ async function collectJavaProject(root: string, includeTests: boolean): Promise<
       pushMap(implementationsByInterface, implemented, type);
     }
   }
-  return { root, files, types, typesByName, implementationsByInterface };
+  const project: JavaProjectModel = {
+    root,
+    files,
+    xmlFiles,
+    types,
+    typesByName,
+    implementationsByInterface,
+    sqlSources: [],
+    sqlSourcesByMethodKey: new Map()
+  };
+  const sqlSources = collectProjectSqlSources(project);
+  const sqlSourcesByMethodKey = new Map<string, JavaSqlSourceInfo[]>();
+  for (const source of sqlSources) {
+    pushMap(sqlSourcesByMethodKey, sqlMethodKey(source.ownerQualifiedClassName, source.ownerMethodName), source);
+    pushMap(sqlSourcesByMethodKey, sqlMethodKey(source.ownerClassName, source.ownerMethodName), source);
+  }
+  return { ...project, sqlSources, sqlSourcesByMethodKey };
 }
 
 async function walkJavaFiles(root: string): Promise<string[]> {
@@ -735,6 +871,26 @@ function parseMethodAt(
   };
 }
 
+async function walkXmlFiles(root: string): Promise<string[]> {
+  const files: string[] = [];
+  async function visit(dir: string): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (JAVA_SKIP_DIRS.has(entry.name)) {
+        continue;
+      }
+      const absolutePath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await visit(absolutePath);
+      } else if (entry.isFile() && entry.name.endsWith(".xml")) {
+        files.push(absolutePath);
+      }
+    }
+  }
+  await visit(root);
+  return files.sort();
+}
+
 function extractSpringRoutes(project: JavaProjectModel): JavaEndpointRouteCandidate[] {
   const routes: JavaEndpointRouteCandidate[] = [];
   for (const type of project.types) {
@@ -840,6 +996,278 @@ function evaluateJavaStringExpression(expression: string, constants: Map<string,
   return sawValue ? resolved : undefined;
 }
 
+function collectProjectSqlSources(project: JavaProjectModel): JavaSqlSourceInfo[] {
+  return uniqueSqlSources([
+    ...collectAnnotationSqlSources(project),
+    ...collectMapperXmlSqlSources(project)
+  ]).sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.id.localeCompare(b.id));
+}
+
+function collectAnnotationSqlSources(project: JavaProjectModel): JavaSqlSourceInfo[] {
+  const sources: JavaSqlSourceInfo[] = [];
+  for (const type of project.types) {
+    for (const method of type.methods) {
+      for (const annotation of method.annotations) {
+        const source = sqlSourceFromAnnotation(project, type, method, annotation);
+        if (source) {
+          sources.push(source);
+        }
+      }
+    }
+  }
+  return sources;
+}
+
+function sqlSourceFromAnnotation(
+  project: JavaProjectModel,
+  type: JavaTypeInfo,
+  method: JavaMethodInfo,
+  annotation: string
+): JavaSqlSourceInfo | undefined {
+  const match = annotation.match(/@(Select|Insert|Update|Delete)(Provider)?\b/);
+  if (!match) {
+    return undefined;
+  }
+  const verb = match[1].toLowerCase();
+  const operation = sqlOperationForVerb(verb, annotation);
+  const ownerId = methodId(type, method);
+  if (match[2]) {
+    const provider = resolveSqlProvider(project, annotation);
+    const providerBody = provider?.method?.body ?? annotation;
+    const statement = normalizeSqlText(providerBody);
+    return {
+      id: `provider:${type.qualifiedName}.${method.name}:${provider?.type?.qualifiedName ?? "unknown"}.${provider?.method?.name ?? "unknown"}`,
+      ownerId,
+      ownerClassName: type.name,
+      ownerQualifiedClassName: type.qualifiedName,
+      ownerMethodName: method.name,
+      source: "provider",
+      operation,
+      dynamic: true,
+      transactional: hasTransactionBoundary(type, method),
+      contextSignals: contextSignalsForText(`${type.annotations.join(" ")} ${method.annotations.join(" ")} ${providerBody}`),
+      tables: extractSqlTables(statement),
+      file: provider?.method?.file ?? method.file,
+      line: provider?.method?.line ?? method.line,
+      statementId: provider?.method?.name,
+      statement
+    };
+  }
+  const statement = evaluateSqlAnnotationText(annotation, type.constants);
+  if (!statement) {
+    return undefined;
+  }
+  return {
+    id: `annotation:${type.qualifiedName}.${method.name}:${method.line}`,
+    ownerId,
+    ownerClassName: type.name,
+    ownerQualifiedClassName: type.qualifiedName,
+    ownerMethodName: method.name,
+    source: "annotation",
+    operation,
+    dynamic: isDynamicSql(statement),
+    transactional: hasTransactionBoundary(type, method),
+    contextSignals: contextSignalsForText(`${type.annotations.join(" ")} ${method.annotations.join(" ")} ${statement}`),
+    tables: extractSqlTables(statement),
+    file: method.file,
+    line: method.line,
+    statementId: method.name,
+    statement: normalizeSqlText(statement)
+  };
+}
+
+function collectMapperXmlSqlSources(project: JavaProjectModel): JavaSqlSourceInfo[] {
+  const sources: JavaSqlSourceInfo[] = [];
+  for (const file of project.xmlFiles) {
+    const namespace = file.content.match(/<mapper\b[^>]*\bnamespace\s*=\s*["']([^"']+)["']/i)?.[1];
+    if (!namespace) {
+      continue;
+    }
+    const ownerType = project.typesByName.get(namespace)?.[0] ?? project.typesByName.get(simpleTypeName(namespace))?.[0];
+    for (const match of file.content.matchAll(/<(select|insert|update|delete)\b([^>]*)>([\s\S]*?)<\/\1>/gi)) {
+      const tag = match[1].toLowerCase();
+      const attrs = match[2] ?? "";
+      const statementId = attrs.match(/\bid\s*=\s*["']([^"']+)["']/i)?.[1];
+      if (!statementId) {
+        continue;
+      }
+      const rawStatement = match[3] ?? "";
+      const statement = normalizeSqlText(rawStatement);
+      const ownerMethod = ownerType?.methods.find((method) => method.name === statementId);
+      const line = lineNumberAt(file.content, match.index ?? 0);
+      const ownerClassName = ownerType?.name ?? simpleTypeName(namespace);
+      const ownerQualifiedClassName = ownerType?.qualifiedName ?? namespace;
+      sources.push({
+        id: `mapper-xml:${ownerQualifiedClassName}.${statementId}:${file.relativePath}:${line}`,
+        ownerId: ownerType && ownerMethod ? methodId(ownerType, ownerMethod) : `${ownerQualifiedClassName}.${statementId}:xml`,
+        ownerClassName,
+        ownerQualifiedClassName,
+        ownerMethodName: statementId,
+        source: "mapper-xml",
+        operation: sqlOperationForVerb(tag, rawStatement),
+        dynamic: isDynamicSql(rawStatement),
+        transactional: false,
+        contextSignals: contextSignalsForText(rawStatement),
+        tables: extractSqlTables(statement),
+        file: file.relativePath,
+        line,
+        statementId,
+        statement
+      });
+    }
+  }
+  return sources;
+}
+
+function resolveSqlProvider(
+  project: JavaProjectModel,
+  annotation: string
+): { type?: JavaTypeInfo; method?: JavaMethodInfo } | undefined {
+  const args = annotationArgs(annotation);
+  const typeName = args.match(/\b(?:type|value)\s*=\s*([A-Za-z_][A-Za-z0-9_.$]*)\.class/)?.[1]
+    ?? args.match(/([A-Za-z_][A-Za-z0-9_.$]*)\.class/)?.[1];
+  const methodName = args.match(/\bmethod\s*=\s*["']([^"']+)["']/)?.[1];
+  const type = typeName ? (project.typesByName.get(typeName)?.[0] ?? project.typesByName.get(simpleTypeName(typeName))?.[0]) : undefined;
+  const method = methodName
+    ? type?.methods.find((candidate) => candidate.name === methodName)
+    : type?.methods.find((candidate) => /sql|select|insert|update|delete|build/i.test(candidate.name));
+  return type || method ? { type, method } : undefined;
+}
+
+function evaluateSqlAnnotationText(annotation: string, constants: Map<string, string>): string | undefined {
+  const args = annotationArgs(annotation);
+  const literals = [...args.matchAll(/"((?:\\"|[^"])*)"|'((?:\\'|[^'])*)'/g)]
+    .map((match) => (match[1] ?? match[2] ?? "").replace(/\\(["'])/g, "$1"));
+  if (literals.length > 0) {
+    return normalizeSqlText(literals.join(" "));
+  }
+  const valueExpression = args.replace(/^\s*value\s*=\s*/, "");
+  const evaluated = evaluateJavaStringExpression(valueExpression, constants);
+  return evaluated ? normalizeSqlText(evaluated) : undefined;
+}
+
+function hasSqlSource(project: JavaProjectModel, type: JavaTypeInfo, method: JavaMethodInfo): boolean {
+  return explicitSqlSourcesForTypeMethod(project, type, method.name).length > 0
+    || Boolean(baseMapperOperation(type, method.name));
+}
+
+function baseMapperSqlSource(
+  project: JavaProjectModel,
+  type: JavaTypeInfo,
+  methodName: string,
+  file: string,
+  line: number,
+  current: GraphTraceState,
+  contextSignals: string[]
+): JavaSqlSourceInfo | undefined {
+  const operation = baseMapperOperation(type, methodName);
+  if (!operation) {
+    return undefined;
+  }
+  const table = tableHintForMapper(type);
+  return {
+    id: `base-mapper:${type.qualifiedName}.${methodName}`,
+    ownerId: `${type.qualifiedName}.${methodName}:base-mapper`,
+    ownerClassName: type.name,
+    ownerQualifiedClassName: type.qualifiedName,
+    ownerMethodName: methodName,
+    source: "base-mapper",
+    operation,
+    dynamic: false,
+    transactional: current.transactional,
+    contextSignals: mergeValues(contextSignalsForText(`${type.annotations.join(" ")} ${methodName}`), contextSignals),
+    tables: table ? [table] : [],
+    file,
+    line,
+    statementId: methodName,
+    statement: `BaseMapper.${methodName}(...)`
+  };
+}
+
+function baseMapperOperation(type: JavaTypeInfo, methodName: string): JavaSqlOperation | undefined {
+  if (!isBaseMapperType(type)) {
+    return undefined;
+  }
+  if (/^(selectById|selectBatchIds|selectOne|selectList|selectMaps|selectObjs|selectPage|selectCount|exists|getById|list|listByIds|page|count)$/i.test(methodName)) return "read";
+  if (/^(insert|save|saveBatch|saveOrUpdate|update|updateById|upsert)$/i.test(methodName)) return "write";
+  if (/^(delete|deleteById|deleteBatchIds|deleteByMap|remove|removeById|removeBatchByIds)$/i.test(methodName)) return "delete";
+  return undefined;
+}
+
+function isBaseMapperType(type: JavaTypeInfo): boolean {
+  return [...type.extends, ...type.implements].some((name) => /^(BaseMapper|MapperX|CrudRepository|JpaRepository)$/i.test(simpleTypeName(name)));
+}
+
+function tableHintForMapper(type: JavaTypeInfo): string | undefined {
+  const value = type.name.replace(/(?:Mapper|Repository|Dao)(?:Impl)?$/i, "");
+  return value && value !== type.name ? value : undefined;
+}
+
+function sqlOperationForVerb(verb: string, statement: string): JavaSqlOperation {
+  if (/\b(create|alter|drop|truncate)\s+(table|index|view)\b/i.test(statement)) return "ddl";
+  if (/^select$/i.test(verb)) return "read";
+  if (/^(insert|update)$/i.test(verb)) return "write";
+  if (/^delete$/i.test(verb)) return "delete";
+  return "unknown";
+}
+
+function isDynamicSql(value: string): boolean {
+  return /<\s*(script|if|choose|when|otherwise|foreach|trim|where|set|bind)\b|\$\{|StringBuilder|\bappend\s*\(|\+\s*["']/.test(value);
+}
+
+function contextSignalsForText(value: string): string[] {
+  return [
+    /tenant|tenant_id|TenantContext|TenantLine/i.test(value) ? "tenant" : undefined,
+    /datasource|data_source|DynamicDataSource|@DS\b|schema|database/i.test(value) ? "datasource" : undefined,
+    /@Transactional|TransactionTemplate|transactionManager|commit|rollback/i.test(value) ? "transaction" : undefined
+  ].filter((item): item is string => Boolean(item)).sort();
+}
+
+function hasTransactionBoundary(type: JavaTypeInfo, method: JavaMethodInfo): boolean {
+  return /@Transactional|TransactionTemplate|transactionManager/i.test(`${type.annotations.join(" ")} ${method.annotations.join(" ")} ${method.body}`);
+}
+
+function normalizeSqlText(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[|\]\]>/g, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractSqlTables(statement: string): string[] {
+  const tables: string[] = [];
+  for (const match of statement.matchAll(/\b(?:from|join|into|update|table)\s+([`"'\[]?[$#{}A-Za-z0-9_.-]+[`"'\]]?)/gi)) {
+    const table = match[1].replace(/^[`"'\[]|[`"'\]]$/g, "");
+    if (table && !/[()]/.test(table)) {
+      tables.push(table);
+    }
+  }
+  return [...new Set(tables)].sort();
+}
+
+function truncateSqlEvidence(value: string): string {
+  const clean = normalizeSqlText(value);
+  return clean.length > 160 ? `${clean.slice(0, 157)}...` : clean;
+}
+
+function lineNumberAt(content: string, offset: number): number {
+  return content.slice(0, offset).split(/\r?\n/).length;
+}
+
+function sqlMethodKey(owner: string, methodName: string): string {
+  return `${owner}#${methodName}`;
+}
+
+function uniqueSqlSources(values: JavaSqlSourceInfo[]): JavaSqlSourceInfo[] {
+  return values.filter((value, index, all) => all.findIndex((other) => other.id === value.id) === index);
+}
+
+function mergeValues(...groups: Array<string[] | undefined>): string[] {
+  return [...new Set(groups.flatMap((group) => group ?? []))].sort();
+}
+
 function findRouteMatches(
   routes: JavaEndpointRouteCandidate[],
   method: JavaEndpointHttpMethod,
@@ -869,7 +1297,7 @@ function buildCallGraph(
   route: JavaEndpointRouteCandidate,
   maxDepth: number,
   maxEdges: number
-): JavaEndpointAnalysisReport["callGraph"] {
+): JavaCallGraphBuildResult {
   const routeType = findType(project, route.className, route.file);
   const routeMethod = routeType?.methods.find((method) => method.name === route.methodName && method.line === route.line);
   if (!routeType || !routeMethod) {
@@ -881,14 +1309,27 @@ function buildCallGraph(
   const edgeSourceDepths: number[] = [];
   const queue: GraphTraceState[] = [];
   const unexpandedBoundaryNodes: string[] = [];
+  const sqlSources = new Map<string, JavaSqlSourceInfo>();
   let edgeCapHadRemainingWork = false;
   const rootNode = nodeFor(routeType, routeMethod, route);
   nodes.set(rootNode.id, rootNode);
   nodeDepths.set(rootNode.id, 0);
-  queue.push({ node: rootNode, type: routeType, method: routeMethod, depth: 0 });
+  queue.push({
+    node: rootNode,
+    type: routeType,
+    method: routeMethod,
+    depth: 0,
+    transactional: hasTransactionBoundary(routeType, routeMethod),
+    contextSignals: contextSignalsForText(`${routeType.annotations.join(" ")} ${routeMethod.annotations.join(" ")} ${routeMethod.body}`)
+  });
 
   while (queue.length > 0 && edges.length < maxEdges) {
     const current = queue.shift() as GraphTraceState;
+    const methodContextSignals = mergeValues(current.contextSignals, contextSignalsForText(`${current.type.annotations.join(" ")} ${current.method.annotations.join(" ")} ${current.method.body}`));
+    if (!addSqlSourceEdges(project, current, methodContextSignals, nodes, edges, edgeSourceDepths, sqlSources, maxEdges)) {
+      edgeCapHadRemainingWork = true;
+      break;
+    }
     if (current.depth >= maxDepth) {
       if (current.method.hasBody) {
         unexpandedBoundaryNodes.push(current.node.id);
@@ -907,6 +1348,43 @@ function buildCallGraph(
       const resolved = resolveCallTargets(project, current.type, call);
       const targets = resolved.targets;
       if (targets.length === 0) {
+        const externalSqlSources = sqlSourcesForExternalCall(project, current, call, methodContextSignals);
+        if (externalSqlSources.length > 0) {
+          for (const source of externalSqlSources) {
+            if (edges.length >= maxEdges) {
+              edgeCapHadRemainingWork = true;
+              break;
+            }
+            sqlSources.set(source.id, source);
+            const sqlNode = sqlNodeFor(source);
+            nodes.set(sqlNode.id, sqlNode);
+            edges.push({
+              from: current.node.id,
+              to: sqlNode.id,
+              unresolvedTarget: call.receiver ? `${call.receiver}.${call.method}` : call.method,
+              call: {
+                receiver: call.receiver,
+                method: call.method,
+                expression: call.expression,
+                file: current.method.file,
+                line: call.line,
+                argumentCount: call.argumentCount,
+                argumentTypes: call.argumentTypes
+              },
+              resolution: "static-or-external",
+              resolutionCandidates: resolved.candidates
+            });
+            edgeSourceDepths.push(current.depth);
+          }
+          if (edgeCapHadRemainingWork) {
+            break;
+          }
+          if (edges.length >= maxEdges && (callIndex < calls.length - 1 || queue.length > 0)) {
+            edgeCapHadRemainingWork = true;
+            break;
+          }
+          continue;
+        }
         const externalNode = call.receiver && resolved.resolution === "external" ? externalNodeFor(current.method, call) : undefined;
         if (externalNode) nodes.set(externalNode.id, externalNode);
         edges.push({
@@ -960,7 +1438,14 @@ function buildCallGraph(
         });
         edgeSourceDepths.push(current.depth);
         if (!alreadyVisited) {
-          queue.push({ node: targetNode, type: target.type, method: target.method, depth: current.depth + 1 });
+          queue.push({
+            node: targetNode,
+            type: target.type,
+            method: target.method,
+            depth: current.depth + 1,
+            transactional: current.transactional || hasTransactionBoundary(target.type, target.method),
+            contextSignals: mergeValues(methodContextSignals, contextSignalsForText(`${target.type.annotations.join(" ")} ${target.method.annotations.join(" ")} ${target.method.body}`))
+          });
         }
         if (edges.length >= maxEdges && (targetIndex < targets.length - 1 || callIndex < calls.length - 1 || queue.length > 0)) {
           edgeCapHadRemainingWork = true;
@@ -983,7 +1468,115 @@ function buildCallGraph(
       edgeSourceDepths,
       unexpandedBoundaryNodes,
       edgeCapHadRemainingWork || (queue.length > 0 && edges.length >= maxEdges)
-    )
+    ),
+    sqlSources: [...sqlSources.values()].sort((a, b) => a.id.localeCompare(b.id))
+  };
+}
+
+function addSqlSourceEdges(
+  project: JavaProjectModel,
+  current: GraphTraceState,
+  contextSignals: string[],
+  nodes: Map<string, JavaEndpointCallGraphNode>,
+  edges: JavaEndpointCallGraphEdge[],
+  edgeSourceDepths: number[],
+  sqlSources: Map<string, JavaSqlSourceInfo>,
+  maxEdges: number
+): boolean {
+  for (const source of sqlSourcesForMethod(project, current, contextSignals)) {
+    if (edges.length >= maxEdges) {
+      return false;
+    }
+    sqlSources.set(source.id, source);
+    const sqlNode = sqlNodeFor(source);
+    nodes.set(sqlNode.id, sqlNode);
+    edges.push({
+      from: current.node.id,
+      to: sqlNode.id,
+      call: {
+        method: source.ownerMethodName,
+        expression: `${source.source}:${source.ownerQualifiedClassName}.${source.ownerMethodName}`,
+        file: current.method.file,
+        line: current.method.line
+      },
+      resolution: "static-or-external"
+    });
+    edgeSourceDepths.push(current.depth);
+  }
+  return true;
+}
+
+function sqlSourcesForMethod(project: JavaProjectModel, current: GraphTraceState, contextSignals: string[]): JavaSqlSourceInfo[] {
+  const explicit = explicitSqlSourcesForTypeMethod(project, current.type, current.method.name)
+    .map((source) => withRuntimeSqlContext(source, current, contextSignals));
+  if (explicit.length > 0) {
+    return uniqueSqlSources(explicit);
+  }
+  const inherited = baseMapperSqlSource(project, current.type, current.method.name, current.method.file, current.method.line, current, contextSignals);
+  return inherited ? [inherited] : [];
+}
+
+function sqlSourcesForExternalCall(
+  project: JavaProjectModel,
+  current: GraphTraceState,
+  call: { receiver?: string; method: string; line: number },
+  contextSignals: string[]
+): JavaSqlSourceInfo[] {
+  if (!call.receiver || call.receiver === "this" || call.receiver === "super" || call.receiver === "$lambda") {
+    return [];
+  }
+  const field = [current.type, ...parentTypes(project, current.type)].flatMap((type) => type.fields).find((candidate) => candidate.name === call.receiver);
+  if (!field) {
+    return [];
+  }
+  const sources: JavaSqlSourceInfo[] = [];
+  for (const candidateType of resolveTypesForField(project, field.typeName)) {
+    sources.push(...explicitSqlSourcesForTypeMethod(project, candidateType, call.method)
+      .map((source) => withRuntimeSqlContext(source, current, contextSignals)));
+    const inherited = baseMapperSqlSource(project, candidateType, call.method, current.method.file, call.line, current, contextSignals);
+    if (inherited) {
+      sources.push(inherited);
+    }
+  }
+  return uniqueSqlSources(sources);
+}
+
+function explicitSqlSourcesForTypeMethod(project: JavaProjectModel, type: JavaTypeInfo, methodName: string): JavaSqlSourceInfo[] {
+  return uniqueSqlSources([
+    ...(project.sqlSourcesByMethodKey.get(sqlMethodKey(type.qualifiedName, methodName)) ?? []),
+    ...(project.sqlSourcesByMethodKey.get(sqlMethodKey(type.name, methodName)) ?? [])
+  ]);
+}
+
+function withRuntimeSqlContext(source: JavaSqlSourceInfo, current: GraphTraceState, contextSignals: string[]): JavaSqlSourceInfo {
+  return {
+    ...source,
+    transactional: source.transactional || current.transactional,
+    contextSignals: mergeValues(source.contextSignals, contextSignals)
+  };
+}
+
+function sqlNodeFor(source: JavaSqlSourceInfo): JavaEndpointCallGraphNode {
+  const role = /Mapper$/i.test(source.ownerClassName) ? "mapper" : "repository";
+  const detail = [
+    "sql-source",
+    `source=${source.source}`,
+    `operation=${source.operation}`,
+    `dynamic=${source.dynamic}`,
+    `transactional=${source.transactional}`,
+    source.contextSignals.length ? `contexts=${source.contextSignals.join(",")}` : undefined,
+    source.tables.length ? `tables=${source.tables.join(",")}` : undefined,
+    source.statement ? `statement=${truncateSqlEvidence(source.statement)}` : undefined
+  ].filter((part): part is string => Boolean(part)).join("; ");
+  return {
+    id: `sql:${source.id}`,
+    kind: role,
+    role,
+    className: source.ownerClassName,
+    methodName: source.ownerMethodName,
+    file: source.file,
+    line: source.line,
+    signature: detail
   };
 }
 
@@ -1004,7 +1597,7 @@ function externalNodeFor(
   };
 }
 
-function emptyCallGraph(maxDepth: number, maxEdges: number): JavaEndpointAnalysisReport["callGraph"] {
+function emptyCallGraph(maxDepth: number, maxEdges: number): JavaCallGraphBuildResult {
   return {
     nodes: [],
     edges: [],
@@ -1017,7 +1610,8 @@ function emptyCallGraph(maxDepth: number, maxEdges: number): JavaEndpointAnalysi
       nodeDepthCounts: {},
       edgeSourceDepthCounts: {},
       unexpandedBoundaryNodes: []
-    }
+    },
+    sqlSources: []
   };
 }
 
@@ -2003,6 +2597,9 @@ function collectLeadingAnnotations(lines: string[], index: number): string[] {
       annotations.unshift(trimmed);
       cursor -= 1;
       continue;
+    }
+    if (/;\s*$/.test(trimmed) || /\)\s*(?:\{|;)\s*$/.test(trimmed) || /^(public|protected|private|class|interface|enum)\b/.test(trimmed)) {
+      break;
     }
     const block = collectMultilineAnnotationBlock(lines, cursor);
     if (!block) {

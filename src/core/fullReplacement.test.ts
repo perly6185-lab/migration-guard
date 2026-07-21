@@ -38,7 +38,7 @@ function javaReport(overrides: Partial<JavaEndpointAnalysisReport["callGraph"]["
       ],
       edges: [{ from: "Controller.refreshSync", to: "Service.sync", call: { receiver: "service", method: "sync", expression: "service.sync()", file: "Controller.java", line: 11 }, resolution: "field-injection" }],
       truncation: { maxDepth: 5, maxTotalEdges: 100, edgeCapHit: false, depthCapHit: false, maxObservedDepth: 1, nodeDepthCounts: { "0": 1, "1": 1 }, edgeSourceDepthCounts: { "0": 1 }, unexpandedBoundaryNodes: [], ...overrides }
-    }, riskSignals: [], recommendedNextActions: [],
+    }, sqlSources: [], riskSignals: [], recommendedNextActions: [],
     goldenCasePlan: {
       version: 1, model: "sync-command", endpoint: { method: "POST", path: "/refreshSync" },
       cases: [{ id: "manual-refresh-success", title: "manual", requestFocus: [], expectedComparison: ["status"], reason: "fixture", status: "draft" }],

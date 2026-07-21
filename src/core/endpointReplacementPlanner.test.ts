@@ -262,6 +262,7 @@ function endpointReport(
       })),
       truncation: { maxDepth: 12, maxTotalEdges: 1000, edgeCapHit: false, depthCapHit: false, maxObservedDepth: nodes.length - 1, nodeDepthCounts: {}, edgeSourceDepthCounts: {}, unexpandedBoundaryNodes: [] }
     },
+    sqlSources: [],
     riskSignals: [],
     recommendedNextActions: [],
     goldenCasePlan: {
