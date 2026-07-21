@@ -36,6 +36,17 @@ migration-guard full-replacement rp-readiness --evidence rp-evidence.json --appl
 migration-guard full-replacement endpoint-pilot --plan endpoint-replacement-plan.json --source-root ../java-service --target-root ../target-service --apply
 ```
 
+For repository-wide Controller assessment, build the Java project model once
+and evaluate every normalized route:
+
+```bash
+migration-guard java-endpoint assess-controllers --root ../java-service --max-depth 8 --max-edges 1200 --apply
+```
+
+The batch command is fail-closed and exits nonzero when any method is blocked.
+See [CONTROLLER_RUST_ASSESSMENT.md](CONTROLLER_RUST_ASSESSMENT.md) for the
+capability boundary and real zboss evidence.
+
 The driver protocol is `setup`, `start`, `health`, `seed`, `invoke`, optional
 `inject-fault`, `snapshot`, `collect`, `cleanup`, and `stop`. Scenario and fault
 identifiers are validated before command execution. Cleanup and stop run on both
