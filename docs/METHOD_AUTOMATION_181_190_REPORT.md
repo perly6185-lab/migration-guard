@@ -14,7 +14,7 @@ trust-tier policy and before/after quality evaluation.
 | --- | --- | --- |
 | MG-181 | Documentation and release-status alignment | completed |
 | MG-182 | Isolated real-repository pilot runner with three-case minimum | completed |
-| MG-183 | Beta, UI, desktop, package, golden and release gates | validation in progress; final release ledger pending |
+| MG-183 | Beta, UI, desktop, package, golden and release gates | completed |
 | MG-184 | Ranked checker-backed extraction candidates | completed |
 | MG-185 | Deterministic conflict-free name suggestions | completed |
 | MG-186 | AST kind/text/context anchors and safe relocation | completed |
@@ -62,6 +62,11 @@ quality decision and rolls back an applied extraction.
 - `npm run method:pilot`: 3/3 isolated real-repository cases passed; report
   `method-pilot-2026-07-21T01-29-20-738Z`, hash
   `c851a295bdf40558dbc3c0a5b96180bd92cc3438712d31db44e88503e0f18750`.
+- `npm run release:gate`: passed; release run
+  `release-2026-07-21T01-54-11-550Z-c5a3bb9f`. All three existing project
+  pilots executed and passed with zero differences; the release-bound method
+  pilot passed 3/3 with hash
+  `03bee7c55e48f41e18776a0ea6f07986a9f0186e2680ca380de7bbf85bcfeda6`.
 - `git diff --check`: passed; CRLF conversion warnings only.
 
 ## Real-Repository Pilot
@@ -78,8 +83,9 @@ needed a fixed repository-root environment, chain layers needed anchors captured
 before the first mutation, and anchor resolution needed target-file-aware tsconfig
 selection in monorepos.
 
-## Remaining Release Evidence
+## Release Decision
 
-MG-183 is complete only after the clean implementation commit exists and the
-release gate binds the method pilot with the existing three project pilots in one
-release ledger.
+MG-181 through MG-190 are complete. The clean-checkout release ledger binds the
+full automated test and packaging gates, all three existing project pilots and
+all three method-automation pilot categories. Publishing and tagging remain
+manual reviewed release actions and are outside this development scope.

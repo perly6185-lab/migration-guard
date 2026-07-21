@@ -53,7 +53,7 @@ candidate. Remote publication, Git tags and GitHub mutation remain manual.
 - MG-182 (P0, completed): execute repeatable real-repository pilots for a plain
   function, an async class method and a three-layer call chain, including drift,
   failed-check and behavior-change rollback cases.
-- MG-183 (P0, in progress): produce clean-checkout test, beta readiness, package,
+- MG-183 (P0, completed): produce clean-checkout test, beta readiness, package,
   desktop and release-gate evidence for the automation release.
 - MG-184 (P0, completed): rank bounded AST extraction
   candidates and write stable JSON/Markdown suggestions without mutation.
@@ -72,7 +72,9 @@ candidate. Remote publication, Git tags and GitHub mutation remain manual.
   mutation, benchmark, memory, bundle and API-compatibility commands; missing gates
   are `not-evaluated`, and missing or failed required gates roll back the apply.
 - Evidence: 248/248 tests passed; beta readiness 14/14; three real-repository
-  method pilots passed with report hash `c851a295bdf40558dbc3c0a5b96180bd92cc3438712d31db44e88503e0f18750`.
+  method pilots passed with report hash `c851a295bdf40558dbc3c0a5b96180bd92cc3438712d31db44e88503e0f18750`;
+  release gate `release-2026-07-21T01-54-11-550Z-c5a3bb9f` passed with all
+  three existing project pilots and all three method pilot categories.
 
 Detailed implementation and release evidence will be recorded in
 [METHOD_AUTOMATION_181_190_REPORT.md](METHOD_AUTOMATION_181_190_REPORT.md).
