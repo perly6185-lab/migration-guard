@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathExists, readJsonFile, toPosixPath } from "./files.js";
 import type { MigrationAction, MigrationActionPlan } from "../types.js";
+import { createJavaEndpointAnalyzer } from "./javaEndpointAnalysis.js";
 
 export type CrossLanguageId =
   | "typescript-node"
@@ -248,9 +249,23 @@ export async function createProjectInventory(root: string): Promise<CrossLanguag
     detectGo(files, manifests),
     detectRust(root, files, manifests)
   ])).filter((language) => language.sourceFiles > 0 || language.buildFiles.length > 0);
-  const routes = files.flatMap((file) => extractRoutesFromFile(file));
-  const unresolvedRoutes = files.flatMap((file) => extractUnresolvedRoutesFromFile(file));
   const primary = selectPrimaryLanguage(languageSummaries);
+  const legacyRoutes = files.flatMap((file) => extractRoutesFromFile(file));
+  let routes = legacyRoutes;
+  if (primary?.id === "java") {
+    const normalized = (await createJavaEndpointAnalyzer(root)).routes.map((route) => ({
+      method: route.method,
+      path: route.path,
+      file: route.file,
+      line: route.line,
+      framework: route.framework,
+      confidence: route.confidence,
+      handler: route.methodName
+    }));
+    const normalizedFiles = new Set(normalized.map((route) => route.file));
+    routes = [...normalized, ...legacyRoutes.filter((route) => !normalizedFiles.has(route.file))];
+  }
+  const unresolvedRoutes = files.flatMap((file) => extractUnresolvedRoutesFromFile(file));
 
   return {
     root,

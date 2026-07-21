@@ -9,6 +9,8 @@ import type {
   EffectRequirement,
   EndpointReplacementContracts,
   EndpointWorkloadKind,
+  FrameworkRequirement,
+  DataContractRequirement,
   StateRequirement
 } from "./endpointReplacementModel.js";
 
@@ -76,11 +78,15 @@ export function deriveReplacementContracts(graph: BehaviorGraph, report?: JavaEn
   const contexts = deriveContexts(graph, report);
   const states = deriveStates(graph);
   const effects = deriveEffects(graph);
+  const framework = deriveFramework(report, graph);
+  const data = deriveDataContracts(report, graph);
   return {
     contexts,
     states,
     effects,
-    contractHash: sha256(stableStringify({ contexts, states, effects }))
+    framework,
+    data,
+    contractHash: sha256(stableStringify({ contexts, states, effects, framework, data }))
   };
 }
 
@@ -107,18 +113,24 @@ function classifyBehavior(text: string, sourceKind: string): [BehaviorKind, stri
     ["transaction", /transaction|commit|unitofwork/i, "transaction boundary"],
     ["event-publish", /publish|emit|event|progress|notify/i, "event publication"],
     ["validation", /validat|assert|check|required|unique|permission/i, "validation or policy check"],
-    ["context-resolution", /tenant|security|auth|datasource|requestcontext|webframework|device|locale/i, "runtime context access"],
-    ["state-write", /insert|save|create|update|delete|remove|clear|write|upsert|persist|record|set|lock|acquire/i, "state mutation"],
+    ["context-resolution", /tenant|security|auth|datasource|requestcontext|webframework|device|locale|SecurityFramework/i, "runtime context access"],
+    ["external-call", /client|\bapi\.|gateway|adapter|storage|fileApi|http|rpc/i, "external service boundary"],
+    ["state-write", /insert|save|create|update|delete|remove|clear|write|upsert|persist|record|set|lock|acquire|cancel|submit|enable|disable|approve|reject|archive/i, "state mutation"],
     ["state-read", /select|query|find|get|list|load|read|count|exists/i, "state lookup"],
-    ["external-call", /client|rpc|gateway|adapter|repository|mapper|cache/i, "external or infrastructure boundary"],
+    ["external-call", /repository|mapper|cache|upload|download|file/i, "external or infrastructure boundary"],
     ["decision", /(^|\.)(is|has|should|can|allow|resolve)[A-Z_]/, "branch decision"],
-    ["calculation", /calculate|compute|derive|convert|assemble|build|map|normalize|fill|evaluate/i, "deterministic transformation"]
+    ["calculation", /calculate|compute|derive|convert|assemble|build|map|normalize|fill|evaluate|copyProperties|BeanUtils|CommonResult|success/i, "deterministic transformation"]
   ];
   for (const [kind, pattern, reason] of rules) if (pattern.test(text)) return [kind, [reason, `source kind ${sourceKind}`]];
   return ["unknown", [`unclassified source kind ${sourceKind}`]];
 }
 
 function inferWorkload(report: JavaEndpointAnalysisReport, nodes: BehaviorNode[]): EndpointWorkloadKind {
+  const entry = `${report.selectedRoute?.methodName ?? ""} ${report.selectedRoute?.signature ?? ""}`;
+  if (/upload|import/i.test(entry) && nodes.some((node) => node.kind === "external-call" || node.kind === "state-write")) return "upload";
+  if (/export|download|stream/i.test(entry)) return "export";
+  if (/start|submit|enqueue|dispatch|schedule/i.test(entry) && nodes.some((node) => node.kind === "event-publish" || node.kind === "state-write")) return "async-job";
+  if (/cancel|enable|disable|archive|restore/i.test(entry) && nodes.some((node) => node.sideEffecting)) return "idempotent-command";
   if (report.goldenCasePlan.model === "batch-command") return "batch";
   if (report.goldenCasePlan.model === "sync-command") return "sync";
   if (report.goldenCasePlan.model === "page-query") {
@@ -167,13 +179,69 @@ function deriveStates(graph: BehaviorGraph): StateRequirement[] {
 }
 
 function deriveEffects(graph: BehaviorGraph): EffectRequirement[] {
-  return graph.nodes.filter((node) => node.sideEffecting).map((node) => ({
+  return reachableNodes(graph).filter((node) => node.sideEffecting).map((node, sequence) => ({
     kind: effectKindFor(node),
     operation: node.evidence.symbol,
     sourceNode: node.id,
     orderingRequired: node.kind !== "external-call",
-    compensationRequired: node.kind === "state-write" || node.kind === "transaction"
-  })).sort((a, b) => a.sourceNode.localeCompare(b.sourceNode));
+    compensationRequired: node.kind === "state-write" || node.kind === "transaction",
+    sequence: sequence + 1,
+    failurePolicy: failurePolicyFor(node)
+  }));
+}
+
+function reachableNodes(graph: BehaviorGraph): BehaviorNode[] {
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const entry = graph.nodes.find((node) => node.kind === "entrypoint");
+  if (!entry) return graph.nodes;
+  const result: BehaviorNode[] = [];
+  const queue = [entry.id];
+  const visited = new Set<string>();
+  while (queue.length) {
+    const id = queue.shift() as string;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const node = byId.get(id);
+    if (node) result.push(node);
+    queue.push(...graph.edges.filter((edge) => edge.from === id && edge.to).map((edge) => edge.to as string).sort());
+  }
+  result.push(...graph.nodes.filter((node) => !visited.has(node.id)));
+  return result;
+}
+
+function failurePolicyFor(node: BehaviorNode): EffectRequirement["failurePolicy"] {
+  if (node.kind === "compensation") return "compensate";
+  if (/retry/i.test(node.evidence.symbol)) return "retry";
+  if (/audit|notify/i.test(node.evidence.symbol)) return "ignore";
+  return node.confidence === "low" ? "unknown" : "fail";
+}
+
+function deriveFramework(report: JavaEndpointAnalysisReport | undefined, graph: BehaviorGraph): FrameworkRequirement[] {
+  if (!report?.selectedRoute) return [];
+  const annotations = report.selectedRoute.annotations ?? [];
+  const signature = report.selectedRoute.signature;
+  const values: FrameworkRequirement[] = [];
+  const add = (kind: FrameworkRequirement["kind"], evidence: string) => values.push({ kind, evidence, required: true });
+  if (annotations.some((item) => /@Valid|@Validated/.test(item)) || /@Valid\b/.test(signature)) add("validation", "Jakarta/Spring validation");
+  if (annotations.some((item) => /PreAuthorize|Secured|RolesAllowed|PermitAll/.test(item))) add("authorization", "method authorization annotation");
+  if (annotations.some((item) => /OperationLog|Audit/.test(item))) add("audit", "operation audit annotation");
+  if (annotations.some((item) => /Transactional/.test(item)) || graph.nodes.some((node) => node.kind === "transaction")) add("transaction", "transaction boundary");
+  if (/MultipartFile|FileReq|multipart/i.test(signature)) add("multipart", "multipart request binding");
+  if (/CommonResult|ResponseEntity|HttpServletResponse/.test(signature)) add("response-envelope", "HTTP response envelope");
+  if (graph.nodes.some((node) => /exception|throw/i.test(node.evidence.symbol))) add("exception-mapping", "exception-to-response mapping");
+  return values.sort((a, b) => a.kind.localeCompare(b.kind));
+}
+
+function deriveDataContracts(report: JavaEndpointAnalysisReport | undefined, graph: BehaviorGraph): DataContractRequirement[] {
+  if (!report?.selectedRoute) return [];
+  const signature = report.selectedRoute.signature;
+  const returnType = signature.match(/^(?:public|protected|private)?\s*(?:static\s+)?(.+?)\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/)?.[1]?.trim() ?? "unknown";
+  const mappingText = graph.nodes.map((node) => node.evidence.symbol).join(" ");
+  const mapping: DataContractRequirement["mapping"] = /copyProperties|BeanUtils/i.test(mappingText) ? "bean-copy" : /convert|map|assemble|to[A-Z]/.test(mappingText) ? "conversion" : "direct";
+  return [
+    ...(report.requestModel ? [{ direction: "request" as const, type: report.requestModel.className, fields: report.requestModel.fields, mapping }] : []),
+    { direction: "response" as const, type: returnType, fields: [], mapping }
+  ];
 }
 
 function resourceFor(node: BehaviorNode): string {
@@ -189,13 +257,13 @@ function resourceFor(node: BehaviorNode): string {
 function effectKindFor(node: BehaviorNode): EffectRequirement["kind"] {
   const text = `${node.evidence.symbol} ${node.evidence.file}`;
   if (/undo/i.test(text)) return "undo";
-  if (/audit|log/i.test(text)) return "audit";
   if (/event|publish|progress|notify/i.test(text)) return "event";
   if (/cache|redis/i.test(text)) return "cache";
   if (/lock|lease|registry/i.test(text)) return "lock";
   if (/sequence|rownum|number/i.test(text)) return "sequence";
   if (node.kind === "transaction") return "transaction";
-  if (/repository|mapper|table|sql|data/i.test(text) || node.kind === "state-write") return "database";
   if (node.kind === "external-call") return "external";
+  if (node.kind === "state-write" || /repository|mapper|table|sql|data/i.test(text)) return "database";
+  if (/audit/i.test(text)) return "audit";
   return "unknown";
 }

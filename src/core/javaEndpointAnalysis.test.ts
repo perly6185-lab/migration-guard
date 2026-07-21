@@ -472,6 +472,32 @@ test("java endpoint analysis reports endpoint-not-found when no route matches", 
   }
 });
 
+test("java endpoint analysis parses multiline controller signatures and explicit external calls", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-multiline-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "UploadController.java"), [
+      "package demo;", "import jakarta.annotation.Resource;", "@RestController", "@RequestMapping(\"/api/files\")",
+      "public class UploadController {", "  @Resource", "  private UploadService uploadService;", "",
+      "  @GetMapping(\"/page\")", "  public CommonResult<PageResult<FileDO>> page(",
+      "      @RequestParam Long ownerId,", "      @RequestParam Integer pageNo,", "      @RequestParam Integer pageSize) {",
+      "    return success(uploadService.getPage(ownerId, pageNo, pageSize));", "  }", "",
+      "  @PostMapping(\"/upload\")", "  public Object upload(FileReq req) {",
+      "    fileClient.upload(req);", "    return uploadService.record(req);", "  }", "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "UploadService.java"), [
+      "package demo;", "public interface UploadService {", " Object getPage(Long ownerId, Integer pageNo, Integer pageSize);", " Object record(FileReq req);", "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "UploadServiceImpl.java"), [
+      "package demo;", "public class UploadServiceImpl implements UploadService {", " public Object getPage(Long ownerId, Integer pageNo, Integer pageSize) { return null; }", " public Object record(FileReq req) { return null; }", "}"
+    ].join("\n"));
+    const page = await analyzeJavaEndpoint({ root: dir, endpoint: "/api/files/page", method: "GET" });
+    assert.equal(page.selectedRoute?.methodName, "page");
+    const upload = await analyzeJavaEndpoint({ root: dir, endpoint: "/api/files/upload", method: "POST" });
+    assert.ok(upload.callGraph.nodes.some((item) => item.id.startsWith("external:") && item.methodName === "upload"));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("java endpoint analysis reports edge-cap truncation and honors max-edges", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-edge-cap-"));
 

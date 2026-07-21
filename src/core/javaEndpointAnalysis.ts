@@ -14,6 +14,12 @@ export interface AnalyzeJavaEndpointOptions {
   includeTests?: boolean;
 }
 
+export interface JavaEndpointAnalyzer {
+  root: string;
+  routes: JavaEndpointRouteCandidate[];
+  analyze(options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">): JavaEndpointAnalysisReport;
+}
+
 export interface JavaEndpointRouteCandidate {
   method: JavaEndpointHttpMethod;
   path: string;
@@ -26,6 +32,7 @@ export interface JavaEndpointRouteCandidate {
   methodRoute?: string;
   framework: "Spring";
   confidence: "low" | "medium" | "high";
+  annotations?: string[];
 }
 
 export interface JavaEndpointCallGraphNode {
@@ -260,10 +267,29 @@ const DYNAMIC_SQL_SIGNALS = [
 
 export async function analyzeJavaEndpoint(options: AnalyzeJavaEndpointOptions): Promise<JavaEndpointAnalysisReport> {
   const root = path.resolve(options.root);
+  const analyzer = await createJavaEndpointAnalyzer(root, Boolean(options.includeTests));
+  return analyzer.analyze(options);
+}
+
+export async function createJavaEndpointAnalyzer(rootValue: string, includeTests = false): Promise<JavaEndpointAnalyzer> {
+  const root = path.resolve(rootValue);
+  const project = await collectJavaProject(root, includeTests);
+  const routes = extractSpringRoutes(project);
+  return {
+    root,
+    routes,
+    analyze: (options) => analyzeJavaEndpointModel(project, routes, options)
+  };
+}
+
+function analyzeJavaEndpointModel(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">
+): JavaEndpointAnalysisReport {
+  const root = project.root;
   const method = normalizeHttpMethod(options.method ?? "POST");
   const endpointPath = normalizeRoutePath(options.endpoint);
-  const project = await collectJavaProject(root, Boolean(options.includeTests));
-  const routes = extractSpringRoutes(project);
   const matches = findRouteMatches(routes, method, endpointPath);
   const selectedRoute = selectRoute(matches);
   const graph = selectedRoute
@@ -528,11 +554,12 @@ function parseMethodAt(
   let foundTerminator = false;
   while (cursor < typeEndLine && cursor < index + 8) {
     const trimmed = lines[cursor].trim();
-    if (!trimmed || trimmed.startsWith("@")) {
+    if (!trimmed || (cursor === index && trimmed.startsWith("@"))) {
       return undefined;
     }
-    signatureLines.push(trimmed);
-    if (/[{;]\s*$/.test(trimmed)) {
+    const braceIndex = trimmed.indexOf("{");
+    signatureLines.push(braceIndex >= 0 ? trimmed.slice(0, braceIndex + 1) : trimmed);
+    if (braceIndex >= 0 || /;\s*$/.test(trimmed)) {
       foundTerminator = true;
       break;
     }
@@ -614,7 +641,8 @@ function extractSpringRoutes(project: JavaProjectModel): JavaEndpointRouteCandid
         classRoute,
         methodRoute: methodMapping.path,
         framework: "Spring",
-        confidence: routeMethod === "ALL" ? "medium" : "high"
+        confidence: routeMethod === "ALL" ? "medium" : "high",
+        annotations: [...type.annotations, ...method.annotations]
       });
     }
   }
@@ -762,8 +790,11 @@ function buildCallGraph(
       }
       const targets = resolveCallTargets(project, current.type, call);
       if (targets.length === 0) {
+        const externalNode = call.receiver ? externalNodeFor(current.method, call) : undefined;
+        if (externalNode) nodes.set(externalNode.id, externalNode);
         edges.push({
           from: current.node.id,
+          to: externalNode?.id,
           unresolvedTarget: call.receiver ? `${call.receiver}.${call.method}` : call.method,
           call: {
             receiver: call.receiver,
@@ -830,6 +861,22 @@ function buildCallGraph(
       unexpandedBoundaryNodes,
       edgeCapHadRemainingWork || (queue.length > 0 && edges.length >= maxEdges)
     )
+  };
+}
+
+function externalNodeFor(
+  source: JavaMethodInfo,
+  call: { receiver?: string; method: string; line: number }
+): JavaEndpointCallGraphNode {
+  const receiver = call.receiver as string;
+  return {
+    id: `external:${source.file}:${receiver}.${call.method}:${call.line}`,
+    kind: /mapper|repository|dao/i.test(receiver) ? "repository" : "unknown",
+    className: receiver,
+    methodName: call.method,
+    file: source.file,
+    line: call.line,
+    signature: `${receiver}.${call.method}(...)`
   };
 }
 

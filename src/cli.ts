@@ -195,6 +195,7 @@ import {
 } from "./core/endpointReplacementPlanner.js";
 import { runEndpointRuntimeDriver, type EndpointRuntimeDriverConfig } from "./core/endpointReplacementRuntime.js";
 import type { EndpointReplacementEvidence, EndpointReplacementPlan, ReplacementScenario } from "./core/endpointReplacementModel.js";
+import { assessJavaControllersForRust, renderControllerRustAssessment } from "./core/controllerRustAssessment.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -249,6 +250,22 @@ async function main(argv: string[]): Promise<void> {
 
 async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
   const action = args.positionals[0] ?? "analyze";
+  if (action === "assess-controllers") {
+    const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
+    const report = await assessJavaControllersForRust({
+      root,
+      maxDepth: numberOption(args, "max-depth"),
+      maxEdges: numberOption(args, "max-edges"),
+      limit: numberOption(args, "limit"),
+      includeTests: Boolean(args.options["include-tests"])
+    });
+    if (args.options.apply) {
+      await writeFullReplacementArtifact("controller-rust-assessment", report, path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderControllerRustAssessment(report));
+    }
+    console.log(args.options.json || !args.options.apply ? JSON.stringify(report, null, 2) : renderControllerRustAssessment(report));
+    if (report.summary.blocked > 0) process.exitCode = 1;
+    return;
+  }
   if (action !== "analyze") {
     throw new Error(`Unknown java-endpoint command: ${action}`);
   }
@@ -2552,6 +2569,7 @@ Usage:
   migration-guard self-refactor promote --cross-validation <report.json> --confirm <report-hash>
   migration-guard self-refactor rollback --checkpoint <checkpoint.json> --confirm <checkpoint-hash>
   migration-guard java-endpoint analyze --root <java-project> --endpoint <path> [--method POST] [--max-depth <n>] [--max-edges <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--strict] [--json]
+  migration-guard java-endpoint assess-controllers --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement closure --java-analysis <json> --rust-root <path> [--evidence <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement plan --java-analysis <json> [--ownership <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement endpoint-driver --config <driver.json> --scenario <scenario.json> [--fault <id>] [--apply] [--artifacts-dir <path>] [--json]
