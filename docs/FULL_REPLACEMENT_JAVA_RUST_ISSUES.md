@@ -1,6 +1,6 @@
 # MG-191: Full Java-to-Rust Endpoint Replacement
 
-Status: planned; remote issues are open.
+Status: product capabilities implemented locally; real MG-201 pilot evidence remains blocked until Java and Rust target roots are available.
 
 Priority: P0
 

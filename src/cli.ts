@@ -164,6 +164,27 @@ import { listBuiltinPolicies } from "./core/policy.js";
 import { collectSelfRefactorInventory, createSelfRefactorDriver, createSelfRefactorPlan, selfRefactorPlanHash, writeSelfRefactorArtifact } from "./core/selfRefactor.js";
 import { createSelfRefactorPromotionHandoff, crossValidateSelfRefactor, rollbackSelfRefactorCheckpoint, runSelfRefactorStep } from "./core/selfRefactorExecution.js";
 import { analyzeJavaEndpoint, renderJavaEndpointAnalysisReport, writeJavaEndpointAnalysisReport } from "./core/javaEndpointAnalysis.js";
+import type { JavaEndpointAnalysisReport } from "./core/javaEndpointAnalysis.js";
+import { createProjectInventory } from "./core/crossLanguageAdapters.js";
+import {
+  compareStatefulReplay,
+  createFullReplacementClosure,
+  createRefreshSyncPilotPlan,
+  evaluateRefreshSyncPilot,
+  evaluateFullReplacementReadiness,
+  renderFullReplacementClosure,
+  renderFullReplacementReadiness,
+  runRuntimeDriver,
+  upgradeGoldenPlan,
+  writeFullReplacementArtifact,
+  type FullReplacementEvidence,
+  type ReplayObservation,
+  type RuntimeDriverConfig,
+  type RefreshSyncPilotEvidence,
+  type TargetEvidence,
+  type InfrastructurePort,
+  type ReviewedExclusion
+} from "./core/fullReplacement.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -205,7 +226,7 @@ async function main(argv: string[]): Promise<void> {
     tasks: commandTasks, actions: commandActions, jobs: commandJobs, troubleshoot: commandTroubleshoot, report: commandReport, readiness: commandReadiness,
     "one-shot": commandOneShot, checkpoint: commandCheckpoint, resume: commandResume, rollback: commandRollback,
     task: commandTask, action: commandAction, proposal: commandProposal, "method-extraction": commandMethodExtraction, "sync-issues": commandSyncIssues,
-    "issue-control": commandIssueControl, "self-refactor": commandSelfRefactor, "java-endpoint": commandJavaEndpoint, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
+    "issue-control": commandIssueControl, "self-refactor": commandSelfRefactor, "java-endpoint": commandJavaEndpoint, "full-replacement": commandFullReplacement, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
     preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff, policy: commandPolicy
   };
   validateCliCommandRegistry(handlers);
@@ -245,6 +266,70 @@ async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
   if (result.summary.highRiskCount > 0 && args.options.strict) {
     process.exitCode = 1;
   }
+}
+
+async function commandFullReplacement(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "pilot";
+  const artifactsDir = path.resolve(stringOption(args, "artifacts-dir") ?? ".migration-guard/full-replacement");
+  const output = async (name: string, value: unknown, markdown: string, blocked: boolean) => {
+    if (args.options.apply) await writeFullReplacementArtifact(name, value, artifactsDir, markdown);
+    console.log(args.options.json || !args.options.apply ? JSON.stringify(value, null, 2) : markdown);
+    if (blocked || args.options.strict && blocked) process.exitCode = 1;
+  };
+  if (action === "closure") {
+    const analysisPath = requiredStringOption(args, "java-analysis", "full-replacement closure");
+    const rustRoot = path.resolve(requiredStringOption(args, "rust-root", "full-replacement closure"));
+    const java = await readJsonFile<JavaEndpointAnalysisReport>(path.resolve(analysisPath));
+    const evidencePath = stringOption(args, "evidence");
+    const evidence = evidencePath ? await readJsonFile<{ targetEvidence?: Record<string, TargetEvidence[]>; infrastructurePorts?: Record<string, InfrastructurePort>; exclusions?: Record<string, ReviewedExclusion> }>(path.resolve(evidencePath)) : {};
+    const closure = createFullReplacementClosure({ java, rust: await createProjectInventory(rustRoot), ...evidence });
+    await output("full-replacement-closure", closure, renderFullReplacementClosure(closure), closure.status !== "passed");
+    return;
+  }
+  if (action === "golden") {
+    const java = await readJsonFile<JavaEndpointAnalysisReport>(path.resolve(requiredStringOption(args, "java-analysis", "full-replacement golden")));
+    const golden = upgradeGoldenPlan(java.goldenCasePlan);
+    await output("full-replacement-golden-plan", golden, `# Full Replacement Golden Plan\n\n- Model: ${golden.model}\n- Cases: ${golden.cases.length}\n- Strict: yes\n`, false);
+    return;
+  }
+  if (action === "driver") {
+    const config = await readJsonFile<RuntimeDriverConfig>(path.resolve(requiredStringOption(args, "config", "full-replacement driver")));
+    const result = await runRuntimeDriver(config, requiredStringOption(args, "case", "full-replacement driver"));
+    await output("runtime-driver-run", result, `# Runtime Driver Run\n\n- Status: ${result.status}\n- Driver: ${result.driverId}\n- Findings: ${result.findings.join(", ") || "none"}\n`, result.status !== "passed");
+    return;
+  }
+  if (action === "compare") {
+    const source = await readJsonFile<ReplayObservation>(path.resolve(requiredStringOption(args, "source-observation", "full-replacement compare")));
+    const target = await readJsonFile<ReplayObservation>(path.resolve(requiredStringOption(args, "target-observation", "full-replacement compare")));
+    const result = compareStatefulReplay(source, target);
+    await output("stateful-replay-comparison", result, `# Stateful Replay Comparison\n\n- Status: ${result.status}\n- Case: ${result.caseId}\n- Differences: ${result.differences.length}\n`, result.status !== "passed");
+    return;
+  }
+  if (action === "readiness") {
+    const evidence = await readJsonFile<FullReplacementEvidence>(path.resolve(requiredStringOption(args, "evidence", "full-replacement readiness")));
+    const result = evaluateFullReplacementReadiness(evidence);
+    await output("full-replacement-readiness", result, renderFullReplacementReadiness(result), result.status !== "ready");
+    return;
+  }
+  if (action === "pilot") {
+    const javaRoot = stringOption(args, "java-root"); const rustRoot = stringOption(args, "rust-root");
+    const plan = createRefreshSyncPilotPlan({
+      javaRoot: javaRoot && await pathExists(path.resolve(javaRoot)) ? path.resolve(javaRoot) : undefined,
+      rustRoot: rustRoot && await pathExists(path.resolve(rustRoot)) ? path.resolve(rustRoot) : undefined
+    });
+    const evidencePath = stringOption(args, "evidence");
+    const result = evidencePath ? evaluateRefreshSyncPilot(plan, await readJsonFile<RefreshSyncPilotEvidence>(path.resolve(evidencePath))) : plan;
+    const status = "readiness" in result ? result.status : result.status;
+    await output(evidencePath ? "refresh-sync-pilot-report" : "refresh-sync-pilot-plan", result, `# refreshSync Full Replacement Pilot\n\n- Status: ${status}\n- Endpoint: ${plan.endpoint.method} ${plan.endpoint.path}\n- Findings: ${"findings" in result ? result.findings.join(", ") || "none" : plan.blockers.join(", ") || "none"}\n`, status !== "passed" && status !== "ready-to-run");
+    return;
+  }
+  throw new Error(`Unknown full-replacement command: ${action}`);
+}
+
+function requiredStringOption(args: ParsedArgs, name: string, command: string): string {
+  const value = stringOption(args, name);
+  if (!value) throw new Error(`${command} requires --${name} <path>.`);
+  return value;
 }
 
 async function commandSelfRefactor(args: ParsedArgs): Promise<void> {
@@ -2422,6 +2507,12 @@ Usage:
   migration-guard self-refactor promote --cross-validation <report.json> --confirm <report-hash>
   migration-guard self-refactor rollback --checkpoint <checkpoint.json> --confirm <checkpoint-hash>
   migration-guard java-endpoint analyze --root <java-project> --endpoint <path> [--method POST] [--max-depth <n>] [--max-edges <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--strict] [--json]
+  migration-guard full-replacement closure --java-analysis <json> --rust-root <path> [--evidence <json>] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard full-replacement golden --java-analysis <json> [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard full-replacement driver --config <driver.json> --case <case-id> [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard full-replacement compare --source-observation <json> --target-observation <json> [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard full-replacement readiness --evidence <json> [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard full-replacement pilot [--java-root <path>] [--rust-root <path>] [--evidence <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard ci verify --baseline <path> [--run <id|latest>]
   migration-guard contract capture --source <url>
   migration-guard contract test --target <url> --contract <path>

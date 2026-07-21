@@ -11,7 +11,8 @@ import {
   createMigrationSlicePlan,
   createProjectInventory,
   createReadinessReport,
-  createRecipePlan
+  createRecipePlan,
+  renderCrossLanguageInventory
 } from "./crossLanguageAdapters.js";
 import { createTaskGraph, validateTaskGraph } from "./taskGraph.js";
 import type { ScanSummary } from "../types.js";
@@ -210,6 +211,93 @@ test("project inventory extracts Spring and Go HTTP route candidates", async () 
     assert.ok(springInventory.routes.some((route) => route.method === "GET" && route.path === "/users"));
     assert.equal(goInventory.primaryLanguage, "go");
     assert.ok(goInventory.routes.some((route) => route.method === "GET" && route.path === "/health"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("Spring and Axum fixture produces a high-confidence java-to-rust recipe and route matrix", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-rust-"));
+  const source = path.join(dir, "source");
+  const target = path.join(dir, "target");
+
+  try {
+    await mkdir(path.join(source, "src", "main", "java", "demo"), { recursive: true });
+    await mkdir(path.join(target, "api", "src"), { recursive: true });
+    await writeFile(path.join(source, "pom.xml"), "<project></project>\n");
+    await writeFile(path.join(source, "src", "main", "java", "demo", "UsersController.java"), [
+      "import org.springframework.web.bind.annotation.*;",
+      "@RestController",
+      "class UsersController {",
+      "  @GetMapping(\"/users\")",
+      "  String list() { return \"ok\"; }",
+      "  @PostMapping(\"/users\")",
+      "  String create() { return \"ok\"; }",
+      "  @DeleteMapping(\"/users/{id}\")",
+      "  String remove() { return \"ok\"; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(target, "Cargo.toml"), [
+      "[workspace]",
+      "members = [\"api\"]",
+      "resolver = \"2\""
+    ].join("\n"));
+    await writeFile(path.join(target, "api", "Cargo.toml"), [
+      "[package]",
+      "name = \"api\"",
+      "version = \"0.1.0\"",
+      "[dependencies]",
+      "axum = \"0.8\""
+    ].join("\n"));
+    await writeFile(path.join(target, "api", "src", "main.rs"), [
+      "use axum::{routing::get, Router};",
+      "fn app() -> Router {",
+      "  Router::new().route(\"/users\", get(list_users).post(create_user))",
+      "    .route(dynamic_path(), get(dynamic_handler))",
+      "}"
+    ].join("\n"));
+
+    const inventory = await createCrossLanguageHttpInventory(source, target);
+    const recipe = createRecipePlan(inventory);
+
+    assert.equal(inventory.source.primaryLanguage, "java");
+    assert.equal(inventory.target.primaryLanguage, "rust");
+    assert.equal(inventory.source.languageConfidence, "high");
+    assert.equal(inventory.target.languageConfidence, "high");
+    assert.deepEqual(inventory.target.languages[0]?.buildFiles, ["Cargo.toml", "api/Cargo.toml"]);
+    assert.deepEqual(inventory.target.recommendedChecks, ["cargo check --all-targets", "cargo test --all-targets"]);
+    assert.ok(inventory.routeMatrix.some((route) => route.method === "GET" && route.path === "/users" && route.status === "matched"));
+    assert.ok(inventory.routeMatrix.some((route) => route.method === "POST" && route.path === "/users" && route.status === "matched"));
+    assert.ok(inventory.routeMatrix.some((route) => route.method === "DELETE" && route.path === "/users/{id}" && route.status === "missing-target"));
+    assert.deepEqual(inventory.target.unresolvedRoutes.map((route) => route.code), ["unsupported-rust-route-syntax"]);
+    assert.match(renderCrossLanguageInventory(inventory), /\[unsupported-rust-route-syntax\] target api\/src\/main\.rs:4 \(Axum\)/);
+    assert.equal(recipe.recipeId, "java-to-rust");
+    assert.equal(recipe.supported, true);
+    assert.equal(recipe.confidence, "high");
+    assert.match(recipe.routeMappings[0]?.transformationHints.join(" ") ?? "", /DTO validation|error envelopes|infrastructure ports/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("Rust inventory recognizes common Actix Web and Rocket route attributes", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-rust-frameworks-"));
+  try {
+    const actix = path.join(dir, "actix");
+    const rocket = path.join(dir, "rocket");
+    await mkdir(path.join(actix, "src"), { recursive: true });
+    await mkdir(path.join(rocket, "src"), { recursive: true });
+    await writeFile(path.join(actix, "Cargo.toml"), "[package]\nname = \"actix\"\nversion = \"0.1.0\"\n[dependencies]\nactix-web = \"4\"\n");
+    await writeFile(path.join(actix, "src", "main.rs"), "use actix_web::{get, web};\n#[get(\"/health\")]\nasync fn health() {}\nApp::new().route(\"/users\", web::post().to(create));\n");
+    await writeFile(path.join(rocket, "Cargo.toml"), "[package]\nname = \"rocket\"\nversion = \"0.1.0\"\n[dependencies]\nrocket = \"0.5\"\n");
+    await writeFile(path.join(rocket, "src", "main.rs"), "use rocket::get;\n#[get(\"/health\")]\nfn health() {}\n");
+
+    const actixInventory = await createProjectInventory(actix);
+    const rocketInventory = await createProjectInventory(rocket);
+    assert.ok(actixInventory.routes.some((route) => route.framework === "Actix Web" && route.method === "POST" && route.path === "/users"));
+    assert.ok(rocketInventory.routes.some((route) => route.framework === "Rocket" && route.method === "GET" && route.path === "/health"));
+    assert.deepEqual(actixInventory.unresolvedRoutes, []);
+    assert.deepEqual(rocketInventory.unresolvedRoutes, []);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
