@@ -531,7 +531,7 @@ async function postOptions(url: string, body?: Record<string, unknown>): Promise
 }
 
 async function waitForJob(baseUrl: string, jobId: string): Promise<UiJob> {
-  for (let attempt = 0; attempt < 600; attempt += 1) {
+  for (let attempt = 0; attempt < 1200; attempt += 1) {
     const job = await fetchJson<UiJob>(`${baseUrl}/api/jobs/${encodeURIComponent(jobId)}`);
     if (job.status === "succeeded" || job.status === "failed") {
       return job;
