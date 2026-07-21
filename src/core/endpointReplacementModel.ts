@@ -1,4 +1,4 @@
-export type EndpointWorkloadKind = "query" | "query-with-effects" | "command" | "batch" | "sync" | "unknown";
+export type EndpointWorkloadKind = "query" | "query-with-effects" | "command" | "batch" | "sync" | "async-job" | "upload" | "export" | "idempotent-command" | "unknown";
 export type BehaviorKind =
   | "entrypoint"
   | "validation"
@@ -88,12 +88,29 @@ export interface EffectRequirement {
   sourceNode: string;
   orderingRequired: boolean;
   compensationRequired: boolean;
+  sequence: number;
+  failurePolicy: "fail" | "retry" | "compensate" | "ignore" | "unknown";
+}
+
+export interface FrameworkRequirement {
+  kind: "validation" | "authorization" | "audit" | "transaction" | "multipart" | "response-envelope" | "exception-mapping";
+  evidence: string;
+  required: boolean;
+}
+
+export interface DataContractRequirement {
+  direction: "request" | "response";
+  type: string;
+  fields: string[];
+  mapping: "direct" | "bean-copy" | "conversion" | "unknown";
 }
 
 export interface EndpointReplacementContracts {
   contexts: ContextRequirement[];
   states: StateRequirement[];
   effects: EffectRequirement[];
+  framework: FrameworkRequirement[];
+  data: DataContractRequirement[];
   contractHash: string;
 }
 

@@ -40,12 +40,13 @@ export function createEndpointReplacementPlan(
   const boundaries = createBoundaries(graph, options.ownership ?? {});
   const scenarios = synthesizeReplacementScenarios(graph, sourceReport);
   const waves = createImplementationWaves(boundaries, contracts.contexts.length > 0);
-  const findings = [
+  const findings = [...new Set([
     ...graph.completeness.findings,
     ...boundaries.flatMap((boundary) => boundary.blockers),
-    ...(contracts.effects.some((effect) => effect.kind === "unknown") ? ["RP-CONTRACT-UNKNOWN-EFFECT"] : [])
-  ].sort();
-  const blocked = !graph.completeness.complete;
+    ...(contracts.effects.some((effect) => effect.kind === "unknown") ? ["RP-CONTRACT-UNKNOWN-EFFECT"] : []),
+    ...(contracts.effects.some((effect) => effect.failurePolicy === "unknown") ? ["RP-CONTRACT-EFFECT-POLICY-UNKNOWN"] : [])
+  ])].sort();
+  const blocked = !graph.completeness.complete || findings.length > 0;
   const base = {
     version: 1 as const,
     createdAt: new Date().toISOString(),
@@ -58,7 +59,7 @@ export function createEndpointReplacementPlan(
     scenarios,
     waves,
     findings,
-    nextAction: blocked ? graph.completeness.findings[0] : boundaries.find((item) => !item.executable)?.blockers[0]
+    nextAction: blocked ? graph.completeness.findings[0] ?? findings[0] : undefined
   };
   return { ...base, planHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
 }

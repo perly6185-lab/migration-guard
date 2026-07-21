@@ -51,6 +51,17 @@ test("behavior graph and replacement plan fail closed on truncation and unresolv
   assert.match(plan.nextAction ?? "", /RP-GRAPH-EDGE-CAP/);
 });
 
+test("replacement plan fails closed on unclassified ownership boundaries", () => {
+  const report = endpointReport("POST", "/tasks/cancel", "cancelTask", "page-query", [
+    node("Controller.cancelTask", "controller", "Controller", "cancelTask"),
+    node("TaskService.perform", "service", "TaskService", "perform")
+  ]);
+  const { graph, plan } = createEndpointReplacementPlanFromJava(report);
+  assert.equal(graph.nodes.some((item) => item.kind === "unknown"), true);
+  assert.equal(plan.status, "blocked");
+  assert.ok(plan.findings.includes("RP-BOUNDARY-UNRESOLVED:unclassified"));
+});
+
 test("scenario synthesis is data driven across query, query-with-effects, command and sync workloads", () => {
   const query = createEndpointReplacementPlanFromJava(endpointReport("GET", "/search", "search", "page-query", [
     node("Controller.search", "controller", "Controller", "search"),
@@ -79,6 +90,32 @@ test("scenario synthesis is data driven across query, query-with-effects, comman
   assert.equal(query.scenarios.some((item) => item.id === "concurrent-write"), false);
   assert.equal(command.scenarios.some((item) => item.id === "transaction-failure"), true);
   assert.equal(sync.scenarios.some((item) => item.id === "dependency-failure"), true);
+});
+
+test("planner classifies generic async, upload, export, and idempotent command workloads", () => {
+  const make = (methodName: string, nodes: JavaEndpointAnalysisReport["callGraph"]["nodes"], method: "GET" | "POST" = "POST") =>
+    createEndpointReplacementPlanFromJava(endpointReport(method, `/${methodName}`, methodName, "page-query", nodes)).graph.workload;
+  assert.equal(make("startJob", [node("Controller.startJob", "controller", "Controller", "startJob"), node("JobRepository.save", "repository", "JobRepository", "save"), node("JobPublisher.publish", "service", "JobPublisher", "publish")]), "async-job");
+  assert.equal(make("uploadFile", [node("Controller.uploadFile", "controller", "Controller", "uploadFile"), node("FileClient.upload", "unknown", "FileClient", "upload"), node("FileRepository.save", "repository", "FileRepository", "save")]), "upload");
+  assert.equal(make("exportData", [node("Controller.exportData", "controller", "Controller", "exportData"), node("Repository.query", "repository", "Repository", "query")], "GET"), "export");
+  assert.equal(make("cancelJob", [node("Controller.cancelJob", "controller", "Controller", "cancelJob"), node("JobRepository.cancel", "repository", "JobRepository", "cancel")]), "idempotent-command");
+});
+
+test("planner derives framework, DTO, ordered effect, and failure-policy contracts", () => {
+  const report = endpointReport("POST", "/files", "uploadFile", "page-query", [
+    node("Controller.uploadFile", "controller", "Controller", "uploadFile"),
+    node("FileClient.upload", "unknown", "FileClient", "upload"),
+    node("FileRepository.save", "repository", "FileRepository", "save")
+  ]);
+  report.selectedRoute!.annotations = ["@Validated", "@OperationLog", "@PostMapping(\"/files\")"];
+  report.selectedRoute!.signature = "public CommonResult<FileRespVO> uploadFile(@Valid MultipartFileReqVO reqVO)";
+  report.requestModel = { className: "MultipartFileReqVO", file: "MultipartFileReqVO.java", fields: ["file", "ownerId"] };
+  const { plan } = createEndpointReplacementPlanFromJava(report);
+  assert.deepEqual(plan.contracts.framework.map((item) => item.kind), ["audit", "multipart", "response-envelope", "validation"]);
+  assert.deepEqual(plan.contracts.data.map((item) => item.direction), ["request", "response"]);
+  assert.ok(plan.contracts.effects.length > 0);
+  assert.deepEqual(plan.contracts.effects.map((item) => item.sequence), plan.contracts.effects.map((_, index) => index + 1));
+  assert.ok(plan.contracts.effects.every((item) => item.failurePolicy !== "unknown"));
 });
 
 test("RP1 through RP6 readiness is sequential and produces local issue actions", () => {
