@@ -11,6 +11,10 @@ export type BehaviorKind =
   | "transaction"
   | "event-publish"
   | "compensation"
+  | "observability"
+  | "clock-read"
+  | "coordination"
+  | "async-boundary"
   | "unknown";
 
 export interface EndpointIdentity {
@@ -33,6 +37,7 @@ export interface BehaviorNode {
   id: string;
   kind: BehaviorKind;
   sourceKind: string;
+  sourceRole?: string;
   evidence: BehaviorEvidence;
   stateful: boolean;
   sideEffecting: boolean;
@@ -115,6 +120,19 @@ export interface EndpointReplacementContracts {
 }
 
 export type ReplacementOwnership = "target-owned" | "infrastructure-port" | "source-owned" | "reviewed-exclusion" | "unresolved";
+
+export interface ReviewedOwnershipPolicy {
+  version: 1;
+  rules: Array<{
+    id: string;
+    match: { kind?: BehaviorKind; sourceRole?: string; symbolPattern?: string };
+    ownership: ReplacementOwnership;
+    reason: string;
+    reviewedBy: string;
+    expiresAt: string;
+    requirements: string[];
+  }>;
+}
 
 export interface ReplacementBoundaryCandidate {
   id: string;

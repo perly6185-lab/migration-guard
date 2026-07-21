@@ -258,7 +258,11 @@ async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
       maxDepth: numberOption(args, "max-depth"),
       maxEdges: numberOption(args, "max-edges"),
       limit: numberOption(args, "limit"),
-      includeTests: Boolean(args.options["include-tests"])
+      includeTests: Boolean(args.options["include-tests"]),
+      adaptive: Boolean(args.options.adaptive),
+      maxExpansionDepth: numberOption(args, "max-expansion-depth"),
+      maxExpansionEdges: numberOption(args, "max-expansion-edges"),
+      maxExpansionRounds: numberOption(args, "max-expansion-rounds")
     });
     if (args.options.apply) {
       await writeFullReplacementArtifact("service-rust-assessment", report, path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderServiceRustAssessment(report));
@@ -323,9 +327,11 @@ async function commandFullReplacement(args: ParsedArgs): Promise<void> {
   if (action === "plan") {
     const java = await readJsonFile<JavaEndpointAnalysisReport>(path.resolve(requiredStringOption(args, "java-analysis", "full-replacement plan")));
     const ownershipPath = stringOption(args, "ownership");
+    const ownershipPolicyPath = stringOption(args, "ownership-policy");
     const options: EndpointReplacementPlanOptions = ownershipPath
       ? { ownership: await readJsonFile<NonNullable<EndpointReplacementPlanOptions["ownership"]>>(path.resolve(ownershipPath)) }
       : {};
+    if (ownershipPolicyPath) options.ownershipPolicy = await readJsonFile<NonNullable<EndpointReplacementPlanOptions["ownershipPolicy"]>>(path.resolve(ownershipPolicyPath));
     const result = createEndpointReplacementPlanFromJava(java, options);
     await output("endpoint-replacement-plan", result, renderEndpointReplacementPlan(result.plan), result.plan.status !== "ready");
     return;
@@ -2587,9 +2593,9 @@ Usage:
   migration-guard self-refactor rollback --checkpoint <checkpoint.json> --confirm <checkpoint-hash>
   migration-guard java-endpoint analyze --root <java-project> --endpoint <path> [--method POST] [--max-depth <n>] [--max-edges <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--strict] [--json]
   migration-guard java-endpoint assess-controllers --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
-  migration-guard java-endpoint assess-services --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard java-endpoint assess-services --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement closure --java-analysis <json> --rust-root <path> [--evidence <json>] [--apply] [--artifacts-dir <path>] [--json]
-  migration-guard full-replacement plan --java-analysis <json> [--ownership <json>] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard full-replacement plan --java-analysis <json> [--ownership <json>] [--ownership-policy <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement endpoint-driver --config <driver.json> --scenario <scenario.json> [--fault <id>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement rp-readiness --evidence <json> [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement endpoint-pilot --plan <json> [--source-root <path>] [--target-root <path>] [--apply] [--artifacts-dir <path>] [--json]

@@ -9,7 +9,8 @@ import { createBehaviorGraphFromJava } from "./behaviorGraph.js";
 import {
   createEndpointPilotPlan,
   createEndpointReplacementPlanFromJava,
-  evaluateEndpointReplacementReadiness
+  evaluateEndpointReplacementReadiness,
+  evaluateOwnershipPolicy
 } from "./endpointReplacementPlanner.js";
 import type { JavaEndpointAnalysisReport, JavaEndpointGoldenCasePlan } from "./javaEndpointAnalysis.js";
 
@@ -118,6 +119,44 @@ test("planner derives framework, DTO, ordered effect, and failure-policy contrac
   assert.ok(plan.contracts.effects.length > 0);
   assert.deepEqual(plan.contracts.effects.map((item) => item.sequence), plan.contracts.effects.map((_, index) => index + 1));
   assert.ok(plan.contracts.effects.every((item) => item.failurePolicy !== "unknown"));
+});
+
+test("semantic registry classifies utilities, logging, clocks, and Redis coordination", () => {
+  const report = endpointReport("POST", "/semantic", "run", "page-query", [
+    node("Controller.run", "controller", "Controller", "run"),
+    node("log.info", "unknown", "log", "info"),
+    node("LocalDateTime.now", "unknown", "LocalDateTime", "now"),
+    node("Objects.requireNonNull", "unknown", "Objects", "requireNonNull"),
+    node("stringRedisTemplate.execute", "unknown", "stringRedisTemplate", "execute")
+  ]);
+  const { graph } = createEndpointReplacementPlanFromJava(report);
+  assert.deepEqual(graph.nodes.filter((item) => item.kind !== "entrypoint").map((item) => item.kind).sort(), ["calculation", "clock-read", "coordination", "observability"]);
+});
+
+test("reviewed ownership policy applies narrow safe exclusions and blocks unsafe rules", () => {
+  const report = endpointReport("POST", "/policy", "run", "page-query", [
+    node("Controller.run", "controller", "Controller", "run"),
+    node("log.info", "unknown", "log", "info"),
+    node("Repository.save", "repository", "Repository", "save")
+  ]);
+  const { graph } = createEndpointReplacementPlanFromJava(report);
+  const valid = evaluateOwnershipPolicy(graph, { version: 1, rules: [{
+    id: "review-logging", match: { kind: "observability", symbolPattern: "^log\\.info$" }, ownership: "reviewed-exclusion",
+    reason: "Target logging is verified separately.", reviewedBy: "architecture", expiresAt: "2099-01-01T00:00:00.000Z", requirements: ["target-observability"]
+  }] }, Date.parse("2026-07-21T00:00:00.000Z"));
+  assert.deepEqual(valid.findings, []);
+  assert.equal(Object.values(valid.ownership)[0], "reviewed-exclusion");
+  const unsafe = evaluateOwnershipPolicy(graph, { version: 1, rules: [{
+    id: "hide-writes", match: { kind: "state-write", symbolPattern: ".*" }, ownership: "reviewed-exclusion",
+    reason: "unsafe", reviewedBy: "architecture", expiresAt: "2020-01-01T00:00:00.000Z", requirements: []
+  }] }, Date.parse("2026-07-21T00:00:00.000Z"));
+  assert.ok(unsafe.findings.includes("RP-POLICY-PATTERN-BROAD:hide-writes"));
+  assert.ok(unsafe.findings.includes("RP-POLICY-EXPIRED:hide-writes"));
+  const incomplete = evaluateOwnershipPolicy(graph, { version: 1, rules: [{
+    id: "logging-without-evidence", match: { kind: "observability" }, ownership: "reviewed-exclusion",
+    reason: "reviewed", reviewedBy: "architecture", expiresAt: "2099-01-01T00:00:00.000Z", requirements: []
+  }] }, Date.parse("2026-07-21T00:00:00.000Z"));
+  assert.ok(incomplete.findings.some((finding) => finding.startsWith("RP-POLICY-EVIDENCE-INCOMPLETE:logging-without-evidence")));
 });
 
 test("RP1 through RP6 readiness is sequential and produces local issue actions", () => {
