@@ -242,7 +242,7 @@ export async function suggestMethodExtractionCandidates(
 }
 
 export async function resolveMethodExtractionAnchor(root: string, anchor: MethodExtractionAnchor): Promise<MethodExtractionRange> {
-  const project = await loadTypeScriptProject(root);
+  const project = await loadTypeScriptProject(root, anchor.file);
   const matches = collectAstSymbols(project.program, root).filter((candidate) =>
     candidate.body && ts.isBlock(candidate.body) && candidate.descriptor.file === anchor.file && candidate.descriptor.symbol === anchor.symbol);
   if (matches.length !== 1) throw new Error(`Extraction anchor symbol can no longer be resolved uniquely: ${anchor.symbol}`);

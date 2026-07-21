@@ -5,9 +5,11 @@ import {
   createMethodExtractionContract,
   createMethodExtractionEligibility,
   createMethodExtractionPatchPlan,
+  resolveMethodExtractionAnchor,
   renderMethodExtractionContract,
   renderMethodExtractionEligibility,
   renderMethodExtractionPatchPlan,
+  type MethodExtractionAnchor,
   type MethodExtractionPatchPlan
 } from "./methodExtraction.js";
 import { createMethodExtractionTestPlan, renderMethodExtractionTestPlan, type MethodExtractionTestPlan } from "./methodExtractionTest.js";
@@ -42,6 +44,7 @@ export interface MethodExtractionLayerStep extends MethodExtractionLayerSpec {
   sourceHashBefore?: string;
   sourceHashAfter?: string;
   patchHash?: string;
+  anchor?: MethodExtractionAnchor;
   reason?: string;
   applyStatus?: MethodExtractionApplyReport["status"];
 }
@@ -141,6 +144,7 @@ export async function prepareNextMethodExtractionLayer(
 ): Promise<MethodExtractionExecutionLedger> {
   assertLedgerCanContinue(ledger);
   await validateLatestAppliedSource(pkg.run.targetRoot, ledger);
+  await initializeLayerAnchors(pkg.run.targetRoot, ledger);
   const step = ledger.steps.find((candidate) => candidate.status === "pending");
   if (!step) {
     if (ledger.steps.every((candidate) => candidate.status === "applied")) {
@@ -151,10 +155,16 @@ export async function prepareNextMethodExtractionLayer(
     return ledger;
   }
   const dir = path.join(chainDir(loaded, ledger.runId), "layers", step.artifactDir);
-  const eligibility = await createMethodExtractionEligibility(pkg.run.targetRoot, step.symbol, {
-    startLine: step.startLine,
-    endLine: step.endLine
-  }, undefined, step.sourceFile);
+  const currentRange = step.anchor
+    ? await resolveMethodExtractionAnchor(pkg.run.targetRoot, step.anchor)
+    : { startLine: step.startLine, endLine: step.endLine };
+  const eligibility = await createMethodExtractionEligibility(
+    pkg.run.targetRoot,
+    step.symbol,
+    currentRange,
+    undefined,
+    step.sourceFile
+  );
   const contract = await createMethodExtractionContract(eligibility);
   const patchPlan = await createMethodExtractionPatchPlan(contract, step.extractedName);
   const testPlan = await createMethodExtractionTestPlan(contract, patchPlan);
@@ -179,6 +189,25 @@ export async function prepareNextMethodExtractionLayer(
   }
   await writeMethodExtractionExecutionLedger(loaded, ledger);
   return ledger;
+}
+
+async function initializeLayerAnchors(root: string, ledger: MethodExtractionExecutionLedger): Promise<void> {
+  if (ledger.steps.some((step) => step.status !== "pending") || ledger.steps.every((step) => step.anchor)) return;
+  for (const step of ledger.steps) {
+    if (step.anchor) continue;
+    const eligibility = await createMethodExtractionEligibility(
+      root,
+      step.symbol,
+      { startLine: step.startLine, endLine: step.endLine },
+      undefined,
+      step.sourceFile
+    );
+    if (!eligibility.eligible || !eligibility.anchor) {
+      throw new Error(`Cannot bind extraction anchor for ${step.symbol}: ${eligibility.findings.map((finding) => finding.message).join(" ")}`);
+    }
+    step.anchor = eligibility.anchor;
+    step.sourceFile = eligibility.selected?.file ?? step.sourceFile;
+  }
 }
 
 export async function applyNextMethodExtractionLayer(

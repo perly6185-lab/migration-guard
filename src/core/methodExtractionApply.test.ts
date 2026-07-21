@@ -30,6 +30,8 @@ test("verified method extraction apply persists the atomic patch after post-appl
     assert.equal(report.passed, true);
     assert.ok(report.checkpointId);
     assert.equal(report.behavior.equal, true);
+    assert.ok(report.behavior.current);
+    assert.match(report.commands[0]?.command ?? "", /MG_METHOD_OBSERVATION_ROOT/);
     assert.equal(report.cleanup.testRemoved, true);
     assert.equal(report.cleanup.observationRemoved, true);
     assert.match(await readFile(fixture.sourcePath, "utf8"), /function calculateResult\(input: number\)/);
