@@ -185,6 +185,16 @@ import {
   type InfrastructurePort,
   type ReviewedExclusion
 } from "./core/fullReplacement.js";
+import {
+  createEndpointPilotPlan,
+  createEndpointReplacementPlanFromJava,
+  evaluateEndpointReplacementReadiness,
+  renderEndpointReplacementPlan,
+  renderEndpointReplacementReadiness,
+  type EndpointReplacementPlanOptions
+} from "./core/endpointReplacementPlanner.js";
+import { runEndpointRuntimeDriver, type EndpointRuntimeDriverConfig } from "./core/endpointReplacementRuntime.js";
+import type { EndpointReplacementEvidence, EndpointReplacementPlan, ReplacementScenario } from "./core/endpointReplacementModel.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -276,6 +286,41 @@ async function commandFullReplacement(args: ParsedArgs): Promise<void> {
     console.log(args.options.json || !args.options.apply ? JSON.stringify(value, null, 2) : markdown);
     if (blocked || args.options.strict && blocked) process.exitCode = 1;
   };
+  if (action === "plan") {
+    const java = await readJsonFile<JavaEndpointAnalysisReport>(path.resolve(requiredStringOption(args, "java-analysis", "full-replacement plan")));
+    const ownershipPath = stringOption(args, "ownership");
+    const options: EndpointReplacementPlanOptions = ownershipPath
+      ? { ownership: await readJsonFile<NonNullable<EndpointReplacementPlanOptions["ownership"]>>(path.resolve(ownershipPath)) }
+      : {};
+    const result = createEndpointReplacementPlanFromJava(java, options);
+    await output("endpoint-replacement-plan", result, renderEndpointReplacementPlan(result.plan), result.plan.status !== "ready");
+    return;
+  }
+  if (action === "endpoint-driver") {
+    const config = await readJsonFile<EndpointRuntimeDriverConfig>(path.resolve(requiredStringOption(args, "config", "full-replacement endpoint-driver")));
+    const scenario = await readJsonFile<ReplacementScenario>(path.resolve(requiredStringOption(args, "scenario", "full-replacement endpoint-driver")));
+    const result = await runEndpointRuntimeDriver(config, scenario, { fault: stringOption(args, "fault") });
+    await output("endpoint-runtime-driver-run", result, `# Endpoint Runtime Driver\n\n- Status: ${result.status}\n- Driver: ${result.driverId}\n- Scenario: ${result.scenarioId}\n- Findings: ${result.findings.join(", ") || "none"}\n`, result.status !== "passed");
+    return;
+  }
+  if (action === "rp-readiness") {
+    const evidence = await readJsonFile<EndpointReplacementEvidence>(path.resolve(requiredStringOption(args, "evidence", "full-replacement rp-readiness")));
+    const result = evaluateEndpointReplacementReadiness(evidence);
+    await output("endpoint-replacement-readiness", result, renderEndpointReplacementReadiness(result), result.status !== "ready");
+    return;
+  }
+  if (action === "endpoint-pilot") {
+    const planValue = await readJsonFile<{ plan?: EndpointReplacementPlan } | EndpointReplacementPlan>(path.resolve(requiredStringOption(args, "plan", "full-replacement endpoint-pilot")));
+    const plan = "plan" in planValue && planValue.plan ? planValue.plan : planValue as EndpointReplacementPlan;
+    const sourceRoot = stringOption(args, "source-root");
+    const targetRoot = stringOption(args, "target-root");
+    const result = createEndpointPilotPlan(plan, {
+      sourceRoot: sourceRoot && await pathExists(path.resolve(sourceRoot)) ? path.resolve(sourceRoot) : undefined,
+      targetRoot: targetRoot && await pathExists(path.resolve(targetRoot)) ? path.resolve(targetRoot) : undefined
+    });
+    await output("endpoint-pilot-plan", result, `# Endpoint Pilot Plan\n\n- Status: ${result.status}\n- Endpoint: ${result.endpoint.method} ${result.endpoint.path}\n- Scenarios: ${result.requiredScenarios.length}\n- Blockers: ${result.blockers.join(", ") || "none"}\n`, result.status !== "ready-to-run");
+    return;
+  }
   if (action === "closure") {
     const analysisPath = requiredStringOption(args, "java-analysis", "full-replacement closure");
     const rustRoot = path.resolve(requiredStringOption(args, "rust-root", "full-replacement closure"));
@@ -2508,6 +2553,10 @@ Usage:
   migration-guard self-refactor rollback --checkpoint <checkpoint.json> --confirm <checkpoint-hash>
   migration-guard java-endpoint analyze --root <java-project> --endpoint <path> [--method POST] [--max-depth <n>] [--max-edges <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--strict] [--json]
   migration-guard full-replacement closure --java-analysis <json> --rust-root <path> [--evidence <json>] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard full-replacement plan --java-analysis <json> [--ownership <json>] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard full-replacement endpoint-driver --config <driver.json> --scenario <scenario.json> [--fault <id>] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard full-replacement rp-readiness --evidence <json> [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard full-replacement endpoint-pilot --plan <json> [--source-root <path>] [--target-root <path>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement golden --java-analysis <json> [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement driver --config <driver.json> --case <case-id> [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement compare --source-observation <json> --target-observation <json> [--apply] [--artifacts-dir <path>] [--json]
