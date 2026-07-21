@@ -17,7 +17,22 @@ export interface AnalyzeJavaEndpointOptions {
 export interface JavaEndpointAnalyzer {
   root: string;
   routes: JavaEndpointRouteCandidate[];
+  serviceMethods: JavaServiceMethodCandidate[];
   analyze(options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">): JavaEndpointAnalysisReport;
+  analyzeServiceMethod(candidate: JavaServiceMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
+}
+
+export interface JavaServiceMethodCandidate {
+  id: string;
+  className: string;
+  qualifiedClassName: string;
+  methodName: string;
+  signature: string;
+  returnType?: string;
+  parameterTypes: string[];
+  annotations: string[];
+  file: string;
+  line: number;
 }
 
 export interface JavaEndpointRouteCandidate {
@@ -275,23 +290,69 @@ export async function createJavaEndpointAnalyzer(rootValue: string, includeTests
   const root = path.resolve(rootValue);
   const project = await collectJavaProject(root, includeTests);
   const routes = extractSpringRoutes(project);
+  const serviceMethods = extractServiceMethods(project);
   return {
     root,
     routes,
-    analyze: (options) => analyzeJavaEndpointModel(project, routes, options)
+    serviceMethods,
+    analyze: (options) => analyzeJavaEndpointModel(project, routes, options),
+    analyzeServiceMethod: (candidate, options = {}) => analyzeJavaServiceMethodModel(project, routes, candidate, options)
   };
+}
+
+function extractServiceMethods(project: JavaProjectModel): JavaServiceMethodCandidate[] {
+  return project.types
+    .filter((type) => type.kind === "class" && nodeKind(type) === "service")
+    .flatMap((type) => type.methods
+      .filter((method) => method.hasBody && /^(public|protected)\s/.test(method.signature))
+      .map((method) => ({
+        id: methodId(type, method),
+        className: type.name,
+        qualifiedClassName: type.qualifiedName,
+        methodName: method.name,
+        signature: method.signature,
+        returnType: method.returnType,
+        parameterTypes: method.params.map((param) => param.typeName),
+        annotations: [...type.annotations, ...method.annotations],
+        file: method.file,
+        line: method.line
+      })))
+    .sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.id.localeCompare(b.id));
+}
+
+function analyzeJavaServiceMethodModel(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  candidate: JavaServiceMethodCandidate,
+  options: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">
+): JavaEndpointAnalysisReport {
+  const endpoint = normalizeRoutePath(`/__service/${candidate.qualifiedClassName}/${candidate.methodName}/${candidate.line}`);
+  const selectedRoute: JavaEndpointRouteCandidate = {
+    method: "ALL",
+    path: endpoint,
+    file: candidate.file,
+    line: candidate.line,
+    className: candidate.className,
+    methodName: candidate.methodName,
+    signature: candidate.signature,
+    framework: "Spring",
+    confidence: "high",
+    annotations: candidate.annotations
+  };
+  return analyzeJavaEndpointModel(project, routes, { endpoint, method: "ALL", ...options }, selectedRoute);
 }
 
 function analyzeJavaEndpointModel(
   project: JavaProjectModel,
   routes: JavaEndpointRouteCandidate[],
-  options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">
+  options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">,
+  selectedOverride?: JavaEndpointRouteCandidate
 ): JavaEndpointAnalysisReport {
   const root = project.root;
   const method = normalizeHttpMethod(options.method ?? "POST");
   const endpointPath = normalizeRoutePath(options.endpoint);
-  const matches = findRouteMatches(routes, method, endpointPath);
-  const selectedRoute = selectRoute(matches);
+  const matches = selectedOverride ? [selectedOverride] : findRouteMatches(routes, method, endpointPath);
+  const selectedRoute = selectedOverride ?? selectRoute(matches);
   const graph = selectedRoute
     ? buildCallGraph(
       project,
@@ -318,7 +379,7 @@ function analyzeJavaEndpointModel(
     summary: {
       javaFileCount: project.files.length,
       routeCount: routes.length,
-      exactMatchCount: matches.filter((match) => routeMatchesExactly(match, method, endpointPath)).length,
+      exactMatchCount: selectedOverride ? 1 : matches.filter((match) => routeMatchesExactly(match, method, endpointPath)).length,
       callGraphNodeCount: graph.nodes.length,
       callGraphEdgeCount: graph.edges.length,
       highRiskCount,
@@ -1089,7 +1150,7 @@ function nodeKind(type: JavaTypeInfo, route?: JavaEndpointRouteCandidate): JavaE
   if (/(Repository|Dao)$/.test(type.name)) {
     return "repository";
   }
-  if (/(Service|ServiceImpl|ApplicationService|ApplicationServiceImpl|Assembler)$/.test(type.name)) {
+  if (type.annotations.some((annotation) => /@Service\b/.test(annotation)) || /(Service|ServiceImpl|ApplicationService|ApplicationServiceImpl|Assembler)$/.test(type.name)) {
     return "service";
   }
   if (/(DTO|ReqVO|RespVO|VO)$/.test(type.name)) {

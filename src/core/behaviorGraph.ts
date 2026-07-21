@@ -127,6 +127,8 @@ function classifyBehavior(text: string, sourceKind: string): [BehaviorKind, stri
 
 function inferWorkload(report: JavaEndpointAnalysisReport, nodes: BehaviorNode[]): EndpointWorkloadKind {
   const entry = `${report.selectedRoute?.methodName ?? ""} ${report.selectedRoute?.signature ?? ""}`;
+  if (/batch|bulk|chunk/i.test(entry) && nodes.some((node) => node.sideEffecting)) return "batch";
+  if (/refreshSync|synchronize|sync(?:By|With|Data|Record|Task)/i.test(entry) && nodes.some((node) => node.sideEffecting)) return "sync";
   if (/upload|import/i.test(entry) && nodes.some((node) => node.kind === "external-call" || node.kind === "state-write")) return "upload";
   if (/export|download|stream/i.test(entry)) return "export";
   if (/start|submit|enqueue|dispatch|schedule/i.test(entry) && nodes.some((node) => node.kind === "event-publish" || node.kind === "state-write")) return "async-job";

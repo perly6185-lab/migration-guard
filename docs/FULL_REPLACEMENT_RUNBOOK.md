@@ -41,11 +41,14 @@ and evaluate every normalized route:
 
 ```bash
 migration-guard java-endpoint assess-controllers --root ../java-service --max-depth 8 --max-edges 1200 --apply
+migration-guard java-endpoint assess-services --root ../java-service --max-depth 8 --max-edges 1200 --apply
 ```
 
 The batch command is fail-closed and exits nonzero when any method is blocked.
 See [CONTROLLER_RUST_ASSESSMENT.md](CONTROLLER_RUST_ASSESSMENT.md) for the
 capability boundary and real zboss evidence.
+Service methods, including implementations not reachable from a Controller, are
+covered in [SERVICE_RUST_ASSESSMENT.md](SERVICE_RUST_ASSESSMENT.md).
 
 The driver protocol is `setup`, `start`, `health`, `seed`, `invoke`, optional
 `inject-fault`, `snapshot`, `collect`, `cleanup`, and `stop`. Scenario and fault

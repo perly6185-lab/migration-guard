@@ -99,6 +99,8 @@ test("planner classifies generic async, upload, export, and idempotent command w
   assert.equal(make("uploadFile", [node("Controller.uploadFile", "controller", "Controller", "uploadFile"), node("FileClient.upload", "unknown", "FileClient", "upload"), node("FileRepository.save", "repository", "FileRepository", "save")]), "upload");
   assert.equal(make("exportData", [node("Controller.exportData", "controller", "Controller", "exportData"), node("Repository.query", "repository", "Repository", "query")], "GET"), "export");
   assert.equal(make("cancelJob", [node("Controller.cancelJob", "controller", "Controller", "cancelJob"), node("JobRepository.cancel", "repository", "JobRepository", "cancel")]), "idempotent-command");
+  assert.equal(make("batchUpdate", [node("Controller.batchUpdate", "controller", "Controller", "batchUpdate"), node("Repository.save", "repository", "Repository", "save")]), "batch");
+  assert.equal(make("refreshSync", [node("Controller.refreshSync", "controller", "Controller", "refreshSync"), node("Repository.update", "repository", "Repository", "update")]), "sync");
 });
 
 test("planner derives framework, DTO, ordered effect, and failure-policy contracts", () => {
