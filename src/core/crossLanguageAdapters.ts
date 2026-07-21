@@ -8,6 +8,7 @@ export type CrossLanguageId =
   | "python"
   | "java"
   | "go"
+  | "rust"
   | "unknown";
 
 export interface CrossLanguageRouteCandidate {
@@ -18,6 +19,15 @@ export interface CrossLanguageRouteCandidate {
   framework: string;
   confidence: "low" | "medium" | "high";
   handler?: string;
+}
+
+export interface CrossLanguageUnresolvedRoute {
+  code: "unsupported-rust-route-syntax";
+  file: string;
+  line: number;
+  framework: "Axum" | "Actix Web" | "Rocket" | "Rust HTTP";
+  syntax: string;
+  reason: string;
 }
 
 export interface CrossLanguageProjectInventory {
@@ -34,6 +44,7 @@ export interface CrossLanguageProjectInventory {
     reasons: string[];
   }>;
   routes: CrossLanguageRouteCandidate[];
+  unresolvedRoutes: CrossLanguageUnresolvedRoute[];
   recommendedChecks: string[];
 }
 
@@ -189,7 +200,8 @@ const SOURCE_EXTENSIONS = new Set([
   ".cjs",
   ".py",
   ".java",
-  ".go"
+  ".go",
+  ".rs"
 ]);
 
 const SUPPORTED_RECIPE_PAIRS = new Set([
@@ -198,7 +210,8 @@ const SUPPORTED_RECIPE_PAIRS = new Set([
   "java-to-python",
   "java-to-typescript-node",
   "go-to-typescript-node",
-  "typescript-node-to-go"
+  "typescript-node-to-go",
+  "java-to-rust"
 ]);
 
 export async function createCrossLanguageHttpInventory(sourceRoot: string, targetRoot: string): Promise<CrossLanguageHttpInventory> {
@@ -232,9 +245,11 @@ export async function createProjectInventory(root: string): Promise<CrossLanguag
     detectTypescriptNode(root, files, manifests),
     detectPython(root, files, manifests),
     detectJava(files, manifests),
-    detectGo(files, manifests)
+    detectGo(files, manifests),
+    detectRust(root, files, manifests)
   ])).filter((language) => language.sourceFiles > 0 || language.buildFiles.length > 0);
   const routes = files.flatMap((file) => extractRoutesFromFile(file));
+  const unresolvedRoutes = files.flatMap((file) => extractUnresolvedRoutesFromFile(file));
   const primary = selectPrimaryLanguage(languageSummaries);
 
   return {
@@ -244,6 +259,7 @@ export async function createProjectInventory(root: string): Promise<CrossLanguag
     languageConfidence: confidenceForLanguage(primary),
     languages: languageSummaries,
     routes: routes.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line),
+    unresolvedRoutes: unresolvedRoutes.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line),
     recommendedChecks: await recommendedChecksForProject(root, primary?.id ?? "unknown", manifests, languageSummaries)
   };
 }
@@ -682,8 +698,22 @@ export function renderCrossLanguageInventory(inventory: CrossLanguageHttpInvento
     "",
     inventory.routeMatrix.length > 0
       ? inventory.routeMatrix.map((route) => `- [${route.status}] ${route.method} ${route.path}`).join("\n")
-      : "No HTTP route candidates detected."
+      : "No HTTP route candidates detected.",
+    "",
+    "## Unresolved Routes",
+    "",
+    renderUnresolvedRoutes(inventory)
   ].join("\n");
+}
+
+function renderUnresolvedRoutes(inventory: CrossLanguageHttpInventory): string {
+  const findings = [
+    ...inventory.source.unresolvedRoutes.map((route) => ({ side: "source", route })),
+    ...inventory.target.unresolvedRoutes.map((route) => ({ side: "target", route }))
+  ];
+  return findings.length > 0
+    ? findings.map(({ side, route }) => `- [${route.code}] ${side} ${route.file}:${route.line} (${route.framework}): ${route.syntax}`).join("\n")
+    : "No unresolved route syntax detected.";
 }
 
 export function renderContractPlan(plan: CrossLanguageContractPlan): string {
@@ -904,6 +934,9 @@ function languagePairHint(source: CrossLanguageId, target: CrossLanguageId): str
   if (source === "java" && target === "typescript-node") {
     return "map Spring controller methods and DTOs into Node route modules plus typed schemas";
   }
+  if (source === "java" && target === "rust") {
+    return "map Spring routes and DTO validation into Rust extractors, preserve error envelopes in response types, propagate request context through middleware, keep async work non-blocking, and isolate databases or brokers behind infrastructure ports";
+  }
   if (source === "go" && target === "typescript-node") {
     return "map Go handler structs and net/http response writes into Node request/response helpers";
   }
@@ -1081,7 +1114,8 @@ async function collectBuildFiles(root: string): Promise<string[]> {
     "pom.xml",
     "build.gradle",
     "build.gradle.kts",
-    "go.mod"
+    "go.mod",
+    "Cargo.toml"
   ];
   const present: string[] = [];
   for (const candidate of candidates) {
@@ -1089,7 +1123,11 @@ async function collectBuildFiles(root: string): Promise<string[]> {
       present.push(candidate);
     }
   }
-  return present;
+  const cargoManifests = (await walkFiles(root))
+    .filter((file) => path.basename(file) === "Cargo.toml")
+    .map((file) => toPosixPath(path.relative(root, file)));
+  present.push(...cargoManifests);
+  return [...new Set(present)].sort();
 }
 
 async function detectTypescriptNode(root: string, files: SourceFile[], buildFiles: string[]) {
@@ -1154,6 +1192,34 @@ function detectGo(files: SourceFile[], buildFiles: string[]) {
     buildFiles: buildFiles.filter((file) => file === "go.mod"),
     frameworks,
     reasons: frameworks.map((name) => `${name} signal`)
+  });
+}
+
+async function detectRust(root: string, files: SourceFile[], buildFiles: string[]) {
+  const rustFiles = files.filter((file) => file.ext === ".rs");
+  const cargoFiles = buildFiles.filter((file) => path.basename(file) === "Cargo.toml");
+  const manifestEntries = await Promise.all(cargoFiles.map(async (file) => ({
+    file,
+    content: await fs.readFile(path.join(root, file), "utf8").catch(() => "")
+  })));
+  const manifests = manifestEntries.map((entry) => entry.content).join("\n");
+  const content = `${manifests}\n${rustFiles.map((file) => file.content).join("\n")}`;
+  const frameworks = frameworkHints(content, [
+    ["axum", "Axum"],
+    ["actix_web", "Actix Web"],
+    ["rocket", "Rocket"]
+  ]);
+  const workspaceManifests = manifestEntries.filter((entry) => /\[workspace\]/.test(entry.content));
+  return languageSummary({
+    id: "rust",
+    files: rustFiles,
+    buildFiles: cargoFiles,
+    frameworks,
+    reasons: [
+      ...frameworks.map((name) => `${name} signal`),
+      cargoFiles.length > 1 ? `${cargoFiles.length} Cargo manifest(s)` : "",
+      workspaceManifests.length > 0 ? "Cargo workspace present" : ""
+    ].filter(Boolean)
   });
 }
 
@@ -1268,6 +1334,8 @@ async function recommendedChecksForProject(
       return ["javac <sources>"];
     case "go":
       return ["go test ./..."];
+    case "rust":
+      return ["cargo check --all-targets", "cargo test --all-targets"];
     default:
       return (await Promise.all(languages.map((candidate) => recommendedChecksForProject(root, candidate.id, buildFiles, [])))).flat();
   }
@@ -1311,6 +1379,9 @@ function extractRoutesFromFile(file: SourceFile): CrossLanguageRouteCandidate[] 
   }
   if (file.ext === ".go") {
     return extractGoRoutes(file);
+  }
+  if (file.ext === ".rs") {
+    return extractRustRoutes(file);
   }
   return [];
 }
@@ -1391,6 +1462,65 @@ function extractGoRoutes(file: SourceFile): CrossLanguageRouteCandidate[] {
   return routes;
 }
 
+function extractRustRoutes(file: SourceFile): CrossLanguageRouteCandidate[] {
+  const routes: CrossLanguageRouteCandidate[] = [];
+  const lines = file.content.split(/\r?\n/);
+  const framework = rustFrameworkForFile(file.content);
+  const actixPattern = /\.route\(\s*"([^"]+)"\s*,\s*web::(get|post|put|patch|delete|head)\(\)\.to\(\s*([A-Za-z0-9_:]+)?/gi;
+  const attributePattern = /#\[(get|post|put|patch|delete|head)\(\s*"([^"]+)"/i;
+  for (const [index, line] of lines.entries()) {
+    const attribute = line.match(attributePattern);
+    if (attribute && (framework === "Actix Web" || framework === "Rocket")) {
+      routes.push(routeCandidate(file, index, attribute[1], attribute[2], framework, "high"));
+    }
+    if (framework === "Actix Web") {
+      for (const match of line.matchAll(actixPattern)) {
+        routes.push(routeCandidate(file, index, match[2], match[1], framework, "high", match[3]));
+      }
+    } else if (framework === "Axum") {
+      const route = line.match(/\.route\(\s*"([^"]+)"\s*,\s*(.+)\)\s*;?$/i);
+      if (route) {
+        const methodPattern = /(?:^|\.)(get|post|put|patch|delete|options|head)\s*\(\s*([A-Za-z0-9_:]+)?/gi;
+        for (const method of route[2].matchAll(methodPattern)) {
+          routes.push(routeCandidate(file, index, method[1], route[1], framework, "high", method[2]));
+        }
+      }
+    }
+  }
+  return routes;
+}
+
+function extractUnresolvedRoutesFromFile(file: SourceFile): CrossLanguageUnresolvedRoute[] {
+  if (file.ext !== ".rs") {
+    return [];
+  }
+  const resolvedLines = new Set(extractRustRoutes(file).map((route) => route.line));
+  const framework = rustFrameworkForFile(file.content);
+  return file.content.split(/\r?\n/).flatMap((line, index) => {
+    const lineNumber = index + 1;
+    const looksLikeRoute = /\.route\s*\(|#\[(?:route|get|post|put|patch|delete|head)\s*\(/i.test(line);
+    if (!looksLikeRoute || resolvedLines.has(lineNumber)) {
+      return [];
+    }
+    return [{
+      code: "unsupported-rust-route-syntax" as const,
+      file: file.relativePath,
+      line: lineNumber,
+      framework,
+      syntax: line.trim(),
+      reason: "Rust route declaration was detected but its HTTP method or literal path could not be resolved statically."
+    }];
+  });
+}
+
+function rustFrameworkForFile(content: string): CrossLanguageUnresolvedRoute["framework"] {
+  const lower = content.toLowerCase();
+  if (lower.includes("actix_web") || lower.includes("actix-web")) return "Actix Web";
+  if (lower.includes("rocket")) return "Rocket";
+  if (lower.includes("axum")) return "Axum";
+  return "Rust HTTP";
+}
+
 function routeCandidate(
   file: SourceFile,
   zeroBasedLine: number,
@@ -1435,5 +1565,6 @@ function isTestFile(relativePath: string): boolean {
   return /(^|\/)(__tests__|test|tests)\//.test(relativePath)
     || /\.(test|spec)\.[cm]?[jt]sx?$/.test(relativePath)
     || /_test\.go$/.test(relativePath)
+    || /(^|\/)tests?\/.*\.rs$/.test(relativePath)
     || /(^|\/)test_[^/]+\.py$/.test(relativePath);
 }

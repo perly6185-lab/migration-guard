@@ -1302,7 +1302,7 @@ function createSyncCommandGoldenCasePlan(
       "batch-inflight-skip",
       "Same-panel batch update in flight skips refresh",
       ["panelId with active BatchUpdateInFlightRegistry", "operator=REFRESH and auto operator"],
-      "guards concurrency coordination with batchUpdate so a Rust sidecar does not duplicate conflicting writes",
+      "guards target-owned concurrency coordination with batchUpdate so replacement execution does not duplicate conflicting writes",
       ["return value", "no sync execution", "no progress stream", "no sync timestamp update", "no undo clear"]
     ),
     goldenCase(
@@ -1316,7 +1316,7 @@ function createSyncCommandGoldenCasePlan(
       "progress-event-shape",
       "Refresh progress event shape",
       ["pageNo", "pageSize", "progressPageRequest", "operationKind=PANEL_REFRESH"],
-      "guards the observable WebSocket/progress protocol that Java should own while Rust owns pure calculation",
+      "guards the observable WebSocket/progress protocol that the target implementation must own",
       ["batch id", "operation kind", "page metrics", "processed/total rows", "refreshRequired", "terminal event"]
     ),
     goldenCase(
@@ -1337,7 +1337,7 @@ function createSyncCommandGoldenCasePlan(
       "manual-post-side-effects",
       "Manual refresh post side effects",
       ["operator=REFRESH", "clearUndoOperation", "reconcileBillOnlyUnarchived"],
-      "guards Java-owned side effects that should not be hidden inside a Rust compute boundary",
+      "guards timestamp, undo, and reconcile side effects that must be target-owned or explicit infrastructure ports",
       ["undo stack cleared", "sync/data time updated", "bill-only color shadow rows", "business field values unchanged"]
     ),
     goldenCase(
@@ -1459,7 +1459,7 @@ function createBatchCommandGoldenCasePlan(
       "progress-event-shape",
       "Progress event shape",
       ["enableProgress=true", "clientSessionId", "reqId", "expectedTotalRows"],
-      "guards the observable progress protocol that Java orchestration must keep owning initially",
+      "guards the observable progress protocol that the target implementation must own",
       ["event names", "batch id", "processed count", "failed count", "total count", "terminal event"]
     )
   ];
@@ -1609,7 +1609,7 @@ function recommendedNextActions(
     const actions = [
       "Capture the batch-command golden fixtures before choosing any Java-to-Rust boundary.",
       "Make tenant, user, datasource, request, progress, and undo context explicit in the command envelope.",
-      "Split Java orchestration from pure batch normalization, validation, and command-plan generation."
+      "Map all orchestration, progress, context, undo, and reconciliation behavior to target ownership or declared infrastructure ports."
     ];
     if (ids.has("parallel-entrypoints")) {
       actions.unshift("Run Web/RPC entrypoint parity golden cases before moving shared batch behavior.");
@@ -1639,10 +1639,10 @@ function recommendedNextActions(
   const actions = [
     "Capture one golden request/response fixture for standard pagination before changing the endpoint.",
     "Store explicit tenant/user/device/context headers alongside every golden fixture.",
-    "Use this call graph to choose a pure query boundary before considering a Rust sidecar."
+    "Use this call graph to prove complete target ownership before considering source-off readiness."
   ];
   if (ids.has("refresh-operator-unresolved") || ids.has("query-side-effects")) {
-    actions.unshift("Decide whether REFRESH/sync/pageSize/undo side effects stay in Java orchestration or become explicit pre/post steps.");
+    actions.unshift("Map REFRESH/sync/pageSize/undo side effects to target-owned behavior or declared infrastructure ports.");
   }
   if (ids.has("legacy-request-fields")) {
     actions.unshift("Confirm every legacy request field is either mapped into the new query protocol or intentionally unsupported with a golden test.");

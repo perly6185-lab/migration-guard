@@ -16,13 +16,15 @@ Capability levels are sequential: CL4 and CL5 cannot be reported as achieved whe
 
 ## Current scope
 
-- Detect primary language signals for TypeScript/Node, Python, Java, and Go projects.
+- Detect primary language signals for TypeScript/Node, Python, Java, Go, and Rust projects.
 - Detect common HTTP framework signals:
   - TypeScript/Node: Express, Koa, Fastify, NestJS, Hono
   - Python: FastAPI, Flask, Django
   - Java: Spring controller annotations
   - Go: net/http, Gin, Chi, Fiber
+  - Rust: Axum, Actix Web, Rocket
 - Extract route candidates from common route declarations.
+- Report Rust route-like declarations that cannot be resolved statically in `unresolvedRoutes`.
 - Compare source and target route surfaces by `METHOD path`.
 - Mark language-pair recipes as supported only for explicit pairs:
   - `python-to-typescript-node`
@@ -31,6 +33,9 @@ Capability levels are sequential: CL4 and CL5 cannot be reported as achieved whe
   - `java-to-typescript-node`
   - `go-to-typescript-node`
   - `typescript-node-to-go`
+  - `java-to-rust`
+- Discover root and nested `Cargo.toml` manifests, including Cargo workspaces, and
+  recommend `cargo check --all-targets` plus `cargo test --all-targets` for Rust targets.
 - Generate:
   - `cross-language-http-inventory.json|md`
   - `cross-language-http-recipe-plan.json|md`

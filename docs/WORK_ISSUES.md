@@ -1,6 +1,6 @@
 # Work Issues
 
-Updated: 2026-07-20
+Updated: 2026-07-21
 
 This list tracks the work required to move the current `0.3.0-beta.1`
 workspace from locally validated development changes to a reviewable release
@@ -9,23 +9,28 @@ candidate. Remote publication, Git tags and GitHub mutation remain manual.
 ## MG-191 through MG-201: Full Java-to-Rust endpoint replacement
 
 - Priority: P0
-- Status: planned; remote Epic [#63](https://github.com/perly6185-lab/migration-guard/issues/63)
+- Status: MG-192 through MG-200 completed; MG-201 source analysis completed and
+  target replay blocked pending a real Rust project root. Remote Epic [#63](https://github.com/perly6185-lab/migration-guard/issues/63)
   and child issues [#64](https://github.com/perly6185-lab/migration-guard/issues/64)
   through [#73](https://github.com/perly6185-lab/migration-guard/issues/73) are open
 - Goal: prove that a selected Java endpoint can be served directly by Rust with
   no callback into the migrated Java controller, application method, or Java-owned
   post-step.
-- MG-192 adds Rust inventory, routes, Cargo checks, and the Java-to-Rust recipe.
-- MG-193 adds a fail-closed replacement closure manifest.
-- MG-194 and MG-195 make runtime context and ordered side effects explicit.
-- MG-196 upgrades golden cases from pure-kernel extraction to full target ownership.
-- MG-197 and MG-198 add runtime drivers and stateful replay comparison.
-- MG-199 verifies deterministic concurrency, lease, crash, and fault semantics.
-- MG-200 adds FR1-FR5 readiness and a source-off cutover gate.
-- MG-201 validates the model on the zboss `/refreshSync` endpoint.
+- MG-192 (completed) adds Rust inventory, routes, Cargo checks, and the Java-to-Rust recipe.
+- MG-193 (completed) adds a fail-closed replacement closure manifest.
+- MG-194 and MG-195 (completed) make runtime context and ordered side effects explicit.
+- MG-196 (completed) upgrades golden cases from pure-kernel extraction to full target ownership.
+- MG-197 and MG-198 (completed) add runtime drivers and stateful replay comparison.
+- MG-199 (completed) verifies deterministic concurrency, lease, crash, and fault semantics.
+- MG-200 (completed) adds FR1-FR5 readiness and a source-off cutover gate.
+- MG-201 (source complete, target blocked) validates the model on the zboss
+  `/refreshSync` endpoint; `MG201-RUST-ROOT-MISSING` is the current next action.
 - Safety boundary: stateful replay uses isolated fixtures; production routing,
   remote issue creation, publishing, and releases remain reviewed manual operations.
 - Detailed plan: [FULL_REPLACEMENT_JAVA_RUST_ISSUES.md](FULL_REPLACEMENT_JAVA_RUST_ISSUES.md).
+- Evidence: 262/262 tests passed; beta readiness 14/14; package smoke passed
+  with 210 files. Real Java analysis covered 7074 files, 1796 routes and a
+  non-truncated 151-node/738-edge refreshSync call graph with 10 golden cases.
 
 ## MG-180: Execute verified TypeScript method extraction end to end
 
