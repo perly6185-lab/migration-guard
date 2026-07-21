@@ -18,9 +18,12 @@ export interface JavaEndpointAnalyzer {
   root: string;
   routes: JavaEndpointRouteCandidate[];
   serviceMethods: JavaServiceMethodCandidate[];
+  repositoryMethods: JavaRepositoryMethodCandidate[];
   analyze(options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">): JavaEndpointAnalysisReport;
   analyzeServiceMethod(candidate: JavaServiceMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
   analyzeServiceMethodAdaptive(candidate: JavaServiceMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
+  analyzeRepositoryMethod(candidate: JavaRepositoryMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
+  analyzeRepositoryMethodAdaptive(candidate: JavaRepositoryMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
 }
 
 export interface AdaptiveJavaAnalysisOptions {
@@ -50,6 +53,11 @@ export interface JavaServiceMethodCandidate {
   line: number;
 }
 
+export interface JavaRepositoryMethodCandidate extends JavaServiceMethodCandidate {
+  role: "repository" | "mapper" | "dao";
+  implementation: "concrete" | "default" | "generated-boundary";
+}
+
 export interface JavaEndpointRouteCandidate {
   method: JavaEndpointHttpMethod;
   path: string;
@@ -63,7 +71,7 @@ export interface JavaEndpointRouteCandidate {
   framework: "Spring";
   confidence: "low" | "medium" | "high";
   annotations?: string[];
-  entryKind?: "controller" | "service";
+  entryKind?: "controller" | "service" | "repository";
 }
 
 export interface JavaEndpointCallGraphNode {
@@ -314,13 +322,17 @@ export async function createJavaEndpointAnalyzer(rootValue: string, includeTests
   const project = await collectJavaProject(root, includeTests);
   const routes = extractSpringRoutes(project);
   const serviceMethods = extractServiceMethods(project);
+  const repositoryMethods = extractRepositoryMethods(project);
   return {
     root,
     routes,
     serviceMethods,
+    repositoryMethods,
     analyze: (options) => analyzeJavaEndpointModel(project, routes, options),
     analyzeServiceMethod: (candidate, options = {}) => analyzeJavaServiceMethodModel(project, routes, candidate, options),
-    analyzeServiceMethodAdaptive: (candidate, options = {}) => analyzeJavaServiceMethodAdaptive(project, routes, candidate, options)
+    analyzeServiceMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "service", options),
+    analyzeRepositoryMethod: (candidate, options = {}) => analyzeJavaMethodModel(project, routes, candidate, "repository", options),
+    analyzeRepositoryMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "repository", options)
   };
 }
 
@@ -330,13 +342,23 @@ function analyzeJavaServiceMethodAdaptive(
   candidate: JavaServiceMethodCandidate,
   options: AdaptiveJavaAnalysisOptions
 ): AdaptiveJavaAnalysisResult {
+  return analyzeJavaMethodAdaptive(project, routes, candidate, "service", options);
+}
+
+function analyzeJavaMethodAdaptive(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  candidate: JavaServiceMethodCandidate,
+  entryKind: "service" | "repository",
+  options: AdaptiveJavaAnalysisOptions
+): AdaptiveJavaAnalysisResult {
   let depth = positiveInteger(options.initialDepth, DEFAULT_MAX_DEPTH);
   let edges = positiveInteger(options.initialEdges, DEFAULT_MAX_TOTAL_EDGES);
   const maxDepth = positiveInteger(options.maxDepth, Math.max(depth, 16));
   const maxEdges = positiveInteger(options.maxEdges, Math.max(edges, 5000));
   const maxRounds = positiveInteger(options.maxRounds, 4);
   const rounds: AdaptiveJavaAnalysisResult["rounds"] = [];
-  let report = analyzeJavaServiceMethodModel(project, routes, candidate, { maxDepth: depth, maxEdges: edges });
+  let report = analyzeJavaMethodModel(project, routes, candidate, entryKind, { maxDepth: depth, maxEdges: edges });
   for (let round = 1; round <= maxRounds; round += 1) {
     const truncation = report.callGraph.truncation;
     const complete = !truncation.edgeCapHit && !truncation.depthCapHit && truncation.unexpandedBoundaryNodes.length === 0;
@@ -348,9 +370,47 @@ function analyzeJavaServiceMethodAdaptive(
     if (nextDepth === depth && nextEdges === edges) break;
     depth = nextDepth;
     edges = nextEdges;
-    report = analyzeJavaServiceMethodModel(project, routes, candidate, { maxDepth: depth, maxEdges: edges });
+    report = analyzeJavaMethodModel(project, routes, candidate, entryKind, { maxDepth: depth, maxEdges: edges });
   }
   return { report, status: "budget-exhausted", rounds };
+}
+
+function extractRepositoryMethods(project: JavaProjectModel): JavaRepositoryMethodCandidate[] {
+  return project.types
+    .filter(isPersistenceType)
+    .flatMap((type) => type.methods
+      .filter((method) => method.hasBody || (type.kind === "interface" && !hasConcreteImplementation(project, type, method)))
+      .map((method): JavaRepositoryMethodCandidate => ({
+        id: methodId(type, method), className: type.name, qualifiedClassName: type.qualifiedName,
+        methodName: method.name, signature: method.signature, returnType: method.returnType,
+        parameterTypes: method.params.map((param) => param.typeName), annotations: [...type.annotations, ...method.annotations],
+        file: method.file, line: method.line, role: persistenceRole(type),
+        implementation: method.hasBody ? (type.kind === "interface" ? "default" : "concrete") : "generated-boundary"
+      })))
+    .sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.id.localeCompare(b.id));
+}
+
+function hasConcreteImplementation(project: JavaProjectModel, type: JavaTypeInfo, method: JavaMethodInfo): boolean {
+  const implementations = project.implementationsByInterface.get(type.name) ?? [];
+  return implementations.some((implementation) => implementation.methods.some((candidate) =>
+    candidate.hasBody && candidate.name === method.name && candidate.params.length === method.params.length
+  ));
+}
+
+function isPersistenceType(type: JavaTypeInfo): boolean {
+  const location = `${type.packageName ?? ""}.${type.name}`;
+  const mapperPackage = /(?:^|\.)mapper(?:\.|$)/i.test(location);
+  const repositoryName = /(?:Repository|Dao)(?:Impl)?$/i.test(type.name);
+  const mapperName = /Mapper$/.test(type.name);
+  const persistenceBase = [...type.extends, ...type.implements].some((name) => /(?:BaseMapper|MapperX|Repository|Dao)/i.test(name));
+  const repositoryAnnotation = type.annotations.some((annotation) => /@Repository\b/.test(annotation));
+  return repositoryName || repositoryAnnotation || persistenceBase || (mapperPackage && mapperName);
+}
+
+function persistenceRole(type: JavaTypeInfo): JavaRepositoryMethodCandidate["role"] {
+  if (/Dao(?:Impl)?$/i.test(type.name) || /(?:^|\.)dao(?:\.|$)/i.test(type.packageName ?? "")) return "dao";
+  if (/Mapper$/.test(type.name) || /(?:^|\.)mapper(?:\.|$)/i.test(type.packageName ?? "")) return "mapper";
+  return "repository";
 }
 
 function extractServiceMethods(project: JavaProjectModel): JavaServiceMethodCandidate[] {
@@ -379,7 +439,17 @@ function analyzeJavaServiceMethodModel(
   candidate: JavaServiceMethodCandidate,
   options: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">
 ): JavaEndpointAnalysisReport {
-  const endpoint = normalizeRoutePath(`/__service/${candidate.qualifiedClassName}/${candidate.methodName}/${candidate.line}`);
+  return analyzeJavaMethodModel(project, routes, candidate, "service", options);
+}
+
+function analyzeJavaMethodModel(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  candidate: JavaServiceMethodCandidate,
+  entryKind: "service" | "repository",
+  options: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">
+): JavaEndpointAnalysisReport {
+  const endpoint = normalizeRoutePath(`/__${entryKind}/${candidate.qualifiedClassName}/${candidate.methodName}/${candidate.line}`);
   const selectedRoute: JavaEndpointRouteCandidate = {
     method: "ALL",
     path: endpoint,
@@ -391,7 +461,7 @@ function analyzeJavaServiceMethodModel(
     framework: "Spring",
     confidence: "high",
     annotations: candidate.annotations,
-    entryKind: "service"
+    entryKind
   };
   return analyzeJavaEndpointModel(project, routes, { endpoint, method: "ALL", ...options }, selectedRoute);
 }
