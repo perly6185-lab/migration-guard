@@ -42,6 +42,7 @@ and evaluate every normalized route:
 ```bash
 migration-guard java-endpoint assess-controllers --root ../java-service --max-depth 8 --max-edges 1200 --apply
 migration-guard java-endpoint assess-services --root ../java-service --max-depth 8 --max-edges 1200 --apply
+migration-guard java-endpoint assess-services --root ../java-service --max-depth 8 --max-edges 1200 --adaptive --max-expansion-depth 16 --max-expansion-edges 5000 --max-expansion-rounds 4 --apply
 ```
 
 The batch command is fail-closed and exits nonzero when any method is blocked.

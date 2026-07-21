@@ -10,11 +10,13 @@ import type {
   ReplacementBoundaryCandidate,
   ReplacementImplementationWave,
   ReplacementOwnership,
+  ReviewedOwnershipPolicy,
   ReplacementScenario
 } from "./endpointReplacementModel.js";
 
 export interface EndpointReplacementPlanOptions {
   ownership?: Record<string, ReplacementOwnership>;
+  ownershipPolicy?: ReviewedOwnershipPolicy;
 }
 
 export interface EndpointPilotPlan {
@@ -37,12 +39,14 @@ export function createEndpointReplacementPlan(
   sourceReport?: JavaEndpointAnalysisReport
 ): EndpointReplacementPlan {
   const contracts = deriveReplacementContracts(graph, sourceReport);
-  const boundaries = createBoundaries(graph, options.ownership ?? {});
+  const policy = evaluateOwnershipPolicy(graph, options.ownershipPolicy);
+  const boundaries = createBoundaries(graph, { ...(options.ownership ?? {}), ...policy.ownership });
   const scenarios = synthesizeReplacementScenarios(graph, sourceReport);
   const waves = createImplementationWaves(boundaries, contracts.contexts.length > 0);
   const findings = [...new Set([
     ...graph.completeness.findings,
     ...boundaries.flatMap((boundary) => boundary.blockers),
+    ...policy.findings,
     ...(contracts.effects.some((effect) => effect.kind === "unknown") ? ["RP-CONTRACT-UNKNOWN-EFFECT"] : []),
     ...(contracts.effects.some((effect) => effect.failurePolicy === "unknown") ? ["RP-CONTRACT-EFFECT-POLICY-UNKNOWN"] : [])
   ])].sort();
@@ -62,6 +66,55 @@ export function createEndpointReplacementPlan(
     nextAction: blocked ? graph.completeness.findings[0] ?? findings[0] : undefined
   };
   return { ...base, planHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
+}
+
+export function evaluateOwnershipPolicy(
+  graph: BehaviorGraph,
+  policy?: ReviewedOwnershipPolicy,
+  now = Date.now()
+): { ownership: Record<string, ReplacementOwnership>; findings: string[] } {
+  if (!policy) return { ownership: {}, findings: [] };
+  const ownership: Record<string, ReplacementOwnership> = {};
+  const findings: string[] = [];
+  if (policy.version !== 1) findings.push("RP-POLICY-VERSION-UNSUPPORTED");
+  const seen = new Set<string>();
+  for (const rule of policy.rules) {
+    if (!rule.id || seen.has(rule.id)) { findings.push(`RP-POLICY-RULE-ID-INVALID:${rule.id || "missing"}`); continue; }
+    seen.add(rule.id);
+    if (!rule.reason.trim() || !rule.reviewedBy.trim()) findings.push(`RP-POLICY-REVIEW-MISSING:${rule.id}`);
+    const expiry = Date.parse(rule.expiresAt);
+    if (!Number.isFinite(expiry) || expiry <= now) findings.push(`RP-POLICY-EXPIRED:${rule.id}`);
+    if (!rule.match.kind && !rule.match.sourceRole && !rule.match.symbolPattern) findings.push(`RP-POLICY-MATCH-EMPTY:${rule.id}`);
+    if (rule.match.symbolPattern && isBroadPattern(rule.match.symbolPattern)) { findings.push(`RP-POLICY-PATTERN-BROAD:${rule.id}`); continue; }
+    let pattern: RegExp | undefined;
+    try { pattern = rule.match.symbolPattern ? new RegExp(rule.match.symbolPattern) : undefined; }
+    catch { findings.push(`RP-POLICY-PATTERN-INVALID:${rule.id}`); continue; }
+    const matches = graph.nodes.filter((node) => (!rule.match.kind || node.kind === rule.match.kind)
+      && (!rule.match.sourceRole || node.sourceRole === rule.match.sourceRole)
+      && (!pattern || pattern.test(node.evidence.symbol)));
+    if (!matches.length) findings.push(`RP-POLICY-MATCH-NONE:${rule.id}`);
+    for (const node of matches) {
+      if (rule.ownership === "reviewed-exclusion" && !["calculation", "observability"].includes(node.kind)) {
+        findings.push(`RP-POLICY-UNSAFE-EXCLUSION:${rule.id}:${node.id}`);
+        continue;
+      }
+      const requiredEvidence = rule.ownership === "reviewed-exclusion"
+        ? node.kind === "calculation" ? ["deterministic", "side-effect-free"] : ["target-observability"]
+        : rule.ownership === "infrastructure-port" ? ["protocol", "resource", "operation", "target-adapter"] : [];
+      if (requiredEvidence.some((required) => !rule.requirements.includes(required))) {
+        findings.push(`RP-POLICY-EVIDENCE-INCOMPLETE:${rule.id}:${node.id}`);
+        continue;
+      }
+      if (ownership[node.id] && ownership[node.id] !== rule.ownership) findings.push(`RP-POLICY-CONFLICT:${node.id}`);
+      else ownership[node.id] = rule.ownership;
+    }
+  }
+  return { ownership, findings: [...new Set(findings)].sort() };
+}
+
+function isBroadPattern(value: string): boolean {
+  const normalized = value.replaceAll("^", "").replaceAll("$", "").trim();
+  return normalized === ".*" || normalized === ".+" || normalized.length < 3;
 }
 
 export function createEndpointReplacementPlanFromJava(
@@ -206,8 +259,8 @@ function createBoundaries(graph: BehaviorGraph, ownership: Record<string, Replac
   const groups: Array<{ id: string; title: string; kinds: string[]; proposed: ReplacementOwnership }> = [
     { id: "pure-logic", title: "Pure validation, decisions and calculation", kinds: ["validation", "decision", "calculation"], proposed: "target-owned" },
     { id: "application-orchestration", title: "Entrypoint, context and transaction orchestration", kinds: ["entrypoint", "context-resolution", "transaction"], proposed: "target-owned" },
-    { id: "infrastructure", title: "State and external infrastructure", kinds: ["state-read", "state-write", "external-call"], proposed: "infrastructure-port" },
-    { id: "observable-effects", title: "Events and compensation", kinds: ["event-publish", "compensation"], proposed: "target-owned" },
+    { id: "infrastructure", title: "State and external infrastructure", kinds: ["state-read", "state-write", "external-call", "coordination"], proposed: "infrastructure-port" },
+    { id: "observable-effects", title: "Events and compensation", kinds: ["event-publish", "compensation", "observability", "clock-read", "async-boundary"], proposed: "target-owned" },
     { id: "unclassified", title: "Unclassified behavior", kinds: ["unknown"], proposed: "unresolved" }
   ];
   return groups.flatMap((group) => {
@@ -267,7 +320,7 @@ function addGeneratedScenario(
 ): void {
   const kinds: Record<ReplacementScenario["category"], string[]> = {
     success: [], validation: ["validation"], context: ["context-resolution"], branch: ["decision"],
-    concurrency: ["state-write", "transaction"], fault: ["state-write", "external-call", "transaction", "event-publish", "compensation"],
+    concurrency: ["state-write", "transaction", "coordination"], fault: ["state-write", "external-call", "transaction", "event-publish", "compensation", "coordination", "async-boundary"],
     compatibility: ["entrypoint"], scale: graph.nodes.map((node) => node.kind)
   };
   addScenario(target, {

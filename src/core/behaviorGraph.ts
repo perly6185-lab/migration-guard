@@ -13,6 +13,7 @@ import type {
   DataContractRequirement,
   StateRequirement
 } from "./endpointReplacementModel.js";
+import { classifyJavaSemantic } from "./javaSemanticRegistry.js";
 
 const CONTEXT_SIGNALS: Array<[RegExp, string, string]> = [
   [/tenant/i, "tenant", "tenant context"],
@@ -39,13 +40,17 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
       detail: edge.resolution
     }
   }));
-  const unresolvedEdges = report.callGraph.edges.filter((edge) => edge.resolution === "unresolved").length;
+  const unresolvedCalls = report.callGraph.edges.filter((edge) => edge.resolution === "unresolved").length;
+  const ambiguousEdges = report.callGraph.edges.filter((edge) => edge.resolution === "ambiguous").length;
+  const unresolvedEdges = unresolvedCalls + ambiguousEdges;
   const truncation = report.callGraph.truncation;
   const findings = [
     ...(truncation.edgeCapHit ? ["RP-GRAPH-EDGE-CAP"] : []),
     ...(truncation.depthCapHit ? ["RP-GRAPH-DEPTH-CAP"] : []),
     ...(truncation.unexpandedBoundaryNodes.length ? ["RP-GRAPH-UNEXPANDED-NODES"] : []),
-    ...(unresolvedEdges ? ["RP-GRAPH-UNRESOLVED-EDGES"] : [])
+    ...(unresolvedCalls ? ["RP-GRAPH-UNRESOLVED-EDGES"] : []),
+    ...(ambiguousEdges ? ["RP-GRAPH-AMBIGUOUS-CALLS"] : []),
+    ...(report.callGraph.edges.some((edge) => edge.resolution === "same-class" && nodes.find((node) => node.id === edge.to)?.evidence.detail?.includes("@Transactional")) ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : [])
   ];
   const workload = inferWorkload(report, nodes);
   const base = {
@@ -92,13 +97,14 @@ export function deriveReplacementContracts(graph: BehaviorGraph, report?: JavaEn
 
 function classifyNode(node: JavaEndpointCallGraphNode, entry: boolean): BehaviorNode {
   const text = `${node.className}.${node.methodName} ${node.file} ${node.signature ?? ""}`;
-  const [kind, reasons] = entry ? ["entrypoint" as const, ["selected endpoint entry"]] : classifyBehavior(text, node.kind);
-  const stateful = ["state-read", "state-write", "transaction", "compensation"].includes(kind);
-  const sideEffecting = ["state-write", "external-call", "transaction", "event-publish", "compensation"].includes(kind);
+  const [kind, reasons] = entry ? ["entrypoint" as const, ["selected endpoint entry"]] : classifyBehavior(text, node.role ?? node.kind);
+  const stateful = ["state-read", "state-write", "transaction", "compensation", "coordination"].includes(kind);
+  const sideEffecting = ["state-write", "external-call", "transaction", "event-publish", "compensation", "observability", "clock-read", "coordination", "async-boundary"].includes(kind);
   return {
     id: node.id,
     kind,
     sourceKind: node.kind,
+    sourceRole: node.role,
     evidence: { file: node.file, line: node.line, symbol: `${node.className}.${node.methodName}`, detail: node.signature },
     stateful,
     sideEffecting,
@@ -108,6 +114,8 @@ function classifyNode(node: JavaEndpointCallGraphNode, entry: boolean): Behavior
 }
 
 function classifyBehavior(text: string, sourceKind: string): [BehaviorKind, string[]] {
+  const semantic = classifyJavaSemantic(text);
+  if (semantic) return [semantic.kind, [semantic.reason, `registry ${semantic.id}`]];
   const rules: Array<[BehaviorKind, RegExp, string]> = [
     ["compensation", /undo|rollback|reconcile|compensat|restore/i, "compensation semantics"],
     ["transaction", /transaction|commit|unitofwork/i, "transaction boundary"],
@@ -115,20 +123,24 @@ function classifyBehavior(text: string, sourceKind: string): [BehaviorKind, stri
     ["validation", /validat|assert|check|required|unique|permission/i, "validation or policy check"],
     ["context-resolution", /tenant|security|auth|datasource|requestcontext|webframework|device|locale|SecurityFramework/i, "runtime context access"],
     ["external-call", /client|\bapi\.|gateway|adapter|storage|fileApi|http|rpc/i, "external service boundary"],
-    ["state-write", /insert|save|create|update|delete|remove|clear|write|upsert|persist|record|set|lock|acquire|cancel|submit|enable|disable|approve|reject|archive/i, "state mutation"],
+    ["state-write", /insert|save|create|update|delete|remove|clear|write|upsert|persist|record|set|lock|acquire|cancel|terminate|submit|enable|disable|approve|reject|archive/i, "state mutation"],
     ["state-read", /select|query|find|get|list|load|read|count|exists/i, "state lookup"],
     ["external-call", /repository|mapper|cache|upload|download|file/i, "external or infrastructure boundary"],
     ["decision", /(^|\.)(is|has|should|can|allow|resolve)[A-Z_]/, "branch decision"],
     ["calculation", /calculate|compute|derive|convert|assemble|build|map|normalize|fill|evaluate|copyProperties|BeanUtils|CommonResult|success/i, "deterministic transformation"]
   ];
   for (const [kind, pattern, reason] of rules) if (pattern.test(text)) return [kind, [reason, `source kind ${sourceKind}`]];
+  if (sourceKind === "assembler" || sourceKind === "mapper" || sourceKind === "support") return ["calculation", [`${sourceKind} role`, "role inference"]];
+  if (sourceKind === "policy") return ["decision", ["policy role", "role inference"]];
+  if (sourceKind === "coordinator") return ["coordination", ["coordination role", "role inference"]];
+  if (sourceKind === "adapter" || sourceKind === "infrastructure-client") return ["external-call", [`${sourceKind} role`, "role inference"]];
   return ["unknown", [`unclassified source kind ${sourceKind}`]];
 }
 
 function inferWorkload(report: JavaEndpointAnalysisReport, nodes: BehaviorNode[]): EndpointWorkloadKind {
   const entry = `${report.selectedRoute?.methodName ?? ""} ${report.selectedRoute?.signature ?? ""}`;
   if (/batch|bulk|chunk/i.test(entry) && nodes.some((node) => node.sideEffecting)) return "batch";
-  if (/refreshSync|synchronize|sync(?:By|With|Data|Record|Task)/i.test(entry) && nodes.some((node) => node.sideEffecting)) return "sync";
+  if (/refresh.*sync|synchronize|sync(?:By|With|Data|Record|Task)/i.test(entry) && nodes.some((node) => node.sideEffecting)) return "sync";
   if (/upload|import/i.test(entry) && nodes.some((node) => node.kind === "external-call" || node.kind === "state-write")) return "upload";
   if (/export|download|stream/i.test(entry)) return "export";
   if (/start|submit|enqueue|dispatch|schedule/i.test(entry) && nodes.some((node) => node.kind === "event-publish" || node.kind === "state-write")) return "async-job";
@@ -252,6 +264,7 @@ function resourceFor(node: BehaviorNode): string {
   if (/lock|registry|lease/i.test(text)) return "coordination";
   if (/undo/i.test(text)) return "undo";
   if (/event|progress|publish/i.test(text)) return "event-stream";
+  if (node.kind === "coordination") return "coordination";
   if (/repository|mapper|table|sql|data/i.test(text)) return "database";
   return "application-state";
 }
@@ -259,6 +272,10 @@ function resourceFor(node: BehaviorNode): string {
 function effectKindFor(node: BehaviorNode): EffectRequirement["kind"] {
   const text = `${node.evidence.symbol} ${node.evidence.file}`;
   if (/undo/i.test(text)) return "undo";
+  if (node.kind === "clock-read") return "clock";
+  if (node.kind === "observability") return "audit";
+  if (node.kind === "coordination") return /cache|redis/i.test(text) ? "cache" : "lock";
+  if (node.kind === "async-boundary") return "event";
   if (/event|publish|progress|notify/i.test(text)) return "event";
   if (/cache|redis/i.test(text)) return "cache";
   if (/lock|lease|registry/i.test(text)) return "lock";

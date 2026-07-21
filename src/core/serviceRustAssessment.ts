@@ -10,6 +10,10 @@ export interface ServiceRustAssessmentOptions {
   maxEdges?: number;
   limit?: number;
   includeTests?: boolean;
+  adaptive?: boolean;
+  maxExpansionDepth?: number;
+  maxExpansionEdges?: number;
+  maxExpansionRounds?: number;
 }
 
 export interface ServiceMethodAssessment {
@@ -29,7 +33,10 @@ export interface ServiceMethodAssessment {
   frameworkContracts: number;
   dataContracts: number;
   effects: number;
+  roles: string[];
   findings: string[];
+  expansionStatus?: "complete" | "budget-exhausted";
+  expansionRounds?: number;
 }
 
 export interface ServiceRustAssessmentReport {
@@ -44,8 +51,11 @@ export interface ServiceRustAssessmentReport {
     truncated: number;
     withUnknownNodes: number;
     withExternalBoundaries: number;
+    adaptivelyExpanded: number;
+    expansionBudgetExhausted: number;
     workloads: Record<string, number>;
     findings: Record<string, number>;
+    roles: Record<string, number>;
   };
   methods: ServiceMethodAssessment[];
   reportHash: string;
@@ -55,7 +65,14 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
   const analyzer = await createJavaEndpointAnalyzer(options.root, Boolean(options.includeTests));
   const candidates = analyzer.serviceMethods.slice(0, positiveLimit(options.limit, analyzer.serviceMethods.length));
   const methods = candidates.map((candidate): ServiceMethodAssessment => {
-    const source = analyzer.analyzeServiceMethod(candidate, { maxDepth: options.maxDepth, maxEdges: options.maxEdges });
+    const expansion = options.adaptive ? analyzer.analyzeServiceMethodAdaptive(candidate, {
+      initialDepth: options.maxDepth,
+      initialEdges: options.maxEdges,
+      maxDepth: options.maxExpansionDepth,
+      maxEdges: options.maxExpansionEdges,
+      maxRounds: options.maxExpansionRounds
+    }) : undefined;
+    const source = expansion?.report ?? analyzer.analyzeServiceMethod(candidate, { maxDepth: options.maxDepth, maxEdges: options.maxEdges });
     const { graph, plan } = createEndpointReplacementPlanFromJava(source);
     return {
       id: candidate.id,
@@ -74,7 +91,10 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
       frameworkContracts: plan.contracts.framework.length,
       dataContracts: plan.contracts.data.length,
       effects: plan.contracts.effects.length,
-      findings: plan.findings
+      roles: [...new Set(graph.nodes.map((node) => node.sourceRole ?? "unknown"))].sort(),
+      findings: [...plan.findings, ...(expansion?.status === "budget-exhausted" ? ["RP-GRAPH-EXPANSION-BUDGET-EXHAUSTED"] : [])],
+      expansionStatus: expansion?.status,
+      expansionRounds: expansion?.rounds.length
     };
   });
   const base = {
@@ -89,8 +109,11 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
       truncated: methods.filter((item) => item.findings.some((finding) => /GRAPH-(EDGE|DEPTH|UNEXPANDED)/.test(finding))).length,
       withUnknownNodes: methods.filter((item) => item.unknownNodes > 0).length,
       withExternalBoundaries: methods.filter((item) => item.externalBoundaries > 0).length,
+      adaptivelyExpanded: methods.filter((item) => (item.expansionRounds ?? 0) > 1).length,
+      expansionBudgetExhausted: methods.filter((item) => item.expansionStatus === "budget-exhausted").length,
       workloads: countValues(methods.map((item) => item.workload)),
-      findings: countValues(methods.flatMap((item) => item.findings))
+      findings: countValues(methods.flatMap((item) => item.findings)),
+      roles: countValues(methods.flatMap((item) => item.roles))
     },
     methods
   };

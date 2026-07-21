@@ -20,6 +20,21 @@ export interface JavaEndpointAnalyzer {
   serviceMethods: JavaServiceMethodCandidate[];
   analyze(options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">): JavaEndpointAnalysisReport;
   analyzeServiceMethod(candidate: JavaServiceMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
+  analyzeServiceMethodAdaptive(candidate: JavaServiceMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
+}
+
+export interface AdaptiveJavaAnalysisOptions {
+  initialDepth?: number;
+  initialEdges?: number;
+  maxDepth?: number;
+  maxEdges?: number;
+  maxRounds?: number;
+}
+
+export interface AdaptiveJavaAnalysisResult {
+  report: JavaEndpointAnalysisReport;
+  status: "complete" | "budget-exhausted";
+  rounds: Array<{ round: number; maxDepth: number; maxEdges: number; nodes: number; edges: number; unexpandedBoundaries: number; complete: boolean }>;
 }
 
 export interface JavaServiceMethodCandidate {
@@ -48,11 +63,13 @@ export interface JavaEndpointRouteCandidate {
   framework: "Spring";
   confidence: "low" | "medium" | "high";
   annotations?: string[];
+  entryKind?: "controller" | "service";
 }
 
 export interface JavaEndpointCallGraphNode {
   id: string;
   kind: "controller" | "service" | "repository" | "mapper" | "dto" | "unknown";
+  role?: JavaTypeRole;
   className: string;
   methodName: string;
   file: string;
@@ -70,9 +87,12 @@ export interface JavaEndpointCallGraphEdge {
     method: string;
     expression: string;
     file: string;
-    line: number;
-  };
-  resolution: "field-injection" | "same-class" | "static-or-external" | "unresolved";
+      line: number;
+      argumentCount?: number;
+      argumentTypes?: string[];
+    };
+  resolution: "field-injection" | "same-class" | "static-or-external" | "ambiguous" | "unresolved";
+  resolutionCandidates?: Array<{ methodId: string; signature: string; score: number }>;
 }
 
 export interface JavaEndpointRiskSignal {
@@ -176,6 +196,7 @@ interface JavaTypeInfo {
   line: number;
   annotations: string[];
   implements: string[];
+  extends: string[];
   fields: JavaFieldInfo[];
   plainFields: JavaPlainFieldInfo[];
   constants: Map<string, string>;
@@ -286,6 +307,8 @@ export async function analyzeJavaEndpoint(options: AnalyzeJavaEndpointOptions): 
   return analyzer.analyze(options);
 }
 
+export type JavaTypeRole = "controller" | "application-service" | "domain-service" | "service" | "repository" | "mapper" | "support" | "pipeline" | "processor" | "coordinator" | "adapter" | "infrastructure-client" | "policy" | "assembler" | "unknown";
+
 export async function createJavaEndpointAnalyzer(rootValue: string, includeTests = false): Promise<JavaEndpointAnalyzer> {
   const root = path.resolve(rootValue);
   const project = await collectJavaProject(root, includeTests);
@@ -296,8 +319,38 @@ export async function createJavaEndpointAnalyzer(rootValue: string, includeTests
     routes,
     serviceMethods,
     analyze: (options) => analyzeJavaEndpointModel(project, routes, options),
-    analyzeServiceMethod: (candidate, options = {}) => analyzeJavaServiceMethodModel(project, routes, candidate, options)
+    analyzeServiceMethod: (candidate, options = {}) => analyzeJavaServiceMethodModel(project, routes, candidate, options),
+    analyzeServiceMethodAdaptive: (candidate, options = {}) => analyzeJavaServiceMethodAdaptive(project, routes, candidate, options)
   };
+}
+
+function analyzeJavaServiceMethodAdaptive(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  candidate: JavaServiceMethodCandidate,
+  options: AdaptiveJavaAnalysisOptions
+): AdaptiveJavaAnalysisResult {
+  let depth = positiveInteger(options.initialDepth, DEFAULT_MAX_DEPTH);
+  let edges = positiveInteger(options.initialEdges, DEFAULT_MAX_TOTAL_EDGES);
+  const maxDepth = positiveInteger(options.maxDepth, Math.max(depth, 16));
+  const maxEdges = positiveInteger(options.maxEdges, Math.max(edges, 5000));
+  const maxRounds = positiveInteger(options.maxRounds, 4);
+  const rounds: AdaptiveJavaAnalysisResult["rounds"] = [];
+  let report = analyzeJavaServiceMethodModel(project, routes, candidate, { maxDepth: depth, maxEdges: edges });
+  for (let round = 1; round <= maxRounds; round += 1) {
+    const truncation = report.callGraph.truncation;
+    const complete = !truncation.edgeCapHit && !truncation.depthCapHit && truncation.unexpandedBoundaryNodes.length === 0;
+    rounds.push({ round, maxDepth: depth, maxEdges: edges, nodes: report.callGraph.nodes.length, edges: report.callGraph.edges.length, unexpandedBoundaries: truncation.unexpandedBoundaryNodes.length, complete });
+    if (complete) return { report, status: "complete", rounds };
+    if (round === maxRounds) break;
+    const nextDepth = truncation.depthCapHit ? Math.min(maxDepth, depth + Math.max(2, Math.ceil(depth / 2))) : depth;
+    const nextEdges = truncation.edgeCapHit ? Math.min(maxEdges, Math.max(edges + 1, edges * 2)) : edges;
+    if (nextDepth === depth && nextEdges === edges) break;
+    depth = nextDepth;
+    edges = nextEdges;
+    report = analyzeJavaServiceMethodModel(project, routes, candidate, { maxDepth: depth, maxEdges: edges });
+  }
+  return { report, status: "budget-exhausted", rounds };
 }
 
 function extractServiceMethods(project: JavaProjectModel): JavaServiceMethodCandidate[] {
@@ -337,7 +390,8 @@ function analyzeJavaServiceMethodModel(
     signature: candidate.signature,
     framework: "Spring",
     confidence: "high",
-    annotations: candidate.annotations
+    annotations: candidate.annotations,
+    entryKind: "service"
   };
   return analyzeJavaEndpointModel(project, routes, { endpoint, method: "ALL", ...options }, selectedRoute);
 }
@@ -535,7 +589,7 @@ function parseJavaTypes(file: JavaSourceFile): JavaTypeInfo[] {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const match = line.match(/^\s*(?:public\s+|protected\s+|private\s+)?(?:abstract\s+|final\s+|static\s+)*?(class|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+extends\s+[^{]+?)?(?:\s+implements\s+([^{]+))?\s*\{/);
+    const match = line.match(/^\s*(?:public\s+|protected\s+|private\s+)?(?:abstract\s+|final\s+|static\s+)*?(class|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+extends\s+([A-Za-z0-9_.$<>,\s]+?))?(?:\s+implements\s+([^{]+))?\s*\{/);
     if (!match) {
       continue;
     }
@@ -550,7 +604,8 @@ function parseJavaTypes(file: JavaSourceFile): JavaTypeInfo[] {
       file: file.relativePath,
       line: index + 1,
       annotations,
-      implements: parseImplements(match[3]),
+      implements: parseImplements(match[4]),
+      extends: parseImplements(match[3]),
       fields: [],
       plainFields: [],
       constants: new Map(),
@@ -843,15 +898,16 @@ function buildCallGraph(
     if (!current.method.hasBody) {
       continue;
     }
-    const calls = extractMethodCalls(current.method, current.type).slice(0, MAX_EDGES_PER_METHOD);
+    const calls = extractMethodCalls(project, current.method, current.type).slice(0, MAX_EDGES_PER_METHOD);
     for (const [callIndex, call] of calls.entries()) {
       if (edges.length >= maxEdges) {
         edgeCapHadRemainingWork = true;
         break;
       }
-      const targets = resolveCallTargets(project, current.type, call);
+      const resolved = resolveCallTargets(project, current.type, call);
+      const targets = resolved.targets;
       if (targets.length === 0) {
-        const externalNode = call.receiver ? externalNodeFor(current.method, call) : undefined;
+        const externalNode = call.receiver && resolved.resolution === "external" ? externalNodeFor(current.method, call) : undefined;
         if (externalNode) nodes.set(externalNode.id, externalNode);
         edges.push({
           from: current.node.id,
@@ -862,9 +918,12 @@ function buildCallGraph(
             method: call.method,
             expression: call.expression,
             file: current.method.file,
-            line: call.line
+            line: call.line,
+            argumentCount: call.argumentCount,
+            argumentTypes: call.argumentTypes
           },
-          resolution: call.receiver ? "static-or-external" : "unresolved"
+          resolution: resolved.resolution === "ambiguous" ? "ambiguous" : resolved.resolution === "external" ? "static-or-external" : "unresolved",
+          resolutionCandidates: resolved.candidates
         });
         edgeSourceDepths.push(current.depth);
         if (edges.length >= maxEdges && (callIndex < calls.length - 1 || queue.length > 0)) {
@@ -892,9 +951,12 @@ function buildCallGraph(
             method: call.method,
             expression: call.expression,
             file: current.method.file,
-            line: call.line
+            line: call.line,
+            argumentCount: call.argumentCount,
+            argumentTypes: call.argumentTypes
           },
-          resolution: call.receiver ? "field-injection" : "same-class"
+          resolution: call.receiver ? "field-injection" : "same-class",
+          resolutionCandidates: resolved.candidates
         });
         edgeSourceDepths.push(current.depth);
         if (!alreadyVisited) {
@@ -927,17 +989,18 @@ function buildCallGraph(
 
 function externalNodeFor(
   source: JavaMethodInfo,
-  call: { receiver?: string; method: string; line: number }
+  call: { receiver?: string; method: string; line: number; expression?: string; feature?: "lambda" | "method-reference" }
 ): JavaEndpointCallGraphNode {
   const receiver = call.receiver as string;
   return {
     id: `external:${source.file}:${receiver}.${call.method}:${call.line}`,
     kind: /mapper|repository|dao/i.test(receiver) ? "repository" : "unknown",
+    role: /mapper/i.test(receiver) ? "mapper" : /repository|dao/i.test(receiver) ? "repository" : /client|gateway|api/i.test(receiver) ? "infrastructure-client" : /manager|registry/i.test(receiver) ? "coordinator" : /support|helper|util/i.test(receiver) ? "support" : "unknown",
     className: receiver,
     methodName: call.method,
     file: source.file,
     line: call.line,
-    signature: `${receiver}.${call.method}(...)`
+    signature: call.feature ? `${call.feature}: ${call.expression ?? `${receiver}.${call.method}`}` : `${receiver}.${call.method}(...)`
   };
 }
 
@@ -1005,28 +1068,42 @@ function formatDepthCounts(counts: Record<string, number>): string {
   return entries.length > 0 ? entries.map(([depth, count]) => `d${depth}=${count}`).join(", ") : "none";
 }
 
-function extractMethodCalls(method: JavaMethodInfo, type: JavaTypeInfo): Array<{
+function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, type: JavaTypeInfo): Array<{
   receiver?: string;
   method: string;
   expression: string;
   line: number;
+  argumentCount: number;
+  argumentTypes: string[];
+  feature?: "lambda" | "method-reference";
 }> {
-  const calls: Array<{ receiver?: string; method: string; expression: string; line: number }> = [];
+  const calls: Array<{ receiver?: string; method: string; expression: string; line: number; argumentCount: number; argumentTypes: string[]; feature?: "lambda" | "method-reference" }> = [];
   const injectedFields = new Set(type.fields.map((field) => field.name));
+  const variableTypes = new Map(method.params.map((param) => [param.name, param.typeName]));
   const lines = method.body.split(/\r?\n/);
   for (const [offset, rawLine] of lines.entries()) {
-    const line = stripLineComment(rawLine);
+    let line = stripLineComment(rawLine);
+    if (offset === 0 && line.includes("{")) line = line.slice(line.indexOf("{") + 1);
     const lineNumber = method.bodyStartLine + offset;
+    const local = line.match(/\b([A-Z][A-Za-z0-9_.$<>?,\[\]]*)\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;)/);
+    if (local) variableTypes.set(local[2], simpleTypeName(local[1]));
+    for (const reference of line.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)/g)) {
+      calls.push({ receiver: reference[1], method: reference[2], expression: reference[0], line: lineNumber, argumentCount: -1, argumentTypes: [], feature: "method-reference" });
+    }
+    if (line.includes("->")) calls.push({ receiver: "$lambda", method: "invoke", expression: "lambda ->", line: lineNumber, argumentCount: -1, argumentTypes: [], feature: "lambda" });
     const qualifiedPattern = /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
     for (const match of line.matchAll(qualifiedPattern)) {
       if (!injectedFields.has(match[1]) && isLowValueCall(match[2])) {
         continue;
       }
+      const parsedArgs = extractCallArguments(line, (match.index ?? 0) + match[0].lastIndexOf("("));
       calls.push({
         receiver: match[1],
         method: match[2],
         expression: match[0],
-        line: lineNumber
+        line: lineNumber,
+        argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1,
+        argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(argument, variableTypes))
       });
     }
     const selfPattern = /(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
@@ -1035,13 +1112,16 @@ function extractMethodCalls(method: JavaMethodInfo, type: JavaTypeInfo): Array<{
       if (JAVA_KEYWORD_CALLS.has(methodName) || calls.some((call) => call.line === lineNumber && call.method === methodName)) {
         continue;
       }
-      if (!type.methods.some((candidate) => candidate.name === methodName)) {
+      if (!methodsInHierarchy(project, type).some((candidate) => candidate.method.name === methodName)) {
         continue;
       }
+      const parsedArgs = extractCallArguments(line, (match.index ?? 0) + match[0].lastIndexOf("("));
       calls.push({
         method: methodName,
         expression: `${methodName}(`,
-        line: lineNumber
+        line: lineNumber,
+        argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1,
+        argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(argument, variableTypes))
       });
     }
   }
@@ -1092,31 +1172,129 @@ function isLowValueCall(methodName: string): boolean {
 function resolveCallTargets(
   project: JavaProjectModel,
   currentType: JavaTypeInfo,
-  call: { receiver?: string; method: string }
-): Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> {
-  if (!call.receiver) {
-    return currentType.methods
-      .filter((method) => method.name === call.method)
-      .map((method) => ({ type: currentType, method }));
+  call: { receiver?: string; method: string; argumentCount: number; argumentTypes: string[]; feature?: "lambda" | "method-reference" }
+): ResolvedJavaCall {
+  if (!call.receiver || call.receiver === "this") {
+    return selectOverload(methodsInHierarchy(project, currentType)
+      .filter((item) => item.method.name === call.method)
+      .map((item) => item), call);
   }
 
-  const field = currentType.fields.find((candidate) => candidate.name === call.receiver);
+  if (call.receiver === "super") return selectOverload(parentTypes(project, currentType).flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method }))), call);
+  if (call.receiver === "$lambda") return { targets: [], resolution: "external", candidates: [] };
+
+  const field = [currentType, ...parentTypes(project, currentType)].flatMap((type) => type.fields).find((candidate) => candidate.name === call.receiver);
   if (!field) {
-    return [];
+    return { targets: [], resolution: "external", candidates: [] };
   }
   const candidateTypes = resolveTypesForField(project, field.typeName);
+  if (!candidateTypes.length) return { targets: [], resolution: "external", candidates: [] };
   const targets: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> = [];
   for (const candidateType of candidateTypes) {
-    const implementationTypes = candidateType.kind === "interface"
-      ? project.implementationsByInterface.get(candidateType.name) ?? []
+    let implementationTypes = candidateType.kind === "interface"
+      ? [candidateType, ...(project.implementationsByInterface.get(candidateType.name) ?? [])]
       : [candidateType];
+    const qualifier = field.annotations.join(" ").match(/@Qualifier\s*\(\s*["']([^"']+)["']\s*\)/)?.[1];
+    if (qualifier) implementationTypes = implementationTypes.filter((type) => type.name.toLowerCase() === qualifier.toLowerCase() || lowerCamel(type.name.replace(/Impl$/, "")) === qualifier);
     for (const implementationType of implementationTypes) {
-      for (const method of implementationType.methods.filter((candidate) => candidate.name === call.method)) {
+      for (const method of implementationType.methods.filter((candidate) => candidate.name === call.method && (implementationType.kind !== "interface" || candidate.hasBody))) {
         targets.push({ type: implementationType, method });
       }
     }
   }
-  return targets.filter((target, index, all) => all.findIndex((other) => methodId(other.type, other.method) === methodId(target.type, target.method)) === index);
+  return selectOverload(targets.filter((target, index, all) => all.findIndex((other) => methodId(other.type, other.method) === methodId(target.type, target.method)) === index), call);
+}
+
+interface ResolvedJavaCall {
+  targets: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>;
+  resolution: "resolved" | "ambiguous" | "external" | "unresolved";
+  candidates: Array<{ methodId: string; signature: string; score: number }>;
+}
+
+function selectOverload(
+  candidates: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>,
+  call: { argumentCount: number; argumentTypes: string[] }
+): ResolvedJavaCall {
+  const matchingArity = call.argumentCount < 0 ? candidates : candidates.filter((candidate) => candidate.method.params.length === call.argumentCount);
+  if (!matchingArity.length) return { targets: [], resolution: "unresolved", candidates: candidates.map((candidate) => ({ methodId: methodId(candidate.type, candidate.method), signature: candidate.method.signature, score: -100 })) };
+  const scored = matchingArity.map((candidate) => ({ candidate, score: overloadScore(candidate.method.params, call.argumentTypes) }));
+  const bestScore = Math.max(...scored.map((item) => item.score));
+  const best = scored.filter((item) => item.score === bestScore).map((item) => item.candidate);
+  const evidence = scored.map((item) => ({ methodId: methodId(item.candidate.type, item.candidate.method), signature: item.candidate.method.signature, score: item.score })).sort((a, b) => b.score - a.score || a.methodId.localeCompare(b.methodId));
+  return best.length === 1 ? { targets: best, resolution: "resolved", candidates: evidence } : { targets: [], resolution: "ambiguous", candidates: evidence };
+}
+
+function parentTypes(project: JavaProjectModel, type: JavaTypeInfo, visited = new Set<string>()): JavaTypeInfo[] {
+  const result: JavaTypeInfo[] = [];
+  for (const name of type.extends) {
+    if (visited.has(name)) continue;
+    visited.add(name);
+    for (const parent of project.typesByName.get(simpleTypeName(name)) ?? []) {
+      result.push(parent, ...parentTypes(project, parent, visited));
+    }
+  }
+  return result;
+}
+
+function methodsInHierarchy(project: JavaProjectModel, type: JavaTypeInfo): Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> {
+  return [type, ...parentTypes(project, type)].flatMap((owner) => owner.methods.map((method) => ({ type: owner, method })));
+}
+
+function lowerCamel(value: string): string { return value ? value[0].toLowerCase() + value.slice(1) : value; }
+
+function overloadScore(params: JavaParamInfo[], argumentTypes: string[]): number {
+  return params.reduce((score, param, index) => {
+    const actual = simpleTypeName(argumentTypes[index] ?? "unknown");
+    const expected = simpleTypeName(param.typeName);
+    if (actual === "unknown" || actual === "null") return score + 1;
+    if (actual === expected) return score + 5;
+    if (primitiveWrapper(actual) === primitiveWrapper(expected)) return score + 4;
+    if (expected === "Object" || expected === "Number" && /^(Byte|Short|Integer|Long|Float|Double)$/.test(actual)) return score + 2;
+    return score - 5;
+  }, 0);
+}
+
+function primitiveWrapper(value: string): string {
+  return ({ int: "Integer", long: "Long", boolean: "Boolean", double: "Double", float: "Float", short: "Short", byte: "Byte", char: "Character" } as Record<string, string>)[value] ?? value;
+}
+
+function extractCallArguments(line: string, openIndex: number): { args: string[]; complete: boolean } {
+  if (openIndex < 0 || line[openIndex] !== "(") return { args: [], complete: false };
+  let depth = 0;
+  let quote = "";
+  let current = "";
+  const args: string[] = [];
+  for (let index = openIndex + 1; index < line.length; index += 1) {
+    const char = line[index];
+    if (quote) {
+      current += char;
+      if (char === quote && line[index - 1] !== "\\") quote = "";
+      continue;
+    }
+    if (char === "\"" || char === "'") { quote = char; current += char; continue; }
+    if (char === "(") { depth += 1; current += char; continue; }
+    if (char === ")" && depth > 0) { depth -= 1; current += char; continue; }
+    if (char === ")" && depth === 0) { if (current.trim()) args.push(current.trim()); return { args, complete: true }; }
+    if (char === "," && depth === 0) { args.push(current.trim()); current = ""; continue; }
+    current += char;
+  }
+  return { args: current.trim() ? [current.trim()] : [], complete: false };
+}
+
+function inferArgumentType(value: string, variableTypes: Map<string, string>): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "unknown";
+  if (/^"[\s\S]*"$/.test(trimmed)) return "String";
+  if (/^'[\s\S]'$/.test(trimmed)) return "char";
+  if (/^(true|false)$/.test(trimmed)) return "boolean";
+  if (/^-?\d+[lL]$/.test(trimmed)) return "long";
+  if (/^-?\d+$/.test(trimmed)) return "int";
+  if (/^-?\d+\.\d+[fF]$/.test(trimmed)) return "float";
+  if (/^-?\d+\.\d+$/.test(trimmed)) return "double";
+  if (trimmed === "null") return "null";
+  const created = trimmed.match(/^new\s+([A-Za-z_][A-Za-z0-9_.$<>]*)/);
+  if (created) return simpleTypeName(created[1]);
+  return variableTypes.get(trimmed) ?? "unknown";
 }
 
 function resolveTypesForField(project: JavaProjectModel, typeName: string): JavaTypeInfo[] {
@@ -1131,17 +1309,37 @@ function nodeFor(
   return {
     id: methodId(type, method),
     kind: nodeKind(type, route),
+    role: inferTypeRole(type, route),
     className: type.name,
     methodName: method.name,
     file: type.file,
     line: method.line,
-    signature: method.signature,
+    signature: `${method.annotations.join(" ")} ${method.signature}`.trim(),
     route: route ? { method: route.method, path: route.path } : undefined
   };
 }
 
+function inferTypeRole(type: JavaTypeInfo, route?: JavaEndpointRouteCandidate): JavaTypeRole {
+  const text = `${type.qualifiedName} ${type.annotations.join(" ")}`;
+  if (route?.entryKind !== "service" && (route || /Controller$|@(?:RestController|Controller)\b/.test(text))) return "controller";
+  if (/ApplicationService(?:Impl)?$/.test(type.name) || /\.application\./i.test(text)) return "application-service";
+  if (/DomainService(?:Impl)?$/.test(type.name) || /\.domain\./i.test(text)) return "domain-service";
+  if (/Repository|Dao/i.test(type.name)) return "repository";
+  if (/Mapper$/.test(type.name)) return "mapper";
+  if (/Assembler$|Converter$/.test(type.name)) return "assembler";
+  if (/Pipeline$/.test(type.name)) return "pipeline";
+  if (/Processor$|Handler$/.test(type.name)) return "processor";
+  if (/Coordinator$|Manager$|Registry$/.test(type.name)) return "coordinator";
+  if (/Adapter$/.test(type.name)) return "adapter";
+  if (/Client$|Gateway$|Api$/.test(type.name)) return "infrastructure-client";
+  if (/Policy$|Rule$|Validator$/.test(type.name)) return "policy";
+  if (/Support$|Helper$|Utils?$/.test(type.name)) return "support";
+  if (/@Service\b/.test(text) || /Service(?:Impl)?$/.test(type.name)) return "service";
+  return "unknown";
+}
+
 function nodeKind(type: JavaTypeInfo, route?: JavaEndpointRouteCandidate): JavaEndpointCallGraphNode["kind"] {
-  if (route || type.annotations.some((annotation) => /@(RestController|Controller)\b/.test(annotation)) || /Controller$/.test(type.name)) {
+  if (route?.entryKind !== "service" && (route || type.annotations.some((annotation) => /@(RestController|Controller)\b/.test(annotation)) || /Controller$/.test(type.name))) {
     return "controller";
   }
   if (/Mapper$/.test(type.name)) {
