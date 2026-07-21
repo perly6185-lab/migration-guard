@@ -31,6 +31,7 @@ test("layered method extraction executes deepest-to-root and persists resumable 
 
     for (const expectedSymbol of ["level2", "level1", "entry"]) {
       await prepareNextMethodExtractionLayer(fixture.loaded, fixture.pkg, ledger, []);
+      assert.ok(ledger.steps.every((step) => step.anchor), "all layers must be anchored before the first mutation");
       const ready = ledger.steps.find((step) => step.status === "ready");
       assert.equal(ready?.symbol, expectedSymbol);
       await applyNextMethodExtractionLayer(fixture.loaded, fixture.pkg, ledger, ready!.patchHash!, []);
