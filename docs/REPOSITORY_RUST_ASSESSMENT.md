@@ -45,3 +45,5 @@ The largest blocked clusters are `DynamicTableCommandRepositoryImpl` (41), `Dyna
 The current generic analyzer can safely prepare 67.0% of Repository methods for Rust replacement planning. It must not claim full-project replacement readiness: 33.0% remain blocked under strict fail-closed policy.
 
 SQL-source modeling now recognizes annotation SQL, mapper XML statements, inherited `BaseMapper` calls, provider methods, tenant/datasource signals, and transaction participation when those repositories are reached through service call graphs. The next implementation priority is dynamic SQL ownership evidence: table-name expansion, conditional XML branches, provider-generated fragments, and datasource/tenant routing must be rendered as replayable contracts. After that, unresolved receiver/type inference and ambiguous mapper overload dispatch should be improved. Increasing graph budgets is not a priority because no method exhausted the configured adaptive limits.
+
+下阶段指标完善计划见 `docs/RUST_ASSESSMENT_METRICS_PLAN.md`。
