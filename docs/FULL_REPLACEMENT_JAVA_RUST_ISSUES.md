@@ -19,6 +19,7 @@ Priority: P0
 | MG-199 | Deterministic concurrency and fault replay | completed |
 | MG-200 | FR1-FR5 and source-off readiness | completed |
 | MG-201 | zboss refreshSync pilot | Java source complete; Rust target blocked |
+| MG-202 | Generic endpoint replacement planner | completed; real target replay blocked |
 
 Current evidence:
 
@@ -31,6 +32,32 @@ Current evidence:
 - Golden model v2 generation passed and expanded the source plan to the required
   context, effect, state, event, concurrency and failure dimensions.
 - The process-level pilot command fails closed with `MG201-RUST-ROOT-MISSING`.
+- The generic planner validates `/init`, `/refreshSync`, and `/page` as command,
+  sync, and query-with-effects workloads without route-specific branches.
+- Generic plan, runtime driver, RP1-RP6 readiness, and endpoint pilot CLI paths
+  are covered by process-level and lifecycle tests. RP4-RP6 real target evidence
+  remains blocked until a Rust target root is supplied.
+
+### MG-202: Generalize Full Replacement Planning Across Complex Endpoints
+
+- Priority: P0
+- Status: completed (planner); target validation blocked
+- Depends on: MG-193 through MG-200
+
+Outcome: turn a complete endpoint call graph into explicit contracts, replacement
+boundaries, five implementation waves, data-driven scenarios, a provider-neutral
+runtime protocol, and sequential RP1-RP6 readiness.
+
+Acceptance evidence:
+
+- Stable graph and plan hashes; truncation and unresolved calls fail closed.
+- Query, query-with-effects, command, batch, and sync workloads are derived from
+  source behavior rather than endpoint names.
+- Runtime cleanup and stop execute after success, command failure, and timeout.
+- The generic core contains no `/init`, `refreshSync`, or `engine-use-page`
+  branching.
+- Real Java validation passed for three endpoint classes. Real Rust replay and
+  source-off are intentionally not claimed because no target root exists.
 
 Remote tracking:
 

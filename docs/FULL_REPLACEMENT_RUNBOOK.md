@@ -13,7 +13,38 @@ proves that the migrated Java endpoint is unavailable.
 4. Run the same cases through command-based source and target drivers.
 5. Compare HTTP, context, decisions, effects, state, events, concurrency, and
    failures.
-6. Evaluate FR1-FR5 and then the refreshSync pilot evidence.
+6. Evaluate RP1-RP6 and then endpoint pilot evidence.
+
+## Generic endpoint replacement workflow
+
+The primary workflow is endpoint-neutral. Route names and business method names
+are evidence only; the planner derives its workload, contracts, boundaries,
+scenarios, and implementation waves from the reachable behavior graph.
+
+```text
+endpoint discovery -> behavior graph -> context/state/effect contracts
+  -> replacement boundaries -> implementation waves -> scenarios
+  -> runtime driver -> RP1-RP6 readiness -> source-off pilot
+```
+
+```bash
+migration-guard java-endpoint analyze --root ../java-service --method POST --path /api/example --max-depth 16 --max-total-edges 5000 --apply
+migration-guard full-replacement plan --java-analysis java-analysis.json --apply
+migration-guard full-replacement endpoint-driver --config source-driver.json --scenario scenario.json --apply
+migration-guard full-replacement endpoint-driver --config target-driver.json --scenario scenario.json --apply
+migration-guard full-replacement rp-readiness --evidence rp-evidence.json --apply
+migration-guard full-replacement endpoint-pilot --plan endpoint-replacement-plan.json --source-root ../java-service --target-root ../target-service --apply
+```
+
+The driver protocol is `setup`, `start`, `health`, `seed`, `invoke`, optional
+`inject-fault`, `snapshot`, `collect`, `cleanup`, and `stop`. Scenario and fault
+identifiers are validated before command execution. Cleanup and stop run on both
+success and failure.
+
+Readiness is sequential: RP1 complete graph, RP2 explicit contracts, RP3 target
+ownership, RP4 source/target replay, RP5 concurrency/fault/performance evidence,
+and RP6 source-off/freshness/rollback evidence. Missing target evidence is a
+blocker and is never converted into an implicit pass.
 
 ```sh
 migration-guard full-replacement closure --java-analysis java-analysis.json --rust-root ../rust-service --evidence closure-evidence.json --apply
@@ -45,6 +76,26 @@ required cases, schedules, faults, performance limits, rollback, and source-off
 execution.
 
 ## Current refreshSync evidence
+
+`full-replacement pilot` and the refreshSync-specific model remain compatibility
+entry points for existing artifacts. New endpoint work must use `plan`,
+`endpoint-driver`, `rp-readiness`, and `endpoint-pilot`.
+
+## Generic planner validation
+
+Validation on 2026-07-21 used three real endpoints from the supplied zboss Java
+root without endpoint-specific planner branches:
+
+| Endpoint suffix | Workload | Graph | Scenarios | Status |
+| --- | --- | ---: | ---: | --- |
+| `/init` | command | 441 nodes / 1914 edges | 15 | plan ready |
+| `/refreshSync` | sync | 151 nodes / 738 edges | 17 | plan ready |
+| `/page` | query-with-effects | 408 nodes / 1619 edges | 16 | plan ready |
+
+All graphs were untruncated with zero unresolved calls. No Rust `Cargo.toml` or
+target root is available under the supplied repository or `D:\\gitlab\\ia`, so
+real target replay, performance, source-off, and rollback evidence remain
+blocked. This is the expected fail-closed result, not completion of RP4-RP6.
 
 The Java source root has been analyzed at:
 
