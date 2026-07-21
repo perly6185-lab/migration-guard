@@ -1,8 +1,36 @@
 # MG-191: Full Java-to-Rust Endpoint Replacement
 
-Status: product capabilities implemented locally; real MG-201 pilot evidence remains blocked until Java and Rust target roots are available.
+Status: MG-192 through MG-200 completed. MG-201 Java source analysis completed;
+target replay remains blocked by `MG201-RUST-ROOT-MISSING`.
 
 Priority: P0
+
+## Delivery Status
+
+| Issue | Capability | State |
+| --- | --- | --- |
+| MG-192 | Rust inventory and Java-to-Rust recipe | completed |
+| MG-193 | Full replacement closure manifest | completed |
+| MG-194 | Runtime context envelope | completed |
+| MG-195 | Ordered execution effect contract | completed |
+| MG-196 | Full replacement golden model v2 | completed |
+| MG-197 | Source/target runtime driver protocol | completed |
+| MG-198 | Stateful replay comparison | completed |
+| MG-199 | Deterministic concurrency and fault replay | completed |
+| MG-200 | FR1-FR5 and source-off readiness | completed |
+| MG-201 | zboss refreshSync pilot | Java source complete; Rust target blocked |
+
+Current evidence:
+
+- 262/262 automated tests passed after merging the latest `main`.
+- Beta readiness is GO with 14/14 checks.
+- Package smoke passed with 210 files and a 336536-byte tarball.
+- The real Java root contains 7074 Java files and 1796 routes. The exact
+  refreshSync route produced a 151-node, 738-edge graph with no truncation,
+  maximum depth 10, and 10 source golden cases.
+- Golden model v2 generation passed and expanded the source plan to the required
+  context, effect, state, event, concurrency and failure dimensions.
+- The process-level pilot command fails closed with `MG201-RUST-ROOT-MISSING`.
 
 Remote tracking:
 

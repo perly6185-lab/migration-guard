@@ -43,3 +43,16 @@ The refreshSync pilot targets
 blocked unless real Java and Rust roots exist and fresh evidence covers all
 required cases, schedules, faults, performance limits, rollback, and source-off
 execution.
+
+## Current refreshSync evidence
+
+The Java source root has been analyzed at:
+
+`D:/gitlab/ia/test_zboss/zboss-cloud/zboss-module-data`
+
+The exact endpoint produced one route match, a non-truncated 151-node/738-edge
+call graph and 10 sync-command source golden cases. Golden model v2 generation
+also passed. No `Cargo.toml` exists under the supplied source tree or the searched
+`D:/gitlab/ia` roots, so closure, target replay, performance parity and source-off
+verification remain blocked until the real Rust root is supplied. The CLI reports
+this condition as `MG201-RUST-ROOT-MISSING` and exits nonzero.
