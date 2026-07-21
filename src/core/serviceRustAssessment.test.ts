@@ -114,3 +114,29 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
     assert.ok(lambda.graph.nodes.some((item) => item.evidence.symbol.includes("convert")));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("SQL source modeling covers inherited BaseMapper calls with transaction and routing context", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-service-sql-source-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    const files: Record<string, string[]> = {
+      "TaskService.java": ["package demo;", "import jakarta.annotation.Resource;", "public class TaskService {", " @Resource", " private TaskMapper taskMapper;", " @Transactional", " public Object run(Long id) {", "  TenantContextHolder.getTenantId();", "  DynamicDataSourceContextHolder.peek();", "  return taskMapper.selectById(id);", " }", "}"],
+      "TaskMapper.java": ["package demo;", "public interface TaskMapper extends BaseMapper<Task> {", "}"],
+      "Task.java": ["package demo;", "public class Task {", "}"]
+    };
+    for (const [name, lines] of Object.entries(files)) await writeFile(path.join(dir, "demo", name), lines.join("\n"));
+    const analyzer = await createJavaEndpointAnalyzer(dir);
+    const report = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "TaskService" && item.methodName === "run")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(report.sqlSources.length, 1);
+    assert.equal(report.sqlSources[0]?.source, "base-mapper");
+    assert.equal(report.sqlSources[0]?.operation, "read");
+    assert.equal(report.sqlSources[0]?.transactional, true);
+    assert.deepEqual(report.sqlSources[0]?.contextSignals, ["datasource", "tenant", "transaction"]);
+    const planned = createEndpointReplacementPlanFromJava(report);
+    assert.ok(planned.graph.nodes.some((item) => item.id.startsWith("sql:base-mapper")));
+    assert.ok(planned.plan.findings.includes("RP-SQL-BASE-MAPPER-GENERATED"));
+    assert.equal(planned.plan.contracts.states.find((item) => item.resource === "database")?.transactional, true);
+    assert.deepEqual(planned.plan.contracts.contexts.map((item) => item.name), ["datasource", "tenant"]);
+    assert.ok(planned.plan.contracts.framework.some((item) => item.kind === "transaction"));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

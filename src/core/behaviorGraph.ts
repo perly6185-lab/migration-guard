@@ -44,13 +44,17 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
   const ambiguousEdges = report.callGraph.edges.filter((edge) => edge.resolution === "ambiguous").length;
   const unresolvedEdges = unresolvedCalls + ambiguousEdges;
   const truncation = report.callGraph.truncation;
+  const sqlSources = report.sqlSources ?? [];
   const findings = [
     ...(truncation.edgeCapHit ? ["RP-GRAPH-EDGE-CAP"] : []),
     ...(truncation.depthCapHit ? ["RP-GRAPH-DEPTH-CAP"] : []),
     ...(truncation.unexpandedBoundaryNodes.length ? ["RP-GRAPH-UNEXPANDED-NODES"] : []),
     ...(unresolvedCalls ? ["RP-GRAPH-UNRESOLVED-EDGES"] : []),
     ...(ambiguousEdges ? ["RP-GRAPH-AMBIGUOUS-CALLS"] : []),
-    ...(report.callGraph.edges.some((edge) => edge.resolution === "same-class" && nodes.find((node) => node.id === edge.to)?.evidence.detail?.includes("@Transactional")) ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : [])
+    ...(report.callGraph.edges.some((edge) => edge.resolution === "same-class" && nodes.find((node) => node.id === edge.to)?.evidence.detail?.includes("@Transactional")) ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : []),
+    ...(sqlSources.some((source) => source.dynamic) ? ["RP-SQL-DYNAMIC-SOURCE"] : []),
+    ...(sqlSources.some((source) => source.source === "base-mapper") ? ["RP-SQL-BASE-MAPPER-GENERATED"] : []),
+    ...(sqlSources.some((source) => source.source === "provider") ? ["RP-SQL-PROVIDER-SOURCE"] : [])
   ];
   const workload = inferWorkload(report, nodes);
   const base = {
@@ -123,6 +127,7 @@ function classifyBehavior(text: string, sourceKind: string): [BehaviorKind, stri
     ["validation", /validat|assert|check|required|unique|permission/i, "validation or policy check"],
     ["context-resolution", /tenant|security|auth|datasource|requestcontext|webframework|device|locale|SecurityFramework/i, "runtime context access"],
     ["external-call", /client|\bapi\.|gateway|adapter|storage|fileApi|http|rpc/i, "external service boundary"],
+    ["state-write", /\bddl\b|create\s+table|alter\s+table|drop\s+table|truncate\s+table/i, "database schema mutation"],
     ["state-write", /insert|save|create|update|delete|remove|clear|write|upsert|persist|record|set|lock|acquire|cancel|terminate|submit|enable|disable|approve|reject|archive/i, "state mutation"],
     ["state-read", /select|query|find|get|list|load|read|count|exists/i, "state lookup"],
     ["external-call", /repository|mapper|cache|upload|download|file/i, "external or infrastructure boundary"],
@@ -161,6 +166,7 @@ function deriveContexts(graph: BehaviorGraph, report?: JavaEndpointAnalysisRepor
   const values = new Map<string, ContextRequirement>();
   const evidence = [
     ...graph.nodes.filter((node) => node.kind === "context-resolution").map((node) => node.evidence.symbol),
+    ...graph.nodes.map((node) => node.evidence.detail ?? "").filter((detail) => /contexts=|tenant|datasource|transaction/i.test(detail)),
     ...(report?.riskSignals.flatMap((signal) => signal.evidence) ?? [])
   ];
   for (const value of evidence) {
@@ -182,7 +188,7 @@ function deriveStates(graph: BehaviorGraph): StateRequirement[] {
     const existing = values.get(resource) ?? { resource, operations: [], consumers: [], transactional: false };
     existing.operations.push(operation);
     existing.consumers.push(node.id);
-    existing.transactional ||= node.kind === "transaction";
+    existing.transactional ||= node.kind === "transaction" || /transactional=true|@Transactional/i.test(node.evidence.detail ?? "");
     values.set(resource, existing);
   }
   return [...values.values()].map((item) => ({
@@ -239,7 +245,7 @@ function deriveFramework(report: JavaEndpointAnalysisReport | undefined, graph: 
   if (annotations.some((item) => /@Valid|@Validated/.test(item)) || /@Valid\b/.test(signature)) add("validation", "Jakarta/Spring validation");
   if (annotations.some((item) => /PreAuthorize|Secured|RolesAllowed|PermitAll/.test(item))) add("authorization", "method authorization annotation");
   if (annotations.some((item) => /OperationLog|Audit/.test(item))) add("audit", "operation audit annotation");
-  if (annotations.some((item) => /Transactional/.test(item)) || graph.nodes.some((node) => node.kind === "transaction")) add("transaction", "transaction boundary");
+  if (annotations.some((item) => /Transactional/.test(item)) || graph.nodes.some((node) => node.kind === "transaction") || (report.sqlSources ?? []).some((source) => source.transactional)) add("transaction", "transaction boundary");
   if (/MultipartFile|FileReq|multipart/i.test(signature)) add("multipart", "multipart request binding");
   if (/CommonResult|ResponseEntity|HttpServletResponse/.test(signature)) add("response-envelope", "HTTP response envelope");
   if (graph.nodes.some((node) => /exception|throw/i.test(node.evidence.symbol))) add("exception-mapping", "exception-to-response mapping");
