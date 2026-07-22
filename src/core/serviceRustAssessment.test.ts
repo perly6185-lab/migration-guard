@@ -69,12 +69,13 @@ test("Java call resolution covers multiline arguments, static imports, generic f
       "Factory.java": ["package demo;", "public interface Factory<T> {", " T create();", "}"],
       "StaticTools.java": ["package demo;", "public class StaticTools {", " public static Object normalize(long value) { return null; }", " public static Object normalize(String value) { return null; }", "}"],
       "ResolutionService.java": [
-        "package demo;", "import static demo.StaticTools.normalize;", "import static external.Results.success;", "import static external.Constants.*;", "public class ResolutionService {", " @Resource", " private Worker worker;", " @Resource", " private Factory<Worker> factory;", " @Resource", " private GeneratedConfig config;",
-        " public Object run() {", "  worker.process(", "    1L,", "    \"ready\"", "  );", "  factory.create().execute(1);", "  worker.payload().getName();", "  config.getTimeout();", "  normalize(1);", "  success(new Payload());", "  collect(\"batch\", 1L, 2L);", "  return null;", " }",
+        "package demo;", "import static demo.StaticTools.normalize;", "import static external.Results.success;", "import static external.Constants.*;", "public class ResolutionService {", " @Resource", " private Worker worker;", " @Resource", " private Factory<Worker> factory;", " @Resource", " private GeneratedConfig config;", " @Resource", " private OverloadWorker overloadWorker;",
+        " public Object run() {", "  Payload payload = worker.payload();", "  worker.process(", "    1L,", "    \"ready\"", "  );", "  factory.create().execute(1);", "  worker.payload().getName();", "  overloadWorker.choose(payload.getId());", "  config.getTimeout();", "  normalize(1);", "  success(new Payload());", "  collect(\"batch\", 1L, 2L);", "  return null;", " }",
         " protected Object collect(String name, Long... values) { return null; }", "}"
       ],
-      "Payload.java": ["package demo;", "@Data", "public class Payload {", " private String name;", "}"],
+      "Payload.java": ["package demo;", "@Data", "public class Payload {", " private String name;", " private Long id;", "}"],
       "GeneratedConfig.java": ["package demo;", "@Getter", "public class GeneratedConfig {", " private long timeout;", "}"],
+      "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", "}"],
       "one/DuplicateWorker.java": ["package demo.one;", "public class DuplicateWorker {", " public Object execute() { return null; }", "}"],
       "two/DuplicateWorker.java": ["package demo.two;", "public class DuplicateWorker {", " public Object execute() { return null; }", "}"],
       "ImportedService.java": ["package demo;", "import demo.one.DuplicateWorker;", "public class ImportedService {", " @Resource", " private DuplicateWorker duplicateWorker;", " public Object run() { return duplicateWorker.execute(); }", "}"]
@@ -90,6 +91,7 @@ test("Java call resolution covers multiline arguments, static imports, generic f
     assert.equal(report.callGraph.edges.some((edge) => edge.call.method === "Payload"), false);
     assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "getName")?.resolution, "static-or-external");
     assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "getTimeout")?.resolution, "static-or-external");
+    assert.match(report.callGraph.nodes.find((item) => item.className === "OverloadWorker" && item.methodName === "choose")?.signature ?? "", /Long value/);
     const imported = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ImportedService" && item.methodName === "run")!, { maxDepth: 5, maxEdges: 100 });
     assert.ok(imported.callGraph.nodes.some((item) => item.file === "demo/one/DuplicateWorker.java"));
     assert.equal(imported.callGraph.nodes.some((item) => item.file === "demo/two/DuplicateWorker.java"), false);
