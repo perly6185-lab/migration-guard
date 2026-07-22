@@ -236,6 +236,8 @@ interface JavaTypeInfo {
   qualifiedName: string;
   packageName?: string;
   kind: "class" | "interface" | "enum";
+  typeParameters: string[];
+  staticImports: Array<{ typeName: string; methodName: string }>;
   file: string;
   line: number;
   annotations: string[];
@@ -250,6 +252,7 @@ interface JavaTypeInfo {
 interface JavaFieldInfo {
   name: string;
   typeName: string;
+  declaredType: string;
   annotations: string[];
   line: number;
 }
@@ -257,6 +260,7 @@ interface JavaFieldInfo {
 interface JavaPlainFieldInfo {
   name: string;
   typeName: string;
+  declaredType: string;
   line: number;
 }
 
@@ -277,6 +281,7 @@ interface JavaMethodInfo {
 interface JavaParamInfo {
   name: string;
   typeName: string;
+  varargs: boolean;
 }
 
 interface GraphTraceState {
@@ -736,7 +741,7 @@ function parseJavaTypes(file: JavaSourceFile): JavaTypeInfo[] {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const match = line.match(/^\s*(?:public\s+|protected\s+|private\s+)?(?:abstract\s+|final\s+|static\s+)*?(class|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+extends\s+([A-Za-z0-9_.$<>,\s]+?))?(?:\s+implements\s+([^{]+))?\s*\{/);
+    const match = line.match(/^\s*(?:public\s+|protected\s+|private\s+)?(?:abstract\s+|final\s+|static\s+)*?(class|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*<[^>{]+>)?(?:\s+extends\s+([A-Za-z0-9_.$<>,\s]+?))?(?:\s+implements\s+([^{]+))?\s*\{/);
     if (!match) {
       continue;
     }
@@ -748,6 +753,9 @@ function parseJavaTypes(file: JavaSourceFile): JavaTypeInfo[] {
       qualifiedName: packageName ? `${packageName}.${typeName}` : typeName,
       packageName,
       kind: match[1] as JavaTypeInfo["kind"],
+      typeParameters: parseTypeParameters(line, typeName),
+      staticImports: [...content.matchAll(/^\s*import\s+static\s+([A-Za-z0-9_.$]+)\.([A-Za-z_*][A-Za-z0-9_*]*)\s*;/gm)]
+        .map((item) => ({ typeName: item[1], methodName: item[2] })),
       file: file.relativePath,
       line: index + 1,
       annotations,
@@ -779,11 +787,13 @@ function parseTypeBody(lines: string[], startLine: number, endLine: number, file
     }
 
     const field = line.match(/^\s*(?:public|private|protected)\s+(?:static\s+)?(?:final\s+)?([A-Za-z0-9_.$<>?,\s]+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=.*)?;/);
-    const fieldTypeName = field ? simpleTypeName(field[1].trim()) : undefined;
+    const declaredFieldType = field?.[1].trim();
+    const fieldTypeName = declaredFieldType ? simpleTypeName(declaredFieldType) : undefined;
     if (field) {
       type.plainFields.push({
         name: field[2],
         typeName: fieldTypeName as string,
+        declaredType: declaredFieldType as string,
         line: index + 1
       });
     }
@@ -791,6 +801,7 @@ function parseTypeBody(lines: string[], startLine: number, endLine: number, file
       type.fields.push({
         name: field[2],
         typeName: fieldTypeName as string,
+        declaredType: declaredFieldType as string,
         annotations,
         line: index + 1
       });
@@ -1715,55 +1726,41 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   line: number;
   argumentCount: number;
   argumentTypes: string[];
+  receiverType?: string;
   feature?: "lambda" | "method-reference";
 }> {
-  const calls: Array<{ receiver?: string; method: string; expression: string; line: number; argumentCount: number; argumentTypes: string[]; feature?: "lambda" | "method-reference" }> = [];
+  const calls: Array<{ receiver?: string; method: string; expression: string; line: number; argumentCount: number; argumentTypes: string[]; receiverType?: string; feature?: "lambda" | "method-reference" }> = [];
   const injectedFields = new Set(type.fields.map((field) => field.name));
   const variableTypes = new Map(method.params.map((param) => [param.name, param.typeName]));
-  const lines = method.body.split(/\r?\n/);
-  for (const [offset, rawLine] of lines.entries()) {
-    let line = stripLineComment(rawLine);
-    if (offset === 0 && line.includes("{")) line = line.slice(line.indexOf("{") + 1);
-    const lineNumber = method.bodyStartLine + offset;
-    const local = line.match(/\b([A-Z][A-Za-z0-9_.$<>?,\[\]]*)\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;)/);
-    if (local) variableTypes.set(local[2], simpleTypeName(local[1]));
-    for (const reference of line.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)/g)) {
-      calls.push({ receiver: reference[1], method: reference[2], expression: reference[0], line: lineNumber, argumentCount: -1, argumentTypes: [], feature: "method-reference" });
-    }
-    if (line.includes("->")) calls.push({ receiver: "$lambda", method: "invoke", expression: "lambda ->", line: lineNumber, argumentCount: -1, argumentTypes: [], feature: "lambda" });
-    const qualifiedPattern = /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
-    for (const match of line.matchAll(qualifiedPattern)) {
-      if (!injectedFields.has(match[1]) && isLowValueCall(match[2])) {
-        continue;
-      }
-      const parsedArgs = extractCallArguments(line, (match.index ?? 0) + match[0].lastIndexOf("("));
-      calls.push({
-        receiver: match[1],
-        method: match[2],
-        expression: match[0],
-        line: lineNumber,
-        argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1,
-        argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(argument, variableTypes))
-      });
-    }
-    const selfPattern = /(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
-    for (const match of line.matchAll(selfPattern)) {
-      const methodName = match[1];
-      if (JAVA_KEYWORD_CALLS.has(methodName) || calls.some((call) => call.line === lineNumber && call.method === methodName)) {
-        continue;
-      }
-      if (!methodsInHierarchy(project, type).some((candidate) => candidate.method.name === methodName)) {
-        continue;
-      }
-      const parsedArgs = extractCallArguments(line, (match.index ?? 0) + match[0].lastIndexOf("("));
-      calls.push({
-        method: methodName,
-        expression: `${methodName}(`,
-        line: lineNumber,
-        argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1,
-        argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(argument, variableTypes))
-      });
-    }
+  let body = method.body.split(/\r?\n/).map(stripLineComment).join("\n");
+  const openingBrace = body.indexOf("{");
+  if (openingBrace >= 0) body = body.slice(0, openingBrace + 1).replace(/[^\n]/g, " ") + body.slice(openingBrace + 1);
+  const lineAt = (offset: number) => method.bodyStartLine + body.slice(0, offset).split("\n").length - 1;
+  for (const local of body.matchAll(/\b([A-Z][A-Za-z0-9_.$<>?,\[\]]*)\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;)/g)) variableTypes.set(local[2], simpleTypeName(local[1]));
+  for (const reference of body.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)/g)) calls.push({ receiver: reference[1], method: reference[2], expression: reference[0], line: lineAt(reference.index ?? 0), argumentCount: -1, argumentTypes: [], feature: "method-reference" });
+  for (const lambda of body.matchAll(/->/g)) calls.push({ receiver: "$lambda", method: "invoke", expression: "lambda ->", line: lineAt(lambda.index ?? 0), argumentCount: -1, argumentTypes: [], feature: "lambda" });
+  const occupied = new Set<number>();
+  const chainPattern = /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
+  for (const match of body.matchAll(chainPattern)) {
+    const openIndex = (match.index ?? 0) + match[0].lastIndexOf("(");
+    const parsedArgs = extractCallArguments(body, openIndex);
+    const receiverType = resolveFactoryReturnType(project, type, match[1], match[2]);
+    calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(argument, variableTypes)) });
+    occupied.add((match.index ?? 0) + match[0].lastIndexOf(match[4]));
+  }
+  for (const match of body.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+    const methodOffset = (match.index ?? 0) + match[0].lastIndexOf(match[2]);
+    if (occupied.has(methodOffset) || !injectedFields.has(match[1]) && isLowValueCall(match[2])) continue;
+    const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
+    calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(argument, variableTypes)) });
+  }
+  for (const match of body.matchAll(/(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+    const methodName = match[1];
+    if (JAVA_KEYWORD_CALLS.has(methodName)) continue;
+    const staticImported = type.staticImports.some((item) => item.methodName === methodName || item.methodName === "*");
+    if (!staticImported && !methodsInHierarchy(project, type).some((candidate) => candidate.method.name === methodName)) continue;
+    const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
+    calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(argument, variableTypes)) });
   }
   return calls;
 }
@@ -1809,20 +1806,45 @@ function isLowValueCall(methodName: string): boolean {
   return LOW_VALUE_CALLS.has(methodName) || /^(get|set|is)[A-Z]/.test(methodName);
 }
 
+function resolveFactoryReturnType(project: JavaProjectModel, currentType: JavaTypeInfo, receiver: string, factoryMethod: string): string | undefined {
+  const field = [currentType, ...parentTypes(project, currentType)].flatMap((type) => [...type.fields, ...type.plainFields]).find((candidate) => candidate.name === receiver);
+  if (!field) return undefined;
+  const factoryType = resolveTypesForField(project, field.typeName)[0];
+  const returnType = factoryType?.methods.find((method) => method.name === factoryMethod)?.returnType;
+  if (!returnType) return undefined;
+  const genericIndex = factoryType.typeParameters.indexOf(simpleTypeName(returnType));
+  if (genericIndex < 0) return simpleTypeName(returnType);
+  return genericTypeArguments(field.declaredType)[genericIndex];
+}
+
+function genericTypeArguments(declaredType: string): string[] {
+  const inner = declaredType.match(/<([\s\S]+)>/)?.[1];
+  return inner ? splitJavaArgs(inner).map((value) => simpleTypeName(value)) : [];
+}
+
 function resolveCallTargets(
   project: JavaProjectModel,
   currentType: JavaTypeInfo,
-  call: { receiver?: string; method: string; argumentCount: number; argumentTypes: string[]; feature?: "lambda" | "method-reference" }
+  call: { receiver?: string; receiverType?: string; method: string; argumentCount: number; argumentTypes: string[]; feature?: "lambda" | "method-reference" }
 ): ResolvedJavaCall {
   if (!call.receiver || call.receiver === "this") {
-    return selectOverload(methodsInHierarchy(project, currentType)
+    const selfCandidates = methodsInHierarchy(project, currentType)
       .filter((item) => item.method.name === call.method)
-      .map((item) => item), call);
+      .map((item) => item);
+    if (selfCandidates.length > 0) return selectOverload(selfCandidates, call);
+    const importedTypes = currentType.staticImports
+      .filter((item) => item.methodName === call.method || item.methodName === "*")
+      .flatMap((item) => project.typesByName.get(simpleTypeName(item.typeName)) ?? []);
+    return selectOverload(importedTypes.flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method }))), call);
   }
 
   if (call.receiver === "super") return selectOverload(parentTypes(project, currentType).flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method }))), call);
   if (call.receiver === "$lambda") return { targets: [], resolution: "external", candidates: [] };
 
+  if (call.receiverType) {
+    const receiverTypes = project.typesByName.get(simpleTypeName(call.receiverType)) ?? [];
+    return selectOverload(receiverTypes.flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method }))), call);
+  }
   const field = [currentType, ...parentTypes(project, currentType)].flatMap((type) => type.fields).find((candidate) => candidate.name === call.receiver);
   if (!field) {
     return { targets: [], resolution: "external", candidates: [] };
@@ -1855,7 +1877,7 @@ function selectOverload(
   candidates: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>,
   call: { argumentCount: number; argumentTypes: string[] }
 ): ResolvedJavaCall {
-  const matchingArity = call.argumentCount < 0 ? candidates : candidates.filter((candidate) => candidate.method.params.length === call.argumentCount);
+  const matchingArity = call.argumentCount < 0 ? candidates : candidates.filter((candidate) => arityMatches(candidate.method.params, call.argumentCount));
   if (!matchingArity.length) return { targets: [], resolution: "unresolved", candidates: candidates.map((candidate) => ({ methodId: methodId(candidate.type, candidate.method), signature: candidate.method.signature, score: -100 })) };
   const scored = matchingArity.map((candidate) => ({ candidate, score: overloadScore(candidate.method.params, call.argumentTypes) }));
   const bestScore = Math.max(...scored.map((item) => item.score));
@@ -1883,15 +1905,30 @@ function methodsInHierarchy(project: JavaProjectModel, type: JavaTypeInfo): Arra
 function lowerCamel(value: string): string { return value ? value[0].toLowerCase() + value.slice(1) : value; }
 
 function overloadScore(params: JavaParamInfo[], argumentTypes: string[]): number {
-  return params.reduce((score, param, index) => {
-    const actual = simpleTypeName(argumentTypes[index] ?? "unknown");
+  return argumentTypes.reduce((score, argumentType, index) => {
+    const param = params[Math.min(index, params.length - 1)];
+    if (!param) return score - 10;
+    const actual = simpleTypeName(argumentType ?? "unknown");
     const expected = simpleTypeName(param.typeName);
     if (actual === "unknown" || actual === "null") return score + 1;
     if (actual === expected) return score + 5;
     if (primitiveWrapper(actual) === primitiveWrapper(expected)) return score + 4;
+    if (isWideningConversion(actual, expected)) return score + 3;
     if (expected === "Object" || expected === "Number" && /^(Byte|Short|Integer|Long|Float|Double)$/.test(actual)) return score + 2;
     return score - 5;
   }, 0);
+}
+
+function arityMatches(params: JavaParamInfo[], argumentCount: number): boolean {
+  const varargs = params.at(-1)?.varargs;
+  return varargs ? argumentCount >= params.length - 1 : params.length === argumentCount;
+}
+
+function isWideningConversion(actualValue: string, expectedValue: string): boolean {
+  const actual = primitiveWrapper(actualValue);
+  const expected = primitiveWrapper(expectedValue);
+  const widening: Record<string, string[]> = { Byte: ["Short", "Integer", "Long", "Float", "Double"], Short: ["Integer", "Long", "Float", "Double"], Character: ["Integer", "Long", "Float", "Double"], Integer: ["Long", "Float", "Double"], Long: ["Float", "Double"], Float: ["Double"] };
+  return widening[actual]?.includes(expected) ?? false;
 }
 
 function primitiveWrapper(value: string): string {
@@ -2705,22 +2742,20 @@ function parseImplements(value: string | undefined): string[] {
   return value.split(",").map((part) => simpleTypeName(part.trim())).filter(Boolean);
 }
 
+function parseTypeParameters(declaration: string, typeName: string): string[] {
+  const value = declaration.match(new RegExp(`\\b${typeName}\\s*<([^>{]+)>`))?.[1];
+  return value ? splitJavaArgs(value).map((part) => part.trim().split(/\s+extends\s+/)[0]).filter(Boolean) : [];
+}
+
 function parseParams(value: string): JavaParamInfo[] {
   return splitJavaArgs(value).map((rawParam) => {
-    const clean = rawParam
-      .replace(/@\w+(?:\([^)]*\))?\s*/g, "")
-      .replace(/\bfinal\s+/g, "")
-      .trim();
-    if (!clean) {
-      return undefined;
-    }
+    const clean = rawParam.replace(/@\w+(?:\([^)]*\))?\s*/g, "").replace(/\bfinal\s+/g, "").trim();
+    if (!clean) return undefined;
     const parts = clean.split(/\s+/);
-    if (parts.length < 2) {
-      return undefined;
-    }
+    if (parts.length < 2) return undefined;
     const name = parts[parts.length - 1].replace(/\[\]$/, "");
-    const typeName = simpleTypeName(parts.slice(0, -1).join(" "));
-    return { name, typeName };
+    const declaredType = parts.slice(0, -1).join(" ");
+    return { name, typeName: simpleTypeName(declaredType.replace(/\.\.\./g, "")), varargs: /\.\.\./.test(declaredType) };
   }).filter((param): param is JavaParamInfo => Boolean(param));
 }
 

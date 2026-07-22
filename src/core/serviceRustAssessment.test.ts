@@ -60,6 +60,32 @@ test("Java call resolution selects overloads by arity and type and blocks ambigu
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test("Java call resolution covers multiline arguments, static imports, generic factories, widening, boxing, and varargs", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-service-receiver-types-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    const files: Record<string, string[]> = {
+      "Worker.java": ["package demo;", "public class Worker {", " public Object execute(long value) { return null; }", " public Object process(Long value, String state) { return null; }", "}"],
+      "Factory.java": ["package demo;", "public interface Factory<T> {", " T create();", "}"],
+      "StaticTools.java": ["package demo;", "public class StaticTools {", " public static Object normalize(long value) { return null; }", " public static Object normalize(String value) { return null; }", "}"],
+      "ResolutionService.java": [
+        "package demo;", "import static demo.StaticTools.normalize;", "public class ResolutionService {", " @Resource", " private Worker worker;", " @Resource", " private Factory<Worker> factory;",
+        " public Object run() {", "  worker.process(", "    1L,", "    \"ready\"", "  );", "  factory.create().execute(1);", "  normalize(1);", "  collect(\"batch\", 1L, 2L);", "  return null;", " }",
+        " protected Object collect(String name, Long... values) { return null; }", "}"
+      ]
+    };
+    for (const [name, lines] of Object.entries(files)) await writeFile(path.join(dir, "demo", name), lines.join("\n"));
+    const analyzer = await createJavaEndpointAnalyzer(dir);
+    const report = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ResolutionService" && item.methodName === "run")!, { maxDepth: 5, maxEdges: 100 });
+    assert.ok(report.callGraph.nodes.some((item) => item.className === "Worker" && item.methodName === "process"));
+    assert.ok(report.callGraph.nodes.some((item) => item.className === "Worker" && item.methodName === "execute"));
+    assert.ok(report.callGraph.nodes.some((item) => item.className === "StaticTools" && item.methodName === "normalize" && /long value/.test(item.signature ?? "")));
+    assert.ok(report.callGraph.nodes.some((item) => item.className === "ResolutionService" && item.methodName === "collect"));
+    assert.equal(report.callGraph.edges.some((edge) => edge.resolution === "ambiguous"), false, JSON.stringify(report.callGraph.edges.filter((edge) => edge.resolution === "ambiguous"), null, 2));
+    assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "process")?.call.argumentCount, 2);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("adaptive Service analysis expands only while graph budgets can progress", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-service-adaptive-"));
   try {
