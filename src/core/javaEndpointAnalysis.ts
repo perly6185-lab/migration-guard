@@ -67,6 +67,7 @@ export interface JavaSqlOwnershipEvidence {
   branchCases: string[];
   tableExpansionCases: string[];
   statementExpansionCases: string[];
+  routingCases: string[];
   parameterExpressions: string[];
   dynamicTableExpressions: string[];
   providerFragments: string[];
@@ -1324,16 +1325,20 @@ function sqlOwnershipEvidence(value: string, source: JavaSqlSourceKind, contextS
     `${expression}:invalid-statement`,
     `${expression}:multi-statement-rejected`
   ]);
+  const routingCases = routingSignals.flatMap((signal) => signal === "tenant"
+    ? ["tenant:active", "tenant:missing-context", "tenant:mismatch"]
+    : ["datasource:default", "datasource:selected", "datasource:unavailable"]);
   const missingContracts: JavaSqlOwnershipContract[] = [];
   if ((dynamicTableExpressions.length > 0 && tableExpansionCases.length === 0) || providerFragments.some((fragment) => /table|schema|database/i.test(fragment))) missingContracts.push("table-expansion");
   if (dynamicTags.length > 0 && branchCases.length === 0) missingContracts.push("branch-fixture");
   if (source === "provider") missingContracts.push("provider-fragment");
-  if (routingSignals.length > 0) missingContracts.push("routing-contract");
+  if (routingSignals.length > 0 && routingCases.length === 0) missingContracts.push("routing-contract");
   return {
     dynamicTags: [...new Set(dynamicTags)].sort(),
     branchCases: [...new Set(branchCases)].sort(),
     tableExpansionCases: [...new Set(tableExpansionCases)].sort(),
     statementExpansionCases: [...new Set(statementExpansionCases)].sort(),
+    routingCases: [...new Set(routingCases)].sort(),
     parameterExpressions: [...new Set(parameterExpressions)].sort(),
     dynamicTableExpressions: [...new Set(dynamicTableExpressions)].sort(),
     providerFragments: [...new Set(providerFragments)].sort(),
