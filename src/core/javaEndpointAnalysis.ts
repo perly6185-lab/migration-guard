@@ -88,6 +88,14 @@ export interface JavaSqlSourceInfo {
   statementId?: string;
   statement?: string;
   ownershipEvidence?: JavaSqlOwnershipEvidence;
+  generatedContract?: {
+    framework: "mybatis-plus" | "spring-data";
+    entity: string;
+    table: string;
+    operation: JavaSqlOperation;
+    predicate: "primary-key" | "identifier-set" | "wrapper" | "entity" | "framework-defined";
+    evidence: "table-annotation";
+  };
 }
 
 export interface JavaEndpointRouteCandidate {
@@ -243,6 +251,7 @@ interface JavaTypeInfo {
   annotations: string[];
   implements: string[];
   extends: string[];
+  declaredSupertypes: string[];
   fields: JavaFieldInfo[];
   plainFields: JavaPlainFieldInfo[];
   constants: Map<string, string>;
@@ -761,6 +770,7 @@ function parseJavaTypes(file: JavaSourceFile): JavaTypeInfo[] {
       annotations,
       implements: parseImplements(match[4]),
       extends: parseImplements(match[3]),
+      declaredSupertypes: [...parseDeclaredTypes(match[3]), ...parseDeclaredTypes(match[4])],
       fields: [],
       plainFields: [],
       constants: new Map(),
@@ -1211,7 +1221,7 @@ function baseMapperSqlSource(
   if (!operation) {
     return undefined;
   }
-  const table = tableHintForMapper(type);
+  const generatedContract = baseMapperGeneratedContract(project, type, methodName, operation);
   return {
     id: `base-mapper:${type.qualifiedName}.${methodName}`,
     ownerId: `${type.qualifiedName}.${methodName}:base-mapper`,
@@ -1223,11 +1233,12 @@ function baseMapperSqlSource(
     dynamic: false,
     transactional: current.transactional,
     contextSignals: mergeValues(contextSignalsForText(`${type.annotations.join(" ")} ${methodName}`), contextSignals),
-    tables: table ? [table] : [],
+    tables: generatedContract ? [generatedContract.table] : [],
     file,
     line,
     statementId: methodName,
-    statement: `BaseMapper.${methodName}(...)`
+    statement: `BaseMapper.${methodName}(...)`,
+    generatedContract
   };
 }
 
@@ -1245,9 +1256,23 @@ function isBaseMapperType(type: JavaTypeInfo): boolean {
   return [...type.extends, ...type.implements].some((name) => /^(BaseMapperX?|MapperX|CrudRepository|JpaRepository)$/i.test(simpleTypeName(name)));
 }
 
-function tableHintForMapper(type: JavaTypeInfo): string | undefined {
-  const value = type.name.replace(/(?:Mapper|Repository|Dao)(?:Impl)?$/i, "");
-  return value && value !== type.name ? value : undefined;
+function baseMapperGeneratedContract(project: JavaProjectModel, type: JavaTypeInfo, methodName: string, operation: JavaSqlOperation): JavaSqlSourceInfo["generatedContract"] {
+  const declaration = type.declaredSupertypes.find((value) => /(?:BaseMapperX?|MapperX|CrudRepository|JpaRepository)\s*</i.test(value));
+  const entityName = declaration?.match(/<\s*([A-Za-z_][A-Za-z0-9_.$]*)/)?.[1];
+  const entity = entityName ? (project.typesByName.get(entityName)?.[0] ?? project.typesByName.get(simpleTypeName(entityName))?.[0]) : undefined;
+  const table = entity?.annotations.map(tableNameFromAnnotation).find(Boolean);
+  if (!entity || !table) return undefined;
+  const predicate = /ById$/i.test(methodName) ? "primary-key" as const
+    : /BatchIds|ByIds$/i.test(methodName) ? "identifier-set" as const
+    : /One|List|Maps|Objs|Page|Count|exists|update$/i.test(methodName) ? "wrapper" as const
+    : /insert|save|upsert/i.test(methodName) ? "entity" as const
+    : "framework-defined" as const;
+  const framework = /CrudRepository|JpaRepository/i.test(declaration ?? "") ? "spring-data" as const : "mybatis-plus" as const;
+  return { framework, entity: entity.qualifiedName, table, operation, predicate, evidence: "table-annotation" };
+}
+
+function tableNameFromAnnotation(annotation: string): string | undefined {
+  return annotation.match(/@(?:[A-Za-z0-9_$.]+\.)?TableName\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']/)?.[1];
 }
 
 function sqlOperationForVerb(verb: string, statement: string): JavaSqlOperation {
@@ -2769,6 +2794,10 @@ function parseImplements(value: string | undefined): string[] {
 function parseTypeParameters(declaration: string, typeName: string): string[] {
   const value = declaration.match(new RegExp(`\\b${typeName}\\s*<([^>{]+)>`))?.[1];
   return value ? splitJavaArgs(value).map((part) => part.trim().split(/\s+extends\s+/)[0]).filter(Boolean) : [];
+}
+
+function parseDeclaredTypes(value: string | undefined): string[] {
+  return value ? splitJavaArgs(value).map((part) => part.trim()).filter(Boolean) : [];
 }
 
 function parseParams(value: string): JavaParamInfo[] {

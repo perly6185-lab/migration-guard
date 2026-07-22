@@ -19,6 +19,7 @@ export interface RepositorySqlContractRecord {
   missingContracts: JavaSqlOwnershipContract[];
   unresolvedReasons: string[];
   reviewStatus: "reviewable" | "replay-contract-required";
+  generatedContract?: JavaSqlSourceInfo["generatedContract"];
 }
 
 export interface RepositorySqlMetrics {
@@ -105,7 +106,7 @@ export async function assessJavaRepositoriesForRust(options: RepositoryRustAsses
     const sqlSources = source.sqlSources;
     const findings = [...plan.findings];
     if (candidate.implementation === "generated-boundary") findings.push("RP-REPOSITORY-GENERATED-IMPLEMENTATION");
-    if (sqlSources.some((item) => item.source === "base-mapper")) findings.push("RP-SQL-BASE-MAPPER-GENERATED");
+    if (sqlSources.some((item) => item.source === "base-mapper" && !item.generatedContract)) findings.push("RP-SQL-BASE-MAPPER-GENERATED");
     if (sqlSources.some((item) => item.source === "provider")) findings.push("RP-SQL-PROVIDER-SOURCE");
     if (sqlSources.some((item) => item.dynamic)) findings.push("RP-SQL-DYNAMIC-SOURCE");
     if (expansion?.status === "budget-exhausted") findings.push("RP-GRAPH-EXPANSION-BUDGET-EXHAUSTED");
@@ -157,9 +158,10 @@ function toSqlContractRecord(source: JavaSqlSourceInfo): RepositorySqlContractRe
     ...missingContracts.map((contract) => `missing-${contract}`),
     ...(source.operation === "unknown" ? ["unknown-operation"] : []),
     ...(source.tables.length === 0 ? ["table-not-resolved"] : []),
-    ...(source.source === "provider" && source.statementId === undefined ? ["provider-method-not-resolved"] : [])
+    ...(source.source === "provider" && source.statementId === undefined ? ["provider-method-not-resolved"] : []),
+    ...(source.source === "base-mapper" && !source.generatedContract ? ["generated-contract-not-reviewable"] : [])
   ];
-  return { sourceId: source.id, source: source.source, operation: source.operation, dynamic: source.dynamic, dynamicTags: source.ownershipEvidence?.dynamicTags ?? [], tables: source.tables, contexts: source.contextSignals.filter((value: string) => value === "tenant" || value === "datasource"), transactional: source.transactional, missingContracts, unresolvedReasons: [...new Set(unresolvedReasons)].sort() as string[], reviewStatus: unresolvedReasons.length === 0 ? "reviewable" : "replay-contract-required" };
+  return { sourceId: source.id, source: source.source, operation: source.operation, dynamic: source.dynamic, dynamicTags: source.ownershipEvidence?.dynamicTags ?? [], tables: source.tables, contexts: source.contextSignals.filter((value: string) => value === "tenant" || value === "datasource"), transactional: source.transactional, missingContracts, unresolvedReasons: [...new Set(unresolvedReasons)].sort() as string[], reviewStatus: unresolvedReasons.length === 0 ? "reviewable" : "replay-contract-required", generatedContract: source.generatedContract };
 }
 
 function createSqlMetrics(records: RepositorySqlContractRecord[]): RepositorySqlMetrics {

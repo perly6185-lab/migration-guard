@@ -12,6 +12,7 @@ test("repository assessment covers contracts, implementations and persistence ma
       "repository/ITaskRepository.java": ["package demo.repository;", "public interface ITaskRepository {", " Object findById(Long id);", " default Object fallback(Long id) { return findById(id); }", "}"],
       "repository/TaskRepositoryImpl.java": ["package demo.repository;", "public class TaskRepositoryImpl implements ITaskRepository {", " public Object findById(Long id) { return mapper.selectById(id); }", " public void delete(Long id) { mapper.deleteById(id); }", "}"],
       "mapper/TaskMapper.java": ["package demo.mapper;", "@Mapper", "public interface TaskMapper extends BaseMapper<Task> {", " @Select(\"select * from task where id = #{id}\")", " Object selectAnnotated(Long id);", " Object selectFromXml(Long id);", " @SelectProvider(type = TaskSqlProvider.class, method = \"dynamicSelect\")", " Object selectViaProvider(String tableName);", " Object selectDynamic(String sql);", "}"],
+      "mapper/Task.java": ["package demo.mapper;", "@TableName(\"task\")", "public class Task {}"],
       "mapper/TaskSqlProvider.java": ["package demo.mapper;", "public class TaskSqlProvider {", " public String dynamicSelect(String tableName) {", "  return \"select * from \" + tableName;", " }", "}"],
       "assembler/TaskMapper.java": ["package demo.assembler;", "@Mapper", "public interface TaskMapper {", " Object convert(Object source);", "}"]
     };
@@ -74,12 +75,13 @@ test("BaseMapper inherited overloads remain SQL boundaries instead of unresolved
   try {
     const file = path.join(dir, "demo", "TaskMapper.java");
     await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, ["package demo;", "public interface TaskMapper extends BaseMapperX<Task> {", " default Object selectPage(TaskPageReq req) {", "  return selectPage(req, new QueryWrapper<Task>());", " }", " default void clearExternalRef(Long id) { updateById(id); }", " @org.apache.ibatis.annotations.Update(\"<script>\" +", "   \"UPDATE task SET deleted = 0 WHERE id IN \" +", "   \"<foreach collection='ids' item='id'>#{id}</foreach>\" +", "   \"</script>\")", " int restoreDeletedByIds(List<Long> ids);", "}"].join("\n"));
+    await writeFile(file, ["package demo;", "public interface TaskMapper extends BaseMapperX<Task> {", " default Object selectPage(TaskPageReq req) {", "  return selectPage(req, new QueryWrapper<Task>());", " }", " default void clearExternalRef(Long id) { updateById(id); }", " @org.apache.ibatis.annotations.Update(\"<script>\" +", "   \"UPDATE task SET deleted = 0 WHERE id IN \" +", "   \"<foreach collection='ids' item='id'>#{id}</foreach>\" +", "   \"</script>\")", " int restoreDeletedByIds(List<Long> ids);", "}", "@TableName(\"task\")", "class Task {}"].join("\n"));
     const report = await assessJavaRepositoriesForRust({ root: dir, maxDepth: 4, maxEdges: 100 });
     const method = report.methods.find((item) => item.method === "selectPage");
     assert.equal(method?.sqlSources, 1);
     assert.equal(method?.findings.includes("RP-GRAPH-UNRESOLVED-EDGES"), false);
-    assert.equal(method?.findings.includes("RP-SQL-BASE-MAPPER-GENERATED"), true);
+    assert.equal(method?.findings.includes("RP-SQL-BASE-MAPPER-GENERATED"), false);
+    assert.equal(method?.sqlContracts[0]?.generatedContract?.table, "task");
     assert.equal(report.methods.find((item) => item.method === "clearExternalRef")?.operation, "write");
     assert.equal(report.methods.find((item) => item.method === "restoreDeletedByIds")?.implementation, "sql-source");
   } finally { await rm(dir, { recursive: true, force: true }); }

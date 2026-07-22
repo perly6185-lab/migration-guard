@@ -58,7 +58,7 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
     ...(missingSqlContracts.has("branch-fixture") ? ["RP-SQL-MISSING-BRANCH-FIXTURE"] : []),
     ...(missingSqlContracts.has("provider-fragment") ? ["RP-SQL-MISSING-PROVIDER-FRAGMENT"] : []),
     ...(missingSqlContracts.has("routing-contract") ? ["RP-SQL-MISSING-ROUTING-CONTRACT"] : []),
-    ...(sqlSources.some((source) => source.source === "base-mapper") ? ["RP-SQL-BASE-MAPPER-GENERATED"] : []),
+    ...(sqlSources.some((source) => source.source === "base-mapper" && !source.generatedContract) ? ["RP-SQL-BASE-MAPPER-GENERATED"] : []),
     ...(sqlSources.some((source) => source.source === "provider") ? ["RP-SQL-PROVIDER-SOURCE"] : [])
   ];
   const workload = inferWorkload(report, nodes);
