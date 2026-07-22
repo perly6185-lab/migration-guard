@@ -808,7 +808,10 @@ function parseTypeBody(lines: string[], startLine: number, endLine: number, file
       }
     }
 
-    const field = line.match(/^\s*(?:public|private|protected)\s+(?:static\s+)?(?:final\s+)?([A-Za-z0-9_.$<>?,\s]+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=.*)?;/);
+    const lombokValueFields = type.annotations.some((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?Value\b/.test(annotation));
+    const field = line.match(lombokValueFields
+      ? /^\s*(?:(?:public|private|protected)\s+)?(?:static\s+)?(?:final\s+)?([A-Za-z0-9_.$<>?,\s]+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=.*)?;/
+      : /^\s*(?:public|private|protected)\s+(?:static\s+)?(?:final\s+)?([A-Za-z0-9_.$<>?,\s]+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=.*)?;/);
     const declaredFieldType = field?.[1].trim();
     const fieldTypeName = declaredFieldType ? simpleTypeName(declaredFieldType) : undefined;
     if (field) {
@@ -1822,8 +1825,12 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   if (openingBrace >= 0) body = body.slice(0, openingBrace + 1).replace(/[^\n]/g, " ") + body.slice(openingBrace + 1);
   const scanBody = body.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, (literal) => literal.replace(/[^\n]/g, " "));
   const lineAt = (offset: number) => method.bodyStartLine + scanBody.slice(0, offset).split("\n").length - 1;
-  for (const local of scanBody.matchAll(/\b([A-Z][A-Za-z0-9_.$<>?,\[\]]*|(?:byte|short|int|long|float|double|boolean|char))\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;|:)/g)) variableTypes.set(local[2], local[1]);
+  for (const local of scanBody.matchAll(/\b([A-Z][A-Za-z0-9_.$]*(?:\s*<[^;\r\n=()]+>)?(?:\[\])?|(?:byte|short|int|long|float|double|boolean|char))\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;|:)/g)) variableTypes.set(local[2], local[1]);
   for (const lambda of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.forEach\s*\(\s*(?:\(\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:\))?\s*->/g)) {
+    const elementType = genericTypeArguments(variableTypes.get(lambda[1]) ?? "")[0];
+    if (elementType) variableTypes.set(lambda[2], elementType);
+  }
+  for (const lambda of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:stream\s*\(\s*\)\s*\.)?(?:filter|map|flatMap|peek|anyMatch|allMatch|noneMatch)\s*\(\s*(?:\(\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:\))?\s*->/g)) {
     const elementType = genericTypeArguments(variableTypes.get(lambda[1]) ?? "")[0];
     if (elementType) variableTypes.set(lambda[2], elementType);
   }
@@ -1980,7 +1987,16 @@ function resolveCallTargets(
   }
   if (targets.length === 0 && candidateTypes.some((type) => isGeneratedAccessor(type, call.method, call.argumentCount))) return { targets: [], resolution: "external", candidates: [] };
   const uniqueTargets = targets.filter((target, index, all) => all.findIndex((other) => methodId(other.type, other.method) === methodId(target.type, target.method)) === index);
-  return selectOverload(candidateTypes.some((type) => type.kind === "interface") ? narrowSpringTargets(uniqueTargets, field.name) : uniqueTargets, call);
+  const narrowedTargets = candidateTypes.some((type) => type.kind === "interface") ? narrowSpringTargets(uniqueTargets, field.name) : uniqueTargets;
+  return selectOverload(collapseOverriddenTargets(narrowedTargets), call);
+}
+
+function collapseOverriddenTargets(targets: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>): Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> {
+  const signatureKey = (target: { method: JavaMethodInfo }) => `${target.method.name}(${target.method.params.map((param) => simpleTypeName(param.declaredType)).join(",")})`;
+  return targets.filter((target) => {
+    if (target.type.kind !== "interface") return true;
+    return !targets.some((other) => other.type.kind !== "interface" && signatureKey(other) === signatureKey(target));
+  });
 }
 
 function narrowSpringTargets(targets: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>, fieldName: string): Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> {
@@ -2060,6 +2076,9 @@ function overloadScore(params: JavaParamInfo[], argumentTypes: string[]): number
     const expected = simpleTypeName(param.typeName);
     if (actual === "unknown" || actual === "null") return score + 1;
     if (actual === expected) return score + 5;
+    if (/^(?:ArrayList|LinkedList|CopyOnWriteArrayList)$/.test(actual) && expected === "List") return score + 4;
+    if (/^(?:HashMap|LinkedHashMap|TreeMap|ConcurrentHashMap)$/.test(actual) && expected === "Map") return score + 4;
+    if (/^(?:HashSet|LinkedHashSet|TreeSet|CopyOnWriteArraySet)$/.test(actual) && expected === "Set") return score + 4;
     if (/^(?:List|Set|Queue|Deque)$/.test(actual) && /^(?:Collection|Iterable)$/.test(expected)) return score + 4;
     if (primitiveWrapper(actual) === primitiveWrapper(expected)) return score + 4;
     if (isWideningConversion(actual, expected)) return score + 3;
@@ -2124,6 +2143,46 @@ function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo,
   if (cast) return simpleTypeName(cast[1]);
   const direct = variableTypes.get(trimmed);
   if (direct) return simpleTypeName(direct);
+  if (/^IdWorker\.getId\s*\(/.test(trimmed)) return "Long";
+  if (/^[A-Z][A-Za-z0-9_]*\.[A-Za-z0-9_]*ToStringList\s*\(/.test(trimmed)) return "List";
+  const chainedGetter = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+  if (chainedGetter) {
+    const receiver = chainedGetter[1];
+    const declared = variableTypes.get(receiver);
+    const field = [currentType, ...parentTypes(project, currentType)].flatMap((type) => [...type.fields, ...type.plainFields]).find((candidate) => candidate.name === receiver);
+    const receiverTypeName = declared ?? field?.declaredType ?? (receiver[0] === receiver[0].toUpperCase() ? receiver : undefined);
+    const receiverTypes = receiverTypeName ? resolveTypesForField(project, receiverTypeName, currentType) : [];
+    const intermediateTypes = receiverTypes.flatMap((type) => {
+      const declaredReturns = type.methods.filter((method) => method.name === chainedGetter[2] && method.returnType).map((method) => simpleTypeName(method.returnType as string));
+      if (!isGeneratedAccessor(type, chainedGetter[2], 0)) return declaredReturns;
+      const property = chainedGetter[2].replace(/^(?:get|is)/, "");
+      const fieldName = property ? property[0].toLowerCase() + property.slice(1) : "";
+      return [...declaredReturns, ...type.plainFields.filter((item) => item.name === fieldName).map((item) => simpleTypeName(item.declaredType))];
+    });
+    const finalTypes = [...new Set(intermediateTypes)].flatMap((typeName) => resolveTypesForField(project, typeName, currentType)).flatMap((type) => {
+      const declaredReturns = type.methods.filter((method) => method.name === chainedGetter[3] && method.returnType).map((method) => simpleTypeName(method.returnType as string));
+      if (!isGeneratedAccessor(type, chainedGetter[3], 0)) return declaredReturns;
+      const property = chainedGetter[3].replace(/^(?:get|is)/, "");
+      const fieldName = property ? property[0].toLowerCase() + property.slice(1) : "";
+      return [...declaredReturns, ...type.plainFields.filter((item) => item.name === fieldName).map((item) => simpleTypeName(item.declaredType))];
+    });
+    const candidates = [...new Set(finalTypes)];
+    if (candidates.length === 1) return candidates[0] as string;
+  }
+  const elementGetter = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\.get\s*\([^)]*\)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+  if (elementGetter) {
+    const elementType = genericTypeArguments(variableTypes.get(elementGetter[1]) ?? "")[0];
+    const sourceTypes = elementType ? resolveTypesForField(project, elementType, currentType) : [];
+    const returnTypes = sourceTypes.flatMap((type) => type.methods.filter((method) => method.name === elementGetter[2] && method.returnType).map((method) => simpleTypeName(method.returnType as string)));
+    const generatedTypes = sourceTypes.flatMap((type) => {
+      if (!isGeneratedAccessor(type, elementGetter[2], 0)) return [];
+      const property = elementGetter[2].replace(/^(?:get|is)/, "");
+      const fieldName = property ? property[0].toLowerCase() + property.slice(1) : "";
+      return type.plainFields.filter((field) => field.name === fieldName).map((field) => simpleTypeName(field.declaredType));
+    });
+    const candidates = [...new Set([...returnTypes, ...generatedTypes])];
+    if (candidates.length === 1) return candidates[0] as string;
+  }
   const selfCall = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
   if (selfCall) {
     const returnTypes = methodsInHierarchy(project, currentType).filter((item) => item.method.name === selfCall[1] && item.method.returnType).map((item) => simpleTypeName(item.method.returnType as string));

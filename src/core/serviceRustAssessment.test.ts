@@ -70,12 +70,13 @@ test("Java call resolution covers multiline arguments, static imports, generic f
       "StaticTools.java": ["package demo;", "public class StaticTools {", " public static Object normalize(long value) { return null; }", " public static Object normalize(String value) { return null; }", "}"],
       "ResolutionService.java": [
         "package demo;", "import static demo.StaticTools.normalize;", "import static external.Results.success;", "import static external.Constants.*;", "public class ResolutionService {", " @Resource", " private Worker worker;", " @Resource", " private Factory<Worker> factory;", " @Resource", " private GeneratedConfig config;", " @Resource", " private OverloadWorker overloadWorker;",
-        " public Object run() {", "  Payload payload = worker.payload();", "  worker.process(", "    1L,", "    \"ready\"", "  );", "  factory.create().execute(1);", "  worker.payload().getName();", "  overloadWorker.choose(payload.getId());", "  config.getTimeout();", "  normalize(1);", "  success(new Payload());", "  collect(\"batch\", 1L, 2L);", "  return null;", " }",
+        " public Object run() {", "  Payload payload = worker.payload();", "  PayloadHolder holder = new PayloadHolder(payload);", "  List<Payload> payloads = new ArrayList<>();", "  worker.process(", "    1L,", "    \"ready\"", "  );", "  factory.create().execute(1);", "  worker.payload().getName();", "  overloadWorker.choose(payload.getId());", "  overloadWorker.choose(holder.getPayload().getId());", "  payloads.stream().map(item -> overloadWorker.choose(item.getId()));", "  overloadWorker.chooseList(new ArrayList<Long>());", "  config.getTimeout();", "  normalize(1);", "  success(new Payload());", "  collect(\"batch\", 1L, 2L);", "  return null;", " }",
         " protected Object collect(String name, Long... values) { return null; }", "}"
       ],
       "Payload.java": ["package demo;", "@Data", "public class Payload {", " private String name;", " private Long id;", "}"],
+      "PayloadHolder.java": ["package demo;", "@Value", "public class PayloadHolder {", " Payload payload;", "}"],
       "GeneratedConfig.java": ["package demo;", "@Getter", "public class GeneratedConfig {", " private long timeout;", "}"],
-      "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", "}"],
+      "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", " public Object chooseList(Long value) { return null; }", " public Object chooseList(List<Long> value) { return null; }", "}"],
       "one/DuplicateWorker.java": ["package demo.one;", "public class DuplicateWorker {", " public Object execute() { return null; }", "}"],
       "two/DuplicateWorker.java": ["package demo.two;", "public class DuplicateWorker {", " public Object execute() { return null; }", "}"],
       "ImportedService.java": ["package demo;", "import demo.one.DuplicateWorker;", "public class ImportedService {", " @Resource", " private DuplicateWorker duplicateWorker;", " public Object run() { return duplicateWorker.execute(); }", "}"]
@@ -141,6 +142,9 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
       "PrimaryService.java": ["package demo;", "public class PrimaryService {", " @Resource", " private PrimaryWorker primaryWorker;", " public Object run() { return primaryWorker.execute(); }", "}"],
       "DefaultWorker.java": ["package demo;", "public interface DefaultWorker {", " default Object execute() {", "  return null;", " }", "}"],
       "DefaultService.java": ["package demo;", "public class DefaultService {", " @Resource", " private DefaultWorker worker;", " public Object run() {", "  return worker.execute();", " }", "}"],
+      "IJobRepository.java": ["package demo;", "public interface IJobRepository {", " Object selectById(Long id);", "}"],
+      "JobRepositoryImpl.java": ["package demo;", "public class JobRepositoryImpl implements IJobRepository {", " public Object selectById(Long id) { return null; }", "}"],
+      "RepositoryService.java": ["package demo;", "public class RepositoryService {", " @Resource", " private IJobRepository jobRepository;", " public Object run() { return jobRepository.selectById(1L); }", "}"],
       "TransactionService.java": ["package demo;", "public class TransactionService {", " @Transactional", " public Object save() {", "  return null;", " }", " public Object run() {", "  return save();", " }", "}"],
       "LambdaService.java": ["package demo;", "public class LambdaService {", " public Object run() {", "  items.forEach(item -> process(item));", "  return items.stream().map(this::convert);", " }", " protected void process(Object item) {", " }", " protected Object convert(Object item) {", "  return item;", " }", "}"]
     };
@@ -155,6 +159,9 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
     assert.ok(primary.callGraph.nodes.some((item) => item.className === "PrimaryWorkerImpl"), JSON.stringify(primary.callGraph, null, 2));
     assert.equal(primary.callGraph.nodes.some((item) => item.className === "BackupPrimaryWorkerImpl"), false);
     assert.ok(analyze("DefaultService").callGraph.nodes.some((item) => item.className === "DefaultWorker"));
+    const repository = analyze("RepositoryService");
+    assert.ok(repository.callGraph.nodes.some((item) => item.className === "JobRepositoryImpl"));
+    assert.equal(repository.callGraph.edges.some((item) => item.resolution === "ambiguous"), false);
     assert.ok(createEndpointReplacementPlanFromJava(analyze("TransactionService")).plan.findings.includes("RP-GRAPH-TRANSACTION-SELF-INVOCATION"));
     const lambda = createEndpointReplacementPlanFromJava(analyze("LambdaService"));
     assert.ok(lambda.graph.nodes.some((item) => item.evidence.detail?.includes("lambda")));
