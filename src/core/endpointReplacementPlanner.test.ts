@@ -127,10 +127,13 @@ test("semantic registry classifies utilities, logging, clocks, and Redis coordin
     node("log.info", "unknown", "log", "info"),
     node("LocalDateTime.now", "unknown", "LocalDateTime", "now"),
     node("Objects.requireNonNull", "unknown", "Objects", "requireNonNull"),
+    node("JSON.toJSONString", "unknown", "JSON", "toJSONString"),
+    node("sb.append", "unknown", "sb", "append"),
+    node("Function.identity", "unknown", "Function", "identity"),
     node("stringRedisTemplate.execute", "unknown", "stringRedisTemplate", "execute")
   ]);
   const { graph } = createEndpointReplacementPlanFromJava(report);
-  assert.deepEqual(graph.nodes.filter((item) => item.kind !== "entrypoint").map((item) => item.kind).sort(), ["calculation", "clock-read", "coordination", "observability"]);
+  assert.deepEqual(graph.nodes.filter((item) => item.kind !== "entrypoint").map((item) => item.kind).sort(), ["calculation", "calculation", "calculation", "calculation", "clock-read", "coordination", "observability"]);
 });
 
 test("reviewed ownership policy applies narrow safe exclusions and blocks unsafe rules", () => {

@@ -134,10 +134,10 @@ function classifyBehavior(text: string, sourceKind: string): [BehaviorKind, stri
     ["external-call", /client|\bapi\.|gateway|adapter|storage|fileApi|http|rpc/i, "external service boundary"],
     ["state-write", /\bddl\b|create\s+table|alter\s+table|drop\s+table|truncate\s+table/i, "database schema mutation"],
     ["state-write", /insert|save|create|update|delete|remove|clear|write|upsert|persist|record|set|lock|acquire|cancel|terminate|submit|enable|disable|approve|reject|archive/i, "state mutation"],
-    ["state-read", /select|query|find|get|list|load|read|count|exists/i, "state lookup"],
+    ["state-read", /select|query|find|get|list|load|read|count|exists|rowNum|(^|\.)page(?:\b|[A-Z])/i, "state lookup"],
     ["external-call", /repository|mapper|cache|upload|download|file/i, "external or infrastructure boundary"],
     ["decision", /(^|\.)(is|has|should|can|allow|resolve)[A-Z_]/, "branch decision"],
-    ["calculation", /calculate|compute|derive|convert|assemble|build|map|normalize|fill|evaluate|copyProperties|BeanUtils|CommonResult|success/i, "deterministic transformation"]
+    ["calculation", /calculate|compute|derive|convert|assemble|build|map|normalize|fill|evaluate|copyProperties|BeanUtils|CommonResult|success|\.init[A-Z].*(?:DO|VO|BO|DTO|Req|Resp)/i, "deterministic transformation"]
   ];
   for (const [kind, pattern, reason] of rules) if (pattern.test(text)) return [kind, [reason, `source kind ${sourceKind}`]];
   if (sourceKind === "assembler" || sourceKind === "mapper" || sourceKind === "support") return ["calculation", [`${sourceKind} role`, "role inference"]];
