@@ -52,5 +52,19 @@ test("repository assessment covers contracts, implementations and persistence ma
     assert.ok(report.methods.find((x) => x.method === "selectFromXml")?.findings.includes("RP-SQL-MISSING-BRANCH-FIXTURE"));
     assert.ok(report.methods.find((x) => x.method === "selectViaProvider")?.findings.includes("RP-SQL-MISSING-PROVIDER-FRAGMENT"));
     assert.match(renderRepositoryRustAssessment(report), /## Missing SQL contracts[\s\S]*branch-fixture: 1/);
+    assert.equal(report.sqlMetrics.records, 3);
+    assert.equal(report.sqlMetrics.reviewableRecords, 1);
+    assert.equal(report.sqlMetrics.replayContractRequiredRecords, 2);
+    assert.deepEqual(report.sqlMetrics.sourceKinds, { annotation: 1, "mapper-xml": 1, provider: 1 });
+    assert.deepEqual(report.sqlMetrics.operations, { read: 3 });
+    assert.deepEqual(report.sqlMetrics.dynamicTags, { if: 1, where: 1 });
+    assert.equal(report.sqlMetrics.tables.task, 2);
+    assert.equal(report.sqlMetrics.contexts.tenant, 1);
+    assert.deepEqual(report.sqlMetrics.transactionParticipation, { "not-transactional": 3 });
+    assert.equal(report.sqlMetrics.unresolvedReasons["missing-branch-fixture"], 1);
+    assert.equal(report.sqlMetrics.unresolvedReasons["table-not-resolved"], 1);
+    assert.match(renderRepositoryRustAssessment(report), /## SQL contract metrics[\s\S]*Reviewable SQL records: 1[\s\S]*### Unresolved SQL reasons/);
+    assert.match(renderRepositoryRustAssessment(report), /### Reviewable SQL records[\s\S]*annotation:demo\.mapper\.TaskMapper\.selectAnnotated/);
+    assert.match(renderRepositoryRustAssessment(report), /### Replay contract required[\s\S]*missing-branch-fixture/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
