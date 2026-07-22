@@ -1820,41 +1820,42 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   let body = method.body.split(/\r?\n/).map(stripLineComment).join("\n");
   const openingBrace = body.indexOf("{");
   if (openingBrace >= 0) body = body.slice(0, openingBrace + 1).replace(/[^\n]/g, " ") + body.slice(openingBrace + 1);
-  const lineAt = (offset: number) => method.bodyStartLine + body.slice(0, offset).split("\n").length - 1;
-  for (const local of body.matchAll(/\b([A-Z][A-Za-z0-9_.$<>?,\[\]]*|(?:byte|short|int|long|float|double|boolean|char))\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;|:)/g)) variableTypes.set(local[2], local[1]);
-  for (const lambda of body.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.forEach\s*\(\s*(?:\(\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:\))?\s*->/g)) {
+  const scanBody = body.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, (literal) => literal.replace(/[^\n]/g, " "));
+  const lineAt = (offset: number) => method.bodyStartLine + scanBody.slice(0, offset).split("\n").length - 1;
+  for (const local of scanBody.matchAll(/\b([A-Z][A-Za-z0-9_.$<>?,\[\]]*|(?:byte|short|int|long|float|double|boolean|char))\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;|:)/g)) variableTypes.set(local[2], local[1]);
+  for (const lambda of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.forEach\s*\(\s*(?:\(\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:\))?\s*->/g)) {
     const elementType = genericTypeArguments(variableTypes.get(lambda[1]) ?? "")[0];
     if (elementType) variableTypes.set(lambda[2], elementType);
   }
-  for (const reference of body.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)/g)) {
-    const prefix = body.slice(Math.max(0, (reference.index ?? 0) - 120), reference.index ?? 0);
+  for (const reference of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)/g)) {
+    const prefix = scanBody.slice(Math.max(0, (reference.index ?? 0) - 120), reference.index ?? 0);
     const collection = prefix.match(/\b([A-Za-z_][A-Za-z0-9_]*)\.forEach\s*\(\s*$/)?.[1];
     const declaredCollection = collection ? variableTypes.get(collection) ?? "" : "";
     const referenceTypes = genericTypeArguments(declaredCollection);
     const argumentTypes = /^Map\s*</.test(declaredCollection) ? referenceTypes.slice(0, 2) : referenceTypes.slice(0, 1);
     calls.push({ receiver: reference[1], method: reference[2], expression: reference[0], line: lineAt(reference.index ?? 0), argumentCount: argumentTypes.length || -1, argumentTypes, feature: "method-reference" });
   }
-  for (const lambda of body.matchAll(/->/g)) calls.push({ receiver: "$lambda", method: "invoke", expression: "lambda ->", line: lineAt(lambda.index ?? 0), argumentCount: -1, argumentTypes: [], feature: "lambda" });
+  for (const lambda of scanBody.matchAll(/->/g)) calls.push({ receiver: "$lambda", method: "invoke", expression: "lambda ->", line: lineAt(lambda.index ?? 0), argumentCount: -1, argumentTypes: [], feature: "lambda" });
   const occupied = new Set<number>();
   const chainPattern = /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
-  for (const match of body.matchAll(chainPattern)) {
+  for (const match of scanBody.matchAll(chainPattern)) {
     const openIndex = (match.index ?? 0) + match[0].lastIndexOf("(");
     const parsedArgs = extractCallArguments(body, openIndex);
     const receiverType = resolveFactoryReturnType(project, type, match[1], match[2]);
     calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes)) });
     occupied.add((match.index ?? 0) + match[0].lastIndexOf(match[4]));
   }
-  for (const match of body.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+  for (const match of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodOffset = (match.index ?? 0) + match[0].lastIndexOf(match[2]);
     if (occupied.has(methodOffset) || !injectedFields.has(match[1]) && isLowValueCall(match[2])) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
     calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes)) });
   }
-  for (const match of body.matchAll(/(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+  for (const match of scanBody.matchAll(/(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodName = match[1];
     if (JAVA_KEYWORD_CALLS.has(methodName)) continue;
     const callStart = (match.index ?? 0) + match[0].lastIndexOf(methodName);
-    if (/\bnew\s*$/.test(body.slice(Math.max(0, callStart - 12), callStart))) continue;
+    if (/\bnew\s*$/.test(scanBody.slice(Math.max(0, callStart - 12), callStart))) continue;
     const staticImported = type.staticImports.some((item) => item.methodName === methodName || item.methodName === "*");
     if (!staticImported && !methodsInHierarchy(project, type).some((candidate) => candidate.method.name === methodName)) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
@@ -1948,6 +1949,7 @@ function resolveCallTargets(
 
   if (call.receiverType) {
     const receiverTypes = project.typesByName.get(simpleTypeName(call.receiverType)) ?? [];
+    if (receiverTypes.length === 0) return { targets: [], resolution: "external", candidates: [] };
     const receiverCandidates = receiverTypes.flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method })));
     if (receiverCandidates.length === 0 && receiverTypes.some((type) => isGeneratedAccessor(type, call.method, call.argumentCount))) return { targets: [], resolution: "external", candidates: [] };
     return selectOverload(receiverCandidates, call);
@@ -1958,6 +1960,10 @@ function resolveCallTargets(
   }
   const candidateTypes = resolveTypesForField(project, field.typeName, currentType);
   if (!candidateTypes.length) return { targets: [], resolution: "external", candidates: [] };
+  if (candidateTypes.some((type) => type.annotations.some((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?FeignClient\b/.test(annotation)))
+    && candidateTypes.some((type) => type.methods.some((method) => method.name === call.method))) {
+    return { targets: [], resolution: "external", candidates: [] };
+  }
   const targets: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> = [];
   for (const candidateType of candidateTypes) {
     let implementationTypes = candidateType.kind === "interface"

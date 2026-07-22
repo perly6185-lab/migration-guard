@@ -7,8 +7,8 @@
 - Project: `zboss-module-data`
 - Source: `8a68de49679502a52232798a3c1f6acba01b7789+dirty:5641e05dcd43`
 - Shared initial graph budget: depth 12, edges 500, tests excluded
-- Aggregate report hash: `e8f0ed6c47f4430183bfad666a605be0b94aabf0456a3aad37a66c9f579a6404`
-- Cross-layer evidence hash: `08a0fd2d1d61b12d50114a7219b11113d7f8b6a079afc1aa044e3bd0ec09b5ae`
+- Aggregate report hash: `b0a49ba42b99d123e5a742b86739b5cf0f1340c3d374363ed4aa2efad174ae50`
+- Cross-layer evidence hash: `b5116e874b732d9f22505f95b7a6ee5f9b924f56489c2418a216e5768f600bd3`
 
 `metrics-report` rejects reports whose source identity or shared initial graph budget differs. Service and Repository may use explicitly recorded adaptive expansion budgets after the shared initial budget.
 
@@ -16,8 +16,8 @@
 
 | Layer | Total | Ready | Blocked | Ready rate |
 | --- | ---: | ---: | ---: | ---: |
-| Controller | 1856 | 1189 | 667 | 64.1% |
-| Service | 5506 | 4256 | 1250 | 77.3% |
+| Controller | 1856 | 1342 | 514 | 72.3% |
+| Service | 5506 | 4318 | 1188 | 78.4% |
 | Repository | 4067 | 4067 | 0 | 100.0% |
 
 Repository evidence now contains 3315 SQL-backed methods (81.5% coverage), no generated boundaries, 6 unknown operations, no unresolved-edge findings, no ambiguous-call findings, and no dynamic SQL blockers. The regression gate passes against the checked-in baseline, reducing generated boundaries by 21, unresolved-edge findings by 1196, and dynamic SQL blockers by 107 to zero.
@@ -31,6 +31,8 @@ Tenant routing now synthesizes active, missing-context, and mismatch cases. Data
 BaseMapper ownership now includes inherited `insertBatch`, `updateBatch`, `deleteByIds`, `selectByIds`, and convention-backed `selectListBy*` operations. Generic parameter declarations are preserved for overload inference; `forEach` lambdas and Map/Collection method references infer their element arguments; generated BaseMapper return entities and same-class method return types participate in overload scoring. Repository unresolved-edge findings decreased from 221 to zero and ambiguous-call findings from 31 to zero.
 
 Abstract BaseMapper methods with a recognized read/write/delete prefix and a `By...` predicate now generate a narrow method-convention contract only when the mapper entity and explicit `@TableName` both resolve. Explicit annotation or XML SQL remains authoritative and suppresses the generated fallback. This supplies evidence for the final five mapper declarations and their callers, bringing Repository readiness to 100%.
+
+Controller and Service call extraction now scans a position-preserving copy with string and character literals masked, while argument arity and types are recovered from the original source. This removes method-shaped text inside log and SQL literals without dropping real string arguments. Chained calls whose declared return type is outside the source model are classified as external library boundaries, and source-declared Feign clients are treated as explicit remote boundaries. Controller unresolved-edge findings decreased from 349 to 43 and readiness rose from 1189 to 1342; Service unresolved-edge findings decreased from 407 to 117 and readiness rose from 4256 to 4318.
 
 External static imports whose declaring type is outside the source model are now explicit external boundaries. Constructor expressions are excluded from bare method-call extraction, including under wildcard static imports. This reduced Controller unresolved routes from 1739 to 434 without suppressing ambiguous candidates; ambiguous routes changed from 675 to 680 as deeper valid traversal exposed additional real candidates.
 
@@ -50,8 +52,8 @@ BaseMapper operations are reviewable only when the mapper generic entity resolve
 
 Next work is ordered by evidence impact:
 
-1. Reduce Controller unresolved edges and ambiguous calls, especially high-fan-out routes hitting the 500-edge cap.
-2. Reduce Service unclassified boundaries and the 96 adaptive-expansion budget exhaustions.
+1. Resolve the remaining 168 Controller ambiguous-call findings, then review the 43 unresolved-edge findings.
+2. Reduce Service unclassified boundaries and the 101 adaptive-expansion budget exhaustions.
 3. Shift the next cleanup phase to Controller and Service graph completeness; Repository has no remaining blockers.
 4. Update the checked-in real-project baseline only after the dirty source fingerprint and reports are reviewed.
 

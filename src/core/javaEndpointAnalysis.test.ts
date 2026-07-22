@@ -97,6 +97,8 @@ test("java endpoint analysis traces Spring route through injected services and d
       "",
       "  public ViewMetaEngineInterResponseDTO page(ViewMetaEngineUsePageRequestDTO requestDTO) {",
       "    Long tenantId = TenantContextHolder.getTenantId();",
+      "    bookQueryPort.audit(\"page(requestDTO)\", 1);",
+      "    bookQueryPort.loadIds().stream();",
       "    normalizeForQuery(requestDTO);",
       "    return bookQueryPort.selectPage(requestDTO);",
       "  }",
@@ -110,6 +112,8 @@ test("java endpoint analysis traces Spring route through injected services and d
       "package demo;",
       "public interface BookQueryPort {",
       "  ViewMetaEngineInterResponseDTO selectPage(ViewMetaEngineUsePageRequestDTO requestDTO);",
+      "  void audit(String message, int count);",
+      "  java.util.List<Long> loadIds();",
       "}"
     ].join("\n"));
     await writeFile(path.join(dir, "src", "main", "java", "demo", "BookQueryPortAdapter.java"), [
@@ -122,6 +126,8 @@ test("java endpoint analysis traces Spring route through injected services and d
       "    dynamicTableQueryRepository.selectCount(null);",
       "    return new ViewMetaEngineInterResponseDTO();",
       "  }",
+      "  public void audit(String message, int count) {}",
+      "  public java.util.List<Long> loadIds() { return java.util.List.of(); }",
       "}"
     ].join("\n"));
     await writeFile(path.join(dir, "src", "main", "java", "demo", "BookPageAssembler.java"), [
@@ -171,6 +177,8 @@ test("java endpoint analysis traces Spring route through injected services and d
     assert.ok(report.callGraph.nodes.some((node) => node.id.includes("BookPageRouteApplicationServiceImpl.pageByView")));
     assert.ok(report.callGraph.nodes.some((node) => node.id.includes("BookPageApplicationServiceImpl.page")));
     assert.ok(report.callGraph.nodes.some((node) => node.id.includes("BookQueryPortAdapter.selectPage")));
+    assert.ok(report.callGraph.nodes.some((node) => node.id.includes("BookQueryPortAdapter.audit")));
+    assert.equal(report.callGraph.edges.some((edge) => edge.call.method === "stream" && edge.resolution === "unresolved"), false);
     assert.equal(report.callGraph.truncation.maxTotalEdges, 600);
     assert.equal(report.callGraph.edges.some((edge) => edge.call.method === "setPageSize"), false);
     assert.deepEqual(report.requestModel?.fields, [
@@ -467,6 +475,43 @@ test("java endpoint analysis reports endpoint-not-found when no route matches", 
     assert.deepEqual(report.recommendedNextActions, [
       "Add or fix Java route detection for the requested Spring endpoint before planning runtime extraction."
     ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("java endpoint analysis treats declared Feign clients as external boundaries", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-feign-"));
+  try {
+    const sourceDir = path.join(dir, "src", "main", "java", "demo");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "RemoteController.java"), [
+      "package demo;",
+      "import jakarta.annotation.Resource;",
+      "import org.springframework.web.bind.annotation.GetMapping;",
+      "import org.springframework.web.bind.annotation.RestController;",
+      "@RestController",
+      "public class RemoteController {",
+      " @Resource",
+      " private RemoteClient remoteClient;",
+      " @GetMapping(\"/remote\")",
+      " public Object remote() {",
+      "  return remoteClient.fetch(\"tenant\");",
+      " }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "RemoteClient.java"), [
+      "package demo;",
+      "import org.springframework.cloud.openfeign.FeignClient;",
+      "@FeignClient(name=\"remote\")",
+      "public interface RemoteClient {",
+      " Object fetch(String tenant);",
+      "}"
+    ].join("\n"));
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/remote" });
+    const edge = report.callGraph.edges.find((candidate) => candidate.call.method === "fetch");
+    assert.equal(edge?.resolution, "static-or-external");
+    assert.equal(report.callGraph.edges.some((candidate) => candidate.resolution === "unresolved"), false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
