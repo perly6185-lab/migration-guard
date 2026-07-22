@@ -262,8 +262,11 @@ export async function createProjectInventory(root: string): Promise<CrossLanguag
       confidence: route.confidence,
       handler: route.methodName
     }));
-    const normalizedFiles = new Set(normalized.map((route) => route.file));
-    routes = [...normalized, ...legacyRoutes.filter((route) => !normalizedFiles.has(route.file))];
+    const normalizedRouteKeys = new Set(normalized.map((route) => `${route.file}\0${route.method}\0${route.path}`));
+    routes = [
+      ...normalized,
+      ...legacyRoutes.filter((route) => !normalizedRouteKeys.has(`${route.file}\0${route.method}\0${route.path}`))
+    ];
   }
   const unresolvedRoutes = files.flatMap((file) => extractUnresolvedRoutesFromFile(file));
 

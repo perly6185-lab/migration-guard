@@ -7,8 +7,8 @@
 - Project: `zboss-module-data`
 - Source: `8a68de49679502a52232798a3c1f6acba01b7789+dirty:5641e05dcd43`
 - Shared initial graph budget: depth 12, edges 500, tests excluded
-- Aggregate report hash: `90a6b7e1250d8bb10d93aedb98ef8b8cea111dae14f5103b438580fd2d8996bd`
-- Cross-layer evidence hash: `99a2c4c97e083feeda1d2e3c70bfcf22b47c24ef40d91790231dcacd3800c188`
+- Aggregate report hash: `fc3297268e72f7a68e7a4bf32afcb1da83a73b214dd12193be9461fc0f4002ce`
+- Cross-layer evidence hash: `3013f5dcda3060f75f4d674cfeaa9816db2fe179e0a4b66f06d113aec7d9f312`
 
 `metrics-report` rejects reports whose source identity or shared initial graph budget differs. Service and Repository may use explicitly recorded adaptive expansion budgets after the shared initial budget.
 
@@ -16,11 +16,11 @@
 
 | Layer | Total | Ready | Blocked | Ready rate |
 | --- | ---: | ---: | ---: | ---: |
-| Controller | 1856 | 1387 | 469 | 74.7% |
-| Service | 5506 | 4500 | 1006 | 81.7% |
-| Repository | 4067 | 4067 | 0 | 100.0% |
+| Controller | 1856 | 1389 | 467 | 74.8% |
+| Service | 5524 | 4502 | 1022 | 81.5% |
+| Repository | 4068 | 4068 | 0 | 100.0% |
 
-Repository evidence now contains 3315 SQL-backed methods (81.5% coverage), no generated boundaries, 6 unknown operations, no unresolved-edge findings, no ambiguous-call findings, and no dynamic SQL blockers. The regression gate passes against the checked-in baseline, reducing generated boundaries by 21, unresolved-edge findings by 1196, and dynamic SQL blockers by 107 to zero.
+Repository evidence now contains 3316 SQL-backed methods (81.5% coverage), no generated boundaries, 6 unknown operations, no unresolved-edge findings, no ambiguous-call findings, and no dynamic SQL blockers. The regression gate passes against the checked-in baseline, reducing generated boundaries by 21, unresolved-edge findings by 1196, and dynamic SQL blockers by 107 to zero.
 
 Dynamic MyBatis ownership evidence now synthesizes deterministic replay cases for `<if>`/`<when>` true and false branches, `<foreach>` empty/single/multiple cardinalities, `<choose>` fallback, and empty/present `<where>`/`<set>`/`<trim>` content. The SQL contract report aggregates these branch cases. `RP-SQL-DYNAMIC-SOURCE` now identifies only dynamic sources that still lack replay evidence; `RP-SQL-TABLE-UNRESOLVED` separately identifies dynamic sources whose table cannot be resolved.
 
@@ -36,6 +36,8 @@ Controller and Service call extraction now scans a position-preserving copy with
 
 Interface declarations overridden by a concrete Spring implementation are now collapsed by normalized Java signature before overload selection. Generic local declarations, collection implementation assignability, stream-lambda element types, chained getters, Lombok `@Value` fields, and narrow external ID/list factories now contribute argument evidence. True multi-implementation and unresolved overloads remain fail-closed. Controller ambiguous-call findings decreased from 168 to 6 and readiness rose to 1387; Service ambiguous-call findings decreased from 586 to 16 and readiness rose to 4500.
 
+Java declaration discovery now accepts multiline type headers, long method signatures, package-private support methods, and static initializer blocks. Brace ranges ignore string and character literal contents, preventing regex and template text from swallowing later methods. This reduced Controller unresolved-edge findings from 43 to 8 and discovered 18 additional Service methods plus one SQL-backed Repository method. The expanded Service inventory exposes deeper unclassified and graph-budget findings rather than suppressing them.
+
 External static imports whose declaring type is outside the source model are now explicit external boundaries. Constructor expressions are excluded from bare method-call extraction, including under wildcard static imports. This reduced Controller unresolved routes from 1739 to 434 without suppressing ambiguous candidates; ambiguous routes changed from 675 to 680 as deeper valid traversal exposed additional real candidates.
 
 Lombok-generated accessors are recognized only when the declaring source type carries `@Data`, `@Getter`, `@Value`, or `@Setter`, the matching field exists, and getter/setter arity is valid. The same evidence is used for accessors on a resolved chained return type. Controller unresolved routes decreased from 434 to 423 and Service unresolved findings from 794 to 745; remaining blockers overlap other causes, so Controller ready stayed unchanged.
@@ -46,7 +48,7 @@ Unclassified nodes now use narrow semantic rules for JSON/Gson serialization, cl
 
 Overload argument inference now uses local and foreach declarations, primitive declarations, explicit casts, `List<T>.get()`, source-declared method return types, and Lombok getter field types. Controller ambiguous routes decreased from 346 to 132 and Service ambiguous findings from 802 to 453. Deeper valid traversal exposed additional downstream dynamic SQL, unresolved calls, and graph-cap findings; those remain fail-closed.
 
-Cross-layer lineage covers 1856 routes. Of these, 1622 reach SQL and 1619 (87.2%) have a complete Controller -> Service -> Repository -> SQL chain.
+Cross-layer lineage covers 1856 routes. Of these, 1627 reach SQL and 1624 (87.5%) have a complete Controller -> Service -> Repository -> SQL chain.
 
 ## Interpretation and next work
 
@@ -54,8 +56,8 @@ BaseMapper operations are reviewable only when the mapper generic entity resolve
 
 Next work is ordered by evidence impact:
 
-1. Review the remaining 43 Controller unresolved-edge findings; retain the 6 ambiguous calls without sufficient nested-type or stream-flow evidence as fail-closed.
-2. Reduce Service unclassified boundaries and the 104 adaptive-expansion budget exhaustions.
+1. Retain the remaining 8 Controller unresolved-edge findings and 6 ambiguous calls without sufficient implementation, arity, nested-type, or stream-flow evidence as fail-closed.
+2. Reduce Service unclassified boundaries and the 173 adaptive-expansion budget exhaustions exposed by the expanded inventory.
 3. Shift the next cleanup phase to Controller and Service graph completeness; Repository has no remaining blockers.
 4. Update the checked-in real-project baseline only after the dirty source fingerprint and reports are reviewed.
 

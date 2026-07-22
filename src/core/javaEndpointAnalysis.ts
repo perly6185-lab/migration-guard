@@ -756,11 +756,21 @@ function parseJavaTypes(file: JavaSourceFile): JavaTypeInfo[] {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const match = line.match(/^\s*(?:public\s+|protected\s+|private\s+)?(?:abstract\s+|final\s+|static\s+)*?(class|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*<[^>{]+>)?(?:\s+extends\s+([A-Za-z0-9_.$<>,\s]+?))?(?:\s+implements\s+([^{]+))?\s*\{/);
+    if (!/^\s*(?:public\s+|protected\s+|private\s+)?(?:abstract\s+|final\s+|static\s+)*?(?:class|interface|enum)\b/.test(line)) continue;
+    const headerLines: string[] = [];
+    let headerEnd = index;
+    while (headerEnd < lines.length && headerEnd < index + 16) {
+      const current = lines[headerEnd].trim();
+      headerLines.push(current.includes("{") ? current.slice(0, current.indexOf("{") + 1) : current);
+      if (current.includes("{")) break;
+      headerEnd += 1;
+    }
+    const header = headerLines.join(" ").replace(/\s+/g, " ");
+    const match = header.match(/^\s*(?:public\s+|protected\s+|private\s+)?(?:abstract\s+|final\s+|static\s+)*?(class|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*<[^>{]+>)?(?:\s+extends\s+([A-Za-z0-9_.$<>,\s]+?))?(?:\s+implements\s+([^{]+))?\s*\{/);
     if (!match) {
       continue;
     }
-    const bodyRange = findBraceRange(lines, index);
+    const bodyRange = findBraceRange(lines, headerEnd);
     const annotations = collectLeadingAnnotations(lines, index);
     const typeName = match[2];
     const type: JavaTypeInfo = {
@@ -768,7 +778,7 @@ function parseJavaTypes(file: JavaSourceFile): JavaTypeInfo[] {
       qualifiedName: packageName ? `${packageName}.${typeName}` : typeName,
       packageName,
       kind: match[1] as JavaTypeInfo["kind"],
-      typeParameters: parseTypeParameters(line, typeName),
+      typeParameters: parseTypeParameters(header, typeName),
       staticImports: [...content.matchAll(/^\s*import\s+static\s+([A-Za-z0-9_.$]+)\.([A-Za-z_*][A-Za-z0-9_*]*)\s*;/gm)]
         .map((item) => ({ typeName: item[1], methodName: item[2] })),
       imports: [...content.matchAll(/^\s*import\s+(?!static\s)([A-Za-z0-9_.$]+)\s*;/gm)]
@@ -796,6 +806,10 @@ function parseTypeBody(lines: string[], startLine: number, endLine: number, file
   for (let index = startLine + 1; index < endLine; index += 1) {
     const line = lines[index];
     const annotations = collectLeadingAnnotations(lines, index);
+    if (/^\s*(?:static\s*)?\{/.test(line)) {
+      index = findBraceRange(lines, index).end;
+      continue;
+    }
     if (line.trim().startsWith("@")) {
       index = findAnnotationEndLine(lines, index);
       continue;
@@ -848,12 +862,17 @@ function parseMethodAt(
   file: JavaSourceFile,
   type: JavaTypeInfo
 ): { method: JavaMethodInfo; endLine: number } | undefined {
+  const firstLine = lines[index].trim();
+  if (/^(?:\.|return\b|throw\b|new\b|if\b|for\b|while\b|switch\b|try\b|catch\b|else\b|do\b)/.test(firstLine)) return undefined;
+  const firstEquals = firstLine.indexOf("=");
+  const firstParen = firstLine.indexOf("(");
+  if (firstEquals >= 0 && (firstParen < 0 || firstEquals < firstParen)) return undefined;
   const signatureLines: string[] = [];
   let cursor = index;
   let foundTerminator = false;
-  while (cursor < typeEndLine && cursor < index + 8) {
+  while (cursor < typeEndLine && cursor < index + 64) {
     const trimmed = lines[cursor].trim();
-    if (!trimmed || (cursor === index && trimmed.startsWith("@"))) {
+    if (!trimmed || trimmed.startsWith("//") || (cursor === index && trimmed.startsWith("@"))) {
       return undefined;
     }
     const braceIndex = trimmed.indexOf("{");
@@ -868,10 +887,6 @@ function parseMethodAt(
     return undefined;
   }
   const signature = signatureLines.join(" ").replace(/\s+/g, " ");
-  const hasExplicitAccess = /^(public|protected|private)\s/.test(signature);
-  if (!hasExplicitAccess && type.kind !== "interface") {
-    return undefined;
-  }
   const methodMatch = signature.match(/^(?:(?:public|protected|private)\s+)?(?:static\s+)?(?:final\s+)?(?:<[^>]+>\s+)?(.+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*(?:throws\s+[^{;]+)?([;{])\s*$/);
   if (!methodMatch) {
     return undefined;
@@ -2967,7 +2982,8 @@ function findBraceRange(lines: string[], startLine: number): { start: number; en
   let depth = 0;
   let started = false;
   for (let index = startLine; index < lines.length; index += 1) {
-    const line = stripLineComment(lines[index]);
+    const withoutLiterals = lines[index].replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, "");
+    const line = stripLineComment(withoutLiterals);
     for (const char of line) {
       if (char === "{") {
         depth += 1;

@@ -143,8 +143,10 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
       "DefaultWorker.java": ["package demo;", "public interface DefaultWorker {", " default Object execute() {", "  return null;", " }", "}"],
       "DefaultService.java": ["package demo;", "public class DefaultService {", " @Resource", " private DefaultWorker worker;", " public Object run() {", "  return worker.execute();", " }", "}"],
       "IJobRepository.java": ["package demo;", "public interface IJobRepository {", " Object selectById(Long id);", "}"],
-      "JobRepositoryImpl.java": ["package demo;", "public class JobRepositoryImpl implements IJobRepository {", " public Object selectById(Long id) { return null; }", "}"],
+      "JobRepositoryImpl.java": ["package demo;", "public class JobRepositoryImpl", " implements IJobRepository {", " public Object selectById(Long id) { return null; }", "}"],
       "RepositoryService.java": ["package demo;", "public class RepositoryService {", " @Resource", " private IJobRepository jobRepository;", " public Object run() { return jobRepository.selectById(1L); }", "}"],
+      "PackageSupport.java": ["package demo;", "public class PackageSupport {", " String braceText() { return \"${value}\"; }", " Object execute(", "  Long one,", "  Long two,", "  Long three,", "  Long four,", "  Long five,", "  Long six,", "  Long seven,", "  Long eight,", "  Long nine", ") { return null; }", "}"],
+      "PackageSupportService.java": ["package demo;", "public class PackageSupportService {", " @Resource", " private PackageSupport packageSupport;", " public Object run() { return packageSupport.execute(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L); }", "}"],
       "TransactionService.java": ["package demo;", "public class TransactionService {", " @Transactional", " public Object save() {", "  return null;", " }", " public Object run() {", "  return save();", " }", "}"],
       "LambdaService.java": ["package demo;", "public class LambdaService {", " public Object run() {", "  items.forEach(item -> process(item));", "  return items.stream().map(this::convert);", " }", " protected void process(Object item) {", " }", " protected Object convert(Object item) {", "  return item;", " }", "}"]
     };
@@ -162,6 +164,7 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
     const repository = analyze("RepositoryService");
     assert.ok(repository.callGraph.nodes.some((item) => item.className === "JobRepositoryImpl"));
     assert.equal(repository.callGraph.edges.some((item) => item.resolution === "ambiguous"), false);
+    assert.ok(analyze("PackageSupportService").callGraph.nodes.some((item) => item.className === "PackageSupport" && item.methodName === "execute"));
     assert.ok(createEndpointReplacementPlanFromJava(analyze("TransactionService")).plan.findings.includes("RP-GRAPH-TRANSACTION-SELF-INVOCATION"));
     const lambda = createEndpointReplacementPlanFromJava(analyze("LambdaService"));
     assert.ok(lambda.graph.nodes.some((item) => item.evidence.detail?.includes("lambda")));
