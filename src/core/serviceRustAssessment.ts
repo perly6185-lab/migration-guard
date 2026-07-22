@@ -1,6 +1,6 @@
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
-import { createJavaEndpointAnalyzer } from "./javaEndpointAnalysis.js";
+import { createJavaEndpointAnalyzer, type AdaptiveExpansionTopology } from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
 import type { EndpointWorkloadKind } from "./endpointReplacementModel.js";
 import { captureAssessmentSourceIdentity, type AssessmentSourceIdentity } from "./assessmentSourceIdentity.js";
@@ -37,6 +37,7 @@ export interface ServiceMethodAssessment {
   roles: string[];
   findings: string[];
   expansionStatus?: "complete" | "budget-exhausted";
+  expansionTopology?: AdaptiveExpansionTopology;
   expansionRounds?: number;
 }
 
@@ -56,6 +57,7 @@ export interface ServiceRustAssessmentReport {
     withExternalBoundaries: number;
     adaptivelyExpanded: number;
     expansionBudgetExhausted: number;
+    expansionTopologies: Record<string, number>;
     workloads: Record<string, number>;
     findings: Record<string, number>;
     roles: Record<string, number>;
@@ -98,6 +100,7 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
       roles: [...new Set(graph.nodes.map((node) => node.sourceRole ?? "unknown"))].sort(),
       findings: [...plan.findings, ...(expansion?.status === "budget-exhausted" ? ["RP-GRAPH-EXPANSION-BUDGET-EXHAUSTED"] : [])],
       expansionStatus: expansion?.status,
+      expansionTopology: expansion?.topology,
       expansionRounds: expansion?.rounds.length
     };
   });
@@ -117,6 +120,7 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
       withExternalBoundaries: methods.filter((item) => item.externalBoundaries > 0).length,
       adaptivelyExpanded: methods.filter((item) => (item.expansionRounds ?? 0) > 1).length,
       expansionBudgetExhausted: methods.filter((item) => item.expansionStatus === "budget-exhausted").length,
+      expansionTopologies: countValues(methods.map((item) => item.expansionTopology).filter((item): item is AdaptiveExpansionTopology => Boolean(item))),
       workloads: countValues(methods.map((item) => item.workload)),
       findings: countValues(methods.flatMap((item) => item.findings)),
       roles: countValues(methods.flatMap((item) => item.roles))
@@ -136,7 +140,9 @@ export function renderServiceRustAssessment(report: ServiceRustAssessmentReport)
     `- Blocked: ${report.summary.blocked}`,
     `- Report hash: ${report.reportHash}`, "",
     "## Findings", "",
-    ...Object.entries(report.summary.findings).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([finding, count]) => `- ${finding}: ${count}`), ""
+    ...Object.entries(report.summary.findings).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([finding, count]) => `- ${finding}: ${count}`), "",
+    "## Expansion topologies", "",
+    ...Object.entries(report.summary.expansionTopologies).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([topology, count]) => `- ${topology}: ${count}`), ""
   ].join("\n");
 }
 

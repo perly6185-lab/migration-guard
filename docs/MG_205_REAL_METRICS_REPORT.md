@@ -7,7 +7,7 @@
 - Project: `zboss-module-data`
 - Source: `8a68de49679502a52232798a3c1f6acba01b7789+dirty:5641e05dcd43`
 - Shared initial graph budget: depth 12, edges 500, tests excluded
-- Aggregate report hash: `e9d20602ca2b6b54f2abe72691ab1f20e0101838a00d721c22ba7656f0944e52`
+- Aggregate report hash: `23b91f74dc048ee7d383ab3062f1556294ec1e34b379e5ba2c969b82ce223bc6`
 - Cross-layer evidence hash: `7099fbdcfbf726b4b064f92bacef1b0c0883c7bd6c5812f762cca9ca88e7d1d1`
 
 `metrics-report` rejects reports whose source identity or shared initial graph budget differs. Service and Repository may use explicitly recorded adaptive expansion budgets after the shared initial budget.
@@ -48,6 +48,8 @@ Unclassified nodes now use narrow semantic rules for JSON/Gson serialization, cl
 
 The semantic registry now also recognizes JDK stream terminals, deterministic string/number/date value operations, future joins and executor lifecycle, in-memory queue/barrier coordination, SQL session flushes, exception diagnostics, and JSON object conversion. Controller unclassified findings decreased from 362 to 306 and readiness rose to 1426; Service unclassified findings decreased from 995 to 775 and readiness rose to 4716. Random UUID generation and generic business verbs remain fail-closed.
 
+Adaptive expansion now records cap signals, unexpanded boundaries, and maximum out-degree per round, then classifies exhausted graphs as edge-cap, depth-growth, high-fanout, or mixed. The original 173 Service exhaustions split into 158 high-fanout edge caps and 15 depth-growth cases. Raising only the depth ceiling from 24 to 36 and the reachable round count from 4 to 6 closed 14 depth cases at depth 27; one transitioned to high-fanout. The remaining 159 high-fanout graphs retain the 2000-edge hard limit and remain fail-closed. Graph-incomplete findings decreased from 231 to 217 without changing readiness.
+
 Overload argument inference now uses local and foreach declarations, primitive declarations, explicit casts, `List<T>.get()`, source-declared method return types, and Lombok getter field types. Controller ambiguous routes decreased from 346 to 132 and Service ambiguous findings from 802 to 453. Deeper valid traversal exposed additional downstream dynamic SQL, unresolved calls, and graph-cap findings; those remain fail-closed.
 
 Cross-layer lineage covers 1856 routes. Of these, 1627 reach SQL and 1624 (87.5%) have a complete Controller -> Service -> Repository -> SQL chain.
@@ -59,7 +61,7 @@ BaseMapper operations are reviewable only when the mapper generic entity resolve
 Next work is ordered by evidence impact:
 
 1. Retain the remaining 8 Controller unresolved-edge findings and 6 ambiguous calls without sufficient implementation, arity, nested-type, or stream-flow evidence as fail-closed.
-2. Reduce the remaining 775 Service unclassified boundaries and analyze the 173 adaptive-expansion budget exhaustions exposed by the expanded inventory.
+2. Reduce the remaining 775 Service unclassified boundaries; retain the 159 classified high-fanout expansion exhaustions behind the 2000-edge hard limit.
 3. Shift the next cleanup phase to Controller and Service graph completeness; Repository has no remaining blockers.
 4. Update the checked-in real-project baseline only after the dirty source fingerprint and reports are reviewed.
 

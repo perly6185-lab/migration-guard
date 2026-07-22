@@ -112,15 +112,28 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
       " protected Object stepTwo() {", "  return stepThree();", " }", "",
       " protected Object stepThree() {", "  return null;", " }", "}"
     ].join("\n"));
+    await writeFile(path.join(dir, "demo", "WideService.java"), [
+      "package demo;", "public class WideService {",
+      " public void start() {", ...Array.from({ length: 40 }, (_, index) => `  branch${index}();`), " }",
+      ...Array.from({ length: 40 }, (_, index) => ` private void branch${index}() { }`), "}"
+    ].join("\n"));
     const analyzer = await createJavaEndpointAnalyzer(dir);
     const start = analyzer.serviceMethods.find((item) => item.methodName === "start")!;
     const expanded = analyzer.analyzeServiceMethodAdaptive(start, { initialDepth: 1, initialEdges: 10, maxDepth: 8, maxEdges: 100, maxRounds: 4 });
     assert.equal(expanded.status, "complete");
+    assert.equal(expanded.topology, "complete");
     assert.ok(expanded.rounds.length > 1);
     assert.equal(expanded.rounds.at(-1)?.complete, true);
+    assert.equal(expanded.rounds.at(-1)?.depthCapHit, false);
     const exhausted = analyzer.analyzeServiceMethodAdaptive(start, { initialDepth: 1, initialEdges: 10, maxDepth: 1, maxEdges: 10, maxRounds: 2 });
     assert.equal(exhausted.status, "budget-exhausted");
+    assert.equal(exhausted.topology, "depth-growth");
     assert.equal(exhausted.rounds.length, 1);
+    const wide = analyzer.serviceMethods.find((item) => item.className === "WideService" && item.methodName === "start")!;
+    const highFanout = analyzer.analyzeServiceMethodAdaptive(wide, { initialDepth: 2, initialEdges: 32, maxDepth: 2, maxEdges: 32, maxRounds: 1 });
+    assert.equal(highFanout.status, "budget-exhausted");
+    assert.equal(highFanout.topology, "high-fanout");
+    assert.equal(highFanout.rounds[0].maxOutDegree, 32);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

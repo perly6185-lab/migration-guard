@@ -37,8 +37,11 @@ export interface AdaptiveJavaAnalysisOptions {
 export interface AdaptiveJavaAnalysisResult {
   report: JavaEndpointAnalysisReport;
   status: "complete" | "budget-exhausted";
-  rounds: Array<{ round: number; maxDepth: number; maxEdges: number; nodes: number; edges: number; unexpandedBoundaries: number; complete: boolean }>;
+  topology: AdaptiveExpansionTopology;
+  rounds: Array<{ round: number; maxDepth: number; maxEdges: number; nodes: number; edges: number; maxOutDegree: number; edgeCapHit: boolean; depthCapHit: boolean; unexpandedBoundaries: number; complete: boolean }>;
 }
+
+export type AdaptiveExpansionTopology = "complete" | "edge-cap" | "depth-growth" | "high-fanout" | "mixed";
 
 export interface JavaServiceMethodCandidate {
   id: string;
@@ -424,8 +427,8 @@ function analyzeJavaMethodAdaptive(
   for (let round = 1; round <= maxRounds; round += 1) {
     const truncation = report.callGraph.truncation;
     const complete = !truncation.edgeCapHit && !truncation.depthCapHit && truncation.unexpandedBoundaryNodes.length === 0;
-    rounds.push({ round, maxDepth: depth, maxEdges: edges, nodes: report.callGraph.nodes.length, edges: report.callGraph.edges.length, unexpandedBoundaries: truncation.unexpandedBoundaryNodes.length, complete });
-    if (complete) return { report, status: "complete", rounds };
+    rounds.push({ round, maxDepth: depth, maxEdges: edges, nodes: report.callGraph.nodes.length, edges: report.callGraph.edges.length, maxOutDegree: maxCallGraphOutDegree(report), edgeCapHit: truncation.edgeCapHit, depthCapHit: truncation.depthCapHit, unexpandedBoundaries: truncation.unexpandedBoundaryNodes.length, complete });
+    if (complete) return { report, status: "complete", topology: "complete", rounds };
     if (round === maxRounds) break;
     const nextDepth = truncation.depthCapHit ? Math.min(maxDepth, depth + Math.max(2, Math.ceil(depth / 2))) : depth;
     const nextEdges = truncation.edgeCapHit ? Math.min(maxEdges, Math.max(edges + 1, edges * 2)) : edges;
@@ -434,7 +437,24 @@ function analyzeJavaMethodAdaptive(
     edges = nextEdges;
     report = analyzeJavaMethodModel(project, routes, candidate, entryKind, { maxDepth: depth, maxEdges: edges });
   }
-  return { report, status: "budget-exhausted", rounds };
+  return { report, status: "budget-exhausted", topology: classifyExpansionTopology(report), rounds };
+}
+
+function classifyExpansionTopology(report: JavaEndpointAnalysisReport): AdaptiveExpansionTopology {
+  const truncation = report.callGraph.truncation;
+  const edgeLimited = truncation.edgeCapHit;
+  const depthLimited = truncation.depthCapHit || truncation.unexpandedBoundaryNodes.length > 0;
+  if (edgeLimited && maxCallGraphOutDegree(report) >= 32) return "high-fanout";
+  if (edgeLimited && depthLimited) return "mixed";
+  if (edgeLimited) return "edge-cap";
+  if (depthLimited) return "depth-growth";
+  return "complete";
+}
+
+function maxCallGraphOutDegree(report: JavaEndpointAnalysisReport): number {
+  const counts = new Map<string, number>();
+  for (const edge of report.callGraph.edges) counts.set(edge.from, (counts.get(edge.from) ?? 0) + 1);
+  return Math.max(0, ...counts.values());
 }
 
 function extractRepositoryMethods(project: JavaProjectModel): JavaRepositoryMethodCandidate[] {
