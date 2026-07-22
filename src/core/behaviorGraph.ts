@@ -45,6 +45,7 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
   const unresolvedEdges = unresolvedCalls + ambiguousEdges;
   const truncation = report.callGraph.truncation;
   const sqlSources = report.sqlSources ?? [];
+  const missingSqlContracts = new Set(sqlSources.flatMap((source) => source.ownershipEvidence?.missingContracts ?? []));
   const findings = [
     ...(truncation.edgeCapHit ? ["RP-GRAPH-EDGE-CAP"] : []),
     ...(truncation.depthCapHit ? ["RP-GRAPH-DEPTH-CAP"] : []),
@@ -53,6 +54,10 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
     ...(ambiguousEdges ? ["RP-GRAPH-AMBIGUOUS-CALLS"] : []),
     ...(report.callGraph.edges.some((edge) => edge.resolution === "same-class" && nodes.find((node) => node.id === edge.to)?.evidence.detail?.includes("@Transactional")) ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : []),
     ...(sqlSources.some((source) => source.dynamic) ? ["RP-SQL-DYNAMIC-SOURCE"] : []),
+    ...(missingSqlContracts.has("table-expansion") ? ["RP-SQL-MISSING-TABLE-EXPANSION"] : []),
+    ...(missingSqlContracts.has("branch-fixture") ? ["RP-SQL-MISSING-BRANCH-FIXTURE"] : []),
+    ...(missingSqlContracts.has("provider-fragment") ? ["RP-SQL-MISSING-PROVIDER-FRAGMENT"] : []),
+    ...(missingSqlContracts.has("routing-contract") ? ["RP-SQL-MISSING-ROUTING-CONTRACT"] : []),
     ...(sqlSources.some((source) => source.source === "base-mapper") ? ["RP-SQL-BASE-MAPPER-GENERATED"] : []),
     ...(sqlSources.some((source) => source.source === "provider") ? ["RP-SQL-PROVIDER-SOURCE"] : [])
   ];

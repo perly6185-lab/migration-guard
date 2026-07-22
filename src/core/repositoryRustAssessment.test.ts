@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { assessJavaRepositoriesForRust } from "./repositoryRustAssessment.js";
+import { assessJavaRepositoriesForRust, renderRepositoryRustAssessment } from "./repositoryRustAssessment.js";
 
 test("repository assessment covers contracts, implementations and persistence mappers only", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-repository-rust-"));
@@ -44,5 +44,13 @@ test("repository assessment covers contracts, implementations and persistence ma
     assert.equal(report.summary.sqlBackedMethods, 3);
     assert.equal(report.summary.sqlSources, 3);
     assert.equal(report.summary.dynamicSqlSources, 2);
+    assert.deepEqual(report.methods.find((x) => x.method === "selectFromXml")?.missingSqlContracts, ["branch-fixture", "routing-contract"]);
+    assert.deepEqual(report.methods.find((x) => x.method === "selectViaProvider")?.missingSqlContracts, ["provider-fragment", "table-expansion"]);
+    assert.deepEqual(report.methods.find((x) => x.method === "selectFromXml")?.sqlOwnershipEvidence[0]?.evidence.dynamicTags, ["if", "where"]);
+    assert.deepEqual(report.methods.find((x) => x.method === "selectViaProvider")?.sqlOwnershipEvidence[0]?.evidence.providerFragments, ["tableName"]);
+    assert.equal(report.summary.missingSqlContracts["branch-fixture"], 1);
+    assert.ok(report.methods.find((x) => x.method === "selectFromXml")?.findings.includes("RP-SQL-MISSING-BRANCH-FIXTURE"));
+    assert.ok(report.methods.find((x) => x.method === "selectViaProvider")?.findings.includes("RP-SQL-MISSING-PROVIDER-FRAGMENT"));
+    assert.match(renderRepositoryRustAssessment(report), /## Missing SQL contracts[\s\S]*branch-fixture: 1/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

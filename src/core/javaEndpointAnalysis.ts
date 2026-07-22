@@ -60,6 +60,16 @@ export interface JavaRepositoryMethodCandidate extends JavaServiceMethodCandidat
 
 export type JavaSqlSourceKind = "annotation" | "mapper-xml" | "base-mapper" | "provider";
 export type JavaSqlOperation = "read" | "write" | "delete" | "ddl" | "dynamic-sql" | "unknown";
+export type JavaSqlOwnershipContract = "table-expansion" | "branch-fixture" | "provider-fragment" | "routing-contract";
+
+export interface JavaSqlOwnershipEvidence {
+  dynamicTags: string[];
+  parameterExpressions: string[];
+  dynamicTableExpressions: string[];
+  providerFragments: string[];
+  routingSignals: string[];
+  missingContracts: JavaSqlOwnershipContract[];
+}
 
 export interface JavaSqlSourceInfo {
   id: string;
@@ -77,6 +87,7 @@ export interface JavaSqlSourceInfo {
   line: number;
   statementId?: string;
   statement?: string;
+  ownershipEvidence?: JavaSqlOwnershipEvidence;
 }
 
 export interface JavaEndpointRouteCandidate {
@@ -1035,6 +1046,7 @@ function sqlSourceFromAnnotation(
     const provider = resolveSqlProvider(project, annotation);
     const providerBody = provider?.method?.body ?? annotation;
     const statement = normalizeSqlText(providerBody);
+    const contextSignals = contextSignalsForText(`${type.annotations.join(" ")} ${method.annotations.join(" ")} ${providerBody}`);
     return {
       id: `provider:${type.qualifiedName}.${method.name}:${provider?.type?.qualifiedName ?? "unknown"}.${provider?.method?.name ?? "unknown"}`,
       ownerId,
@@ -1045,18 +1057,20 @@ function sqlSourceFromAnnotation(
       operation,
       dynamic: true,
       transactional: hasTransactionBoundary(type, method),
-      contextSignals: contextSignalsForText(`${type.annotations.join(" ")} ${method.annotations.join(" ")} ${providerBody}`),
+      contextSignals,
       tables: extractSqlTables(statement),
       file: provider?.method?.file ?? method.file,
       line: provider?.method?.line ?? method.line,
       statementId: provider?.method?.name,
-      statement
+      statement,
+      ownershipEvidence: sqlOwnershipEvidence(providerBody, "provider", contextSignals)
     };
   }
   const statement = evaluateSqlAnnotationText(annotation, type.constants);
   if (!statement) {
     return undefined;
   }
+  const contextSignals = contextSignalsForText(`${type.annotations.join(" ")} ${method.annotations.join(" ")} ${statement}`);
   return {
     id: `annotation:${type.qualifiedName}.${method.name}:${method.line}`,
     ownerId,
@@ -1067,12 +1081,13 @@ function sqlSourceFromAnnotation(
     operation,
     dynamic: isDynamicSql(statement),
     transactional: hasTransactionBoundary(type, method),
-    contextSignals: contextSignalsForText(`${type.annotations.join(" ")} ${method.annotations.join(" ")} ${statement}`),
+    contextSignals,
     tables: extractSqlTables(statement),
     file: method.file,
     line: method.line,
     statementId: method.name,
-    statement: normalizeSqlText(statement)
+    statement: normalizeSqlText(statement),
+    ownershipEvidence: sqlOwnershipEvidence(statement, "annotation", contextSignals)
   };
 }
 
@@ -1097,6 +1112,7 @@ function collectMapperXmlSqlSources(project: JavaProjectModel): JavaSqlSourceInf
       const line = lineNumberAt(file.content, match.index ?? 0);
       const ownerClassName = ownerType?.name ?? simpleTypeName(namespace);
       const ownerQualifiedClassName = ownerType?.qualifiedName ?? namespace;
+      const contextSignals = contextSignalsForText(rawStatement);
       sources.push({
         id: `mapper-xml:${ownerQualifiedClassName}.${statementId}:${file.relativePath}:${line}`,
         ownerId: ownerType && ownerMethod ? methodId(ownerType, ownerMethod) : `${ownerQualifiedClassName}.${statementId}:xml`,
@@ -1107,12 +1123,13 @@ function collectMapperXmlSqlSources(project: JavaProjectModel): JavaSqlSourceInf
         operation: sqlOperationForVerb(tag, rawStatement),
         dynamic: isDynamicSql(rawStatement),
         transactional: false,
-        contextSignals: contextSignalsForText(rawStatement),
+        contextSignals,
         tables: extractSqlTables(statement),
         file: file.relativePath,
         line,
         statementId,
-        statement
+        statement,
+        ownershipEvidence: sqlOwnershipEvidence(rawStatement, "mapper-xml", contextSignals)
       });
     }
   }
@@ -1213,6 +1230,35 @@ function sqlOperationForVerb(verb: string, statement: string): JavaSqlOperation 
 
 function isDynamicSql(value: string): boolean {
   return /<\s*(script|if|choose|when|otherwise|foreach|trim|where|set|bind)\b|\$\{|StringBuilder|\bappend\s*\(|\+\s*["']/.test(value);
+}
+
+function sqlOwnershipEvidence(value: string, source: JavaSqlSourceKind, contextSignals: string[]): JavaSqlOwnershipEvidence {
+  const dynamicTags = [...value.matchAll(/<\s*(script|if|choose|when|otherwise|foreach|trim|where|set|bind)\b/gi)]
+    .map((match) => match[1].toLowerCase());
+  const parameterExpressions = [...value.matchAll(/([#$])\{\s*([^}]+)\s*\}/g)]
+    .map((match) => `${match[1]}{${match[2].trim()}}`);
+  const dynamicTableExpressions = parameterExpressions.filter((expression) => {
+    const offset = value.indexOf(expression);
+    const prefix = offset >= 0 ? value.slice(Math.max(0, offset - 40), offset) : "";
+    return /\b(from|join|into|update|table|schema)\s*$/i.test(prefix);
+  });
+  const providerFragments = source === "provider"
+    ? [...value.matchAll(/\+\s*([A-Za-z_][A-Za-z0-9_.$]*(?:\([^)]*\))?)/g)].map((match) => match[1])
+    : [];
+  const routingSignals = contextSignals.filter((signal) => signal === "tenant" || signal === "datasource");
+  const missingContracts: JavaSqlOwnershipContract[] = [];
+  if (dynamicTableExpressions.length > 0 || providerFragments.some((fragment) => /table|schema|database/i.test(fragment))) missingContracts.push("table-expansion");
+  if (dynamicTags.length > 0) missingContracts.push("branch-fixture");
+  if (source === "provider") missingContracts.push("provider-fragment");
+  if (routingSignals.length > 0) missingContracts.push("routing-contract");
+  return {
+    dynamicTags: [...new Set(dynamicTags)].sort(),
+    parameterExpressions: [...new Set(parameterExpressions)].sort(),
+    dynamicTableExpressions: [...new Set(dynamicTableExpressions)].sort(),
+    providerFragments: [...new Set(providerFragments)].sort(),
+    routingSignals: [...new Set(routingSignals)].sort(),
+    missingContracts: [...new Set(missingContracts)].sort()
+  };
 }
 
 function contextSignalsForText(value: string): string[] {
