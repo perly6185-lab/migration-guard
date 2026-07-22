@@ -17,6 +17,8 @@ export interface ServiceRustAssessmentOptions {
   maxExpansionRounds?: number;
 }
 
+export type UnclassifiedBoundaryCategory = "business-helper" | "value-object-factory" | "context-coordination" | "residual";
+
 export interface ServiceMethodAssessment {
   id: string;
   file: string;
@@ -30,6 +32,7 @@ export interface ServiceMethodAssessment {
   edges: number;
   externalBoundaries: number;
   unknownNodes: number;
+  unclassifiedCategories: UnclassifiedBoundaryCategory[];
   contexts: number;
   frameworkContracts: number;
   dataContracts: number;
@@ -58,6 +61,7 @@ export interface ServiceRustAssessmentReport {
     adaptivelyExpanded: number;
     expansionBudgetExhausted: number;
     expansionTopologies: Record<string, number>;
+    unclassifiedCategories: Record<string, number>;
     workloads: Record<string, number>;
     findings: Record<string, number>;
     roles: Record<string, number>;
@@ -80,6 +84,7 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
     }) : undefined;
     const source = expansion?.report ?? analyzer.analyzeServiceMethod(candidate, { maxDepth: options.maxDepth, maxEdges: options.maxEdges });
     const { graph, plan } = createEndpointReplacementPlanFromJava(source);
+    const unclassifiedCategories = [...new Set(graph.nodes.filter((node) => node.kind === "unknown").map(classifyUnclassifiedBoundary))].sort();
     return {
       id: candidate.id,
       file: candidate.file,
@@ -93,6 +98,7 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
       edges: graph.edges.length,
       externalBoundaries: graph.nodes.filter((node) => node.id.startsWith("external:")).length,
       unknownNodes: graph.nodes.filter((node) => node.kind === "unknown").length,
+      unclassifiedCategories,
       contexts: plan.contracts.contexts.length,
       frameworkContracts: plan.contracts.framework.length,
       dataContracts: plan.contracts.data.length,
@@ -121,6 +127,7 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
       adaptivelyExpanded: methods.filter((item) => (item.expansionRounds ?? 0) > 1).length,
       expansionBudgetExhausted: methods.filter((item) => item.expansionStatus === "budget-exhausted").length,
       expansionTopologies: countValues(methods.map((item) => item.expansionTopology).filter((item): item is AdaptiveExpansionTopology => Boolean(item))),
+      unclassifiedCategories: countValues(methods.flatMap((item) => item.unclassifiedCategories)),
       workloads: countValues(methods.map((item) => item.workload)),
       findings: countValues(methods.flatMap((item) => item.findings)),
       roles: countValues(methods.flatMap((item) => item.roles))
@@ -142,8 +149,18 @@ export function renderServiceRustAssessment(report: ServiceRustAssessmentReport)
     "## Findings", "",
     ...Object.entries(report.summary.findings).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([finding, count]) => `- ${finding}: ${count}`), "",
     "## Expansion topologies", "",
-    ...Object.entries(report.summary.expansionTopologies).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([topology, count]) => `- ${topology}: ${count}`), ""
+    ...Object.entries(report.summary.expansionTopologies).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([topology, count]) => `- ${topology}: ${count}`), "",
+    "## Unclassified boundary categories", "",
+    ...Object.entries(report.summary.unclassifiedCategories).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([category, count]) => `- ${category}: ${count}`), ""
   ].join("\n");
+}
+
+function classifyUnclassifiedBoundary(node: { evidence: { symbol: string; detail?: string }; id: string }): UnclassifiedBoundaryCategory {
+  const text = `${node.evidence.symbol} ${node.evidence.detail ?? ""}`;
+  if (/\b[A-Za-z0-9_]*Context\.|\b(?:scope|barrier|queue)\./i.test(text)) return "context-coordination";
+  if (/\b[A-Z][A-Za-z0-9_]*\.(?:of|from|create|empty|ok|no|failed|skipped|resolve|extract)\b/.test(text)) return "value-object-factory";
+  if (/\bprivate\s|\b(?:helper|util|support)\b/i.test(text) || !node.id.startsWith("external:")) return "business-helper";
+  return "residual";
 }
 
 function countValues(values: string[]): Record<string, number> {

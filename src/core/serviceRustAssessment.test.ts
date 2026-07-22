@@ -30,6 +30,22 @@ test("service Rust assessment includes implemented methods outside controller re
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test("service assessment reports unclassified boundary review categories", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-service-categories-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "CategoryService.java"), [
+      "package demo;", "public class CategoryService {",
+      " public Object run() {", "  handle();", "  ResultFactory.extract();", "  OrderContext.unknown();", "  mystery.handle();", "  return null;", " }",
+      " private void handle() { }", "}"
+    ].join("\n"));
+    const report = await assessJavaServicesForRust({ root: dir, maxDepth: 4, maxEdges: 100 });
+    const run = report.methods.find((item) => item.method === "run")!;
+    assert.deepEqual(run.unclassifiedCategories, ["business-helper", "context-coordination", "residual", "value-object-factory"]);
+    assert.equal(report.summary.unclassifiedCategories["business-helper"], 1);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("Java call resolution selects overloads by arity and type and blocks ambiguity", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-service-overloads-"));
   try {

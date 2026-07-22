@@ -30,3 +30,14 @@ test("Java semantic registry preserves synchronization and diagnostic effects", 
   assert.equal(classifyJavaSemantic("UUID.randomUUID")?.kind, undefined);
   assert.equal(classifyJavaSemantic("service.handle")?.kind, undefined);
 });
+
+test("Java semantic registry narrows helpers, value factories, and application contexts", () => {
+  assert.equal(classifyJavaSemantic("FieldValueService.formatToken file.java private String formatToken(String raw) {")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("DateService.parseDate file.java private static LocalDate parseDate(String raw) {")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("GroupRefMultiRuleContext.empty")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("AiCallOutcome.failed")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("AllocationOrderContext.current")?.kind, "context-resolution");
+  assert.equal(classifyJavaSemantic("BatchBillConfigContext.newScope")?.kind, "context-resolution");
+  assert.equal(classifyJavaSemantic("FieldValueService.handle file.java private String handle(Object value) {")?.kind, undefined);
+  assert.equal(classifyJavaSemantic("PublicParser.parse file.java public Object parse(String value) {")?.kind, undefined);
+});

@@ -7,8 +7,8 @@
 - Project: `zboss-module-data`
 - Source: `8a68de49679502a52232798a3c1f6acba01b7789+dirty:5641e05dcd43`
 - Shared initial graph budget: depth 12, edges 500, tests excluded
-- Aggregate report hash: `23b91f74dc048ee7d383ab3062f1556294ec1e34b379e5ba2c969b82ce223bc6`
-- Cross-layer evidence hash: `7099fbdcfbf726b4b064f92bacef1b0c0883c7bd6c5812f762cca9ca88e7d1d1`
+- Aggregate report hash: `0342d03c654b8281a848008ffacae4b0a0f364356b7e36bbb560fa026f0663ff`
+- Cross-layer evidence hash: `b79ae6297fa4f927cdf647401e643ff2fc9461a0d2d323cb8d4bff7b69a88135`
 
 `metrics-report` rejects reports whose source identity or shared initial graph budget differs. Service and Repository may use explicitly recorded adaptive expansion budgets after the shared initial budget.
 
@@ -16,8 +16,8 @@
 
 | Layer | Total | Ready | Blocked | Ready rate |
 | --- | ---: | ---: | ---: | ---: |
-| Controller | 1856 | 1426 | 430 | 76.8% |
-| Service | 5524 | 4716 | 808 | 85.4% |
+| Controller | 1856 | 1428 | 428 | 76.9% |
+| Service | 5524 | 4744 | 780 | 85.9% |
 | Repository | 4068 | 4068 | 0 | 100.0% |
 
 Repository evidence now contains 3316 SQL-backed methods (81.5% coverage), no generated boundaries, 6 unknown operations, no unresolved-edge findings, no ambiguous-call findings, and no dynamic SQL blockers. The regression gate passes against the checked-in baseline, reducing generated boundaries by 21, unresolved-edge findings by 1196, and dynamic SQL blockers by 107 to zero.
@@ -50,6 +50,8 @@ The semantic registry now also recognizes JDK stream terminals, deterministic st
 
 Adaptive expansion now records cap signals, unexpanded boundaries, and maximum out-degree per round, then classifies exhausted graphs as edge-cap, depth-growth, high-fanout, or mixed. The original 173 Service exhaustions split into 158 high-fanout edge caps and 15 depth-growth cases. Raising only the depth ceiling from 24 to 36 and the reachable round count from 4 to 6 closed 14 depth cases at depth 27; one transitioned to high-fanout. The remaining 159 high-fanout graphs retain the 2000-edge hard limit and remain fail-closed. Graph-incomplete findings decreased from 231 to 217 without changing readiness.
 
+Unclassified review now separates private deterministic helpers, value-object factory candidates, and application-context coordination without weakening unknown-boundary blocking. Narrow rules for private format/parse/extract/compare helpers, explicit result factories, and `*Context` scope access reduced Service unclassified findings from 775 to 747 and raised readiness to 4744; Controller unclassified findings decreased from 306 to 282 and readiness rose to 1428. Among the remaining blocked Service methods, 639 reach business helpers, 63 reach value-object factory candidates, 9 reach context-coordination candidates, and 235 contain residual unknowns; categories can overlap within a method.
+
 Overload argument inference now uses local and foreach declarations, primitive declarations, explicit casts, `List<T>.get()`, source-declared method return types, and Lombok getter field types. Controller ambiguous routes decreased from 346 to 132 and Service ambiguous findings from 802 to 453. Deeper valid traversal exposed additional downstream dynamic SQL, unresolved calls, and graph-cap findings; those remain fail-closed.
 
 Cross-layer lineage covers 1856 routes. Of these, 1627 reach SQL and 1624 (87.5%) have a complete Controller -> Service -> Repository -> SQL chain.
@@ -61,7 +63,7 @@ BaseMapper operations are reviewable only when the mapper generic entity resolve
 Next work is ordered by evidence impact:
 
 1. Retain the remaining 8 Controller unresolved-edge findings and 6 ambiguous calls without sufficient implementation, arity, nested-type, or stream-flow evidence as fail-closed.
-2. Reduce the remaining 775 Service unclassified boundaries; retain the 159 classified high-fanout expansion exhaustions behind the 2000-edge hard limit.
+2. Review the remaining 747 Service unclassified boundaries, starting with the 63 value-object factory and 9 context-coordination candidates before the broader 639 business-helper group; retain the 159 classified high-fanout expansion exhaustions behind the 2000-edge hard limit.
 3. Shift the next cleanup phase to Controller and Service graph completeness; Repository has no remaining blockers.
 4. Update the checked-in real-project baseline only after the dirty source fingerprint and reports are reviewed.
 
