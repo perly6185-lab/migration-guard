@@ -1,6 +1,6 @@
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
-import type { JavaEndpointAnalysisReport, JavaEndpointCallGraphNode } from "./javaEndpointAnalysis.js";
+import type { JavaEndpointAnalysisReport, JavaEndpointCallGraphNode, JavaSqlSourceInfo } from "./javaEndpointAnalysis.js";
 import type {
   BehaviorGraph,
   BehaviorKind,
@@ -53,7 +53,8 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
     ...(unresolvedCalls ? ["RP-GRAPH-UNRESOLVED-EDGES"] : []),
     ...(ambiguousEdges ? ["RP-GRAPH-AMBIGUOUS-CALLS"] : []),
     ...(report.callGraph.edges.some((edge) => edge.resolution === "same-class" && nodes.find((node) => node.id === edge.to)?.evidence.detail?.includes("@Transactional")) ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : []),
-    ...(sqlSources.some((source) => source.dynamic) ? ["RP-SQL-DYNAMIC-SOURCE"] : []),
+    ...(sqlSources.some(dynamicSqlNeedsReplayContract) ? ["RP-SQL-DYNAMIC-SOURCE"] : []),
+    ...(sqlSources.some((source) => source.dynamic && source.tables.length === 0) ? ["RP-SQL-TABLE-UNRESOLVED"] : []),
     ...(missingSqlContracts.has("table-expansion") ? ["RP-SQL-MISSING-TABLE-EXPANSION"] : []),
     ...(missingSqlContracts.has("branch-fixture") ? ["RP-SQL-MISSING-BRANCH-FIXTURE"] : []),
     ...(missingSqlContracts.has("provider-fragment") ? ["RP-SQL-MISSING-PROVIDER-FRAGMENT"] : []),
@@ -86,6 +87,10 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
     }
   };
   return { ...base, graphHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
+}
+
+function dynamicSqlNeedsReplayContract(source: JavaSqlSourceInfo): boolean {
+  return source.dynamic && (source.operation === "unknown" || source.tables.length === 0 || (source.ownershipEvidence?.missingContracts.length ?? 0) > 0);
 }
 
 export function deriveReplacementContracts(graph: BehaviorGraph, report?: JavaEndpointAnalysisReport): EndpointReplacementContracts {

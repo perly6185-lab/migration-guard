@@ -45,28 +45,28 @@ test("repository assessment covers contracts, implementations and persistence ma
     assert.equal(report.summary.sqlBackedMethods, 3);
     assert.equal(report.summary.sqlSources, 3);
     assert.equal(report.summary.dynamicSqlSources, 2);
-    assert.deepEqual(report.methods.find((x) => x.method === "selectFromXml")?.missingSqlContracts, ["branch-fixture", "routing-contract"]);
+    assert.deepEqual(report.methods.find((x) => x.method === "selectFromXml")?.missingSqlContracts, ["routing-contract"]);
     assert.deepEqual(report.methods.find((x) => x.method === "selectViaProvider")?.missingSqlContracts, ["provider-fragment", "table-expansion"]);
     assert.deepEqual(report.methods.find((x) => x.method === "selectFromXml")?.sqlOwnershipEvidence[0]?.evidence.dynamicTags, ["if", "where"]);
     assert.deepEqual(report.methods.find((x) => x.method === "selectViaProvider")?.sqlOwnershipEvidence[0]?.evidence.providerFragments, ["tableName"]);
-    assert.equal(report.summary.missingSqlContracts["branch-fixture"], 1);
-    assert.ok(report.methods.find((x) => x.method === "selectFromXml")?.findings.includes("RP-SQL-MISSING-BRANCH-FIXTURE"));
+    assert.deepEqual(report.methods.find((x) => x.method === "selectFromXml")?.sqlContracts[0]?.branchCases, ["test:tenantId != null=false", "test:tenantId != null=true", "where:content-empty", "where:content-present"]);
     assert.ok(report.methods.find((x) => x.method === "selectViaProvider")?.findings.includes("RP-SQL-MISSING-PROVIDER-FRAGMENT"));
-    assert.match(renderRepositoryRustAssessment(report), /## Missing SQL contracts[\s\S]*branch-fixture: 1/);
+    assert.match(renderRepositoryRustAssessment(report), /## Missing SQL contracts[\s\S]*routing-contract: 1/);
     assert.equal(report.sqlMetrics.records, 3);
     assert.equal(report.sqlMetrics.reviewableRecords, 1);
     assert.equal(report.sqlMetrics.replayContractRequiredRecords, 2);
     assert.deepEqual(report.sqlMetrics.sourceKinds, { annotation: 1, "mapper-xml": 1, provider: 1 });
     assert.deepEqual(report.sqlMetrics.operations, { read: 3 });
     assert.deepEqual(report.sqlMetrics.dynamicTags, { if: 1, where: 1 });
+    assert.deepEqual(report.sqlMetrics.branchCases, { "test:tenantId != null=false": 1, "test:tenantId != null=true": 1, "where:content-empty": 1, "where:content-present": 1 });
     assert.equal(report.sqlMetrics.tables.task, 2);
     assert.equal(report.sqlMetrics.contexts.tenant, 1);
     assert.deepEqual(report.sqlMetrics.transactionParticipation, { "not-transactional": 3 });
-    assert.equal(report.sqlMetrics.unresolvedReasons["missing-branch-fixture"], 1);
+    assert.equal(report.sqlMetrics.unresolvedReasons["missing-routing-contract"], 1);
     assert.equal(report.sqlMetrics.unresolvedReasons["table-not-resolved"], 1);
     assert.match(renderRepositoryRustAssessment(report), /## SQL contract metrics[\s\S]*Reviewable SQL records: 1[\s\S]*### Unresolved SQL reasons/);
     assert.match(renderRepositoryRustAssessment(report), /### Reviewable SQL records[\s\S]*annotation:demo\.mapper\.TaskMapper\.selectAnnotated/);
-    assert.match(renderRepositoryRustAssessment(report), /### Replay contract required[\s\S]*missing-branch-fixture/);
+    assert.match(renderRepositoryRustAssessment(report), /### Replay contract required[\s\S]*missing-routing-contract/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

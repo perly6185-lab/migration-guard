@@ -64,6 +64,7 @@ export type JavaSqlOwnershipContract = "table-expansion" | "branch-fixture" | "p
 
 export interface JavaSqlOwnershipEvidence {
   dynamicTags: string[];
+  branchCases: string[];
   parameterExpressions: string[];
   dynamicTableExpressions: string[];
   providerFragments: string[];
@@ -1304,13 +1305,20 @@ function sqlOwnershipEvidence(value: string, source: JavaSqlSourceKind, contextS
     ? [...value.matchAll(/\+\s*([A-Za-z_][A-Za-z0-9_.$]*(?:\([^)]*\))?)/g)].map((match) => match[1])
     : [];
   const routingSignals = contextSignals.filter((signal) => signal === "tenant" || signal === "datasource");
+  const branchCases = [
+    ...[...value.matchAll(/<\s*(?:if|when)\b[^>]*\btest\s*=\s*(["'])(.*?)\1/gi)].flatMap((match) => [`test:${match[2]}=true`, `test:${match[2]}=false`]),
+    ...[...value.matchAll(/<\s*foreach\b[^>]*\bcollection\s*=\s*(["'])(.*?)\1/gi)].flatMap((match) => [`collection:${match[2]}=empty`, `collection:${match[2]}=single`, `collection:${match[2]}=multiple`]),
+    ...(dynamicTags.includes("otherwise") ? ["choose:otherwise"] : []),
+    ...dynamicTags.filter((tag) => tag === "where" || tag === "set" || tag === "trim").flatMap((tag) => [`${tag}:content-empty`, `${tag}:content-present`])
+  ];
   const missingContracts: JavaSqlOwnershipContract[] = [];
   if (dynamicTableExpressions.length > 0 || providerFragments.some((fragment) => /table|schema|database/i.test(fragment))) missingContracts.push("table-expansion");
-  if (dynamicTags.length > 0) missingContracts.push("branch-fixture");
+  if (dynamicTags.length > 0 && branchCases.length === 0) missingContracts.push("branch-fixture");
   if (source === "provider") missingContracts.push("provider-fragment");
   if (routingSignals.length > 0) missingContracts.push("routing-contract");
   return {
     dynamicTags: [...new Set(dynamicTags)].sort(),
+    branchCases: [...new Set(branchCases)].sort(),
     parameterExpressions: [...new Set(parameterExpressions)].sort(),
     dynamicTableExpressions: [...new Set(dynamicTableExpressions)].sort(),
     providerFragments: [...new Set(providerFragments)].sort(),
