@@ -198,6 +198,7 @@ import type { EndpointReplacementEvidence, EndpointReplacementPlan, ReplacementS
 import { assessJavaControllersForRust, renderControllerRustAssessment } from "./core/controllerRustAssessment.js";
 import { assessJavaServicesForRust, renderServiceRustAssessment } from "./core/serviceRustAssessment.js";
 import { assessJavaRepositoriesForRust, renderRepositoryRustAssessment } from "./core/repositoryRustAssessment.js";
+import { assessCrossLayerEvidenceLineage, renderCrossLayerEvidenceLineage } from "./core/crossLayerEvidenceLineage.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -252,6 +253,14 @@ async function main(argv: string[]): Promise<void> {
 
 async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
   const action = args.positionals[0] ?? "analyze";
+  if (action === "assess-lineage") {
+    const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
+    const report = await assessCrossLayerEvidenceLineage({ root, maxDepth: numberOption(args, "max-depth"), maxEdges: numberOption(args, "max-edges"), limit: numberOption(args, "limit"), includeTests: Boolean(args.options["include-tests"]) });
+    if (args.options.apply) await writeFullReplacementArtifact("cross-layer-evidence-lineage", report, path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderCrossLayerEvidenceLineage(report));
+    console.log(args.options.json || !args.options.apply ? JSON.stringify(report, null, 2) : renderCrossLayerEvidenceLineage(report));
+    if (report.summary.blocked > 0) process.exitCode = 1;
+    return;
+  }
   if (action === "assess-repositories") {
     const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
     const report = await assessJavaRepositoriesForRust({ root, maxDepth: numberOption(args, "max-depth"), maxEdges: numberOption(args, "max-edges"), limit: numberOption(args, "limit"), includeTests: Boolean(args.options["include-tests"]), adaptive: Boolean(args.options.adaptive), maxExpansionDepth: numberOption(args, "max-expansion-depth"), maxExpansionEdges: numberOption(args, "max-expansion-edges"), maxExpansionRounds: numberOption(args, "max-expansion-rounds") });
@@ -2604,6 +2613,7 @@ Usage:
   migration-guard java-endpoint assess-controllers --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-services --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-repositories --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard java-endpoint assess-lineage --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement closure --java-analysis <json> --rust-root <path> [--evidence <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement plan --java-analysis <json> [--ownership <json>] [--ownership-policy <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement endpoint-driver --config <driver.json> --scenario <scenario.json> [--fault <id>] [--apply] [--artifacts-dir <path>] [--json]
