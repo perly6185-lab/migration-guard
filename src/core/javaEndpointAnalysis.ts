@@ -778,6 +778,10 @@ function parseTypeBody(lines: string[], startLine: number, endLine: number, file
   for (let index = startLine + 1; index < endLine; index += 1) {
     const line = lines[index];
     const annotations = collectLeadingAnnotations(lines, index);
+    if (line.trim().startsWith("@")) {
+      index = findAnnotationEndLine(lines, index);
+      continue;
+    }
     const constant = line.match(/^\s*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?String\s+([A-Z0-9_]+)\s*=\s*(.+?)\s*;/);
     if (constant) {
       const value = evaluateJavaStringExpression(constant[2], type.constants);
@@ -891,6 +895,21 @@ function parseMethodAt(
     },
     endLine: bodyRange.end
   };
+}
+
+function findAnnotationEndLine(lines: string[], startLine: number): number {
+  const first = lines[startLine].trim();
+  if (!first.includes("(")) return startLine;
+  let depth = 0;
+  for (let index = startLine; index < lines.length; index += 1) {
+    const line = lines[index];
+    for (const char of line) {
+      if (char === "(") depth += 1;
+      if (char === ")") depth -= 1;
+    }
+    if (depth <= 0) return index;
+  }
+  return startLine;
 }
 
 async function walkXmlFiles(root: string): Promise<string[]> {
@@ -1046,7 +1065,7 @@ function sqlSourceFromAnnotation(
   method: JavaMethodInfo,
   annotation: string
 ): JavaSqlSourceInfo | undefined {
-  const match = annotation.match(/@(Select|Insert|Update|Delete)(Provider)?\b/);
+  const match = annotation.match(/@(?:[A-Za-z_][A-Za-z0-9_$]*\.)*(Select|Insert|Update|Delete)(Provider)?\b/);
   if (!match) {
     return undefined;
   }
@@ -1223,7 +1242,7 @@ function baseMapperOperation(type: JavaTypeInfo, methodName: string): JavaSqlOpe
 }
 
 function isBaseMapperType(type: JavaTypeInfo): boolean {
-  return [...type.extends, ...type.implements].some((name) => /^(BaseMapper|MapperX|CrudRepository|JpaRepository)$/i.test(simpleTypeName(name)));
+  return [...type.extends, ...type.implements].some((name) => /^(BaseMapperX?|MapperX|CrudRepository|JpaRepository)$/i.test(simpleTypeName(name)));
 }
 
 function tableHintForMapper(type: JavaTypeInfo): string | undefined {
@@ -1831,7 +1850,12 @@ function resolveCallTargets(
     const selfCandidates = methodsInHierarchy(project, currentType)
       .filter((item) => item.method.name === call.method)
       .map((item) => item);
-    if (selfCandidates.length > 0) return selectOverload(selfCandidates, call);
+    if (selfCandidates.length > 0) {
+      const selected = selectOverload(selfCandidates, call);
+      if (selected.resolution !== "unresolved" || !baseMapperOperation(currentType, call.method)) return selected;
+      return { targets: [], resolution: "external", candidates: selected.candidates };
+    }
+    if (baseMapperOperation(currentType, call.method)) return { targets: [], resolution: "external", candidates: [] };
     const importedTypes = currentType.staticImports
       .filter((item) => item.methodName === call.method || item.methodName === "*")
       .flatMap((item) => project.typesByName.get(simpleTypeName(item.typeName)) ?? []);

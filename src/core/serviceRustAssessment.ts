@@ -3,6 +3,7 @@ import { stableStringify } from "./normalize.js";
 import { createJavaEndpointAnalyzer } from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
 import type { EndpointWorkloadKind } from "./endpointReplacementModel.js";
+import { captureAssessmentSourceIdentity, type AssessmentSourceIdentity } from "./assessmentSourceIdentity.js";
 
 export interface ServiceRustAssessmentOptions {
   root: string;
@@ -43,6 +44,8 @@ export interface ServiceRustAssessmentReport {
   version: 1;
   createdAt: string;
   root: string;
+  sourceIdentity: AssessmentSourceIdentity;
+  assessmentScope: ServiceRustAssessmentOptions;
   serviceMethodCount: number;
   assessedCount: number;
   summary: {
@@ -63,6 +66,7 @@ export interface ServiceRustAssessmentReport {
 
 export async function assessJavaServicesForRust(options: ServiceRustAssessmentOptions): Promise<ServiceRustAssessmentReport> {
   const analyzer = await createJavaEndpointAnalyzer(options.root, Boolean(options.includeTests));
+  const sourceIdentity = await captureAssessmentSourceIdentity(analyzer.root);
   const candidates = analyzer.serviceMethods.slice(0, positiveLimit(options.limit, analyzer.serviceMethods.length));
   const methods = candidates.map((candidate): ServiceMethodAssessment => {
     const expansion = options.adaptive ? analyzer.analyzeServiceMethodAdaptive(candidate, {
@@ -101,6 +105,8 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
     version: 1 as const,
     createdAt: new Date().toISOString(),
     root: analyzer.root,
+    sourceIdentity,
+    assessmentScope: { ...options, root: analyzer.root },
     serviceMethodCount: analyzer.serviceMethods.length,
     assessedCount: methods.length,
     summary: {

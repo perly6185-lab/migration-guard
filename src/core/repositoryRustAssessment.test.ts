@@ -68,3 +68,19 @@ test("repository assessment covers contracts, implementations and persistence ma
     assert.match(renderRepositoryRustAssessment(report), /### Replay contract required[\s\S]*missing-branch-fixture/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("BaseMapper inherited overloads remain SQL boundaries instead of unresolved self recursion", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-base-mapper-overload-"));
+  try {
+    const file = path.join(dir, "demo", "TaskMapper.java");
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, ["package demo;", "public interface TaskMapper extends BaseMapperX<Task> {", " default Object selectPage(TaskPageReq req) {", "  return selectPage(req, new QueryWrapper<Task>());", " }", " default void clearExternalRef(Long id) { updateById(id); }", " @org.apache.ibatis.annotations.Update(\"<script>\" +", "   \"UPDATE task SET deleted = 0 WHERE id IN \" +", "   \"<foreach collection='ids' item='id'>#{id}</foreach>\" +", "   \"</script>\")", " int restoreDeletedByIds(List<Long> ids);", "}"].join("\n"));
+    const report = await assessJavaRepositoriesForRust({ root: dir, maxDepth: 4, maxEdges: 100 });
+    const method = report.methods.find((item) => item.method === "selectPage");
+    assert.equal(method?.sqlSources, 1);
+    assert.equal(method?.findings.includes("RP-GRAPH-UNRESOLVED-EDGES"), false);
+    assert.equal(method?.findings.includes("RP-SQL-BASE-MAPPER-GENERATED"), true);
+    assert.equal(report.methods.find((item) => item.method === "clearExternalRef")?.operation, "write");
+    assert.equal(report.methods.find((item) => item.method === "restoreDeletedByIds")?.implementation, "sql-source");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

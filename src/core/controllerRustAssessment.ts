@@ -3,6 +3,7 @@ import { stableStringify } from "./normalize.js";
 import { createJavaEndpointAnalyzer, type JavaEndpointHttpMethod } from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
 import type { EndpointWorkloadKind } from "./endpointReplacementModel.js";
+import { captureAssessmentSourceIdentity, type AssessmentSourceIdentity } from "./assessmentSourceIdentity.js";
 
 export interface ControllerRustAssessmentOptions {
   root: string;
@@ -31,6 +32,8 @@ export interface ControllerRustAssessmentReport {
   version: 1;
   createdAt: string;
   root: string;
+  sourceIdentity: AssessmentSourceIdentity;
+  assessmentScope: ControllerRustAssessmentOptions;
   routeCount: number;
   assessedCount: number;
   summary: {
@@ -47,6 +50,7 @@ export interface ControllerRustAssessmentReport {
 
 export async function assessJavaControllersForRust(options: ControllerRustAssessmentOptions): Promise<ControllerRustAssessmentReport> {
   const analyzer = await createJavaEndpointAnalyzer(options.root, Boolean(options.includeTests));
+  const sourceIdentity = await captureAssessmentSourceIdentity(analyzer.root);
   const routes = analyzer.routes.slice(0, positiveLimit(options.limit, analyzer.routes.length));
   const methods = routes.map((route): ControllerMethodAssessment => {
     const source = analyzer.analyze({ endpoint: route.path, method: route.method, maxDepth: options.maxDepth, maxEdges: options.maxEdges });
@@ -70,6 +74,8 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
     version: 1 as const,
     createdAt: new Date().toISOString(),
     root: analyzer.root,
+    sourceIdentity,
+    assessmentScope: { ...options, root: analyzer.root },
     routeCount: analyzer.routes.length,
     assessedCount: methods.length,
     summary: {

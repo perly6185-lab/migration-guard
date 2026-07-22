@@ -39,7 +39,7 @@ export function createRepositoryMetricsSnapshot(report: RepositoryRustAssessment
     kind: "migration-guard.repository-metrics" as const,
     capturedAt: identity?.capturedAt ?? report.createdAt,
     project: identity?.project ?? report.root,
-    sourceRevision: identity?.sourceRevision ?? "unknown",
+    sourceRevision: identity?.sourceRevision ?? report.sourceIdentity.identity,
     assessmentReportHash: report.reportHash,
     metrics: {
       generatedBoundaries: report.summary.generatedBoundaries,

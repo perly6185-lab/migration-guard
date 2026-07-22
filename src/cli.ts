@@ -255,8 +255,10 @@ async function main(argv: string[]): Promise<void> {
 async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
   const action = args.positionals[0] ?? "analyze";
   if (action === "metrics-snapshot") {
-    const assessment = await readJsonFile<RepositoryRustAssessmentReport>(path.resolve(requiredStringOption(args, "assessment", "java-endpoint metrics-snapshot")));
+    const assessmentPath = path.resolve(requiredStringOption(args, "assessment", "java-endpoint metrics-snapshot"));
+    const assessment = await readJsonFile<RepositoryRustAssessmentReport>(assessmentPath);
     const snapshot = createRepositoryMetricsSnapshot(assessment, { project: stringOption(args, "project"), sourceRevision: stringOption(args, "source-revision") });
+    if (args.options.apply) await writeJsonFile(path.resolve(stringOption(args, "output") ?? path.join(path.dirname(assessmentPath), "repository-metrics-snapshot.json")), snapshot);
     console.log(JSON.stringify(snapshot, null, 2));
     return;
   }
@@ -2633,7 +2635,7 @@ Usage:
   migration-guard java-endpoint assess-services --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-repositories --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-lineage --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
-  migration-guard java-endpoint metrics-snapshot --assessment <repository-assessment.json> [--project <name>] [--source-revision <sha>]
+  migration-guard java-endpoint metrics-snapshot --assessment <repository-assessment.json> [--project <name>] [--source-revision <sha>] [--apply] [--output <path>]
   migration-guard java-endpoint metrics-gate --baseline <metrics.json> --current <metrics.json> [--explanations <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement closure --java-analysis <json> --rust-root <path> [--evidence <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement plan --java-analysis <json> [--ownership <json>] [--ownership-policy <json>] [--apply] [--artifacts-dir <path>] [--json]
