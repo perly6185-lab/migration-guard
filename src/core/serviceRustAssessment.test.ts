@@ -65,15 +65,16 @@ test("Java call resolution covers multiline arguments, static imports, generic f
   try {
     await mkdir(path.join(dir, "demo"), { recursive: true });
     const files: Record<string, string[]> = {
-      "Worker.java": ["package demo;", "public class Worker {", " public Object execute(long value) { return null; }", " public Object process(Long value, String state) { return null; }", "}"],
+      "Worker.java": ["package demo;", "public class Worker {", " public Object execute(long value) { return null; }", " public Object process(Long value, String state) { return null; }", " public Payload payload() { return null; }", "}"],
       "Factory.java": ["package demo;", "public interface Factory<T> {", " T create();", "}"],
       "StaticTools.java": ["package demo;", "public class StaticTools {", " public static Object normalize(long value) { return null; }", " public static Object normalize(String value) { return null; }", "}"],
       "ResolutionService.java": [
-        "package demo;", "import static demo.StaticTools.normalize;", "import static external.Results.success;", "import static external.Constants.*;", "public class ResolutionService {", " @Resource", " private Worker worker;", " @Resource", " private Factory<Worker> factory;",
-        " public Object run() {", "  worker.process(", "    1L,", "    \"ready\"", "  );", "  factory.create().execute(1);", "  normalize(1);", "  success(new Payload());", "  collect(\"batch\", 1L, 2L);", "  return null;", " }",
+        "package demo;", "import static demo.StaticTools.normalize;", "import static external.Results.success;", "import static external.Constants.*;", "public class ResolutionService {", " @Resource", " private Worker worker;", " @Resource", " private Factory<Worker> factory;", " @Resource", " private GeneratedConfig config;",
+        " public Object run() {", "  worker.process(", "    1L,", "    \"ready\"", "  );", "  factory.create().execute(1);", "  worker.payload().getName();", "  config.getTimeout();", "  normalize(1);", "  success(new Payload());", "  collect(\"batch\", 1L, 2L);", "  return null;", " }",
         " protected Object collect(String name, Long... values) { return null; }", "}"
       ],
-      "Payload.java": ["package demo;", "public class Payload {}"]
+      "Payload.java": ["package demo;", "@Data", "public class Payload {", " private String name;", "}"],
+      "GeneratedConfig.java": ["package demo;", "@Getter", "public class GeneratedConfig {", " private long timeout;", "}"]
     };
     for (const [name, lines] of Object.entries(files)) await writeFile(path.join(dir, "demo", name), lines.join("\n"));
     const analyzer = await createJavaEndpointAnalyzer(dir);
@@ -84,6 +85,8 @@ test("Java call resolution covers multiline arguments, static imports, generic f
     assert.ok(report.callGraph.nodes.some((item) => item.className === "ResolutionService" && item.methodName === "collect"));
     assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "success")?.resolution, "static-or-external");
     assert.equal(report.callGraph.edges.some((edge) => edge.call.method === "Payload"), false);
+    assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "getName")?.resolution, "static-or-external");
+    assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "getTimeout")?.resolution, "static-or-external");
     assert.equal(report.callGraph.edges.some((edge) => edge.resolution === "ambiguous"), false, JSON.stringify(report.callGraph.edges.filter((edge) => edge.resolution === "ambiguous"), null, 2));
     assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "process")?.call.argumentCount, 2);
   } finally { await rm(dir, { recursive: true, force: true }); }

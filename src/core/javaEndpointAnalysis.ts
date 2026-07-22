@@ -1896,7 +1896,9 @@ function resolveCallTargets(
 
   if (call.receiverType) {
     const receiverTypes = project.typesByName.get(simpleTypeName(call.receiverType)) ?? [];
-    return selectOverload(receiverTypes.flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method }))), call);
+    const receiverCandidates = receiverTypes.flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method })));
+    if (receiverCandidates.length === 0 && receiverTypes.some((type) => isGeneratedAccessor(type, call.method, call.argumentCount))) return { targets: [], resolution: "external", candidates: [] };
+    return selectOverload(receiverCandidates, call);
   }
   const field = [currentType, ...parentTypes(project, currentType)].flatMap((type) => type.fields).find((candidate) => candidate.name === call.receiver);
   if (!field) {
@@ -1917,7 +1919,21 @@ function resolveCallTargets(
       }
     }
   }
+  if (targets.length === 0 && candidateTypes.some((type) => isGeneratedAccessor(type, call.method, call.argumentCount))) return { targets: [], resolution: "external", candidates: [] };
   return selectOverload(targets.filter((target, index, all) => all.findIndex((other) => methodId(other.type, other.method) === methodId(target.type, target.method)) === index), call);
+}
+
+function isGeneratedAccessor(type: JavaTypeInfo, methodName: string, argumentCount: number): boolean {
+  const annotations = type.annotations.join(" ");
+  const lombokGetter = /@(?:[A-Za-z0-9_$.]+\.)?(?:Data|Getter|Value)\b/.test(annotations);
+  const lombokSetter = /@(?:[A-Za-z0-9_$.]+\.)?(?:Data|Setter)\b/.test(annotations);
+  const getter = methodName.match(/^(?:get|is)([A-Z][A-Za-z0-9_]*)$/);
+  const setter = methodName.match(/^set([A-Z][A-Za-z0-9_]*)$/);
+  const property = getter?.[1] ?? setter?.[1];
+  if (!property) return false;
+  const fieldName = property[0].toLowerCase() + property.slice(1);
+  if (!type.plainFields.some((field) => field.name === fieldName)) return false;
+  return getter ? lombokGetter && argumentCount === 0 : lombokSetter && argumentCount === 1;
 }
 
 interface ResolvedJavaCall {

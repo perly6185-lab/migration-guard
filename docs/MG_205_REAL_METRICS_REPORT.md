@@ -7,8 +7,8 @@
 - Project: `zboss-module-data`
 - Source: `8a68de49679502a52232798a3c1f6acba01b7789+dirty:5641e05dcd43`
 - Shared initial graph budget: depth 12, edges 500, tests excluded
-- Aggregate report hash: `87a337a4053dbac94703d063ebf9d6e907cae3f7d2f2accbc06118aa34e89d15`
-- Cross-layer evidence hash: `127ab942fc1f2fa6599762204ae80936cddfe23f0e8271121d53b9e2d204f599`
+- Aggregate report hash: `2d9ffd06fa6d0600c0e9997bb1f2fb642e0645213401a5c493a3c1be0c3b369d`
+- Cross-layer evidence hash: `5ce469edd3855dafb5fc8378344daf50b2589b47cac1895fd026379a8cb59b92`
 
 `metrics-report` rejects reports whose source identity or shared initial graph budget differs. Service and Repository may use explicitly recorded adaptive expansion budgets after the shared initial budget.
 
@@ -17,12 +17,14 @@
 | Layer | Total | Ready | Blocked | Ready rate |
 | --- | ---: | ---: | ---: | ---: |
 | Controller | 1856 | 778 | 1078 | 41.9% |
-| Service | 5506 | 3194 | 2312 | 58.0% |
+| Service | 5506 | 3198 | 2308 | 58.1% |
 | Repository | 4067 | 3602 | 465 | 88.6% |
 
 Repository evidence now contains 1543 SQL-backed methods (37.9% coverage), 5 generated boundaries, 6 unknown operations, 221 unresolved-edge findings, and 107 dynamic SQL blockers. The regression gate passes against the checked-in baseline.
 
 External static imports whose declaring type is outside the source model are now explicit external boundaries. Constructor expressions are excluded from bare method-call extraction, including under wildcard static imports. This reduced Controller unresolved routes from 1739 to 434 without suppressing ambiguous candidates; ambiguous routes changed from 675 to 680 as deeper valid traversal exposed additional real candidates.
+
+Lombok-generated accessors are recognized only when the declaring source type carries `@Data`, `@Getter`, `@Value`, or `@Setter`, the matching field exists, and getter/setter arity is valid. The same evidence is used for accessors on a resolved chained return type. Controller unresolved routes decreased from 434 to 423 and Service unresolved findings from 794 to 745; remaining blockers overlap other causes, so Controller ready stayed unchanged.
 
 Cross-layer lineage covers 1856 routes. Of these, 1553 reach SQL and 1551 (83.6%) have a complete Controller -> Service -> Repository -> SQL chain.
 
