@@ -38,6 +38,13 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("AiCallOutcome.failed")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("AllocationOrderContext.current")?.kind, "context-resolution");
   assert.equal(classifyJavaSemantic("BatchBillConfigContext.newScope")?.kind, "context-resolution");
+  assert.equal(classifyJavaSemantic("AiCallContext.runWithBizContext")?.kind, "context-resolution");
+  assert.equal(classifyJavaSemantic("CascadeContext.push")?.kind, "context-resolution");
+  assert.equal(classifyJavaSemantic("CascadePreSnapshotContext.exit")?.kind, "context-resolution");
+  assert.equal(classifyJavaSemantic("CascadeVisitedPanelsContext.snapshot")?.kind, "context-resolution");
+  assert.equal(classifyJavaSemantic("ruleContext.rulesOf")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ruleContext.nodesOf")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("FieldValueService.handle file.java private String handle(Object value) {")?.kind, undefined);
   assert.equal(classifyJavaSemantic("PublicParser.parse file.java public Object parse(String value) {")?.kind, undefined);
+  assert.equal(classifyJavaSemantic("BusinessContext.process")?.kind, undefined);
 });
