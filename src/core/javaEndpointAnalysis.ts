@@ -97,8 +97,8 @@ export interface JavaSqlSourceInfo {
     entity: string;
     table: string;
     operation: JavaSqlOperation;
-    predicate: "primary-key" | "identifier-set" | "wrapper" | "entity" | "framework-defined";
-    evidence: "table-annotation";
+    predicate: "primary-key" | "identifier-set" | "wrapper" | "entity" | "framework-defined" | "method-convention";
+    evidence: "table-annotation" | "table-annotation+method-convention";
   };
 }
 
@@ -1225,6 +1225,9 @@ function baseMapperSqlSource(
   current: GraphTraceState,
   contextSignals: string[]
 ): JavaSqlSourceInfo | undefined {
+  if (explicitSqlSourcesForTypeMethod(project, type, methodName).length > 0) {
+    return undefined;
+  }
   const operation = baseMapperOperation(type, methodName);
   if (!operation) {
     return undefined;
@@ -1257,6 +1260,9 @@ function baseMapperOperation(type: JavaTypeInfo, methodName: string): JavaSqlOpe
   if (/^(selectById|selectByIds|selectBatchIds|selectOne|selectList|selectListBy[A-Z].*|selectMaps|selectObjs|selectPage|selectCount|exists|getById|list|listByIds|page|count)$/i.test(methodName)) return "read";
   if (/^(insert|insertBatch|save|saveBatch|saveOrUpdate|update|updateBatch|updateById|upsert)$/i.test(methodName)) return "write";
   if (/^(delete|deleteById|deleteByIds|deleteBatchIds|deleteByMap|remove|removeById|removeBatchByIds)$/i.test(methodName)) return "delete";
+  if (/^(?:select|find|get|list|count|exists).+By[A-Z].*$/.test(methodName)) return "read";
+  if (/^(?:insert|save|update|upsert|recover|restore).+By[A-Z].*$/.test(methodName)) return "write";
+  if (/^(?:delete|remove|purge|clear).+By[A-Z].*$/.test(methodName)) return "delete";
   return undefined;
 }
 
@@ -1270,13 +1276,16 @@ function baseMapperGeneratedContract(project: JavaProjectModel, type: JavaTypeIn
   const entity = entityName ? (project.typesByName.get(entityName)?.[0] ?? project.typesByName.get(simpleTypeName(entityName))?.[0]) : undefined;
   const table = entity?.annotations.map(tableNameFromAnnotation).find(Boolean);
   if (!entity || !table) return undefined;
-  const predicate = /ById$/i.test(methodName) ? "primary-key" as const
+  const methodConvention = /^(?:select|find|get|list|count|exists|insert|save|update|upsert|recover|restore|delete|remove|purge|clear).+By[A-Z].*$/.test(methodName)
+    && !/^(?:selectById|selectByIds|deleteById|deleteByIds|updateById)$/i.test(methodName);
+  const predicate = methodConvention ? "method-convention" as const
+    : /ById$/i.test(methodName) ? "primary-key" as const
     : /BatchIds|ByIds$/i.test(methodName) ? "identifier-set" as const
     : /One|List|Maps|Objs|Page|Count|exists|update$/i.test(methodName) ? "wrapper" as const
     : /insert|save|upsert/i.test(methodName) ? "entity" as const
     : "framework-defined" as const;
   const framework = /CrudRepository|JpaRepository/i.test(declaration ?? "") ? "spring-data" as const : "mybatis-plus" as const;
-  return { framework, entity: entity.qualifiedName, table, operation, predicate, evidence: "table-annotation" };
+  return { framework, entity: entity.qualifiedName, table, operation, predicate, evidence: methodConvention ? "table-annotation+method-convention" : "table-annotation" };
 }
 
 function tableNameFromAnnotation(annotation: string): string | undefined {

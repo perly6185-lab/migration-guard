@@ -76,7 +76,7 @@ test("BaseMapper inherited overloads remain SQL boundaries instead of unresolved
   try {
     const file = path.join(dir, "demo", "TaskMapper.java");
     await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, ["package demo;", "public interface TaskMapper extends BaseMapperX<Task> {", " default Object selectPage(TaskPageReq req) {", "  return selectPage(req, new QueryWrapper<Task>());", " }", " default void clearExternalRef(Long id) { updateById(id); }", " default void replaceAll(List<Task> rows) {", "  deleteByIds(rows);", "  insertBatch(rows);", "  updateBatch(rows);", "  selectByIds(rows);", " }", " default void invalidateAll(List<Task> rows) { rows.forEach(this::invalidate); rows.forEach(row -> invalidate(row)); }", " default void invalidate(Task row) {}", " default void invalidate(List<Task> rows) {}", " @org.apache.ibatis.annotations.Update(\"<script>\" +", "   \"UPDATE task SET deleted = 0 WHERE id IN \" +", "   \"<foreach collection='ids' item='id'>#{id}</foreach>\" +", "   \"</script>\")", " int restoreDeletedByIds(List<Long> ids);", "}", "@TableName(\"task\")", "class Task {}"].join("\n"));
+    await writeFile(file, ["package demo;", "public interface TaskMapper extends BaseMapperX<Task> {", " default Object selectPage(TaskPageReq req) {", "  return selectPage(req, new QueryWrapper<Task>());", " }", " default void clearExternalRef(Long id) { updateById(id); }", " default void replaceAll(List<Task> rows) {", "  deleteByIds(rows);", "  insertBatch(rows);", "  updateBatch(rows);", "  selectByIds(rows);", " }", " default void invalidateAll(List<Task> rows) { rows.forEach(this::invalidate); rows.forEach(row -> invalidate(row)); }", " default void invalidate(Task row) {}", " default void invalidate(List<Task> rows) {}", " Object selectDeletedDataByTenantId(Long tenantId);", " int recoverDataByTenantId(Long tenantId);", " @org.apache.ibatis.annotations.Update(\"<script>\" +", "   \"UPDATE task SET deleted = 0 WHERE id IN \" +", "   \"<foreach collection='ids' item='id'>#{id}</foreach>\" +", "   \"</script>\")", " int restoreDeletedByIds(List<Long> ids);", "}", "@TableName(\"task\")", "class Task {}"].join("\n"));
     const report = await assessJavaRepositoriesForRust({ root: dir, maxDepth: 4, maxEdges: 100 });
     const method = report.methods.find((item) => item.method === "selectPage");
     assert.equal(method?.sqlSources, 1);
@@ -87,6 +87,9 @@ test("BaseMapper inherited overloads remain SQL boundaries instead of unresolved
     assert.equal(report.methods.find((item) => item.method === "restoreDeletedByIds")?.implementation, "sql-source");
     assert.equal(report.methods.find((item) => item.method === "replaceAll")?.findings.includes("RP-GRAPH-UNRESOLVED-EDGES"), false);
     assert.equal(report.methods.find((item) => item.method === "invalidateAll")?.findings.includes("RP-GRAPH-AMBIGUOUS-CALLS"), false);
+    assert.equal(report.methods.find((item) => item.method === "selectDeletedDataByTenantId")?.implementation, "sql-source");
+    assert.equal(report.methods.find((item) => item.method === "selectDeletedDataByTenantId")?.sqlContracts[0]?.generatedContract?.predicate, "method-convention");
+    assert.equal(report.methods.find((item) => item.method === "recoverDataByTenantId")?.sqlContracts[0]?.generatedContract?.evidence, "table-annotation+method-convention");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
