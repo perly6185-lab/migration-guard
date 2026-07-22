@@ -1801,6 +1801,8 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   for (const match of body.matchAll(/(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodName = match[1];
     if (JAVA_KEYWORD_CALLS.has(methodName)) continue;
+    const callStart = (match.index ?? 0) + match[0].lastIndexOf(methodName);
+    if (/\bnew\s*$/.test(body.slice(Math.max(0, callStart - 12), callStart))) continue;
     const staticImported = type.staticImports.some((item) => item.methodName === methodName || item.methodName === "*");
     if (!staticImported && !methodsInHierarchy(project, type).some((candidate) => candidate.method.name === methodName)) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
@@ -1884,7 +1886,9 @@ function resolveCallTargets(
     const importedTypes = currentType.staticImports
       .filter((item) => item.methodName === call.method || item.methodName === "*")
       .flatMap((item) => project.typesByName.get(simpleTypeName(item.typeName)) ?? []);
-    return selectOverload(importedTypes.flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method }))), call);
+    const importedCandidates = importedTypes.flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method })));
+    if (importedCandidates.length === 0 && currentType.staticImports.some((item) => item.methodName === call.method || item.methodName === "*")) return { targets: [], resolution: "external", candidates: [] };
+    return selectOverload(importedCandidates, call);
   }
 
   if (call.receiver === "super") return selectOverload(parentTypes(project, currentType).flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method }))), call);
