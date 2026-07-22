@@ -7,8 +7,8 @@
 - Project: `zboss-module-data`
 - Source: `8a68de49679502a52232798a3c1f6acba01b7789+dirty:5641e05dcd43`
 - Shared initial graph budget: depth 12, edges 500, tests excluded
-- Aggregate report hash: `fc3297268e72f7a68e7a4bf32afcb1da83a73b214dd12193be9461fc0f4002ce`
-- Cross-layer evidence hash: `3013f5dcda3060f75f4d674cfeaa9816db2fe179e0a4b66f06d113aec7d9f312`
+- Aggregate report hash: `e9d20602ca2b6b54f2abe72691ab1f20e0101838a00d721c22ba7656f0944e52`
+- Cross-layer evidence hash: `7099fbdcfbf726b4b064f92bacef1b0c0883c7bd6c5812f762cca9ca88e7d1d1`
 
 `metrics-report` rejects reports whose source identity or shared initial graph budget differs. Service and Repository may use explicitly recorded adaptive expansion budgets after the shared initial budget.
 
@@ -16,8 +16,8 @@
 
 | Layer | Total | Ready | Blocked | Ready rate |
 | --- | ---: | ---: | ---: | ---: |
-| Controller | 1856 | 1389 | 467 | 74.8% |
-| Service | 5524 | 4502 | 1022 | 81.5% |
+| Controller | 1856 | 1426 | 430 | 76.8% |
+| Service | 5524 | 4716 | 808 | 85.4% |
 | Repository | 4068 | 4068 | 0 | 100.0% |
 
 Repository evidence now contains 3316 SQL-backed methods (81.5% coverage), no generated boundaries, 6 unknown operations, no unresolved-edge findings, no ambiguous-call findings, and no dynamic SQL blockers. The regression gate passes against the checked-in baseline, reducing generated boundaries by 21, unresolved-edge findings by 1196, and dynamic SQL blockers by 107 to zero.
@@ -46,6 +46,8 @@ Injected type resolution now honors explicit Java imports and same-package types
 
 Unclassified nodes now use narrow semantic rules for JSON/Gson serialization, clock reads, JDK functional/string/regex utilities, string builders, query-wrapper predicates, Spring proxy context, progress reporting, `page`/`rowNum` reads, and DTO-shaped initialization. Generic `handle`, `apply`, and `process` methods remain unclassified without stronger evidence. Controller unclassified routes decreased from 638 to 349 and Service unclassified findings from 1869 to 919.
 
+The semantic registry now also recognizes JDK stream terminals, deterministic string/number/date value operations, future joins and executor lifecycle, in-memory queue/barrier coordination, SQL session flushes, exception diagnostics, and JSON object conversion. Controller unclassified findings decreased from 362 to 306 and readiness rose to 1426; Service unclassified findings decreased from 995 to 775 and readiness rose to 4716. Random UUID generation and generic business verbs remain fail-closed.
+
 Overload argument inference now uses local and foreach declarations, primitive declarations, explicit casts, `List<T>.get()`, source-declared method return types, and Lombok getter field types. Controller ambiguous routes decreased from 346 to 132 and Service ambiguous findings from 802 to 453. Deeper valid traversal exposed additional downstream dynamic SQL, unresolved calls, and graph-cap findings; those remain fail-closed.
 
 Cross-layer lineage covers 1856 routes. Of these, 1627 reach SQL and 1624 (87.5%) have a complete Controller -> Service -> Repository -> SQL chain.
@@ -57,7 +59,7 @@ BaseMapper operations are reviewable only when the mapper generic entity resolve
 Next work is ordered by evidence impact:
 
 1. Retain the remaining 8 Controller unresolved-edge findings and 6 ambiguous calls without sufficient implementation, arity, nested-type, or stream-flow evidence as fail-closed.
-2. Reduce Service unclassified boundaries and the 173 adaptive-expansion budget exhaustions exposed by the expanded inventory.
+2. Reduce the remaining 775 Service unclassified boundaries and analyze the 173 adaptive-expansion budget exhaustions exposed by the expanded inventory.
 3. Shift the next cleanup phase to Controller and Service graph completeness; Repository has no remaining blockers.
 4. Update the checked-in real-project baseline only after the dirty source fingerprint and reports are reviewed.
 
