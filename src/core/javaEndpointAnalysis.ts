@@ -246,6 +246,7 @@ interface JavaTypeInfo {
   kind: "class" | "interface" | "enum";
   typeParameters: string[];
   staticImports: Array<{ typeName: string; methodName: string }>;
+  imports: Array<{ simpleName: string; qualifiedName: string }>;
   file: string;
   line: number;
   annotations: string[];
@@ -765,6 +766,8 @@ function parseJavaTypes(file: JavaSourceFile): JavaTypeInfo[] {
       typeParameters: parseTypeParameters(line, typeName),
       staticImports: [...content.matchAll(/^\s*import\s+static\s+([A-Za-z0-9_.$]+)\.([A-Za-z_*][A-Za-z0-9_*]*)\s*;/gm)]
         .map((item) => ({ typeName: item[1], methodName: item[2] })),
+      imports: [...content.matchAll(/^\s*import\s+(?!static\s)([A-Za-z0-9_.$]+)\s*;/gm)]
+        .map((item) => ({ qualifiedName: item[1], simpleName: simpleTypeName(item[1]) })),
       file: file.relativePath,
       line: index + 1,
       annotations,
@@ -1631,7 +1634,7 @@ function sqlSourcesForExternalCall(
     return [];
   }
   const sources: JavaSqlSourceInfo[] = [];
-  for (const candidateType of resolveTypesForField(project, field.typeName)) {
+  for (const candidateType of resolveTypesForField(project, field.typeName, current.type)) {
     sources.push(...explicitSqlSourcesForTypeMethod(project, candidateType, call.method)
       .map((source) => withRuntimeSqlContext(source, current, contextSignals)));
     const inherited = baseMapperSqlSource(project, candidateType, call.method, current.method.file, call.line, current, contextSignals);
@@ -1855,7 +1858,7 @@ function isLowValueCall(methodName: string): boolean {
 function resolveFactoryReturnType(project: JavaProjectModel, currentType: JavaTypeInfo, receiver: string, factoryMethod: string): string | undefined {
   const field = [currentType, ...parentTypes(project, currentType)].flatMap((type) => [...type.fields, ...type.plainFields]).find((candidate) => candidate.name === receiver);
   if (!field) return undefined;
-  const factoryType = resolveTypesForField(project, field.typeName)[0];
+  const factoryType = resolveTypesForField(project, field.typeName, currentType)[0];
   const returnType = factoryType?.methods.find((method) => method.name === factoryMethod)?.returnType;
   if (!returnType) return undefined;
   const genericIndex = factoryType.typeParameters.indexOf(simpleTypeName(returnType));
@@ -1904,7 +1907,7 @@ function resolveCallTargets(
   if (!field) {
     return { targets: [], resolution: "external", candidates: [] };
   }
-  const candidateTypes = resolveTypesForField(project, field.typeName);
+  const candidateTypes = resolveTypesForField(project, field.typeName, currentType);
   if (!candidateTypes.length) return { targets: [], resolution: "external", candidates: [] };
   const targets: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> = [];
   for (const candidateType of candidateTypes) {
@@ -1913,6 +1916,7 @@ function resolveCallTargets(
       : [candidateType];
     const qualifier = field.annotations.join(" ").match(/@Qualifier\s*\(\s*["']([^"']+)["']\s*\)/)?.[1];
     if (qualifier) implementationTypes = implementationTypes.filter((type) => type.name.toLowerCase() === qualifier.toLowerCase() || lowerCamel(type.name.replace(/Impl$/, "")) === qualifier);
+    else if (candidateType.kind === "interface") implementationTypes = narrowSpringImplementations(implementationTypes, field.name);
     for (const implementationType of implementationTypes) {
       for (const method of implementationType.methods.filter((candidate) => candidate.name === call.method && (implementationType.kind !== "interface" || candidate.hasBody))) {
         targets.push({ type: implementationType, method });
@@ -1920,7 +1924,27 @@ function resolveCallTargets(
     }
   }
   if (targets.length === 0 && candidateTypes.some((type) => isGeneratedAccessor(type, call.method, call.argumentCount))) return { targets: [], resolution: "external", candidates: [] };
-  return selectOverload(targets.filter((target, index, all) => all.findIndex((other) => methodId(other.type, other.method) === methodId(target.type, target.method)) === index), call);
+  const uniqueTargets = targets.filter((target, index, all) => all.findIndex((other) => methodId(other.type, other.method) === methodId(target.type, target.method)) === index);
+  return selectOverload(candidateTypes.some((type) => type.kind === "interface") ? narrowSpringTargets(uniqueTargets, field.name) : uniqueTargets, call);
+}
+
+function narrowSpringTargets(targets: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>, fieldName: string): Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> {
+  const types = [...new Map(targets.map((target) => [target.type.qualifiedName, target.type])).values()];
+  const narrowed = narrowSpringImplementations(types, fieldName);
+  return narrowed === types ? targets : targets.filter((target) => narrowed.some((type) => type.qualifiedName === target.type.qualifiedName));
+}
+
+function narrowSpringImplementations(types: JavaTypeInfo[], fieldName: string): JavaTypeInfo[] {
+  const concrete = types.filter((type) => type.kind !== "interface");
+  const primary = concrete.filter((type) => type.annotations.some((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?Primary\b/.test(annotation)));
+  if (primary.length === 1) return primary;
+  const named = concrete.filter((type) => springBeanNames(type).includes(fieldName));
+  return named.length === 1 ? named : types;
+}
+
+function springBeanNames(type: JavaTypeInfo): string[] {
+  const explicit = type.annotations.flatMap((annotation) => [...annotation.matchAll(/@(?:[A-Za-z0-9_$.]+\.)?(?:Component|Service|Repository)\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']/g)].map((match) => match[1]));
+  return [...new Set([lowerCamel(type.name), lowerCamel(type.name.replace(/Impl$/, "")), ...explicit])];
 }
 
 function isGeneratedAccessor(type: JavaTypeInfo, methodName: string, argumentCount: number): boolean {
@@ -2043,8 +2067,13 @@ function inferArgumentType(value: string, variableTypes: Map<string, string>): s
   return variableTypes.get(trimmed) ?? "unknown";
 }
 
-function resolveTypesForField(project: JavaProjectModel, typeName: string): JavaTypeInfo[] {
-  return project.typesByName.get(simpleTypeName(typeName)) ?? project.typesByName.get(typeName) ?? [];
+function resolveTypesForField(project: JavaProjectModel, typeName: string, contextType?: JavaTypeInfo): JavaTypeInfo[] {
+  const simpleName = simpleTypeName(typeName);
+  const imported = contextType?.imports.find((item) => item.simpleName === simpleName)?.qualifiedName;
+  if (imported) return project.typesByName.get(imported) ?? [];
+  if (typeName.includes(".")) return project.typesByName.get(typeName) ?? [];
+  const samePackage = contextType?.packageName ? project.typesByName.get(`${contextType.packageName}.${simpleName}`) : undefined;
+  return samePackage?.length ? samePackage : project.typesByName.get(simpleName) ?? [];
 }
 
 function nodeFor(
@@ -2110,7 +2139,7 @@ function resolveRequestModel(project: JavaProjectModel, route: JavaEndpointRoute
   if (!requestParam) {
     return undefined;
   }
-  const requestType = resolveTypesForField(project, requestParam.typeName)[0];
+  const requestType = resolveTypesForField(project, requestParam.typeName, type)[0];
   if (!requestType) {
     return {
       className: requestParam.typeName,

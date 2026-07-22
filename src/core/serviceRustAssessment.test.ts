@@ -74,9 +74,12 @@ test("Java call resolution covers multiline arguments, static imports, generic f
         " protected Object collect(String name, Long... values) { return null; }", "}"
       ],
       "Payload.java": ["package demo;", "@Data", "public class Payload {", " private String name;", "}"],
-      "GeneratedConfig.java": ["package demo;", "@Getter", "public class GeneratedConfig {", " private long timeout;", "}"]
+      "GeneratedConfig.java": ["package demo;", "@Getter", "public class GeneratedConfig {", " private long timeout;", "}"],
+      "one/DuplicateWorker.java": ["package demo.one;", "public class DuplicateWorker {", " public Object execute() { return null; }", "}"],
+      "two/DuplicateWorker.java": ["package demo.two;", "public class DuplicateWorker {", " public Object execute() { return null; }", "}"],
+      "ImportedService.java": ["package demo;", "import demo.one.DuplicateWorker;", "public class ImportedService {", " @Resource", " private DuplicateWorker duplicateWorker;", " public Object run() { return duplicateWorker.execute(); }", "}"]
     };
-    for (const [name, lines] of Object.entries(files)) await writeFile(path.join(dir, "demo", name), lines.join("\n"));
+    for (const [name, lines] of Object.entries(files)) { const file = path.join(dir, "demo", name); await mkdir(path.dirname(file), { recursive: true }); await writeFile(file, lines.join("\n")); }
     const analyzer = await createJavaEndpointAnalyzer(dir);
     const report = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ResolutionService" && item.methodName === "run")!, { maxDepth: 5, maxEdges: 100 });
     assert.ok(report.callGraph.nodes.some((item) => item.className === "Worker" && item.methodName === "process"));
@@ -87,6 +90,9 @@ test("Java call resolution covers multiline arguments, static imports, generic f
     assert.equal(report.callGraph.edges.some((edge) => edge.call.method === "Payload"), false);
     assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "getName")?.resolution, "static-or-external");
     assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "getTimeout")?.resolution, "static-or-external");
+    const imported = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ImportedService" && item.methodName === "run")!, { maxDepth: 5, maxEdges: 100 });
+    assert.ok(imported.callGraph.nodes.some((item) => item.file === "demo/one/DuplicateWorker.java"));
+    assert.equal(imported.callGraph.nodes.some((item) => item.file === "demo/two/DuplicateWorker.java"), false);
     assert.equal(report.callGraph.edges.some((edge) => edge.resolution === "ambiguous"), false, JSON.stringify(report.callGraph.edges.filter((edge) => edge.resolution === "ambiguous"), null, 2));
     assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "process")?.call.argumentCount, 2);
   } finally { await rm(dir, { recursive: true, force: true }); }
@@ -127,6 +133,10 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
       "SlowWorkerImpl.java": ["package demo;", "public class SlowWorkerImpl implements Worker {", " public Object execute() {", "  return null;", " }", "}"],
       "QualifiedService.java": ["package demo;", "public class QualifiedService {", " @Resource", " @Qualifier(\"fastWorker\")", " private Worker worker;", " public Object run() {", "  return worker.execute();", " }", "}"],
       "AmbiguousService.java": ["package demo;", "public class AmbiguousService {", " @Resource", " private Worker worker;", " public Object run() {", "  return worker.execute();", " }", "}"],
+      "PrimaryWorker.java": ["package demo;", "public interface PrimaryWorker {", " Object execute();", "}"],
+      "PrimaryWorkerImpl.java": ["package demo;", "@Primary", "public class PrimaryWorkerImpl implements PrimaryWorker {", " public Object execute() { return null; }", "}"],
+      "BackupPrimaryWorkerImpl.java": ["package demo;", "public class BackupPrimaryWorkerImpl implements PrimaryWorker {", " public Object execute() { return null; }", "}"],
+      "PrimaryService.java": ["package demo;", "public class PrimaryService {", " @Resource", " private PrimaryWorker primaryWorker;", " public Object run() { return primaryWorker.execute(); }", "}"],
       "DefaultWorker.java": ["package demo;", "public interface DefaultWorker {", " default Object execute() {", "  return null;", " }", "}"],
       "DefaultService.java": ["package demo;", "public class DefaultService {", " @Resource", " private DefaultWorker worker;", " public Object run() {", "  return worker.execute();", " }", "}"],
       "TransactionService.java": ["package demo;", "public class TransactionService {", " @Transactional", " public Object save() {", "  return null;", " }", " public Object run() {", "  return save();", " }", "}"],
@@ -139,6 +149,9 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
     assert.ok(analyze("QualifiedService").callGraph.nodes.some((item) => item.className === "FastWorkerImpl"));
     assert.equal(analyze("QualifiedService").callGraph.nodes.some((item) => item.className === "SlowWorkerImpl"), false);
     assert.ok(analyze("AmbiguousService").callGraph.edges.some((item) => item.resolution === "ambiguous"));
+    const primary = analyze("PrimaryService");
+    assert.ok(primary.callGraph.nodes.some((item) => item.className === "PrimaryWorkerImpl"), JSON.stringify(primary.callGraph, null, 2));
+    assert.equal(primary.callGraph.nodes.some((item) => item.className === "BackupPrimaryWorkerImpl"), false);
     assert.ok(analyze("DefaultService").callGraph.nodes.some((item) => item.className === "DefaultWorker"));
     assert.ok(createEndpointReplacementPlanFromJava(analyze("TransactionService")).plan.findings.includes("RP-GRAPH-TRANSACTION-SELF-INVOCATION"));
     const lambda = createEndpointReplacementPlanFromJava(analyze("LambdaService"));
