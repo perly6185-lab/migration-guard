@@ -54,7 +54,7 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
     ...(ambiguousEdges ? ["RP-GRAPH-AMBIGUOUS-CALLS"] : []),
     ...(report.callGraph.edges.some((edge) => edge.resolution === "same-class" && nodes.find((node) => node.id === edge.to)?.evidence.detail?.includes("@Transactional")) ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : []),
     ...(sqlSources.some(dynamicSqlNeedsReplayContract) ? ["RP-SQL-DYNAMIC-SOURCE"] : []),
-    ...(sqlSources.some((source) => source.dynamic && source.tables.length === 0) ? ["RP-SQL-TABLE-UNRESOLVED"] : []),
+    ...(sqlSources.some((source) => sqlTableResolution(source) === "unresolved") ? ["RP-SQL-TABLE-UNRESOLVED"] : []),
     ...(missingSqlContracts.has("table-expansion") ? ["RP-SQL-MISSING-TABLE-EXPANSION"] : []),
     ...(missingSqlContracts.has("branch-fixture") ? ["RP-SQL-MISSING-BRANCH-FIXTURE"] : []),
     ...(missingSqlContracts.has("provider-fragment") ? ["RP-SQL-MISSING-PROVIDER-FRAGMENT"] : []),
@@ -90,7 +90,14 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
 }
 
 function dynamicSqlNeedsReplayContract(source: JavaSqlSourceInfo): boolean {
-  return source.dynamic && (source.operation === "unknown" || source.tables.length === 0 || (source.ownershipEvidence?.missingContracts.length ?? 0) > 0);
+  return source.dynamic && (source.operation === "unknown" || sqlTableResolution(source) === "unresolved" || (source.ownershipEvidence?.missingContracts.length ?? 0) > 0);
+}
+
+function sqlTableResolution(source: JavaSqlSourceInfo): "resolved" | "tableless" | "statement-expansion" | "unresolved" {
+  if (source.tables.length > 0) return "resolved";
+  if ((source.ownershipEvidence?.statementExpansionCases.length ?? 0) > 0) return "statement-expansion";
+  if (/\bselect\s+(?:(?:last_insert_id|database|current_schema|current_database|version)\s*\(|@@)/i.test(source.statement ?? "")) return "tableless";
+  return "unresolved";
 }
 
 export function deriveReplacementContracts(graph: BehaviorGraph, report?: JavaEndpointAnalysisReport): EndpointReplacementContracts {

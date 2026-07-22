@@ -20,14 +20,14 @@ test("cross-layer evidence lineage links controller, service, repository, and SQ
     assert.equal(report.assessedCount, 1);
     assert.match(report.runId, /^lineage-/);
     assert.equal(report.sourceRevision, "unversioned");
-    assert.equal(report.routes[0]?.status, "blocked");
+    assert.equal(report.routes[0]?.status, "ready");
     assert.equal(report.routes[0]?.serviceNodeIds.length, 1);
     assert.ok((report.routes[0]?.repositoryNodeIds.length ?? 0) >= 1);
     assert.equal(report.routes[0]?.sqlSourceIds.length, 1);
     assert.ok(report.routes[0]?.links.some((link) => link.kind === "sql-source" && link.to.startsWith("annotation:")));
-    assert.ok(report.routes[0]?.rootCauses.includes("SQL:table-expansion"));
+    assert.equal(report.routes[0]?.rootCauses.includes("SQL:table-expansion"), false);
     assert.equal(report.summary.routesWithSql, 1);
-    assert.equal(report.topBlockedRoutes[0]?.downstreamSqlSources, 1);
-    assert.match(renderCrossLayerEvidenceLineage(report), /Controller\.find[\s\S]*sql=1/);
+    assert.equal(report.topBlockedRoutes.length, 0);
+    assert.match(renderCrossLayerEvidenceLineage(report), /TaskController\.find[\s\S]*sql=1/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

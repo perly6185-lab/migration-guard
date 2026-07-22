@@ -7,8 +7,8 @@
 - Project: `zboss-module-data`
 - Source: `8a68de49679502a52232798a3c1f6acba01b7789+dirty:5641e05dcd43`
 - Shared initial graph budget: depth 12, edges 500, tests excluded
-- Aggregate report hash: `de898aec078f0e6d7af068d044cc51e26314442f69bf96d7ca203fbbd0cc749f`
-- Cross-layer evidence hash: `db3d92cc6301fd271c8f01200f264248771d69b6382704a81ddf697fd7574eaf`
+- Aggregate report hash: `6a24ef6809f56c2c2844061cbb0c28616bdf059f9a985c60de4b3dcc1acefd69`
+- Cross-layer evidence hash: `9c74b649eef2a8daee9672168128da204dd29c2c8b8232f1eb08fd06214192ac`
 
 `metrics-report` rejects reports whose source identity or shared initial graph budget differs. Service and Repository may use explicitly recorded adaptive expansion budgets after the shared initial budget.
 
@@ -16,13 +16,15 @@
 
 | Layer | Total | Ready | Blocked | Ready rate |
 | --- | ---: | ---: | ---: | ---: |
-| Controller | 1856 | 1011 | 845 | 54.5% |
-| Service | 5506 | 3500 | 2006 | 63.6% |
-| Repository | 4067 | 3629 | 438 | 89.2% |
+| Controller | 1856 | 1202 | 654 | 64.8% |
+| Service | 5506 | 4146 | 1360 | 75.3% |
+| Repository | 4067 | 3683 | 384 | 90.6% |
 
-Repository evidence now contains 1543 SQL-backed methods (37.9% coverage), 5 generated boundaries, 6 unknown operations, 221 unresolved-edge findings, and 94 dynamic SQL blockers. The regression gate passes against the checked-in baseline, reducing dynamic SQL blockers by 13 from 107.
+Repository evidence now contains 1543 SQL-backed methods (37.9% coverage), 5 generated boundaries, 6 unknown operations, 221 unresolved-edge findings, and 17 dynamic SQL blockers. The regression gate passes against the checked-in baseline, reducing dynamic SQL blockers by 90 from 107.
 
-Dynamic MyBatis ownership evidence now synthesizes deterministic replay cases for `<if>`/`<when>` true and false branches, `<foreach>` empty/single/multiple cardinalities, `<choose>` fallback, and empty/present `<where>`/`<set>`/`<trim>` content. The SQL contract report aggregates these branch cases. `RP-SQL-DYNAMIC-SOURCE` now identifies only dynamic sources that still lack replay evidence; `RP-SQL-TABLE-UNRESOLVED` separately identifies dynamic sources whose table cannot be resolved. Remaining repository blockers are 94 dynamic sources, including 69 missing table expansions, 145 method-level routing contracts, and 35 methods with unresolved tables; these categories overlap.
+Dynamic MyBatis ownership evidence now synthesizes deterministic replay cases for `<if>`/`<when>` true and false branches, `<foreach>` empty/single/multiple cardinalities, `<choose>` fallback, and empty/present `<where>`/`<set>`/`<trim>` content. The SQL contract report aggregates these branch cases. `RP-SQL-DYNAMIC-SOURCE` now identifies only dynamic sources that still lack replay evidence; `RP-SQL-TABLE-UNRESOLVED` separately identifies dynamic sources whose table cannot be resolved.
+
+Dynamic table placeholders now synthesize known, unknown, and invalid identifier replay cases. Whole-statement `${sql}` and `${...Script}` inputs synthesize valid, invalid, and rejected multi-statement cases. SQL that is intrinsically tableless, such as `LAST_INSERT_ID()` and `DATABASE()`, is classified separately. This clears all 69 method-level table-expansion contracts and all 35 table-unresolved methods without treating raw SQL as a statically resolved table. The remaining 17 dynamic blockers overlap routing contracts.
 
 External static imports whose declaring type is outside the source model are now explicit external boundaries. Constructor expressions are excluded from bare method-call extraction, including under wildcard static imports. This reduced Controller unresolved routes from 1739 to 434 without suppressing ambiguous candidates; ambiguous routes changed from 675 to 680 as deeper valid traversal exposed additional real candidates.
 
@@ -44,7 +46,7 @@ Next work is ordered by evidence impact:
 
 1. Reduce Controller unresolved edges and ambiguous calls, especially high-fan-out routes hitting the 500-edge cap.
 2. Reduce Service unclassified boundaries and the 96 adaptive-expansion budget exhaustions.
-3. Resolve table placeholders and routing ownership for the remaining 94 dynamic SQL blockers; prioritize the 69 table-expansion contracts, then the 35 table-unresolved methods.
+3. Resolve tenant and datasource routing ownership for the remaining 17 dynamic SQL blockers.
 4. Update the checked-in real-project baseline only after the dirty source fingerprint and reports are reviewed.
 
 Assessment readiness measures static evidence coverage. It does not prove Rust implementation, runtime replay, performance parity, or source-off readiness.

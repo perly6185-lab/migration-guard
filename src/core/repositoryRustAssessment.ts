@@ -14,6 +14,9 @@ export interface RepositorySqlContractRecord {
   dynamic: boolean;
   dynamicTags: string[];
   branchCases: string[];
+  tableExpansionCases: string[];
+  statementExpansionCases: string[];
+  tableResolution: "resolved" | "tableless" | "statement-expansion" | "unresolved";
   tables: string[];
   contexts: string[];
   transactional: boolean;
@@ -31,6 +34,9 @@ export interface RepositorySqlMetrics {
   operations: Record<string, number>;
   dynamicTags: Record<string, number>;
   branchCases: Record<string, number>;
+  tableExpansionCases: Record<string, number>;
+  statementExpansionCases: Record<string, number>;
+  tableResolution: Record<string, number>;
   tables: Record<string, number>;
   contexts: Record<string, number>;
   transactionParticipation: Record<string, number>;
@@ -111,7 +117,7 @@ export async function assessJavaRepositoriesForRust(options: RepositoryRustAsses
     if (sqlSources.some((item) => item.source === "base-mapper" && !item.generatedContract)) findings.push("RP-SQL-BASE-MAPPER-GENERATED");
     if (sqlSources.some((item) => item.source === "provider")) findings.push("RP-SQL-PROVIDER-SOURCE");
     if (sqlSources.some(dynamicSqlNeedsReplayContract)) findings.push("RP-SQL-DYNAMIC-SOURCE");
-    if (sqlSources.some((item) => item.dynamic && item.tables.length === 0)) findings.push("RP-SQL-TABLE-UNRESOLVED");
+    if (sqlSources.some((item) => sqlTableResolution(item) === "unresolved")) findings.push("RP-SQL-TABLE-UNRESOLVED");
     if (expansion?.status === "budget-exhausted") findings.push("RP-GRAPH-EXPANSION-BUDGET-EXHAUSTED");
     const sqlContracts = sqlSources.map(toSqlContractRecord);
     return {
@@ -152,25 +158,28 @@ export async function assessJavaRepositoriesForRust(options: RepositoryRustAsses
 }
 
 export function renderRepositoryRustAssessment(report: RepositoryRustAssessmentReport): string {
-  return ["# Repository Rust Assessment", "", `- Root: ${report.root}`, `- Repository methods: ${report.repositoryMethodCount}`, `- Assessed: ${report.assessedCount}`, `- Ready: ${report.summary.ready}`, `- Blocked: ${report.summary.blocked}`, `- Generated boundaries: ${report.summary.generatedBoundaries}`, `- SQL-backed methods: ${report.summary.sqlBackedMethods}`, `- SQL sources: ${report.summary.sqlSources}`, `- Dynamic SQL sources: ${report.summary.dynamicSqlSources}`, `- Transactional SQL sources: ${report.summary.transactionalSqlSources}`, `- Context SQL sources: ${report.summary.contextSqlSources}`, `- Report hash: ${report.reportHash}`, "", "## SQL contract metrics", "", `- Reviewable SQL records: ${report.sqlMetrics.reviewableRecords}`, `- Replay contract required: ${report.sqlMetrics.replayContractRequiredRecords}`, ...renderMetricGroup("Source kinds", report.sqlMetrics.sourceKinds), ...renderMetricGroup("Operations", report.sqlMetrics.operations), ...renderMetricGroup("Dynamic tags", report.sqlMetrics.dynamicTags), ...renderMetricGroup("Branch cases", report.sqlMetrics.branchCases), ...renderMetricGroup("Tables", report.sqlMetrics.tables), ...renderMetricGroup("Tenant and datasource context", report.sqlMetrics.contexts), ...renderMetricGroup("Transaction participation", report.sqlMetrics.transactionParticipation), ...renderMetricGroup("Unresolved SQL reasons", report.sqlMetrics.unresolvedReasons), "", "### Reviewable SQL records", "", ...renderSqlRecords(report.methods, "reviewable"), "", "### Replay contract required", "", ...renderSqlRecords(report.methods, "replay-contract-required"), "", "## Missing SQL contracts", "", ...renderCounts(report.summary.missingSqlContracts), "", "## Findings", "", ...renderCounts(report.summary.findings), ""].join("\n");
+  return ["# Repository Rust Assessment", "", `- Root: ${report.root}`, `- Repository methods: ${report.repositoryMethodCount}`, `- Assessed: ${report.assessedCount}`, `- Ready: ${report.summary.ready}`, `- Blocked: ${report.summary.blocked}`, `- Generated boundaries: ${report.summary.generatedBoundaries}`, `- SQL-backed methods: ${report.summary.sqlBackedMethods}`, `- SQL sources: ${report.summary.sqlSources}`, `- Dynamic SQL sources: ${report.summary.dynamicSqlSources}`, `- Transactional SQL sources: ${report.summary.transactionalSqlSources}`, `- Context SQL sources: ${report.summary.contextSqlSources}`, `- Report hash: ${report.reportHash}`, "", "## SQL contract metrics", "", `- Reviewable SQL records: ${report.sqlMetrics.reviewableRecords}`, `- Replay contract required: ${report.sqlMetrics.replayContractRequiredRecords}`, ...renderMetricGroup("Source kinds", report.sqlMetrics.sourceKinds), ...renderMetricGroup("Operations", report.sqlMetrics.operations), ...renderMetricGroup("Dynamic tags", report.sqlMetrics.dynamicTags), ...renderMetricGroup("Branch cases", report.sqlMetrics.branchCases), ...renderMetricGroup("Table expansion cases", report.sqlMetrics.tableExpansionCases), ...renderMetricGroup("Statement expansion cases", report.sqlMetrics.statementExpansionCases), ...renderMetricGroup("Table resolution", report.sqlMetrics.tableResolution), ...renderMetricGroup("Tables", report.sqlMetrics.tables), ...renderMetricGroup("Tenant and datasource context", report.sqlMetrics.contexts), ...renderMetricGroup("Transaction participation", report.sqlMetrics.transactionParticipation), ...renderMetricGroup("Unresolved SQL reasons", report.sqlMetrics.unresolvedReasons), "", "### Reviewable SQL records", "", ...renderSqlRecords(report.methods, "reviewable"), "", "### Replay contract required", "", ...renderSqlRecords(report.methods, "replay-contract-required"), "", "## Missing SQL contracts", "", ...renderCounts(report.summary.missingSqlContracts), "", "## Findings", "", ...renderCounts(report.summary.findings), ""].join("\n");
 }
 
 function toSqlContractRecord(source: JavaSqlSourceInfo): RepositorySqlContractRecord {
   const missingContracts: JavaSqlOwnershipContract[] = source.ownershipEvidence?.missingContracts ?? [];
+  const tableResolution = sqlTableResolution(source);
   const unresolvedReasons = [
     ...missingContracts.map((contract) => `missing-${contract}`),
     ...(source.operation === "unknown" ? ["unknown-operation"] : []),
-    ...(source.tables.length === 0 ? ["table-not-resolved"] : []),
+    ...(tableResolution === "unresolved" ? ["table-not-resolved"] : []),
     ...(source.source === "provider" && source.statementId === undefined ? ["provider-method-not-resolved"] : []),
     ...(source.source === "base-mapper" && !source.generatedContract ? ["generated-contract-not-reviewable"] : [])
   ];
-  return { sourceId: source.id, source: source.source, operation: source.operation, dynamic: source.dynamic, dynamicTags: source.ownershipEvidence?.dynamicTags ?? [], branchCases: source.ownershipEvidence?.branchCases ?? [], tables: source.tables, contexts: source.contextSignals.filter((value: string) => value === "tenant" || value === "datasource"), transactional: source.transactional, missingContracts, unresolvedReasons: [...new Set(unresolvedReasons)].sort() as string[], reviewStatus: unresolvedReasons.length === 0 ? "reviewable" : "replay-contract-required", generatedContract: source.generatedContract };
+  return { sourceId: source.id, source: source.source, operation: source.operation, dynamic: source.dynamic, dynamicTags: source.ownershipEvidence?.dynamicTags ?? [], branchCases: source.ownershipEvidence?.branchCases ?? [], tableExpansionCases: source.ownershipEvidence?.tableExpansionCases ?? [], statementExpansionCases: source.ownershipEvidence?.statementExpansionCases ?? [], tableResolution, tables: source.tables, contexts: source.contextSignals.filter((value: string) => value === "tenant" || value === "datasource"), transactional: source.transactional, missingContracts, unresolvedReasons: [...new Set(unresolvedReasons)].sort() as string[], reviewStatus: unresolvedReasons.length === 0 ? "reviewable" : "replay-contract-required", generatedContract: source.generatedContract };
 }
 
-function dynamicSqlNeedsReplayContract(source: JavaSqlSourceInfo): boolean { return source.dynamic && (source.operation === "unknown" || source.tables.length === 0 || (source.ownershipEvidence?.missingContracts.length ?? 0) > 0); }
+function dynamicSqlNeedsReplayContract(source: JavaSqlSourceInfo): boolean { return source.dynamic && (source.operation === "unknown" || sqlTableResolution(source) === "unresolved" || (source.ownershipEvidence?.missingContracts.length ?? 0) > 0); }
+
+function sqlTableResolution(source: JavaSqlSourceInfo): RepositorySqlContractRecord["tableResolution"] { if (source.tables.length > 0) return "resolved"; if ((source.ownershipEvidence?.statementExpansionCases.length ?? 0) > 0) return "statement-expansion"; if (/\bselect\s+(?:(?:last_insert_id|database|current_schema|current_database|version)\s*\(|@@)/i.test(source.statement ?? "")) return "tableless"; return "unresolved"; }
 
 function createSqlMetrics(records: RepositorySqlContractRecord[]): RepositorySqlMetrics {
-  return { records: records.length, reviewableRecords: records.filter((record) => record.reviewStatus === "reviewable").length, replayContractRequiredRecords: records.filter((record) => record.reviewStatus === "replay-contract-required").length, sourceKinds: count(records.map((record) => record.source)), operations: count(records.map((record) => record.operation)), dynamicTags: count(records.flatMap((record) => record.dynamicTags)), branchCases: count(records.flatMap((record) => record.branchCases)), tables: count(records.flatMap((record) => record.tables)), contexts: count(records.flatMap((record) => record.contexts)), transactionParticipation: count(records.map((record) => record.transactional ? "transactional" : "not-transactional")), unresolvedReasons: count(records.flatMap((record) => record.unresolvedReasons)) };
+  return { records: records.length, reviewableRecords: records.filter((record) => record.reviewStatus === "reviewable").length, replayContractRequiredRecords: records.filter((record) => record.reviewStatus === "replay-contract-required").length, sourceKinds: count(records.map((record) => record.source)), operations: count(records.map((record) => record.operation)), dynamicTags: count(records.flatMap((record) => record.dynamicTags)), branchCases: count(records.flatMap((record) => record.branchCases)), tableExpansionCases: count(records.flatMap((record) => record.tableExpansionCases)), statementExpansionCases: count(records.flatMap((record) => record.statementExpansionCases)), tableResolution: count(records.map((record) => record.tableResolution)), tables: count(records.flatMap((record) => record.tables)), contexts: count(records.flatMap((record) => record.contexts)), transactionParticipation: count(records.map((record) => record.transactional ? "transactional" : "not-transactional")), unresolvedReasons: count(records.flatMap((record) => record.unresolvedReasons)) };
 }
 
 function renderMetricGroup(title: string, values: Record<string, number>): string[] { return ["", `### ${title}`, "", ...(Object.keys(values).length > 0 ? renderCounts(values) : ["- none: 0"])]; }

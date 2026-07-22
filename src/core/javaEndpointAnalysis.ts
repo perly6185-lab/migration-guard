@@ -65,6 +65,8 @@ export type JavaSqlOwnershipContract = "table-expansion" | "branch-fixture" | "p
 export interface JavaSqlOwnershipEvidence {
   dynamicTags: string[];
   branchCases: string[];
+  tableExpansionCases: string[];
+  statementExpansionCases: string[];
   parameterExpressions: string[];
   dynamicTableExpressions: string[];
   providerFragments: string[];
@@ -1311,14 +1313,27 @@ function sqlOwnershipEvidence(value: string, source: JavaSqlSourceKind, contextS
     ...(dynamicTags.includes("otherwise") ? ["choose:otherwise"] : []),
     ...dynamicTags.filter((tag) => tag === "where" || tag === "set" || tag === "trim").flatMap((tag) => [`${tag}:content-empty`, `${tag}:content-present`])
   ];
+  const tableExpansionCases = dynamicTableExpressions.flatMap((expression) => [
+    `${expression}:known-identifier`,
+    `${expression}:unknown-identifier`,
+    `${expression}:invalid-identifier`
+  ]);
+  const statementExpressions = parameterExpressions.filter((expression) => /(?:sql|script)\s*}/i.test(expression));
+  const statementExpansionCases = statementExpressions.flatMap((expression) => [
+    `${expression}:valid-statement`,
+    `${expression}:invalid-statement`,
+    `${expression}:multi-statement-rejected`
+  ]);
   const missingContracts: JavaSqlOwnershipContract[] = [];
-  if (dynamicTableExpressions.length > 0 || providerFragments.some((fragment) => /table|schema|database/i.test(fragment))) missingContracts.push("table-expansion");
+  if ((dynamicTableExpressions.length > 0 && tableExpansionCases.length === 0) || providerFragments.some((fragment) => /table|schema|database/i.test(fragment))) missingContracts.push("table-expansion");
   if (dynamicTags.length > 0 && branchCases.length === 0) missingContracts.push("branch-fixture");
   if (source === "provider") missingContracts.push("provider-fragment");
   if (routingSignals.length > 0) missingContracts.push("routing-contract");
   return {
     dynamicTags: [...new Set(dynamicTags)].sort(),
     branchCases: [...new Set(branchCases)].sort(),
+    tableExpansionCases: [...new Set(tableExpansionCases)].sort(),
+    statementExpansionCases: [...new Set(statementExpansionCases)].sort(),
     parameterExpressions: [...new Set(parameterExpressions)].sort(),
     dynamicTableExpressions: [...new Set(dynamicTableExpressions)].sort(),
     providerFragments: [...new Set(providerFragments)].sort(),

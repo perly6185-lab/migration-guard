@@ -86,3 +86,33 @@ test("BaseMapper inherited overloads remain SQL boundaries instead of unresolved
     assert.equal(report.methods.find((item) => item.method === "restoreDeletedByIds")?.implementation, "sql-source");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("dynamic table and statement expansions synthesize replay cases while tableless SQL stays reviewable", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-sql-expansion-"));
+  try {
+    const mapper = path.join(dir, "demo", "mapper", "DynamicMapper.java");
+    await mkdir(path.dirname(mapper), { recursive: true });
+    await writeFile(mapper, [
+      "package demo.mapper;", "@Mapper", "public interface DynamicMapper {",
+      " Object selectBySql(String sql);",
+      " Long lastInsertId();",
+      " Object selectDynamicTable(String tableName);", "}"
+    ].join("\n"));
+    const xml = path.join(dir, "resources", "DynamicMapper.xml");
+    await mkdir(path.dirname(xml), { recursive: true });
+    await writeFile(xml, ["<mapper namespace=\"demo.mapper.DynamicMapper\">", "<select id=\"selectBySql\">${sql}</select>", "<select id=\"lastInsertId\">select last_insert_id()</select>", "<select id=\"selectDynamicTable\">select * from ${tableName}</select>", "</mapper>"].join("\n"));
+    const report = await assessJavaRepositoriesForRust({ root: dir, maxDepth: 4, maxEdges: 100 });
+    assert.deepEqual(report.methods.map((item) => item.method).sort(), ["lastInsertId", "selectBySql", "selectDynamicTable"]);
+    const statement = report.methods.find((item) => item.method === "selectBySql")!;
+    const tableless = report.methods.find((item) => item.method === "lastInsertId")!;
+    const table = report.methods.find((item) => item.method === "selectDynamicTable")!;
+    assert.equal(statement.sqlContracts[0].tableResolution, "statement-expansion");
+    assert.deepEqual(statement.sqlContracts[0].statementExpansionCases, ["${sql}:invalid-statement", "${sql}:multi-statement-rejected", "${sql}:valid-statement"]);
+    assert.equal(tableless.sqlContracts[0].tableResolution, "tableless");
+    assert.equal(table.sqlContracts[0].tableResolution, "resolved");
+    assert.deepEqual(table.sqlContracts[0].tableExpansionCases, ["${tableName}:invalid-identifier", "${tableName}:known-identifier", "${tableName}:unknown-identifier"]);
+    assert.equal(report.summary.findings["RP-SQL-DYNAMIC-SOURCE"] ?? 0, 0);
+    assert.equal(report.summary.findings["RP-SQL-TABLE-UNRESOLVED"] ?? 0, 0);
+    assert.equal(report.summary.missingSqlContracts["table-expansion"] ?? 0, 0);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
