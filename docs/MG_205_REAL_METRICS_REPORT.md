@@ -7,8 +7,8 @@
 - Project: `zboss-module-data`
 - Source: `8a68de49679502a52232798a3c1f6acba01b7789+dirty:5641e05dcd43`
 - Shared initial graph budget: depth 12, edges 500, tests excluded
-- Aggregate report hash: `261bbfafacca9874d9898d71769caadbd184cf102df98defdb8206589efee9f7`
-- Cross-layer evidence hash: `941b1717d000a94c207715ac54f52577ad37f0810ebb30b2bdef89ae1d7f886a`
+- Aggregate report hash: `6fdfbe30c36c94dc132dbe273b409fc6cf4bfaa714429841806530bed956ed1a`
+- Cross-layer evidence hash: `5f2fb54e532a9dd9d76f3c7059492a06d8aa7d946530df8b2e9cfe6718d88545`
 
 `metrics-report` rejects reports whose source identity or shared initial graph budget differs. Service and Repository may use explicitly recorded adaptive expansion budgets after the shared initial budget.
 
@@ -16,17 +16,19 @@
 
 | Layer | Total | Ready | Blocked | Ready rate |
 | --- | ---: | ---: | ---: | ---: |
-| Controller | 1856 | 1209 | 647 | 65.1% |
-| Service | 5506 | 4184 | 1322 | 76.0% |
-| Repository | 4067 | 3819 | 248 | 93.9% |
+| Controller | 1856 | 1189 | 667 | 64.1% |
+| Service | 5506 | 4256 | 1250 | 77.3% |
+| Repository | 4067 | 4057 | 10 | 99.8% |
 
-Repository evidence now contains 1543 SQL-backed methods (37.9% coverage), 5 generated boundaries, 6 unknown operations, 221 unresolved-edge findings, and no dynamic SQL blockers. The regression gate passes against the checked-in baseline, reducing dynamic SQL blockers by 107 to zero.
+Repository evidence now contains 2291 SQL-backed methods (56.3% coverage), 5 generated boundaries, 6 unknown operations, no unresolved-edge findings, no ambiguous-call findings, and no dynamic SQL blockers. The regression gate passes against the checked-in baseline, reducing unresolved-edge findings by 1196 and dynamic SQL blockers by 107 to zero.
 
 Dynamic MyBatis ownership evidence now synthesizes deterministic replay cases for `<if>`/`<when>` true and false branches, `<foreach>` empty/single/multiple cardinalities, `<choose>` fallback, and empty/present `<where>`/`<set>`/`<trim>` content. The SQL contract report aggregates these branch cases. `RP-SQL-DYNAMIC-SOURCE` now identifies only dynamic sources that still lack replay evidence; `RP-SQL-TABLE-UNRESOLVED` separately identifies dynamic sources whose table cannot be resolved.
 
 Dynamic table placeholders now synthesize known, unknown, and invalid identifier replay cases. Whole-statement `${sql}` and `${...Script}` inputs synthesize valid, invalid, and rejected multi-statement cases. SQL that is intrinsically tableless, such as `LAST_INSERT_ID()` and `DATABASE()`, is classified separately. This clears all 69 method-level table-expansion contracts and all 35 table-unresolved methods without treating raw SQL as a statically resolved table.
 
-Tenant routing now synthesizes active, missing-context, and mismatch cases. Datasource routing synthesizes default, selected, and unavailable cases. This clears all 145 method-level routing contracts and the final 17 dynamic SQL blockers; all 1729 SQL records now have reviewable static replay contracts.
+Tenant routing now synthesizes active, missing-context, and mismatch cases. Datasource routing synthesizes default, selected, and unavailable cases. This clears all 145 method-level routing contracts and the final 17 dynamic SQL blockers; all 2501 discovered SQL records now have reviewable static replay contracts.
+
+BaseMapper ownership now includes inherited `insertBatch`, `updateBatch`, `deleteByIds`, `selectByIds`, and convention-backed `selectListBy*` operations. Generic parameter declarations are preserved for overload inference; `forEach` lambdas and Map/Collection method references infer their element arguments; generated BaseMapper return entities and same-class method return types participate in overload scoring. Repository unresolved-edge findings decreased from 221 to zero and ambiguous-call findings from 31 to zero. Five abstract mapper declarations without SQL evidence remain explicit generated boundaries and block their five repository callers.
 
 External static imports whose declaring type is outside the source model are now explicit external boundaries. Constructor expressions are excluded from bare method-call extraction, including under wildcard static imports. This reduced Controller unresolved routes from 1739 to 434 without suppressing ambiguous candidates; ambiguous routes changed from 675 to 680 as deeper valid traversal exposed additional real candidates.
 
@@ -38,7 +40,7 @@ Unclassified nodes now use narrow semantic rules for JSON/Gson serialization, cl
 
 Overload argument inference now uses local and foreach declarations, primitive declarations, explicit casts, `List<T>.get()`, source-declared method return types, and Lombok getter field types. Controller ambiguous routes decreased from 346 to 132 and Service ambiguous findings from 802 to 453. Deeper valid traversal exposed additional downstream dynamic SQL, unresolved calls, and graph-cap findings; those remain fail-closed.
 
-Cross-layer lineage covers 1856 routes. Of these, 1555 reach SQL and 1553 (83.7%) have a complete Controller -> Service -> Repository -> SQL chain.
+Cross-layer lineage covers 1856 routes. Of these, 1553 reach SQL and 1551 (83.6%) have a complete Controller -> Service -> Repository -> SQL chain.
 
 ## Interpretation and next work
 
@@ -48,7 +50,7 @@ Next work is ordered by evidence impact:
 
 1. Reduce Controller unresolved edges and ambiguous calls, especially high-fan-out routes hitting the 500-edge cap.
 2. Reduce Service unclassified boundaries and the 96 adaptive-expansion budget exhaustions.
-3. Reduce the remaining 221 Repository unresolved-edge findings and 31 ambiguous-call findings.
+3. Supply SQL or generated-contract evidence for the five remaining abstract mapper declarations and their five repository callers.
 4. Update the checked-in real-project baseline only after the dirty source fingerprint and reports are reviewed.
 
 Assessment readiness measures static evidence coverage. It does not prove Rust implementation, runtime replay, performance parity, or source-off readiness.

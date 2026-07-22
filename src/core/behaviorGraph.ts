@@ -60,6 +60,7 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
     ...(missingSqlContracts.has("provider-fragment") ? ["RP-SQL-MISSING-PROVIDER-FRAGMENT"] : []),
     ...(missingSqlContracts.has("routing-contract") ? ["RP-SQL-MISSING-ROUTING-CONTRACT"] : []),
     ...(sqlSources.some((source) => source.source === "base-mapper" && !source.generatedContract) ? ["RP-SQL-BASE-MAPPER-GENERATED"] : []),
+    ...(report.callGraph.nodes.some((node) => node.role === "mapper" && node.signature?.includes("[abstract-declaration]") && !sqlSources.some((source) => source.ownerClassName === node.className && source.ownerMethodName === node.methodName)) ? ["RP-REPOSITORY-GENERATED-IMPLEMENTATION"] : []),
     ...(sqlSources.some((source) => source.source === "provider") ? ["RP-SQL-PROVIDER-SOURCE"] : [])
   ];
   const workload = inferWorkload(report, nodes);
