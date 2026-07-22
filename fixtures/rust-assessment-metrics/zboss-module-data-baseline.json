@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "kind": "migration-guard.repository-metrics",
+  "capturedAt": "2026-07-21T00:00:00.000Z",
+  "project": "zboss-module-data",
+  "sourceRevision": "baseline-documented-2026-07-21",
+  "assessmentReportHash": "b2faf638c6bcfe534cbc5a59bd61dcbfb75a231f8f8811ed9682da1d55918a8b",
+  "metrics": {
+    "generatedBoundaries": 21,
+    "unknownOperations": 32,
+    "unresolvedEdgeFindings": 1196,
+    "dynamicSqlBlockers": 107
+  },
+  "snapshotHash": "f39dbef2866874bc6504a961aad18e5bc3c90b7062a5bc9b0215207d4bca0890"
+}

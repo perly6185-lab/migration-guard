@@ -197,8 +197,9 @@ import { runEndpointRuntimeDriver, type EndpointRuntimeDriverConfig } from "./co
 import type { EndpointReplacementEvidence, EndpointReplacementPlan, ReplacementScenario } from "./core/endpointReplacementModel.js";
 import { assessJavaControllersForRust, renderControllerRustAssessment } from "./core/controllerRustAssessment.js";
 import { assessJavaServicesForRust, renderServiceRustAssessment } from "./core/serviceRustAssessment.js";
-import { assessJavaRepositoriesForRust, renderRepositoryRustAssessment } from "./core/repositoryRustAssessment.js";
+import { assessJavaRepositoriesForRust, renderRepositoryRustAssessment, type RepositoryRustAssessmentReport } from "./core/repositoryRustAssessment.js";
 import { assessCrossLayerEvidenceLineage, renderCrossLayerEvidenceLineage } from "./core/crossLayerEvidenceLineage.js";
+import { createRepositoryMetricsSnapshot, evaluateMetricsRegressionGate, renderMetricsRegressionGate, type MetricsRegressionExplanation, type RepositoryMetricsSnapshot } from "./core/rustAssessmentMetricsGate.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -253,6 +254,24 @@ async function main(argv: string[]): Promise<void> {
 
 async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
   const action = args.positionals[0] ?? "analyze";
+  if (action === "metrics-snapshot") {
+    const assessment = await readJsonFile<RepositoryRustAssessmentReport>(path.resolve(requiredStringOption(args, "assessment", "java-endpoint metrics-snapshot")));
+    const snapshot = createRepositoryMetricsSnapshot(assessment, { project: stringOption(args, "project"), sourceRevision: stringOption(args, "source-revision") });
+    console.log(JSON.stringify(snapshot, null, 2));
+    return;
+  }
+  if (action === "metrics-gate") {
+    const baseline = await readJsonFile<RepositoryMetricsSnapshot>(path.resolve(requiredStringOption(args, "baseline", "java-endpoint metrics-gate")));
+    const current = await readJsonFile<RepositoryMetricsSnapshot>(path.resolve(requiredStringOption(args, "current", "java-endpoint metrics-gate")));
+    const explanationsPath = stringOption(args, "explanations");
+    const explanationValue = explanationsPath ? await readJsonFile<MetricsRegressionExplanation[] | { explanations: MetricsRegressionExplanation[] }>(path.resolve(explanationsPath)) : [];
+    const explanations = Array.isArray(explanationValue) ? explanationValue : explanationValue.explanations;
+    const report = evaluateMetricsRegressionGate(baseline, current, explanations);
+    if (args.options.apply) await writeFullReplacementArtifact("rust-assessment-metrics-gate", report, path.resolve(stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderMetricsRegressionGate(report));
+    console.log(args.options.json || !args.options.apply ? JSON.stringify(report, null, 2) : renderMetricsRegressionGate(report));
+    if (report.status === "blocked") process.exitCode = 1;
+    return;
+  }
   if (action === "assess-lineage") {
     const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
     const report = await assessCrossLayerEvidenceLineage({ root, maxDepth: numberOption(args, "max-depth"), maxEdges: numberOption(args, "max-edges"), limit: numberOption(args, "limit"), includeTests: Boolean(args.options["include-tests"]) });
@@ -2614,6 +2633,8 @@ Usage:
   migration-guard java-endpoint assess-services --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-repositories --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-lineage --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard java-endpoint metrics-snapshot --assessment <repository-assessment.json> [--project <name>] [--source-revision <sha>]
+  migration-guard java-endpoint metrics-gate --baseline <metrics.json> --current <metrics.json> [--explanations <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement closure --java-analysis <json> --rust-root <path> [--evidence <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement plan --java-analysis <json> [--ownership <json>] [--ownership-policy <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement endpoint-driver --config <driver.json> --scenario <scenario.json> [--fault <id>] [--apply] [--artifacts-dir <path>] [--json]
