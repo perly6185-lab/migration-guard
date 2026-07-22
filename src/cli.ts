@@ -200,6 +200,10 @@ import { assessJavaServicesForRust, renderServiceRustAssessment } from "./core/s
 import { assessJavaRepositoriesForRust, renderRepositoryRustAssessment, type RepositoryRustAssessmentReport } from "./core/repositoryRustAssessment.js";
 import { assessCrossLayerEvidenceLineage, renderCrossLayerEvidenceLineage } from "./core/crossLayerEvidenceLineage.js";
 import { createRepositoryMetricsSnapshot, evaluateMetricsRegressionGate, renderMetricsRegressionGate, type MetricsRegressionExplanation, type RepositoryMetricsSnapshot } from "./core/rustAssessmentMetricsGate.js";
+import { createRustAssessmentMetricsReport, renderRustAssessmentMetricsReport } from "./core/rustAssessmentMetricsReport.js";
+import type { ControllerRustAssessmentReport } from "./core/controllerRustAssessment.js";
+import type { ServiceRustAssessmentReport } from "./core/serviceRustAssessment.js";
+import type { CrossLayerEvidenceLineageReport } from "./core/crossLayerEvidenceLineage.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -272,6 +276,16 @@ async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
     if (args.options.apply) await writeFullReplacementArtifact("rust-assessment-metrics-gate", report, path.resolve(stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderMetricsRegressionGate(report));
     console.log(args.options.json || !args.options.apply ? JSON.stringify(report, null, 2) : renderMetricsRegressionGate(report));
     if (report.status === "blocked") process.exitCode = 1;
+    return;
+  }
+  if (action === "metrics-report") {
+    const controller = await readJsonFile<ControllerRustAssessmentReport>(path.resolve(requiredStringOption(args, "controller", "java-endpoint metrics-report")));
+    const service = await readJsonFile<ServiceRustAssessmentReport>(path.resolve(requiredStringOption(args, "service", "java-endpoint metrics-report")));
+    const repository = await readJsonFile<RepositoryRustAssessmentReport>(path.resolve(requiredStringOption(args, "repository", "java-endpoint metrics-report")));
+    const lineage = await readJsonFile<CrossLayerEvidenceLineageReport>(path.resolve(requiredStringOption(args, "lineage", "java-endpoint metrics-report")));
+    const report = createRustAssessmentMetricsReport({ controller, service, repository, lineage });
+    if (args.options.apply) await writeFullReplacementArtifact("rust-assessment-metrics", report, path.resolve(stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderRustAssessmentMetricsReport(report));
+    console.log(args.options.json || !args.options.apply ? JSON.stringify(report, null, 2) : renderRustAssessmentMetricsReport(report));
     return;
   }
   if (action === "assess-lineage") {
@@ -2635,6 +2649,7 @@ Usage:
   migration-guard java-endpoint assess-services --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-repositories --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-lineage --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard java-endpoint metrics-report --controller <report.json> --service <report.json> --repository <report.json> --lineage <report.json> [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint metrics-snapshot --assessment <repository-assessment.json> [--project <name>] [--source-revision <sha>] [--apply] [--output <path>]
   migration-guard java-endpoint metrics-gate --baseline <metrics.json> --current <metrics.json> [--explanations <json>] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard full-replacement closure --java-analysis <json> --rust-root <path> [--evidence <json>] [--apply] [--artifacts-dir <path>] [--json]
