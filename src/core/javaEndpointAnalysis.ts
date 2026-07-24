@@ -20,6 +20,7 @@ export interface JavaEndpointAnalyzer {
   serviceMethods: JavaServiceMethodCandidate[];
   repositoryMethods: JavaRepositoryMethodCandidate[];
   analyze(options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">): JavaEndpointAnalysisReport;
+  analyzeAdaptive(options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests"> & AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
   analyzeServiceMethod(candidate: JavaServiceMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
   analyzeServiceMethodAdaptive(candidate: JavaServiceMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
   analyzeRepositoryMethod(candidate: JavaRepositoryMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
@@ -405,11 +406,23 @@ export async function createJavaEndpointAnalyzer(rootValue: string, includeTests
     serviceMethods,
     repositoryMethods,
     analyze: (options) => analyzeJavaEndpointModel(project, routes, options),
+    analyzeAdaptive: (options) => analyzeJavaEndpointAdaptive(project, routes, options),
     analyzeServiceMethod: (candidate, options = {}) => analyzeJavaServiceMethodModel(project, routes, candidate, options),
     analyzeServiceMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "service", options),
     analyzeRepositoryMethod: (candidate, options = {}) => analyzeJavaMethodModel(project, routes, candidate, "repository", options),
     analyzeRepositoryMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "repository", options)
   };
+}
+
+function analyzeJavaEndpointAdaptive(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests"> & AdaptiveJavaAnalysisOptions
+): AdaptiveJavaAnalysisResult {
+  return analyzeJavaAdaptive(
+    (maxDepth, maxEdges) => analyzeJavaEndpointModel(project, routes, { endpoint: options.endpoint, method: options.method, maxDepth, maxEdges }),
+    options
+  );
 }
 
 function analyzeJavaServiceMethodAdaptive(
@@ -428,13 +441,23 @@ function analyzeJavaMethodAdaptive(
   entryKind: "service" | "repository",
   options: AdaptiveJavaAnalysisOptions
 ): AdaptiveJavaAnalysisResult {
+  return analyzeJavaAdaptive(
+    (maxDepth, maxEdges) => analyzeJavaMethodModel(project, routes, candidate, entryKind, { maxDepth, maxEdges }),
+    options
+  );
+}
+
+function analyzeJavaAdaptive(
+  analyze: (maxDepth: number, maxEdges: number) => JavaEndpointAnalysisReport,
+  options: AdaptiveJavaAnalysisOptions
+): AdaptiveJavaAnalysisResult {
   let depth = positiveInteger(options.initialDepth, DEFAULT_MAX_DEPTH);
   let edges = positiveInteger(options.initialEdges, DEFAULT_MAX_TOTAL_EDGES);
   const maxDepth = positiveInteger(options.maxDepth, Math.max(depth, 16));
   const maxEdges = positiveInteger(options.maxEdges, Math.max(edges, 5000));
   const maxRounds = positiveInteger(options.maxRounds, 4);
   const rounds: AdaptiveJavaAnalysisResult["rounds"] = [];
-  let report = analyzeJavaMethodModel(project, routes, candidate, entryKind, { maxDepth: depth, maxEdges: edges });
+  let report = analyze(depth, edges);
   for (let round = 1; round <= maxRounds; round += 1) {
     const truncation = report.callGraph.truncation;
     const complete = !truncation.edgeCapHit && !truncation.depthCapHit && !truncation.perMethodCallCapHit && truncation.unexpandedBoundaryNodes.length === 0;
@@ -451,7 +474,7 @@ function analyzeJavaMethodAdaptive(
     if (nextDepth === depth && nextEdges === edges) break;
     depth = nextDepth;
     edges = nextEdges;
-    report = analyzeJavaMethodModel(project, routes, candidate, entryKind, { maxDepth: depth, maxEdges: edges });
+    report = analyze(depth, edges);
   }
   return { report, status: "budget-exhausted", topology: classifyExpansionTopology(report), rounds };
 }

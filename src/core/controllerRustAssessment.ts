@@ -1,6 +1,6 @@
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
-import { createJavaEndpointAnalyzer, type JavaEndpointHttpMethod } from "./javaEndpointAnalysis.js";
+import { createJavaEndpointAnalyzer, type AdaptiveExpansionTopology, type JavaEndpointHttpMethod } from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
 import type { EndpointWorkloadKind } from "./endpointReplacementModel.js";
 import { captureAssessmentSourceIdentity, type AssessmentSourceIdentity } from "./assessmentSourceIdentity.js";
@@ -11,6 +11,10 @@ export interface ControllerRustAssessmentOptions {
   maxEdges?: number;
   limit?: number;
   includeTests?: boolean;
+  adaptive?: boolean;
+  maxExpansionDepth?: number;
+  maxExpansionEdges?: number;
+  maxExpansionRounds?: number;
 }
 
 export interface ControllerMethodAssessment {
@@ -26,6 +30,9 @@ export interface ControllerMethodAssessment {
   externalBoundaries: number;
   unknownNodes: number;
   findings: string[];
+  expansionStatus?: "complete" | "budget-exhausted";
+  expansionTopology?: AdaptiveExpansionTopology;
+  expansionRounds?: number;
 }
 
 export interface ControllerRustAssessmentReport {
@@ -43,6 +50,9 @@ export interface ControllerRustAssessmentReport {
     withUnknownNodes: number;
     workloads: Record<string, number>;
     findings: Record<string, number>;
+    adaptivelyExpanded: number;
+    expansionBudgetExhausted: number;
+    expansionTopologies: Record<string, number>;
   };
   methods: ControllerMethodAssessment[];
   reportHash: string;
@@ -53,7 +63,16 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
   const sourceIdentity = await captureAssessmentSourceIdentity(analyzer.root);
   const routes = analyzer.routes.slice(0, positiveLimit(options.limit, analyzer.routes.length));
   const methods = routes.map((route): ControllerMethodAssessment => {
-    const source = analyzer.analyze({ endpoint: route.path, method: route.method, maxDepth: options.maxDepth, maxEdges: options.maxEdges });
+    const expansion = options.adaptive ? analyzer.analyzeAdaptive({
+      endpoint: route.path,
+      method: route.method,
+      initialDepth: options.maxDepth,
+      initialEdges: options.maxEdges,
+      maxDepth: options.maxExpansionDepth,
+      maxEdges: options.maxExpansionEdges,
+      maxRounds: options.maxExpansionRounds
+    }) : undefined;
+    const source = expansion?.report ?? analyzer.analyze({ endpoint: route.path, method: route.method, maxDepth: options.maxDepth, maxEdges: options.maxEdges });
     const { graph, plan } = createEndpointReplacementPlanFromJava(source);
     return {
       method: route.method,
@@ -67,7 +86,10 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       edges: graph.edges.length,
       externalBoundaries: graph.nodes.filter((node) => node.id.startsWith("external:")).length,
       unknownNodes: graph.nodes.filter((node) => node.kind === "unknown").length,
-      findings: plan.findings
+      findings: [...plan.findings, ...(expansion?.status === "budget-exhausted" ? ["RP-GRAPH-EXPANSION-BUDGET-EXHAUSTED"] : [])],
+      expansionStatus: expansion?.status,
+      expansionTopology: expansion?.topology,
+      expansionRounds: expansion?.rounds.length
     };
   });
   const base = {
@@ -84,7 +106,10 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       truncated: methods.filter((item) => item.findings.some((finding) => /GRAPH-(EDGE|DEPTH|UNEXPANDED)/.test(finding))).length,
       withUnknownNodes: methods.filter((item) => item.unknownNodes > 0).length,
       workloads: countValues(methods.map((item) => item.workload)),
-      findings: countValues(methods.flatMap((item) => item.findings))
+      findings: countValues(methods.flatMap((item) => item.findings)),
+      adaptivelyExpanded: methods.filter((item) => (item.expansionRounds ?? 0) > 1).length,
+      expansionBudgetExhausted: methods.filter((item) => item.expansionStatus === "budget-exhausted").length,
+      expansionTopologies: countValues(methods.map((item) => item.expansionTopology).filter((item): item is AdaptiveExpansionTopology => Boolean(item)))
     },
     methods
   };
@@ -100,6 +125,8 @@ export function renderControllerRustAssessment(report: ControllerRustAssessmentR
     `- Ready: ${report.summary.ready}`,
     `- Blocked: ${report.summary.blocked}`,
     `- Report hash: ${report.reportHash}`, "",
+    "## Expansion topologies", "",
+    ...Object.entries(report.summary.expansionTopologies).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([topology, count]) => `- ${topology}: ${count}`), "",
     "## Findings", "",
     ...Object.entries(report.summary.findings).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([finding, count]) => `- ${finding}: ${count}`), ""
   ].join("\n");
