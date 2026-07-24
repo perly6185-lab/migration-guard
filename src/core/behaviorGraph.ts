@@ -53,7 +53,7 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
     ...(truncation.unexpandedBoundaryNodes.length ? ["RP-GRAPH-UNEXPANDED-NODES"] : []),
     ...(unresolvedCalls ? ["RP-GRAPH-UNRESOLVED-EDGES"] : []),
     ...(ambiguousEdges ? ["RP-GRAPH-AMBIGUOUS-CALLS"] : []),
-    ...(hasRiskyTransactionSelfInvocation(report) ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : []),
+    ...(findRiskyTransactionSelfInvocations(report).length ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : []),
     ...(sqlSources.some(dynamicSqlNeedsReplayContract) ? ["RP-SQL-DYNAMIC-SOURCE"] : []),
     ...(sqlSources.some((source) => sqlTableResolution(source) === "unresolved") ? ["RP-SQL-TABLE-UNRESOLVED"] : []),
     ...(missingSqlContracts.has("table-expansion") ? ["RP-SQL-MISSING-TABLE-EXPANSION"] : []),
@@ -94,23 +94,51 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
   return { ...base, graphHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
 }
 
-function hasRiskyTransactionSelfInvocation(report: JavaEndpointAnalysisReport): boolean {
-  const nodesById = new Map(report.callGraph.nodes.map((node) => [node.id, node]));
-  return report.callGraph.edges.some((edge) => {
-    if (edge.resolution !== "same-class" || !edge.to) return false;
-    const target = nodesById.get(edge.to);
-    if (!target?.signature?.includes("@Transactional")) return false;
-    const source = nodesById.get(edge.from);
-    return !hasPlainTransactional(source) || !hasPlainTransactional(target);
-  });
+export interface TransactionSelfInvocationEvidence {
+  edge: string;
+  source: string;
+  target: string;
+  sourceTransaction: string;
+  targetTransaction: string;
+  reason: "requires-new-boundary-bypassed" | "transaction-attributes-bypassed" | "transaction-boundary-bypassed";
 }
 
-function hasPlainTransactional(node: JavaEndpointCallGraphNode | undefined): boolean {
-  if (!node?.signature) return false;
+export function findRiskyTransactionSelfInvocations(report: JavaEndpointAnalysisReport): TransactionSelfInvocationEvidence[] {
+  const nodesById = new Map(report.callGraph.nodes.map((node) => [node.id, node]));
+  const findings: TransactionSelfInvocationEvidence[] = [];
+  for (const edge of report.callGraph.edges) {
+    if (edge.resolution !== "same-class" || !edge.to) continue;
+    const target = nodesById.get(edge.to);
+    const targetTransaction = transactionAnnotation(target);
+    if (!target || !targetTransaction) continue;
+    const source = nodesById.get(edge.from);
+    const sourceTransaction = transactionAnnotation(source);
+    if (sourceTransaction === "@Transactional" && targetTransaction === "@Transactional") continue;
+    const reason = /REQUIRES_NEW/.test(targetTransaction)
+      ? "requires-new-boundary-bypassed" as const
+      : sourceTransaction
+        ? "transaction-attributes-bypassed" as const
+        : "transaction-boundary-bypassed" as const;
+    const sourceSymbol = source ? `${source.className}.${source.methodName}` : edge.from;
+    const targetSymbol = `${target.className}.${target.methodName}`;
+    findings.push({
+      edge: `${sourceSymbol} -> ${targetSymbol}`,
+      source: sourceSymbol,
+      target: targetSymbol,
+      sourceTransaction: sourceTransaction ?? "none",
+      targetTransaction,
+      reason
+    });
+  }
+  return findings.sort((a, b) => a.edge.localeCompare(b.edge) || a.reason.localeCompare(b.reason));
+}
+
+function transactionAnnotation(node: JavaEndpointCallGraphNode | undefined): string | undefined {
+  if (!node?.signature) return undefined;
   const methodStart = node.signature.lastIndexOf(`${node.methodName}(`);
-  if (methodStart < 0) return false;
+  if (methodStart < 0) return undefined;
   const annotationPrefix = node.signature.slice(node.signature.lastIndexOf("}", methodStart) + 1, methodStart);
-  return /@Transactional\b(?!\s*\()/.test(annotationPrefix);
+  return annotationPrefix.match(/@Transactional(?:\([^)]*\))?/)?.[0].replace(/\s+/g, " ");
 }
 
 function dynamicSqlNeedsReplayContract(source: JavaSqlSourceInfo): boolean {

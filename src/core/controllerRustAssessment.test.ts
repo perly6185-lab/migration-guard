@@ -20,6 +20,24 @@ test("controller Rust assessment analyzes normalized routes and aggregates stric
     assert.equal(report.methods.find((item) => item.path === "/api/tasks/cancel")?.workload, "idempotent-command");
     assert.equal(report.methods.find((item) => item.path === "/api/tasks/cancel")?.externalBoundaries, 1);
     assert.equal(report.summary.ready + report.summary.blocked, 2);
+    assert.equal(report.summary.transactionSelfInvocationEdges, 0);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("controller assessment reports deduplicated transaction self-invocation evidence", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-transaction-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "TransactionController.java"), [
+      "package demo;", "@RestController", "public class TransactionController {",
+      " @GetMapping(\"/tx\")", " public Object run() { return outer(); }",
+      " @Transactional(rollbackFor = Exception.class)", " public Object outer() { return inner(); }",
+      " @Transactional(propagation = Propagation.REQUIRES_NEW)", " public Object inner() { return null; }", "}"
+    ].join("\n"));
+    const report = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 20 });
+    assert.equal(report.summary.transactionSelfInvocationEdges, 2);
+    assert.deepEqual(report.methods[0]?.transactionSelfInvocationReasons, ["requires-new-boundary-bypassed", "transaction-boundary-bypassed"]);
+    assert.ok(report.methods[0]?.transactionSelfInvocations.some((item) => /outer -> TransactionController\.inner/.test(item)));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

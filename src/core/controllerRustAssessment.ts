@@ -2,6 +2,7 @@ import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
 import { createJavaEndpointAnalyzer, type AdaptiveExpansionTopology, type JavaEndpointHttpMethod } from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
+import { findRiskyTransactionSelfInvocations } from "./behaviorGraph.js";
 import type { EndpointWorkloadKind } from "./endpointReplacementModel.js";
 import { captureAssessmentSourceIdentity, type AssessmentSourceIdentity } from "./assessmentSourceIdentity.js";
 
@@ -33,6 +34,8 @@ export interface ControllerMethodAssessment {
   expansionStatus?: "complete" | "budget-exhausted";
   expansionTopology?: AdaptiveExpansionTopology;
   expansionRounds?: number;
+  transactionSelfInvocations: string[];
+  transactionSelfInvocationReasons: string[];
 }
 
 export interface ControllerRustAssessmentReport {
@@ -53,6 +56,8 @@ export interface ControllerRustAssessmentReport {
     adaptivelyExpanded: number;
     expansionBudgetExhausted: number;
     expansionTopologies: Record<string, number>;
+    transactionSelfInvocationEdges: number;
+    transactionSelfInvocationReasons: Record<string, number>;
   };
   methods: ControllerMethodAssessment[];
   reportHash: string;
@@ -74,6 +79,7 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
     }) : undefined;
     const source = expansion?.report ?? analyzer.analyze({ endpoint: route.path, method: route.method, maxDepth: options.maxDepth, maxEdges: options.maxEdges });
     const { graph, plan } = createEndpointReplacementPlanFromJava(source);
+    const transactionSelfInvocations = findRiskyTransactionSelfInvocations(source);
     return {
       method: route.method,
       path: route.path,
@@ -89,7 +95,9 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       findings: [...plan.findings, ...(expansion?.status === "budget-exhausted" ? ["RP-GRAPH-EXPANSION-BUDGET-EXHAUSTED"] : [])],
       expansionStatus: expansion?.status,
       expansionTopology: expansion?.topology,
-      expansionRounds: expansion?.rounds.length
+      expansionRounds: expansion?.rounds.length,
+      transactionSelfInvocations: [...new Set(transactionSelfInvocations.map((item) => `${item.edge} [${item.sourceTransaction} -> ${item.targetTransaction}]`))],
+      transactionSelfInvocationReasons: [...new Set(transactionSelfInvocations.map((item) => item.reason))].sort()
     };
   });
   const base = {
@@ -109,7 +117,9 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       findings: countValues(methods.flatMap((item) => item.findings)),
       adaptivelyExpanded: methods.filter((item) => (item.expansionRounds ?? 0) > 1).length,
       expansionBudgetExhausted: methods.filter((item) => item.expansionStatus === "budget-exhausted").length,
-      expansionTopologies: countValues(methods.map((item) => item.expansionTopology).filter((item): item is AdaptiveExpansionTopology => Boolean(item)))
+      expansionTopologies: countValues(methods.map((item) => item.expansionTopology).filter((item): item is AdaptiveExpansionTopology => Boolean(item))),
+      transactionSelfInvocationEdges: new Set(methods.flatMap((item) => item.transactionSelfInvocations)).size,
+      transactionSelfInvocationReasons: countValues(methods.flatMap((item) => item.transactionSelfInvocationReasons))
     },
     methods
   };
@@ -127,6 +137,9 @@ export function renderControllerRustAssessment(report: ControllerRustAssessmentR
     `- Report hash: ${report.reportHash}`, "",
     "## Expansion topologies", "",
     ...Object.entries(report.summary.expansionTopologies).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([topology, count]) => `- ${topology}: ${count}`), "",
+    "## Transaction self-invocation evidence", "",
+    `- Unique route-edge evidence: ${report.summary.transactionSelfInvocationEdges}`,
+    ...Object.entries(report.summary.transactionSelfInvocationReasons).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([reason, count]) => `- ${reason}: ${count}`), "",
     "## Findings", "",
     ...Object.entries(report.summary.findings).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([finding, count]) => `- ${finding}: ${count}`), ""
   ].join("\n");
