@@ -219,6 +219,8 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("hit.compiledJson")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("hit.expired")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("out.putBackground")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("preloaded.billConfigsByFieldId")?.defaultOwnership, "reviewed-exclusion");
+  assert.equal(classifyJavaSemantic("StringUtils.hasText")?.defaultOwnership, "reviewed-exclusion");
   assert.equal(classifyJavaSemantic("AiCustomAbilityReqDTO.FieldItem")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("FieldRelationGraphRespVO.CanvasConfig")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("crj.joins")?.kind, "calculation");
