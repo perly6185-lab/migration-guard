@@ -129,6 +129,18 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("ctx.currentRow")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("ViewDynamicFieldDataServiceImpl.handleUnionConditionData")?.kind, "state-write");
   assert.equal(classifyJavaSemantic("ViewDynamicQuickBizDataServiceImpl.refFieldQuick")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("ViewDynamicQuickBizDataServiceImpl.refRelateFieldQuick")?.kind, "state-read");
+  assert.equal(classifyJavaSemantic("ViewDynamicFieldDataServiceImpl.handleAllFieldSort")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("AutomationTriggerSuppressor.suppress")?.kind, "coordination");
+  assert.equal(classifyJavaSemantic("AutomationTriggerSuppressor.isSuppressed")?.kind, "coordination");
+  assert.equal(classifyJavaSemantic("ColorAttributeDefaultFilter.stripDefaultColors")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ViewMetaPageRefValueSyncExecutor.quoteSqlIdentifier")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ViewDynamicLayoutEngineServiceImpl.reverseDirection")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("SqlFieldExtractor.extractFieldFromAggregateFunction")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("delta.abs")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("threshold.negate")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("endDate.before")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("dateTime.hour")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("AiEmpowerRefreshTaskServiceImpl.touchHeartbeat")?.kind, "state-write");
   assert.equal(classifyJavaSemantic("OcrACL.recognizeInvoice")?.kind, "external-call");
   assert.equal(classifyJavaSemantic("NlsSpeechACL.tts")?.kind, "external-call");
@@ -193,7 +205,6 @@ test("remaining callback, dynamic refresh, and execution ports stay fail-closed"
   for (const symbol of [
     "phaseObserver.accept",
     "rowHandler.accept",
-    "AutomationTriggerSuppressor.suppress",
     "DynamicDataSyncBizServiceImpl.refreshData",
     "ViewDynamicUseGroupDataBizServiceImpl.refreshData",
     "viewLayoutActivateExecutionPort.activate",
