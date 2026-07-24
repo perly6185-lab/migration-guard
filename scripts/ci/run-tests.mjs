@@ -16,7 +16,10 @@ const layerCounts = testFiles.reduce((counts, file) => {
   return counts;
 }, {});
 const startedAt = performance.now();
-const child = spawn(process.execPath, ["--test", ...testFiles], { cwd: process.cwd(), windowsHide: true });
+const child = spawn(process.execPath, ["--test", "--test-reporter=tap", ...testFiles], {
+  cwd: process.cwd(),
+  windowsHide: true
+});
 let stdout = "";
 let stderr = "";
 child.stdout.on("data", (chunk) => { const text = chunk.toString(); stdout += text; process.stdout.write(text); });
