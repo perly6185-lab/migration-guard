@@ -116,6 +116,7 @@ test("controller assessment inventories and ranks shared unclassified boundaries
     assert.equal(shared?.affectedRoutes.length, 2);
     assert.equal(shared?.occurrences, 2);
     assert.equal(shared?.minDepth, 1);
+    assert.deepEqual(shared?.sourceLocations, [{ file: "demo/SharedService.java", line: 4 }]);
     assert.equal(nested?.minDepth, 2);
     assert.equal(report.unclassifiedBoundaryInventory[0]?.symbol, "SharedService.innerOpaque");
     assert.match(report.reportHash, /^[a-f0-9]{64}$/);

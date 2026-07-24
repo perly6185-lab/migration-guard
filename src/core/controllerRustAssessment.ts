@@ -53,8 +53,11 @@ export interface ControllerUnclassifiedBoundaryInventoryItem {
   symbol: string;
   file: string;
   line: number;
+  sourceLocations: Array<{ file: string; line: number }>;
   category: UnclassifiedBoundaryCategory;
   reason: string;
+  categories: UnclassifiedBoundaryCategory[];
+  reasons: string[];
   occurrences: number;
   affectedRoutes: string[];
   affectedHandlers: string[];
@@ -167,7 +170,7 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
         occurrences: methods.reduce((total, item) => total + item.unclassifiedBoundaries.length, 0),
         uniqueSymbols: unclassifiedBoundaryInventory.length,
         affectedRoutes: methods.filter((item) => item.unclassifiedBoundaries.length > 0).length,
-        categories: countValues(unclassifiedBoundaryInventory.map((item) => item.category)),
+        categories: countValues(unclassifiedBoundaryInventory.flatMap((item) => item.categories)),
         depths: countValues(methods.flatMap((item) => item.unclassifiedBoundaries).map((item) => item.depth === null ? "unreachable" : String(item.depth)))
       }
     },
@@ -199,7 +202,7 @@ export function renderControllerRustAssessment(report: ControllerRustAssessmentR
     `- Depth distribution: ${JSON.stringify(report.summary.unclassifiedBoundaryInventory.depths)}`, "",
     "| Symbol | Category | Routes | Occurrences | Depth | Evidence |",
     "| --- | --- | ---: | ---: | --- | --- |",
-    ...report.unclassifiedBoundaryInventory.map((item) => `| ${escapeTable(item.symbol)} | ${item.category} | ${item.affectedRoutes.length} | ${item.occurrences} | ${formatDepthRange(item)} | ${escapeTable(`${item.file}:${item.line}`)} |`), "",
+    ...report.unclassifiedBoundaryInventory.map((item) => `| ${escapeTable(item.symbol)} | ${item.categories.join(", ")} | ${item.affectedRoutes.length} | ${item.occurrences} | ${formatDepthRange(item)} | ${escapeTable(item.sourceLocations.map((location) => `${location.file}:${location.line}`).join("<br>"))} |`), "",
     "## Findings", "",
     ...Object.entries(report.summary.findings).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([finding, count]) => `- ${finding}: ${count}`), ""
   ].join("\n");
@@ -245,14 +248,20 @@ function aggregateUnclassifiedBoundaries(methods: ControllerMethodAssessment[]):
     routes: Set<string>;
     handlers: Set<string>;
     depths: number[];
+    locations: Map<string, { file: string; line: number }>;
+    categories: Set<UnclassifiedBoundaryCategory>;
+    reasons: Set<string>;
   }>();
   for (const method of methods) {
     const route = `${method.method} ${method.path}`;
     for (const boundary of method.unclassifiedBoundaries) {
-      const key = `${boundary.symbol}\0${boundary.file}\0${boundary.line}\0${boundary.category}\0${boundary.reason}`;
+      const key = boundary.symbol;
       const current = values.get(key) ?? {
         item: {
           ...boundary,
+          sourceLocations: [],
+          categories: [],
+          reasons: [],
           occurrences: 0,
           affectedRoutes: [],
           affectedHandlers: [],
@@ -261,22 +270,40 @@ function aggregateUnclassifiedBoundaries(methods: ControllerMethodAssessment[]):
         },
         routes: new Set<string>(),
         handlers: new Set<string>(),
-        depths: []
+        depths: [],
+        locations: new Map<string, { file: string; line: number }>(),
+        categories: new Set<UnclassifiedBoundaryCategory>(),
+        reasons: new Set<string>()
       };
       current.item.occurrences += 1;
       current.routes.add(route);
       current.handlers.add(method.handler);
+      current.locations.set(`${boundary.file}\0${boundary.line}`, { file: boundary.file, line: boundary.line });
+      current.categories.add(boundary.category);
+      current.reasons.add(boundary.reason);
       if (boundary.depth !== null) current.depths.push(boundary.depth);
       values.set(key, current);
     }
   }
-  return [...values.values()].map(({ item, routes, handlers, depths }) => ({
-    ...item,
-    affectedRoutes: [...routes].sort(),
-    affectedHandlers: [...handlers].sort(),
-    minDepth: depths.length ? Math.min(...depths) : null,
-    maxDepth: depths.length ? Math.max(...depths) : null
-  })).sort((a, b) =>
+  return [...values.values()].map(({ item, routes, handlers, depths, locations, categories, reasons }) => {
+    const sourceLocations = [...locations.values()].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+    const sortedCategories = [...categories].sort();
+    const sortedReasons = [...reasons].sort();
+    return {
+      ...item,
+      file: sourceLocations[0]?.file ?? item.file,
+      line: sourceLocations[0]?.line ?? item.line,
+      sourceLocations,
+      category: sortedCategories[0] ?? item.category,
+      reason: sortedReasons[0] ?? item.reason,
+      categories: sortedCategories,
+      reasons: sortedReasons,
+      affectedRoutes: [...routes].sort(),
+      affectedHandlers: [...handlers].sort(),
+      minDepth: depths.length ? Math.min(...depths) : null,
+      maxDepth: depths.length ? Math.max(...depths) : null
+    };
+  }).sort((a, b) =>
     b.affectedRoutes.length - a.affectedRoutes.length
     || b.occurrences - a.occurrences
     || a.symbol.localeCompare(b.symbol)
