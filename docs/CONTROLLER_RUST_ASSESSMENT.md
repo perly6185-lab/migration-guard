@@ -23,6 +23,13 @@ repeated occurrences, lists every affected route and handler, and ranks symbols
 by route impact. Inventory generation does not relax readiness or change Java
 source behavior; it provides a stable review queue for narrow semantic rules.
 
+Ambiguous calls are separately aggregated by expression with source locations,
+argument evidence, ranked resolution candidates, and affected routes. Truncated
+routes include their final graph budget, observed depth, unexpanded nodes,
+per-method call-cap omissions, and adaptive topology. These diagnostics remain
+read-only: ambiguity, omitted calls, and exhausted graph budgets still block
+readiness until a narrower analyzer correction is reviewed.
+
 ## P0 capabilities
 
 - Parse class and method mappings, multiline signatures, annotated parameters,

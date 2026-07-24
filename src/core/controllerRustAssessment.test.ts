@@ -84,10 +84,14 @@ test("controller Rust assessment adaptively expands truncated call graphs", asyn
     ].join("\n"));
     const fixed = await assessJavaControllersForRust({ root: dir, maxDepth: 2, maxEdges: 2 });
     assert.ok((fixed.summary.findings["RP-GRAPH-EDGE-CAP"] ?? 0) > 0);
+    assert.equal(fixed.summary.truncationInventory.routes, 1);
+    assert.equal(fixed.truncationInventory[0]?.edgeCapHit, true);
+    assert.equal(fixed.truncationInventory[0]?.route, "GET /chain");
     const adaptive = await assessJavaControllersForRust({ root: dir, maxDepth: 2, maxEdges: 2, adaptive: true, maxExpansionDepth: 8, maxExpansionEdges: 20, maxExpansionRounds: 3 });
     assert.equal(adaptive.summary.findings["RP-GRAPH-EDGE-CAP"] ?? 0, 0);
     assert.equal(adaptive.summary.adaptivelyExpanded, 1);
     assert.equal(adaptive.methods[0]?.expansionStatus, "complete");
+    assert.equal(adaptive.truncationInventory.length, 0);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -120,5 +124,30 @@ test("controller assessment inventories and ranks shared unclassified boundaries
     assert.equal(nested?.minDepth, 2);
     assert.equal(report.unclassifiedBoundaryInventory[0]?.symbol, "SharedService.innerOpaque");
     assert.match(report.reportHash, /^[a-f0-9]{64}$/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("controller assessment inventories ambiguous calls and candidate evidence without resolving them", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-ambiguity-inventory-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "AmbiguousController.java"), [
+      "package demo;", "@RestController", "public class AmbiguousController {",
+      " @GetMapping(\"/ambiguous\")", " public Object run() { return choose(null); }",
+      " private Object choose(Long value) { return null; }",
+      " private Object choose(String value) { return null; }", "}"
+    ].join("\n"));
+
+    const report = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 40 });
+    const call = report.ambiguousCallInventory[0];
+
+    assert.equal(report.summary.ready, 0);
+    assert.equal(report.summary.blocked, 1);
+    assert.equal(report.summary.ambiguousCallInventory.affectedRoutes, 1);
+    assert.equal(call?.expression, "choose(");
+    assert.equal(call?.candidates.length, 2);
+    assert.equal(call?.affectedRoutes[0], "GET /ambiguous");
+    assert.ok(call?.candidates.some((candidate) => /Long value/.test(candidate.signature)));
+    assert.ok(call?.candidates.some((candidate) => /String value/.test(candidate.signature)));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
