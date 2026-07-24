@@ -306,30 +306,53 @@ async function captureScreenshot(chrome, url, windowSize, outputPath) {
   const startedAt = Date.now();
   try {
     await new Promise((resolve, reject) => {
-    const child = spawn(chrome, [
-      "--headless=new",
-      "--disable-gpu",
-      "--no-first-run",
-      "--no-default-browser-check",
-      `--user-data-dir=${profile.replace(/\\/g, "/")}`,
-      "--virtual-time-budget=5000",
-      `--window-size=${windowSize}`,
-      `--screenshot=${outputPath.replace(/\\/g, "/")}`,
-      url
-    ], {
-      stdio: ["ignore", "ignore", "pipe"]
-    });
-    let stderr = "";
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("exit", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`Chrome screenshot failed with code ${code}: ${stderr}`));
-      }
-    });
+      const child = spawn(chrome, [
+        "--headless=new",
+        "--disable-gpu",
+        "--no-first-run",
+        "--no-default-browser-check",
+        `--user-data-dir=${profile.replace(/\\/g, "/")}`,
+        "--virtual-time-budget=5000",
+        `--window-size=${windowSize}`,
+        `--screenshot=${outputPath.replace(/\\/g, "/")}`,
+        url
+      ], {
+        stdio: ["ignore", "ignore", "pipe"]
+      });
+      let stderr = "";
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        clearInterval(screenshotPoll);
+        clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve();
+      };
+      const screenshotPoll = setInterval(async () => {
+        const stats = await import("node:fs/promises").then((fs) => fs.stat(outputPath)).catch(() => undefined);
+        if (!stats?.isFile() || stats.size <= 1000) return;
+        child.kill();
+        finish();
+      }, 100);
+      const timeout = setTimeout(() => {
+        child.kill("SIGKILL");
+        finish(new Error(`Chrome screenshot timed out after 20 seconds: ${url}`));
+      }, 20_000);
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString();
+      });
+      child.on("error", (error) => {
+        finish(new Error(`Chrome screenshot failed to start: ${error.message}`));
+      });
+      child.on("exit", (code, signal) => {
+        if (settled) return;
+        if (code === 0) {
+          finish();
+        } else {
+          finish(new Error(`Chrome screenshot failed with code ${code} and signal ${signal}: ${stderr}`));
+        }
+      });
     });
     await waitForScreenshot(outputPath);
   } finally {
