@@ -261,6 +261,42 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test("Java call graph specializes literal-null branches without assuming variables are non-null", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-null-context-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "NullContextService.java"), [
+      "package demo;", "@Service", "public class NullContextService {",
+      " public void full() { work(null); }",
+      " public void incremental(List<Long> ids) { work(ids); }",
+      " public void both(List<Long> ids) { work(null); work(ids); }",
+      " private void work(List<Long> ids) {",
+      "  boolean fullPanel = ids == null;",
+      "  if (fullPanel) {",
+      "   fullOnly();",
+      "  } else {",
+      "   incrementalOnly();",
+      "  }",
+      " }",
+      " private void fullOnly() { }",
+      " private void incrementalOnly() { }",
+      "}"
+    ].join("\n"));
+    const analyzer = await createJavaEndpointAnalyzer(dir);
+    const full = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "full")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
+    assert.equal(full.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"), false);
+    assert.ok(full.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[null:ids]")));
+    const incremental = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "incremental")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(incremental.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
+    assert.ok(incremental.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+    const both = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "both")!, { maxDepth: 5, maxEdges: 30 });
+    assert.equal(both.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[null:ids]")), false);
+    assert.ok(both.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
+    assert.ok(both.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("advanced Java semantics cover inheritance, qualifiers, defaults, transactions, and language features", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-service-semantics-"));
   try {
