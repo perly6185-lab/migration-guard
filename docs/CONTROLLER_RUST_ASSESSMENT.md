@@ -16,6 +16,13 @@ The command exits nonzero when any method is blocked. JSON and Markdown
 artifacts contain route, handler, workload, graph size, external boundaries,
 unknown nodes, findings, and stable report hash.
 
+The report also contains a read-only unclassified-boundary inventory. Each
+unknown boundary records its exact source symbol and location, review category,
+reason, and shortest route-call depth. The aggregate inventory collapses
+repeated occurrences, lists every affected route and handler, and ranks symbols
+by route impact. Inventory generation does not relax readiness or change Java
+source behavior; it provides a stable review queue for narrow semantic rules.
+
 ## P0 capabilities
 
 - Parse class and method mappings, multiline signatures, annotated parameters,

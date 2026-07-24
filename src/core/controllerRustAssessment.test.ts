@@ -90,3 +90,34 @@ test("controller Rust assessment adaptively expands truncated call graphs", asyn
     assert.equal(adaptive.methods[0]?.expansionStatus, "complete");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("controller assessment inventories and ranks shared unclassified boundaries without changing readiness", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-boundary-inventory-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "SharedService.java"), [
+      "package demo;", "@Service", "public class SharedService {",
+      " public Object opaqueTransform() { return innerOpaque(); }",
+      " private Object innerOpaque() { return null; }", "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "InventoryController.java"), [
+      "package demo;", "@RestController", "public class InventoryController {", " @Resource", " private SharedService service;",
+      " @GetMapping(\"/inventory/one\")", " public Object one() { return service.opaqueTransform(); }",
+      " @GetMapping(\"/inventory/two\")", " public Object two() { return service.opaqueTransform(); }", "}"
+    ].join("\n"));
+
+    const report = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 40 });
+    const shared = report.unclassifiedBoundaryInventory.find((item) => item.symbol === "SharedService.opaqueTransform");
+    const nested = report.unclassifiedBoundaryInventory.find((item) => item.symbol === "SharedService.innerOpaque");
+
+    assert.equal(report.summary.ready, 0);
+    assert.equal(report.summary.blocked, 2);
+    assert.equal(report.summary.unclassifiedBoundaryInventory.affectedRoutes, 2);
+    assert.equal(shared?.affectedRoutes.length, 2);
+    assert.equal(shared?.occurrences, 2);
+    assert.equal(shared?.minDepth, 1);
+    assert.equal(nested?.minDepth, 2);
+    assert.equal(report.unclassifiedBoundaryInventory[0]?.symbol, "SharedService.innerOpaque");
+    assert.match(report.reportHash, /^[a-f0-9]{64}$/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
