@@ -41,6 +41,36 @@ test("controller assessment reports deduplicated transaction self-invocation evi
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test("controller assessment accepts only exact reviewed equivalent transaction self-calls", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-reviewed-transaction-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "AiEmpowerConfigBizServiceImpl.java"), [
+      "package demo;", "public class AiEmpowerConfigBizServiceImpl {",
+      " @Transactional(rollbackFor = Exception.class)", " public Object saveAiEmpowerConfig() { return deleteByFieldId(); }",
+      " @Transactional(rollbackFor = Exception.class)", " public Object deleteByFieldId() { return null; }", "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "ReviewedController.java"), [
+      "package demo;", "@RestController", "public class ReviewedController {", " @Resource", " private AiEmpowerConfigBizServiceImpl service;",
+      " @GetMapping(\"/reviewed\")", " public Object run() { return service.saveAiEmpowerConfig(); }", "}"
+    ].join("\n"));
+    const reviewed = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 20 });
+    assert.equal(reviewed.summary.findings["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] ?? 0, 0);
+
+    await writeFile(path.join(dir, "demo", "OtherService.java"), [
+      "package demo;", "public class OtherService {",
+      " @Transactional(rollbackFor = Exception.class)", " public Object saveAiEmpowerConfig() { return deleteByFieldId(); }",
+      " @Transactional(rollbackFor = Exception.class)", " public Object deleteByFieldId() { return null; }", "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "OtherController.java"), [
+      "package demo;", "@RestController", "public class OtherController {", " @Resource", " private OtherService service;",
+      " @GetMapping(\"/other\")", " public Object run() { return service.saveAiEmpowerConfig(); }", "}"
+    ].join("\n"));
+    const exactOnly = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 20 });
+    assert.ok(exactOnly.methods.find((item) => item.path === "/other")?.findings.includes("RP-GRAPH-TRANSACTION-SELF-INVOCATION"));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("controller Rust assessment adaptively expands truncated call graphs", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-adaptive-"));
   try {

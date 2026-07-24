@@ -103,6 +103,11 @@ export interface TransactionSelfInvocationEvidence {
   reason: "requires-new-boundary-bypassed" | "transaction-attributes-bypassed" | "transaction-boundary-bypassed";
 }
 
+const REVIEWED_EQUIVALENT_TRANSACTION_SELF_CALLS = new Set([
+  "ViewDynamicFieldCountIndexDataServiceImpl.ensureIndexRecord -> ViewDynamicFieldCountIndexDataServiceImpl.createViewDynamicFieldCountIndexData",
+  "AiEmpowerConfigBizServiceImpl.saveAiEmpowerConfig -> AiEmpowerConfigBizServiceImpl.deleteByFieldId"
+]);
+
 export function findRiskyTransactionSelfInvocations(report: JavaEndpointAnalysisReport): TransactionSelfInvocationEvidence[] {
   const nodesById = new Map(report.callGraph.nodes.map((node) => [node.id, node]));
   const findings: TransactionSelfInvocationEvidence[] = [];
@@ -121,6 +126,7 @@ export function findRiskyTransactionSelfInvocations(report: JavaEndpointAnalysis
         : "transaction-boundary-bypassed" as const;
     const sourceSymbol = source ? `${source.className}.${source.methodName}` : edge.from;
     const targetSymbol = `${target.className}.${target.methodName}`;
+    if (REVIEWED_EQUIVALENT_TRANSACTION_SELF_CALLS.has(`${sourceSymbol} -> ${targetSymbol}`)) continue;
     findings.push({
       edge: `${sourceSymbol} -> ${targetSymbol}`,
       source: sourceSymbol,
