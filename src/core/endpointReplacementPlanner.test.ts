@@ -52,6 +52,24 @@ test("behavior graph and replacement plan fail closed on truncation and unresolv
   assert.match(plan.nextAction ?? "", /RP-GRAPH-EDGE-CAP/);
 });
 
+test("truncated graphs do not mislabel unexpanded mapper SQL as a generated implementation", () => {
+  const report = endpointReport("POST", "/jobs", "runJob", "batch-command", [
+    node("Controller.runJob", "controller", "Controller", "runJob"),
+    {
+      ...node("DataMapper.updateRows", "service", "DataMapper", "updateRows"),
+      role: "mapper",
+      signature: "[abstract-declaration] int updateRows(List<Row> rows);"
+    }
+  ]);
+  report.callGraph.truncation.edgeCapHit = true;
+  const { graph } = createEndpointReplacementPlanFromJava(report);
+  assert.ok(graph.completeness.findings.includes("RP-GRAPH-EDGE-CAP"));
+  assert.equal(graph.completeness.findings.includes("RP-REPOSITORY-GENERATED-IMPLEMENTATION"), false);
+
+  report.callGraph.truncation.edgeCapHit = false;
+  assert.ok(createEndpointReplacementPlanFromJava(report).graph.completeness.findings.includes("RP-REPOSITORY-GENERATED-IMPLEMENTATION"));
+});
+
 test("replacement plan fails closed on unclassified ownership boundaries", () => {
   const report = endpointReport("POST", "/tasks/cancel", "cancelTask", "page-query", [
     node("Controller.cancelTask", "controller", "Controller", "cancelTask"),

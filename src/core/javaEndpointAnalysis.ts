@@ -441,8 +441,13 @@ function analyzeJavaMethodAdaptive(
     rounds.push({ round, maxDepth: depth, maxEdges: edges, nodes: report.callGraph.nodes.length, edges: report.callGraph.edges.length, maxOutDegree: maxCallGraphOutDegree(report), edgeCapHit: truncation.edgeCapHit, depthCapHit: truncation.depthCapHit, perMethodCallCapHit: Boolean(truncation.perMethodCallCapHit), unexpandedBoundaries: truncation.unexpandedBoundaryNodes.length, complete });
     if (complete) return { report, status: "complete", topology: "complete", rounds };
     if (round === maxRounds) break;
-    const nextDepth = truncation.depthCapHit ? Math.min(maxDepth, depth + Math.max(2, Math.ceil(depth / 2))) : depth;
-    const nextEdges = truncation.edgeCapHit ? Math.min(maxEdges, Math.max(edges + 1, edges * 2)) : edges;
+    const finalExpansionRound = round === maxRounds - 1;
+    const nextDepth = truncation.depthCapHit
+      ? finalExpansionRound ? maxDepth : Math.min(maxDepth, depth + Math.max(2, Math.ceil(depth / 2)))
+      : depth;
+    const nextEdges = truncation.edgeCapHit
+      ? finalExpansionRound ? maxEdges : Math.min(maxEdges, Math.max(edges + 1, edges * 2))
+      : edges;
     if (nextDepth === depth && nextEdges === edges) break;
     depth = nextDepth;
     edges = nextEdges;

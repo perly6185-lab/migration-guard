@@ -178,6 +178,10 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
     assert.equal(highFanout.topology, "high-fanout");
     assert.equal(highFanout.rounds[0].maxOutDegree, 32);
     assert.equal(createEndpointReplacementPlanFromJava(highFanout.report).plan.status, "blocked", "high-fanout exhaustion must remain fail-closed");
+    const finalBudget = analyzer.analyzeServiceMethodAdaptive(wide, { initialDepth: 2, initialEdges: 32, maxDepth: 4, maxEdges: 200, maxRounds: 2 });
+    assert.equal(finalBudget.rounds.at(-1)?.maxEdges, 200, "the last adaptive round must exercise the configured edge ceiling");
+    const finalDepthBudget = analyzer.analyzeServiceMethodAdaptive(start, { initialDepth: 1, initialEdges: 100, maxDepth: 4, maxEdges: 100, maxRounds: 2 });
+    assert.equal(finalDepthBudget.rounds.at(-1)?.maxDepth, 4, "the last adaptive round must exercise the configured depth ceiling");
     const continued = analyzer.analyzeServiceMethodAdaptive(wide, { initialDepth: 4, initialEdges: 200, maxDepth: 4, maxEdges: 200, maxRounds: 1 });
     assert.equal(continued.status, "complete", "wide methods must continue after each local call batch");
     assert.equal(continued.report.callGraph.truncation.perMethodCallCapHit, false);
