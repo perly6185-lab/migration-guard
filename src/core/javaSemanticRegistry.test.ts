@@ -226,6 +226,7 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("baseDir.relativize")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("BillApprovalFieldResultEnum.valueOf")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("PartitionTypeEnum.fromCode")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("SELECT_REF.getTagKey().equals")?.defaultOwnership, "reviewed-exclusion");
   assert.equal(classifyJavaSemantic("ScanOptions.scanOptions().match")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("wrapper.orderByAsc")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("rowHandler.accept")?.kind, "state-write");
