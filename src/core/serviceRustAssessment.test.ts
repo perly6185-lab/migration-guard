@@ -269,15 +269,22 @@ test("Java call graph specializes literal-null branches without assuming variabl
       "package demo;", "@Service", "public class NullContextService {",
       " public void full() { work(null); }",
       " public void incremental(List<Long> ids) { work(ids); }",
-      " public void both(List<Long> ids) { work(null); work(ids); }",
+      " public void initialized() { List<Long> ids = new ArrayList<>(); work(ids); }",
+      " public void reassigned(List<Long> replacement) { List<Long> ids = new ArrayList<>(); ids = replacement; work(ids); }",
+      " public void both() { List<Long> ids = new ArrayList<>(); work(null); work(ids); }",
       " private void work(List<Long> ids) {",
       "  boolean fullPanel = ids == null;",
+      "  if (fullPanel && ready()) {",
+      "   fullGuarded();",
+      "  }",
       "  if (fullPanel) {",
       "   fullOnly();",
       "  } else {",
       "   incrementalOnly();",
       "  }",
       " }",
+      " private boolean ready() { return true; }",
+      " private void fullGuarded() { }",
       " private void fullOnly() { }",
       " private void incrementalOnly() { }",
       "}"
@@ -285,13 +292,23 @@ test("Java call graph specializes literal-null branches without assuming variabl
     const analyzer = await createJavaEndpointAnalyzer(dir);
     const full = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "full")!, { maxDepth: 5, maxEdges: 30 });
     assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
+    assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullGuarded"));
     assert.equal(full.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"), false);
     assert.ok(full.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[null:ids]")));
     const incremental = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "incremental")!, { maxDepth: 5, maxEdges: 30 });
     assert.ok(incremental.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
     assert.ok(incremental.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+    const initialized = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "initialized")!, { maxDepth: 5, maxEdges: 30 });
+    assert.equal(initialized.callGraph.nodes.some((node) => node.methodName === "fullOnly"), false);
+    assert.equal(initialized.callGraph.nodes.some((node) => node.methodName === "fullGuarded"), false);
+    assert.ok(initialized.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+    assert.ok(initialized.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[nonnull:ids]")));
+    const reassigned = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "reassigned")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(reassigned.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
+    assert.ok(reassigned.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
     const both = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "both")!, { maxDepth: 5, maxEdges: 30 });
     assert.equal(both.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[null:ids]")), false);
+    assert.equal(both.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[nonnull:ids]")), false);
     assert.ok(both.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
     assert.ok(both.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
   } finally { await rm(dir, { recursive: true, force: true }); }

@@ -323,6 +323,7 @@ interface GraphTraceState {
   contextSignals: string[];
   callOffset?: number;
   knownNullParams?: Set<string>;
+  knownNonNullParams?: Set<string>;
 }
 
 type JavaCallGraphBuildResult = JavaEndpointAnalysisReport["callGraph"] & {
@@ -1566,7 +1567,8 @@ function buildCallGraph(
     const extractedCalls = filterKnownNullBranches(
       current.method,
       extractMethodCalls(project, current.method, current.type),
-      current.knownNullParams
+      current.knownNullParams,
+      current.knownNonNullParams
     );
     const executableCalls = extractedCalls.filter((call) => {
       const kind = summarizedCallKind(project, current.type, call);
@@ -1659,14 +1661,26 @@ function buildCallGraph(
           break;
         }
         const knownNullParams = new Set<string>();
+        const knownNonNullParams = new Set<string>();
         for (const [index, isNull] of (call.argumentNulls ?? []).entries()) {
           const param = target.method.params[index];
           if (isNull && param && hasKnownNullElseBranch(target.method, param.name)) knownNullParams.add(param.name);
         }
+        for (const [index, isNonNull] of (call.argumentNonNulls ?? []).entries()) {
+          const param = target.method.params[index];
+          if (isNonNull && param && hasKnownNullElseBranch(target.method, param.name)) knownNonNullParams.add(param.name);
+        }
         const baseTargetNode = nodeFor(target.type, target.method);
-        if (knownNullParams.size === 0) {
-          const prefix = `${baseTargetNode.id}[null:`;
-          const variants = [...nodes.keys()].filter((id) => id.startsWith(prefix));
+        const contextKind = knownNullParams.size > 0 ? "null" : knownNonNullParams.size > 0 ? "nonnull" : undefined;
+        const contextParams = contextKind === "null" ? knownNullParams : knownNonNullParams;
+        const desiredVariantId = contextKind
+          ? `${baseTargetNode.id}[${contextKind}:${[...contextParams].sort().join(",")}]`
+          : undefined;
+        const variants = [...nodes.keys()].filter((id) =>
+          id.startsWith(`${baseTargetNode.id}[null:`) || id.startsWith(`${baseTargetNode.id}[nonnull:`)
+        );
+        const hasOppositeVariant = variants.some((id) => id !== desiredVariantId);
+        if (!contextKind || nodes.has(baseTargetNode.id) || hasOppositeVariant) {
           if (variants.length > 0) {
             const variantSet = new Set(variants);
             for (let index = edges.length - 1; index >= 0; index -= 1) {
@@ -1687,8 +1701,8 @@ function buildCallGraph(
             }
           }
         }
-        const targetNode = knownNullParams.size > 0 && !nodes.has(baseTargetNode.id)
-          ? { ...baseTargetNode, id: `${baseTargetNode.id}[null:${[...knownNullParams].sort().join(",")}]` }
+        const targetNode = desiredVariantId && !nodes.has(baseTargetNode.id) && !hasOppositeVariant
+          ? { ...baseTargetNode, id: desiredVariantId }
           : baseTargetNode;
         const alreadyVisited = nodes.has(targetNode.id);
         nodes.set(targetNode.id, targetNode);
@@ -1719,7 +1733,8 @@ function buildCallGraph(
             depth: current.depth + 1,
             transactional: current.transactional || hasTransactionBoundary(target.type, target.method),
             contextSignals: mergeValues(methodContextSignals, contextSignalsForText(`${target.type.annotations.join(" ")} ${target.method.annotations.join(" ")} ${target.method.body}`)),
-            knownNullParams
+            knownNullParams: targetNode.id === desiredVariantId ? knownNullParams : undefined,
+            knownNonNullParams: targetNode.id === desiredVariantId ? knownNonNullParams : undefined
           });
         }
         if (edges.length >= maxEdges && (targetIndex < targets.length - 1 || callIndex < calls.length - 1 || hasRemainingCalls || queue.length > 0)) {
@@ -1956,18 +1971,30 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   argumentCount: number;
   argumentTypes: string[];
   argumentNulls?: boolean[];
+  argumentNonNulls?: boolean[];
   receiverType?: string;
   feature?: "lambda" | "method-reference";
 }> {
-  const calls: Array<{ receiver?: string; method: string; expression: string; line: number; argumentCount: number; argumentTypes: string[]; argumentNulls?: boolean[]; receiverType?: string; feature?: "lambda" | "method-reference" }> = [];
+  const calls: Array<{ receiver?: string; method: string; expression: string; line: number; argumentCount: number; argumentTypes: string[]; argumentNulls?: boolean[]; argumentNonNulls?: boolean[]; receiverType?: string; feature?: "lambda" | "method-reference" }> = [];
   const injectedFields = new Set(type.fields.map((field) => field.name));
   const variableTypes = new Map(method.params.map((param) => [param.name, param.declaredType]));
+  const definitelyNonNullVariables = new Map<string, number>();
   let body = method.body.split(/\r?\n/).map(stripLineComment).join("\n");
   const openingBrace = body.indexOf("{");
   if (openingBrace >= 0) body = body.slice(0, openingBrace + 1).replace(/[^\n]/g, " ") + body.slice(openingBrace + 1);
   const scanBody = body.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, (literal) => literal.replace(/[^\n]/g, " "));
   const lineAt = (offset: number) => method.bodyStartLine + scanBody.slice(0, offset).split("\n").length - 1;
   for (const local of scanBody.matchAll(/\b([A-Z][A-Za-z0-9_.$]*(?:\s*<[^;\r\n=()]+>)?(?:\[\])?|(?:byte|short|int|long|float|double|boolean|char))\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;|:)/g)) variableTypes.set(local[2], local[1]);
+  for (const local of scanBody.matchAll(/\b[A-Z][A-Za-z0-9_.$]*(?:\s*<[^;\r\n=()]+>)?\s+([a-zA-Z_][A-Za-z0-9_]*)\s*=\s*new\s+[A-Z][A-Za-z0-9_.$]*/g)) {
+    definitelyNonNullVariables.set(local[1], (local.index ?? 0) + local[0].length);
+  }
+  const nonNullArgument = (argument: string, callOffset: number): boolean => {
+    const value = argument.trim();
+    if (/^new\s+/.test(value)) return true;
+    const initializedAt = definitelyNonNullVariables.get(value);
+    if (initializedAt === undefined || initializedAt >= callOffset) return false;
+    return !new RegExp(`\\b${value}\\s*=(?!=)`).test(scanBody.slice(initializedAt, callOffset));
+  };
   for (const loop of scanBody.matchAll(/\bfor\s*\(\s*var\s+([a-zA-Z_][A-Za-z0-9_]*)\s*:\s*([a-zA-Z_][A-Za-z0-9_]*)\s*\)/g)) {
     const elementType = genericTypeArguments(variableTypes.get(loop[2]) ?? "")[0];
     if (elementType) variableTypes.set(loop[1], elementType);
@@ -1998,14 +2025,14 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     const openIndex = (match.index ?? 0) + match[0].lastIndexOf("(");
     const parsedArgs = extractCallArguments(body, openIndex);
     const receiverType = resolveFactoryReturnType(project, type, match[1], match[2]);
-    calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[4])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null") });
+    calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[4])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)) });
     occupied.add((match.index ?? 0) + match[0].lastIndexOf(match[4]));
   }
   for (const match of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodOffset = (match.index ?? 0) + match[0].lastIndexOf(match[2]);
     if (occupied.has(methodOffset) || !injectedFields.has(match[1]) && isLowValueCall(match[2])) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
-    calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[2])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null") });
+    calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[2])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)) });
   }
   for (const match of scanBody.matchAll(/(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodName = match[1];
@@ -2015,7 +2042,7 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     const staticImported = type.staticImports.some((item) => item.methodName === methodName || item.methodName === "*");
     if (!staticImported && !methodsInHierarchy(project, type).some((candidate) => candidate.method.name === methodName)) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
-    calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, methodName)), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null") });
+    calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, methodName)), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)) });
   }
   return calls;
 }
@@ -2023,12 +2050,13 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
 function filterKnownNullBranches<T extends { line: number }>(
   method: JavaMethodInfo,
   calls: T[],
-  knownNullParams: Set<string> | undefined
+  knownNullParams: Set<string> | undefined,
+  knownNonNullParams: Set<string> | undefined
 ): T[] {
-  if (!knownNullParams?.size) return calls;
+  if (!knownNullParams?.size && !knownNonNullParams?.size) return calls;
   const body = method.body;
   const excluded: Array<{ startLine: number; endLine: number }> = [];
-  for (const param of knownNullParams) {
+  for (const param of knownNullParams ?? []) {
     const aliasMatch = new RegExp(`\\bboolean\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*${param}\\s*==\\s*null\\s*;`).exec(body);
     if (!aliasMatch) continue;
     const alias = aliasMatch[1];
@@ -2045,6 +2073,21 @@ function filterKnownNullBranches<T extends { line: number }>(
       excluded.push({
         startLine: method.bodyStartLine + body.slice(0, elseOpen).split("\n").length - 1,
         endLine: method.bodyStartLine + body.slice(0, elseClose).split("\n").length - 1
+      });
+    }
+  }
+  for (const param of knownNonNullParams ?? []) {
+    const aliasMatch = new RegExp(`\\bboolean\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*${param}\\s*==\\s*null\\s*;`).exec(body);
+    if (!aliasMatch) continue;
+    const alias = aliasMatch[1];
+    const branchMatch = new RegExp(`\\bif\\s*\\(\\s*${alias}(?:\\s*&&[^{}]*)?\\)\\s*\\{`, "g");
+    for (const match of body.matchAll(branchMatch)) {
+      const open = (match.index ?? 0) + match[0].lastIndexOf("{");
+      const close = matchingBraceOffset(body, open);
+      if (close < 0) continue;
+      excluded.push({
+        startLine: method.bodyStartLine + body.slice(0, open).split("\n").length - 1,
+        endLine: method.bodyStartLine + body.slice(0, close).split("\n").length - 1
       });
     }
   }
