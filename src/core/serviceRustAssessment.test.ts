@@ -278,6 +278,12 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " public void incrementalMode() { mode(false, Mode.INCREMENTAL); }",
       " public void fullModeForward() { forwardMode(true, Mode.FULL); }",
       " public void boxedFalse() { boxedMode(Boolean.FALSE); }",
+      " public void scopedAsync() {",
+      "  try (Scope ignored = AsyncSelectRefCalculationContext.includeOnlyWithoutDerivedSideEffects(ids)) {",
+      "   syncUpdateCalculateLocalValueWithContext();",
+      "  }",
+      " }",
+      " public void unscopedAsync() { syncUpdateCalculateLocalValueWithContext(); }",
       " private void work(List<Long> ids) {",
       "  boolean fullPanel = ids == null;",
       "  if (fullPanel && ready()) {",
@@ -327,6 +333,17 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " }",
       " private void boxedTrueOnly() { }",
       " private void boxedFalseOnly() { }",
+      " private void syncUpdateCalculateLocalValueWithContext() {",
+      "  boolean skipDerivedSideEffects = AsyncSelectRefCalculationContext.skipDerivedSideEffects();",
+      "  if (skipDerivedSideEffects) {",
+      "   scopedOnly();",
+      "  }",
+      "  if (!skipDerivedSideEffects) {",
+      "   unscopedOnly();",
+      "  }",
+      " }",
+      " private void scopedOnly() { }",
+      " private void unscopedOnly() { }",
       "}"
     ].join("\n"));
     await writeFile(path.join(dir, "demo", "Mode.java"), [
@@ -382,6 +399,14 @@ test("Java call graph specializes literal-null branches without assuming variabl
     const boxedFalse = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "boxedFalse")!, { maxDepth: 5, maxEdges: 30 });
     assert.equal(boxedFalse.callGraph.nodes.some((node) => node.methodName === "boxedTrueOnly"), false);
     assert.ok(boxedFalse.callGraph.nodes.some((node) => node.methodName === "boxedFalseOnly"));
+    const scopedAsync = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "scopedAsync")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(scopedAsync.callGraph.nodes.some((node) => node.methodName === "scopedOnly"));
+    assert.equal(scopedAsync.callGraph.nodes.some((node) => node.methodName === "unscopedOnly"), false);
+    assert.ok(scopedAsync.callGraph.nodes.some((node) => node.methodName === "syncUpdateCalculateLocalValueWithContext"
+      && node.id.includes("[bool:skipDerivedSideEffects=true]")));
+    const unscopedAsync = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "unscopedAsync")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(unscopedAsync.callGraph.nodes.some((node) => node.methodName === "scopedOnly"));
+    assert.ok(unscopedAsync.callGraph.nodes.some((node) => node.methodName === "unscopedOnly"));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

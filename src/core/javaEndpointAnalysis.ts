@@ -1696,6 +1696,12 @@ function buildCallGraph(
             knownEnumParams.set(param.name, value);
           }
         }
+        for (const [localName, value] of call.lexicalBooleanFacts ?? []) {
+          const declaration = new RegExp(
+            `\\bboolean\\s+${localName}\\s*=\\s*AsyncSelectRefCalculationContext\\.skipDerivedSideEffects\\s*\\(\\s*\\)\\s*;`
+          );
+          if (declaration.test(target.method.body)) knownBooleanParams.set(localName, value);
+        }
         const baseTargetNode = nodeFor(target.type, target.method);
         const contextParts = [
           knownNullParams.size > 0 ? `null:${[...knownNullParams].sort().join(",")}` : undefined,
@@ -2009,10 +2015,11 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   argumentBooleans?: Array<boolean | undefined>;
   argumentEnumConstants?: Array<string | undefined>;
   argumentIdentifiers?: Array<string | undefined>;
+  lexicalBooleanFacts?: Array<[string, boolean]>;
   receiverType?: string;
   feature?: "lambda" | "method-reference";
 }> {
-  const calls: Array<{ receiver?: string; method: string; expression: string; line: number; argumentCount: number; argumentTypes: string[]; argumentNulls?: boolean[]; argumentNonNulls?: boolean[]; argumentBooleans?: Array<boolean | undefined>; argumentEnumConstants?: Array<string | undefined>; argumentIdentifiers?: Array<string | undefined>; receiverType?: string; feature?: "lambda" | "method-reference" }> = [];
+  const calls: Array<{ receiver?: string; method: string; expression: string; line: number; argumentCount: number; argumentTypes: string[]; argumentNulls?: boolean[]; argumentNonNulls?: boolean[]; argumentBooleans?: Array<boolean | undefined>; argumentEnumConstants?: Array<string | undefined>; argumentIdentifiers?: Array<string | undefined>; lexicalBooleanFacts?: Array<[string, boolean]>; receiverType?: string; feature?: "lambda" | "method-reference" }> = [];
   const injectedFields = new Set(type.fields.map((field) => field.name));
   const variableTypes = new Map(method.params.map((param) => [param.name, param.declaredType]));
   const definitelyNonNullVariables = new Map<string, number>();
@@ -2021,6 +2028,15 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   if (openingBrace >= 0) body = body.slice(0, openingBrace + 1).replace(/[^\n]/g, " ") + body.slice(openingBrace + 1);
   const scanBody = body.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, (literal) => literal.replace(/[^\n]/g, " "));
   const lineAt = (offset: number) => method.bodyStartLine + scanBody.slice(0, offset).split("\n").length - 1;
+  const derivedSideEffectScopes = tryResourceScopes(
+    scanBody,
+    "AsyncSelectRefCalculationContext.includeOnlyWithoutDerivedSideEffects"
+  );
+  const lexicalBooleanFacts = (methodName: string, offset: number): Array<[string, boolean]> | undefined =>
+    methodName === "syncUpdateCalculateLocalValueWithContext"
+      && derivedSideEffectScopes.some((scope) => offset > scope.open && offset < scope.close)
+      ? [["skipDerivedSideEffects", true]]
+      : undefined;
   for (const local of scanBody.matchAll(/\b([A-Z][A-Za-z0-9_.$]*(?:\s*<[^;\r\n=()]+>)?(?:\[\])?|(?:byte|short|int|long|float|double|boolean|char))\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;|:)/g)) variableTypes.set(local[2], local[1]);
   for (const local of scanBody.matchAll(/\b[A-Z][A-Za-z0-9_.$]*(?:\s*<[^;\r\n=()]+>)?\s+([a-zA-Z_][A-Za-z0-9_]*)\s*=\s*new\s+[A-Z][A-Za-z0-9_.$]*/g)) {
     definitelyNonNullVariables.set(local[1], (local.index ?? 0) + local[0].length);
@@ -2065,14 +2081,14 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     const openIndex = (match.index ?? 0) + match[0].lastIndexOf("(");
     const parsedArgs = extractCallArguments(body, openIndex);
     const receiverType = resolveFactoryReturnType(project, type, match[1], match[2]);
-    calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[4])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier) });
+    calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[4])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier), lexicalBooleanFacts: lexicalBooleanFacts(match[4], match.index ?? 0) });
     occupied.add((match.index ?? 0) + match[0].lastIndexOf(match[4]));
   }
   for (const match of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodOffset = (match.index ?? 0) + match[0].lastIndexOf(match[2]);
     if (occupied.has(methodOffset) || !injectedFields.has(match[1]) && isLowValueCall(match[2])) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
-    calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[2])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier) });
+    calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[2])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier), lexicalBooleanFacts: lexicalBooleanFacts(match[2], match.index ?? 0) });
   }
   for (const match of scanBody.matchAll(/(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodName = match[1];
@@ -2082,7 +2098,7 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     const staticImported = type.staticImports.some((item) => item.methodName === methodName || item.methodName === "*");
     if (!staticImported && !methodsInHierarchy(project, type).some((candidate) => candidate.method.name === methodName)) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
-    calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, methodName)), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier) });
+    calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, methodName)), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier), lexicalBooleanFacts: lexicalBooleanFacts(methodName, match.index ?? 0) });
   }
   return calls;
 }
@@ -2104,6 +2120,21 @@ function literalEnumConstant(argument: string): string | undefined {
 function simpleIdentifier(argument: string): string | undefined {
   const value = argument.trim();
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) ? value : undefined;
+}
+
+function tryResourceScopes(text: string, resourceCall: string): Array<{ open: number; close: number }> {
+  const scopes: Array<{ open: number; close: number }> = [];
+  for (const match of text.matchAll(/\btry\s*\(/g)) {
+    const resourceOpen = (match.index ?? 0) + match[0].lastIndexOf("(");
+    const resourceClose = matchingDelimiterOffset(text, resourceOpen, "(", ")");
+    if (resourceClose < 0 || !text.slice(resourceOpen + 1, resourceClose).includes(resourceCall)) continue;
+    let blockOpen = resourceClose + 1;
+    while (/\s/.test(text[blockOpen] ?? "")) blockOpen += 1;
+    if (text[blockOpen] !== "{") continue;
+    const blockClose = matchingBraceOffset(text, blockOpen);
+    if (blockClose >= 0) scopes.push({ open: blockOpen, close: blockClose });
+  }
+  return scopes;
 }
 
 function filterKnownNullBranches<T extends { line: number }>(
@@ -2254,6 +2285,22 @@ function matchingBraceOffset(text: string, openOffset: number): number {
     if (char === "\"" || char === "'") { quote = char; continue; }
     if (char === "{") depth += 1;
     if (char === "}" && --depth === 0) return index;
+  }
+  return -1;
+}
+
+function matchingDelimiterOffset(text: string, openOffset: number, openChar: string, closeChar: string): number {
+  let depth = 0;
+  let quote = "";
+  for (let index = openOffset; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (char === quote && text[index - 1] !== "\\") quote = "";
+      continue;
+    }
+    if (char === "\"" || char === "'") { quote = char; continue; }
+    if (char === openChar) depth += 1;
+    if (char === closeChar && --depth === 0) return index;
   }
   return -1;
 }
