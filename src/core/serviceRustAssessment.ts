@@ -49,6 +49,7 @@ export interface ServiceMethodAssessment {
   externalBoundaries: number;
   unknownNodes: number;
   unclassifiedCategories: UnclassifiedBoundaryCategory[];
+  unclassifiedSymbols: string[];
   contexts: number;
   frameworkContracts: number;
   dataContracts: number;
@@ -79,6 +80,7 @@ export interface ServiceRustAssessmentReport {
     expansionBudgetExhausted: number;
     expansionTopologies: Record<string, number>;
     unclassifiedCategories: Record<string, number>;
+    unclassifiedSymbols: Record<string, number>;
     workloads: Record<string, number>;
     findings: Record<string, number>;
     roles: Record<string, number>;
@@ -116,7 +118,9 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
     const source = expansion?.report ?? analyzer.analyzeServiceMethod(candidate, { maxDepth: options.maxDepth, maxEdges: options.maxEdges });
     const { graph, plan } = createEndpointReplacementPlanFromJava(source);
     const highFanoutDiagnostics = expansion?.topology === "high-fanout" ? diagnoseHighFanout(graph, source.callGraph.truncation) : undefined;
-    const unclassifiedCategories = [...new Set(graph.nodes.filter((node) => node.kind === "unknown").map(classifyUnclassifiedBoundary))].sort();
+    const unknownNodes = graph.nodes.filter((node) => node.kind === "unknown");
+    const unclassifiedCategories = [...new Set(unknownNodes.map(classifyUnclassifiedBoundary))].sort();
+    const unclassifiedSymbols = [...new Set(unknownNodes.map((node) => node.evidence.symbol).filter(Boolean))].sort();
     return {
       id: candidate.id,
       file: candidate.file,
@@ -129,8 +133,9 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
       nodes: graph.nodes.length,
       edges: graph.edges.length,
       externalBoundaries: graph.nodes.filter((node) => node.id.startsWith("external:")).length,
-      unknownNodes: graph.nodes.filter((node) => node.kind === "unknown").length,
+      unknownNodes: unknownNodes.length,
       unclassifiedCategories,
+      unclassifiedSymbols,
       contexts: plan.contracts.contexts.length,
       frameworkContracts: plan.contracts.framework.length,
       dataContracts: plan.contracts.data.length,
@@ -161,6 +166,7 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
       expansionBudgetExhausted: methods.filter((item) => item.expansionStatus === "budget-exhausted").length,
       expansionTopologies: countValues(methods.map((item) => item.expansionTopology).filter((item): item is AdaptiveExpansionTopology => Boolean(item))),
       unclassifiedCategories: countValues(methods.flatMap((item) => item.unclassifiedCategories)),
+      unclassifiedSymbols: countValues(methods.flatMap((item) => item.unclassifiedSymbols)),
       workloads: countValues(methods.map((item) => item.workload)),
       findings: countValues(methods.flatMap((item) => item.findings)),
       roles: countValues(methods.flatMap((item) => item.roles)),
@@ -198,7 +204,9 @@ export function renderServiceRustAssessment(report: ServiceRustAssessmentReport)
     `- Cyclic-SCC distribution: ${JSON.stringify(report.summary.highFanoutDiagnostics.cyclicSccs)}`,
     `- Largest-SCC distribution: ${JSON.stringify(report.summary.highFanoutDiagnostics.largestSccs)}`, "",
     "## Unclassified boundary categories", "",
-    ...Object.entries(report.summary.unclassifiedCategories).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([category, count]) => `- ${category}: ${count}`), ""
+    ...Object.entries(report.summary.unclassifiedCategories).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([category, count]) => `- ${category}: ${count}`), "",
+    "## Unclassified symbols", "",
+    ...Object.entries(report.summary.unclassifiedSymbols).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([symbol, count]) => `- ${symbol}: ${count}`), ""
   ].join("\n");
 }
 

@@ -442,12 +442,12 @@ function analyzeJavaMethodAdaptive(
     if (complete) return { report, status: "complete", topology: "complete", rounds };
     if (round === maxRounds) break;
     const finalExpansionRound = round === maxRounds - 1;
-    const nextDepth = truncation.depthCapHit
-      ? finalExpansionRound ? maxDepth : Math.min(maxDepth, depth + Math.max(2, Math.ceil(depth / 2)))
-      : depth;
-    const nextEdges = truncation.edgeCapHit
-      ? finalExpansionRound ? maxEdges : Math.min(maxEdges, Math.max(edges + 1, edges * 2))
-      : edges;
+    const nextDepth = finalExpansionRound
+      ? maxDepth
+      : truncation.depthCapHit ? Math.min(maxDepth, depth + Math.max(2, Math.ceil(depth / 2))) : depth;
+    const nextEdges = finalExpansionRound
+      ? maxEdges
+      : truncation.edgeCapHit ? Math.min(maxEdges, Math.max(edges + 1, edges * 2)) : edges;
     if (nextDepth === depth && nextEdges === edges) break;
     depth = nextDepth;
     edges = nextEdges;

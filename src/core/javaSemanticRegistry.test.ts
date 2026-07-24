@@ -152,6 +152,18 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("ViewDynamicUseGroupDataBizServiceImpl.refreshData")?.kind, "state-write");
   assert.equal(classifyJavaSemantic("viewLayoutActivateExecutionPort.activate")?.kind, "state-write");
   assert.equal(classifyJavaSemantic("viewLayoutTransferCopyHomeExecutionPort.transferToHome")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("ViewDynamicFieldDataServiceImpl.handleSyncData")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("ViewMetaPageRefValueSyncExecutor.toLongValue")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("EngineUsePageServiceImpl.applyChildFormFieldConfig")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("LedgerAnalysisCore.jsSurprise")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("pathSegments.addFirst")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("am.max")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("cmp.thenComparing")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("c.reversed")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ctx.creator")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("creator.userId")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("f1.lastModified")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("plan.splitValues")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("AutomationTriggerSuppressor.suppress")?.kind, "coordination");
   assert.equal(classifyJavaSemantic("AutomationTriggerSuppressor.isSuppressed")?.kind, "coordination");
   assert.equal(classifyJavaSemantic("ColorAttributeDefaultFilter.stripDefaultColors")?.kind, "calculation");

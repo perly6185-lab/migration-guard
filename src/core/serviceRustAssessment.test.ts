@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { assessJavaServicesForRust } from "./serviceRustAssessment.js";
+import { assessJavaServicesForRust, renderServiceRustAssessment } from "./serviceRustAssessment.js";
 import { createJavaEndpointAnalyzer } from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
 
@@ -42,9 +42,12 @@ test("service assessment reports unclassified boundary review categories", async
     const report = await assessJavaServicesForRust({ root: dir, maxDepth: 4, maxEdges: 100 });
     const run = report.methods.find((item) => item.method === "run")!;
     assert.deepEqual(run.unclassifiedCategories, ["business-helper", "context-coordination", "residual", "value-object-factory"]);
+    assert.deepEqual(run.unclassifiedSymbols, ["CategoryService.handle", "OrderContext.unknown", "ResultFactory.extract", "mystery.handle"]);
     assert.ok(run.unknownNodes > 0);
     assert.equal(run.status, "blocked", "unknown Service boundaries must remain fail-closed");
     assert.equal(report.summary.unclassifiedCategories["business-helper"], 1);
+    assert.equal(report.summary.unclassifiedSymbols["OrderContext.unknown"], 1);
+    assert.match(renderServiceRustAssessment(report), /## Unclassified symbols[\s\S]*OrderContext\.unknown: 1/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -180,6 +183,7 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
     assert.equal(createEndpointReplacementPlanFromJava(highFanout.report).plan.status, "blocked", "high-fanout exhaustion must remain fail-closed");
     const finalBudget = analyzer.analyzeServiceMethodAdaptive(wide, { initialDepth: 2, initialEdges: 32, maxDepth: 4, maxEdges: 200, maxRounds: 2 });
     assert.equal(finalBudget.rounds.at(-1)?.maxEdges, 200, "the last adaptive round must exercise the configured edge ceiling");
+    assert.equal(finalBudget.rounds.at(-1)?.maxDepth, 4, "the last adaptive round must also exercise the depth ceiling hidden by an edge cap");
     const finalDepthBudget = analyzer.analyzeServiceMethodAdaptive(start, { initialDepth: 1, initialEdges: 100, maxDepth: 4, maxEdges: 100, maxRounds: 2 });
     assert.equal(finalDepthBudget.rounds.at(-1)?.maxDepth, 4, "the last adaptive round must exercise the configured depth ceiling");
     const continued = analyzer.analyzeServiceMethodAdaptive(wide, { initialDepth: 4, initialEdges: 200, maxDepth: 4, maxEdges: 200, maxRounds: 1 });
