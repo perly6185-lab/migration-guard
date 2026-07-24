@@ -204,6 +204,12 @@ export interface JavaEndpointAnalysisReport {
   callGraph: {
     nodes: JavaEndpointCallGraphNode[];
     edges: JavaEndpointCallGraphEdge[];
+    summarizedCalls?: Array<{
+      nodeId: string;
+      kind: "generated-accessor-reference";
+      count: number;
+      lines: number[];
+    }>;
     truncation: {
       maxDepth: number;
       maxTotalEdges: number;
@@ -313,6 +319,7 @@ interface GraphTraceState {
   depth: number;
   transactional: boolean;
   contextSignals: string[];
+  callOffset?: number;
 }
 
 type JavaCallGraphBuildResult = JavaEndpointAnalysisReport["callGraph"] & {
@@ -1494,6 +1501,7 @@ function buildCallGraph(
   const queue: GraphTraceState[] = [];
   const unexpandedBoundaryNodes: string[] = [];
   const perMethodCallCapNodes: NonNullable<JavaEndpointAnalysisReport["callGraph"]["truncation"]["perMethodCallCapNodes"]> = [];
+  const summarizedCalls = new Map<string, NonNullable<JavaEndpointAnalysisReport["callGraph"]["summarizedCalls"]>[number]>();
   const sqlSources = new Map<string, JavaSqlSourceInfo>();
   let edgeCapHadRemainingWork = false;
   const rootNode = nodeFor(routeType, routeMethod, route);
@@ -1511,7 +1519,8 @@ function buildCallGraph(
   while (queue.length > 0 && edges.length < maxEdges) {
     const current = queue.shift() as GraphTraceState;
     const methodContextSignals = mergeValues(current.contextSignals, contextSignalsForText(`${current.type.annotations.join(" ")} ${current.method.annotations.join(" ")} ${current.method.body}`));
-    if (!addSqlSourceEdges(project, current, methodContextSignals, nodes, edges, edgeSourceDepths, sqlSources, maxEdges)) {
+    const callOffset = current.callOffset ?? 0;
+    if (callOffset === 0 && !addSqlSourceEdges(project, current, methodContextSignals, nodes, edges, edgeSourceDepths, sqlSources, maxEdges)) {
       edgeCapHadRemainingWork = true;
       break;
     }
@@ -1525,8 +1534,21 @@ function buildCallGraph(
       continue;
     }
     const extractedCalls = extractMethodCalls(project, current.method, current.type);
-    if (extractedCalls.length > JAVA_MAX_EDGES_PER_METHOD) perMethodCallCapNodes.push({ nodeId: current.node.id, extractedCalls: extractedCalls.length, retainedCalls: JAVA_MAX_EDGES_PER_METHOD, omittedCalls: extractedCalls.length - JAVA_MAX_EDGES_PER_METHOD });
-    const calls = extractedCalls.slice(0, JAVA_MAX_EDGES_PER_METHOD);
+    const executableCalls = extractedCalls.filter((call) => {
+      const kind = summarizedCallKind(project, current.type, call);
+      if (!kind) return true;
+      if (callOffset === 0) {
+        const key = `${current.node.id}:${kind}`;
+        const summary = summarizedCalls.get(key) ?? { nodeId: current.node.id, kind, count: 0, lines: [] };
+        summary.count += 1;
+        if (!summary.lines.includes(call.line)) summary.lines.push(call.line);
+        summarizedCalls.set(key, summary);
+      }
+      return false;
+    });
+    const calls = executableCalls.slice(callOffset, callOffset + JAVA_MAX_EDGES_PER_METHOD);
+    const nextCallOffset = callOffset + calls.length;
+    const hasRemainingCalls = nextCallOffset < executableCalls.length;
     for (const [callIndex, call] of calls.entries()) {
       if (edges.length >= maxEdges) {
         edgeCapHadRemainingWork = true;
@@ -1566,7 +1588,7 @@ function buildCallGraph(
           if (edgeCapHadRemainingWork) {
             break;
           }
-          if (edges.length >= maxEdges && (callIndex < calls.length - 1 || queue.length > 0)) {
+          if (edges.length >= maxEdges && (callIndex < calls.length - 1 || hasRemainingCalls || queue.length > 0)) {
             edgeCapHadRemainingWork = true;
             break;
           }
@@ -1591,7 +1613,7 @@ function buildCallGraph(
           resolutionCandidates: resolved.candidates
         });
         edgeSourceDepths.push(current.depth);
-        if (edges.length >= maxEdges && (callIndex < calls.length - 1 || queue.length > 0)) {
+        if (edges.length >= maxEdges && (callIndex < calls.length - 1 || hasRemainingCalls || queue.length > 0)) {
           edgeCapHadRemainingWork = true;
           break;
         }
@@ -1634,7 +1656,7 @@ function buildCallGraph(
             contextSignals: mergeValues(methodContextSignals, contextSignalsForText(`${target.type.annotations.join(" ")} ${target.method.annotations.join(" ")} ${target.method.body}`))
           });
         }
-        if (edges.length >= maxEdges && (targetIndex < targets.length - 1 || callIndex < calls.length - 1 || queue.length > 0)) {
+        if (edges.length >= maxEdges && (targetIndex < targets.length - 1 || callIndex < calls.length - 1 || hasRemainingCalls || queue.length > 0)) {
           edgeCapHadRemainingWork = true;
           break;
         }
@@ -1643,11 +1665,15 @@ function buildCallGraph(
         break;
       }
     }
+    if (!edgeCapHadRemainingWork && hasRemainingCalls) {
+      queue.push({ ...current, callOffset: nextCallOffset });
+    }
   }
 
   return {
     nodes: [...nodes.values()],
     edges,
+    summarizedCalls: [...summarizedCalls.values()].map((summary) => ({ ...summary, lines: [...summary.lines].sort((a, b) => a - b) })),
     truncation: createCallGraphTruncation(
       maxDepth,
       maxEdges,
@@ -1789,6 +1815,7 @@ function emptyCallGraph(maxDepth: number, maxEdges: number): JavaCallGraphBuildR
   return {
     nodes: [],
     edges: [],
+    summarizedCalls: [],
     truncation: {
       maxDepth,
       maxTotalEdges: maxEdges,
@@ -1924,6 +1951,16 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes)) });
   }
   return calls;
+}
+
+function summarizedCallKind(
+  project: JavaProjectModel,
+  currentType: JavaTypeInfo,
+  call: { receiver?: string; method: string; feature?: "lambda" | "method-reference" }
+): "generated-accessor-reference" | undefined {
+  if (call.feature !== "method-reference" || !call.receiver || !/^(?:get|is)[A-Z]/.test(call.method)) return undefined;
+  const receiverTypes = resolveTypesForField(project, call.receiver, currentType);
+  return receiverTypes.some((type) => isGeneratedAccessor(type, call.method, 0)) ? "generated-accessor-reference" : undefined;
 }
 
 const PERSISTENCE_WRAPPER_PROPERTY_METHODS = new Set([

@@ -151,6 +151,14 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
       " private void shared() { start();", ...Array.from({ length: 40 }, (_, index) => `  tail${index}();`), " }",
       ...Array.from({ length: 40 }, (_, index) => ` private void tail${index}() { }`), "}"
     ].join("\n"));
+    await writeFile(path.join(dir, "demo", "SelectorService.java"), [
+      "package demo;", "public class SelectorService {",
+      " public Object select(List<Item> items) { return items.stream().map(Item::getId).filter(item -> item != null).toList(); }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "Item.java"), [
+      "package demo;", "import lombok.Data;", "@Data", "public class Item {", " private Long id;", "}"
+    ].join("\n"));
     const analyzer = await createJavaEndpointAnalyzer(dir);
     const start = analyzer.serviceMethods.find((item) => item.methodName === "start")!;
     const expanded = analyzer.analyzeServiceMethodAdaptive(start, { initialDepth: 1, initialEdges: 10, maxDepth: 8, maxEdges: 100, maxRounds: 4 });
@@ -170,22 +178,32 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
     assert.equal(highFanout.topology, "high-fanout");
     assert.equal(highFanout.rounds[0].maxOutDegree, 32);
     assert.equal(createEndpointReplacementPlanFromJava(highFanout.report).plan.status, "blocked", "high-fanout exhaustion must remain fail-closed");
+    const continued = analyzer.analyzeServiceMethodAdaptive(wide, { initialDepth: 4, initialEdges: 200, maxDepth: 4, maxEdges: 200, maxRounds: 1 });
+    assert.equal(continued.status, "complete", "wide methods must continue after each local call batch");
+    assert.equal(continued.report.callGraph.truncation.perMethodCallCapHit, false);
+    assert.equal(continued.report.callGraph.truncation.perMethodCallCapNodes?.length, 0);
+    assert.ok(continued.report.callGraph.edges.some((edge) => edge.call.method === "tail39"), "calls after the first batch must be retained");
+    const selector = analyzer.serviceMethods.find((item) => item.className === "SelectorService" && item.methodName === "select")!;
+    const summarized = analyzer.analyzeServiceMethod(selector, { maxDepth: 4, maxEdges: 20 });
+    assert.equal(summarized.callGraph.summarizedCalls?.find((item) => item.kind === "generated-accessor-reference")?.count, 1);
+    assert.equal(summarized.callGraph.edges.some((edge) => edge.call.method === "getId"), false);
+    assert.equal(summarized.callGraph.edges.some((edge) => edge.call.receiver === "$lambda"), true);
     const serviceReport = await assessJavaServicesForRust({ root: dir, maxDepth: 4, maxEdges: 32, adaptive: true, maxExpansionDepth: 8, maxExpansionEdges: 90, maxExpansionRounds: 3 });
     const diagnosed = serviceReport.methods.find((item) => item.service.endsWith("WideService") && item.method === "start")!;
     assert.equal(diagnosed.status, "blocked");
     assert.equal(diagnosed.expansionTopology, "high-fanout");
     assert.ok((diagnosed.highFanoutDiagnostics?.maxOutDegree ?? 0) >= 32);
-    assert.ok((diagnosed.highFanoutDiagnostics?.callCapNodes ?? 0) > 0);
-    assert.ok((diagnosed.highFanoutDiagnostics?.omittedCalls ?? 0) > 0);
+    assert.equal(diagnosed.highFanoutDiagnostics?.callCapNodes, 0);
+    assert.equal(diagnosed.highFanoutDiagnostics?.omittedCalls, 0);
     assert.ok((diagnosed.highFanoutDiagnostics?.repeatedSubgraphGroups ?? 0) > 0);
     assert.ok((diagnosed.highFanoutDiagnostics?.cyclicStronglyConnectedComponents ?? 0) > 0);
     assert.ok(diagnosed.highFanoutDiagnostics?.amplificationSignals.includes("repeated-outgoing-shape"));
     assert.ok(diagnosed.highFanoutDiagnostics?.amplificationSignals.includes("cyclic-scc"));
-    assert.ok(diagnosed.highFanoutDiagnostics?.amplificationSignals.includes("per-method-call-cap-saturated"));
+    assert.equal(diagnosed.highFanoutDiagnostics?.amplificationSignals.includes("per-method-call-cap-saturated"), false);
     assert.ok(serviceReport.summary.highFanoutDiagnostics.methods > 0);
-    assert.ok(serviceReport.summary.highFanoutDiagnostics.withPerMethodCallCapSaturation > 0);
-    assert.ok(serviceReport.summary.highFanoutDiagnostics.totalCallCapNodes > 0);
-    assert.ok(serviceReport.summary.highFanoutDiagnostics.totalOmittedCalls > 0);
+    assert.equal(serviceReport.summary.highFanoutDiagnostics.withPerMethodCallCapSaturation, 0);
+    assert.equal(serviceReport.summary.highFanoutDiagnostics.totalCallCapNodes, 0);
+    assert.equal(serviceReport.summary.highFanoutDiagnostics.totalOmittedCalls, 0);
     assert.ok(Object.keys(serviceReport.summary.highFanoutDiagnostics.maxOutDegrees).length > 0);
     assert.ok(Object.keys(serviceReport.summary.highFanoutDiagnostics.repeatedSubgraphGroups).length > 0);
     assert.ok(Object.keys(serviceReport.summary.highFanoutDiagnostics.cyclicSccs).length > 0);
