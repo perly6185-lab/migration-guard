@@ -94,6 +94,36 @@ test("BaseMapper inherited overloads remain SQL boundaries instead of unresolved
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test("large persistence wrapper property chains remain complete SQL contracts", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-wrapper-property-chain-"));
+  try {
+    const file = path.join(dir, "demo", "WideTaskMapper.java");
+    await mkdir(path.dirname(file), { recursive: true });
+    const predicates = Array.from({ length: 45 }, (_, index) =>
+      `   .eqIfPresent(WideTask::getField${index}, req.getField${index}())`
+    );
+    await writeFile(file, [
+      "package demo;",
+      "public interface WideTaskMapper extends BaseMapperX<WideTask> {",
+      " default Object selectPage(WideTaskPageReq req) {",
+      "  return selectPage(req, new LambdaQueryWrapperX<WideTask>()",
+      ...predicates,
+      "   .orderByDesc(WideTask::getId));",
+      " }",
+      "}",
+      "@TableName(\"wide_task\")",
+      "class WideTask {}",
+      "class WideTaskPageReq {}"
+    ].join("\n"));
+    const report = await assessJavaRepositoriesForRust({ root: dir, maxDepth: 4, maxEdges: 100, adaptive: true });
+    const method = report.methods.find((item) => item.method === "selectPage");
+    assert.equal(method?.status, "ready");
+    assert.equal(method?.findings.includes("RP-GRAPH-PER-METHOD-CALL-CAP"), false);
+    assert.equal(method?.sqlContracts[0]?.generatedContract?.predicate, "wrapper");
+    assert.equal(method?.sqlContracts[0]?.reviewStatus, "reviewable");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("dynamic table and statement expansions synthesize replay cases while tableless SQL stays reviewable", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-sql-expansion-"));
   try {

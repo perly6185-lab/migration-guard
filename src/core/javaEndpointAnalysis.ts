@@ -1889,6 +1889,7 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   }
   for (const reference of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)/g)) {
     const prefix = scanBody.slice(Math.max(0, (reference.index ?? 0) - 500), reference.index ?? 0);
+    if (isPersistenceWrapperPropertyReference(prefix, reference[2])) continue;
     const collection = prefix.match(/\b([A-Za-z_][A-Za-z0-9_]*)\.forEach\s*\(\s*$/)?.[1];
     const declaredCollection = collection ? variableTypes.get(collection) ?? "" : "";
     const referenceTypes = genericTypeArguments(declaredCollection);
@@ -1923,6 +1924,44 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes)) });
   }
   return calls;
+}
+
+const PERSISTENCE_WRAPPER_PROPERTY_METHODS = new Set([
+  "between",
+  "betweenIfPresent",
+  "eq",
+  "eqIfPresent",
+  "ge",
+  "geIfPresent",
+  "gt",
+  "gtIfPresent",
+  "in",
+  "inIfPresent",
+  "isNotNull",
+  "isNull",
+  "le",
+  "leIfPresent",
+  "like",
+  "likeIfPresent",
+  "likeLeft",
+  "likeLeftIfPresent",
+  "likeRight",
+  "likeRightIfPresent",
+  "lt",
+  "ltIfPresent",
+  "ne",
+  "neIfPresent",
+  "notBetween",
+  "notIn",
+  "notLike",
+  "orderByAsc",
+  "orderByDesc"
+]);
+
+function isPersistenceWrapperPropertyReference(prefix: string, methodName: string): boolean {
+  if (!/^(?:get|is)[A-Z]/.test(methodName)) return false;
+  const wrapperMethod = prefix.match(/\.([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*$/)?.[1];
+  return Boolean(wrapperMethod && PERSISTENCE_WRAPPER_PROPERTY_METHODS.has(wrapperMethod));
 }
 
 const LOW_VALUE_CALLS = new Set([
