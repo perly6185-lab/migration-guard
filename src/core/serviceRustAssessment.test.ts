@@ -270,8 +270,13 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " public void full() { work(null); }",
       " public void incremental(List<Long> ids) { work(ids); }",
       " public void initialized() { List<Long> ids = new ArrayList<>(); work(ids); }",
+      " public void initializedFactory() { List<Long> ids = List.of(); work(ids); }",
+      " public void directFactory() { work(Collections.emptyList()); }",
       " public void reassigned(List<Long> replacement) { List<Long> ids = new ArrayList<>(); ids = replacement; work(ids); }",
       " public void both() { List<Long> ids = new ArrayList<>(); work(null); work(ids); }",
+      " public void fullMode() { mode(true, Mode.FULL); }",
+      " public void incrementalMode() { mode(false, Mode.INCREMENTAL); }",
+      " public void fullModeForward() { forwardMode(true, Mode.FULL); }",
       " private void work(List<Long> ids) {",
       "  boolean fullPanel = ids == null;",
       "  if (fullPanel && ready()) {",
@@ -287,7 +292,27 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " private void fullGuarded() { }",
       " private void fullOnly() { }",
       " private void incrementalOnly() { }",
+      " private void mode(boolean full, Mode mode) {",
+      "  if (full) {",
+      "   boolFull();",
+      "  } else {",
+      "   boolIncremental();",
+      "  }",
+      "  if (mode == Mode.FULL) {",
+      "   enumFull();",
+      "  } else {",
+      "   enumIncremental();",
+      "  }",
+      " }",
+      " private void boolFull() { }",
+      " private void boolIncremental() { }",
+      " private void enumFull() { }",
+      " private void enumIncremental() { }",
+      " private void forwardMode(boolean full, Mode mode) { mode(full, mode); }",
       "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "Mode.java"), [
+      "package demo;", "public enum Mode { FULL, INCREMENTAL }"
     ].join("\n"));
     const analyzer = await createJavaEndpointAnalyzer(dir);
     const full = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "full")!, { maxDepth: 5, maxEdges: 30 });
@@ -303,6 +328,12 @@ test("Java call graph specializes literal-null branches without assuming variabl
     assert.equal(initialized.callGraph.nodes.some((node) => node.methodName === "fullGuarded"), false);
     assert.ok(initialized.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
     assert.ok(initialized.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[nonnull:ids]")));
+    for (const methodName of ["initializedFactory", "directFactory"]) {
+      const factory = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === methodName)!, { maxDepth: 5, maxEdges: 30 });
+      assert.equal(factory.callGraph.nodes.some((node) => node.methodName === "fullOnly"), false);
+      assert.ok(factory.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+      assert.ok(factory.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[nonnull:ids]")));
+    }
     const reassigned = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "reassigned")!, { maxDepth: 5, maxEdges: 30 });
     assert.ok(reassigned.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
     assert.ok(reassigned.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
@@ -311,6 +342,21 @@ test("Java call graph specializes literal-null branches without assuming variabl
     assert.equal(both.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[nonnull:ids]")), false);
     assert.ok(both.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
     assert.ok(both.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+    const fullMode = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "fullMode")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(fullMode.callGraph.nodes.some((node) => node.methodName === "boolFull"));
+    assert.equal(fullMode.callGraph.nodes.some((node) => node.methodName === "boolIncremental"), false);
+    assert.ok(fullMode.callGraph.nodes.some((node) => node.methodName === "enumFull"));
+    assert.equal(fullMode.callGraph.nodes.some((node) => node.methodName === "enumIncremental"), false);
+    const incrementalMode = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "incrementalMode")!, { maxDepth: 5, maxEdges: 30 });
+    assert.equal(incrementalMode.callGraph.nodes.some((node) => node.methodName === "boolFull"), false);
+    assert.ok(incrementalMode.callGraph.nodes.some((node) => node.methodName === "boolIncremental"));
+    assert.equal(incrementalMode.callGraph.nodes.some((node) => node.methodName === "enumFull"), false);
+    assert.ok(incrementalMode.callGraph.nodes.some((node) => node.methodName === "enumIncremental"));
+    const fullModeForward = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "fullModeForward")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(fullModeForward.callGraph.nodes.some((node) => node.methodName === "boolFull"));
+    assert.equal(fullModeForward.callGraph.nodes.some((node) => node.methodName === "boolIncremental"), false);
+    assert.ok(fullModeForward.callGraph.nodes.some((node) => node.methodName === "enumFull"));
+    assert.equal(fullModeForward.callGraph.nodes.some((node) => node.methodName === "enumIncremental"), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
