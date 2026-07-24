@@ -97,7 +97,23 @@ test("Java call resolution covers multiline arguments, static imports, generic f
       "Payload.java": ["package demo;", "@Data", "public class Payload {", " private String name;", " private Long id;", "}"],
       "PayloadHolder.java": ["package demo;", "@Value", "public class PayloadHolder {", " Payload payload;", "}"],
       "GeneratedConfig.java": ["package demo;", "@Getter", "public class GeneratedConfig {", " private long timeout;", "}"],
-      "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", " public Object chooseList(Long value) { return null; }", " public Object chooseList(List<Long> value) { return null; }", "}"],
+      "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", " public Object chooseList(Long value) { return null; }", " public Object chooseList(List<Long> value) { return null; }", " public Object getViewDynamicUsePageDataByPageId(Long value) { return null; }", " public Object getViewDynamicUsePageDataByPageId(List<Long> values) { return null; }", " public Object selectListByPanelId(Long value) { return null; }", " public Object selectListByPanelId(List<Long> values) { return null; }", " public Object processSpeechFields(Long panelId, Long pageId) { return null; }", " public Object processSpeechFields(Long panelId, Supplier<String> supplier) { return null; }", " public String toString(Long value) { return String.valueOf(value); }", "}"],
+      "ExternalAccessorService.java": [
+        "package demo;", "public class ExternalAccessorService {", " @Resource", " private OverloadWorker overloadWorker;",
+        " public Object page(List<ExternalRow> rows) { return overloadWorker.getViewDynamicUsePageDataByPageId(rows.get(0).getPageId()); }",
+        " public Object rightPage(List<ExternalRow> rows) { return overloadWorker.getViewDynamicUsePageDataByPageId(rows.get(0).getRightPageId()); }",
+        " public Object panel(List<ExternalRow> rows) { return overloadWorker.selectListByPanelId(rows.get(0).getId()); }",
+        " public Object unionPanel(List<ExternalRow> rows) { return overloadWorker.selectListByPanelId(rows.get(0).getUnionPanelId()); }",
+        " public Object pages(List<ExternalRow> rows) { return overloadWorker.getViewDynamicUsePageDataByPageId(rows.get(0).getPageIds()); }",
+        " public Object unrelated(List<ExternalRow> rows) { return overloadWorker.choose(rows.get(0).getPageId()); }",
+        " public Object prototypeName(List<ExternalRow> rows) { return overloadWorker.toString(rows.get(0).getId()); }", "}"
+      ],
+      "ConditionalService.java": [
+        "package demo;", "public class ConditionalService {", " @Resource", " private OverloadWorker overloadWorker;",
+        " public Object run(Long requestedId, Long fallbackId) { return overloadWorker.choose(requestedId != null ? requestedId : fallbackId); }",
+        " public Object mixed(Long requestedId, List<Long> fallbackIds) { return overloadWorker.choose(requestedId != null ? requestedId : fallbackIds); }",
+        " public Object speech(ExternalRow row) { return overloadWorker.processSpeechFields(row.getPanelId(), row.getUsePageId()); }", "}"
+      ],
       "InitializerService.java": [
         "package demo;", "public class InitializerService {", " private Worker worker;",
         " private final Object listener = Builder.create()", "  .listen(() -> {", "   try { worker.execute(1L); } catch (Exception error) {", "    error.printStackTrace();", "   }", "  })", "  .build();",
@@ -133,6 +149,32 @@ test("Java call resolution covers multiline arguments, static imports, generic f
     assert.ok(initializerRun, "method after a multiline field initializer must remain visible");
     const initializer = analyzer.analyzeServiceMethod(initializerRun, { maxDepth: 5, maxEdges: 100 });
     assert.equal(initializer.callGraph.edges.find((edge) => edge.call.receiver === "worker")?.resolution, "field-injection");
+    const pageAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "page")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(pageAccessor.callGraph.edges.find((edge) => edge.call.method === "getViewDynamicUsePageDataByPageId")?.call.argumentTypes?.[0], "Long");
+    assert.equal(pageAccessor.callGraph.edges.find((edge) => edge.call.method === "getViewDynamicUsePageDataByPageId")?.resolution, "field-injection");
+    const rightPageAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "rightPage")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(rightPageAccessor.callGraph.edges.find((edge) => edge.call.method === "getViewDynamicUsePageDataByPageId")?.call.argumentTypes?.[0], "Long");
+    assert.equal(rightPageAccessor.callGraph.edges.find((edge) => edge.call.method === "getViewDynamicUsePageDataByPageId")?.resolution, "field-injection");
+    const panelAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "panel")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(panelAccessor.callGraph.edges.find((edge) => edge.call.method === "selectListByPanelId")?.call.argumentTypes?.[0], "Long");
+    assert.equal(panelAccessor.callGraph.edges.find((edge) => edge.call.method === "selectListByPanelId")?.resolution, "field-injection");
+    const unionPanelAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "unionPanel")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(unionPanelAccessor.callGraph.edges.find((edge) => edge.call.method === "selectListByPanelId")?.call.argumentTypes?.[0], "Long");
+    assert.equal(unionPanelAccessor.callGraph.edges.find((edge) => edge.call.method === "selectListByPanelId")?.resolution, "field-injection");
+    const unknownAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "pages")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(unknownAccessor.callGraph.edges.find((edge) => edge.call.method === "getViewDynamicUsePageDataByPageId")?.resolution, "ambiguous");
+    const unrelatedAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "unrelated")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(unrelatedAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "ambiguous");
+    const prototypeName = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "prototypeName")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(prototypeName.callGraph.edges.find((edge) => edge.call.method === "toString")?.resolution, "field-injection");
+    const conditional = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ConditionalService" && item.methodName === "run")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(conditional.callGraph.edges.find((edge) => edge.call.method === "choose")?.call.argumentTypes?.[0], "Long");
+    assert.equal(conditional.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "field-injection");
+    const mixedConditional = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ConditionalService" && item.methodName === "mixed")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(mixedConditional.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "ambiguous");
+    const speech = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ConditionalService" && item.methodName === "speech")!, { maxDepth: 4, maxEdges: 100 });
+    assert.deepEqual(speech.callGraph.edges.find((edge) => edge.call.method === "processSpeechFields")?.call.argumentTypes, ["Long", "Long"]);
+    assert.equal(speech.callGraph.edges.find((edge) => edge.call.method === "processSpeechFields")?.resolution, "field-injection");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -194,6 +236,7 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
     const selector = analyzer.serviceMethods.find((item) => item.className === "SelectorService" && item.methodName === "select")!;
     const summarized = analyzer.analyzeServiceMethod(selector, { maxDepth: 4, maxEdges: 20 });
     assert.equal(summarized.callGraph.summarizedCalls?.find((item) => item.kind === "generated-accessor-reference")?.count, 1);
+    assert.ok((summarized.callGraph.summarizedCalls?.find((item) => item.kind === "reviewed-exclusion")?.count ?? 0) > 0);
     assert.equal(summarized.callGraph.edges.some((edge) => edge.call.method === "getId"), false);
     assert.equal(summarized.callGraph.edges.some((edge) => edge.call.receiver === "$lambda"), true);
     const serviceReport = await assessJavaServicesForRust({ root: dir, maxDepth: 4, maxEdges: 32, adaptive: true, maxExpansionDepth: 8, maxExpansionEdges: 90, maxExpansionRounds: 3 });
@@ -215,6 +258,155 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
     assert.ok(Object.keys(serviceReport.summary.highFanoutDiagnostics.maxOutDegrees).length > 0);
     assert.ok(Object.keys(serviceReport.summary.highFanoutDiagnostics.repeatedSubgraphGroups).length > 0);
     assert.ok(Object.keys(serviceReport.summary.highFanoutDiagnostics.cyclicSccs).length > 0);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("Java call graph specializes literal-null branches without assuming variables are non-null", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-null-context-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "NullContextService.java"), [
+      "package demo;", "@Service", "public class NullContextService {",
+      " public void full() { work(null); }",
+      " public void incremental(List<Long> ids) { work(ids); }",
+      " public void initialized() { List<Long> ids = new ArrayList<>(); work(ids); }",
+      " public void initializedFactory() { List<Long> ids = List.of(); work(ids); }",
+      " public void directFactory() { work(Collections.emptyList()); }",
+      " public void reassigned(List<Long> replacement) { List<Long> ids = new ArrayList<>(); ids = replacement; work(ids); }",
+      " public void both() { List<Long> ids = new ArrayList<>(); work(null); work(ids); }",
+      " public void fullMode() { mode(true, Mode.FULL); }",
+      " public void incrementalMode() { mode(false, Mode.INCREMENTAL); }",
+      " public void fullModeForward() { forwardMode(true, Mode.FULL); }",
+      " public void boxedFalse() { boxedMode(Boolean.FALSE); }",
+      " public void scopedAsync() {",
+      "  try (Scope ignored = AsyncSelectRefCalculationContext.includeOnlyWithoutDerivedSideEffects(ids)) {",
+      "   syncUpdateCalculateLocalValueWithContext();",
+      "  }",
+      " }",
+      " public void unscopedAsync() { syncUpdateCalculateLocalValueWithContext(); }",
+      " private void work(List<Long> ids) {",
+      "  boolean fullPanel = ids == null;",
+      "  if (fullPanel && ready()) {",
+      "   fullGuarded();",
+      "  }",
+      "  if (ids == null && ready()) {",
+      "   fullDirectGuarded();",
+      "  }",
+      "  if (ids != null && ready()) {",
+      "   incrementalDirectGuarded();",
+      "  }",
+      "  if (fullPanel) {",
+      "   fullOnly();",
+      "  } else {",
+      "   incrementalOnly();",
+      "  }",
+      " }",
+      " private boolean ready() { return true; }",
+      " private void fullGuarded() { }",
+      " private void fullDirectGuarded() { }",
+      " private void incrementalDirectGuarded() { }",
+      " private void fullOnly() { }",
+      " private void incrementalOnly() { }",
+      " private void mode(boolean full, Mode mode) {",
+      "  if (full) {",
+      "   boolFull();",
+      "  } else {",
+      "   boolIncremental();",
+      "  }",
+      "  if (mode == Mode.FULL) {",
+      "   enumFull();",
+      "  } else {",
+      "   enumIncremental();",
+      "  }",
+      " }",
+      " private void boolFull() { }",
+      " private void boolIncremental() { }",
+      " private void enumFull() { }",
+      " private void enumIncremental() { }",
+      " private void forwardMode(boolean full, Mode mode) { mode(full, mode); }",
+      " private void boxedMode(Boolean full) {",
+      "  if (full) {",
+      "   boxedTrueOnly();",
+      "  } else {",
+      "   boxedFalseOnly();",
+      "  }",
+      " }",
+      " private void boxedTrueOnly() { }",
+      " private void boxedFalseOnly() { }",
+      " private void syncUpdateCalculateLocalValueWithContext() {",
+      "  boolean skipDerivedSideEffects = AsyncSelectRefCalculationContext.skipDerivedSideEffects();",
+      "  if (skipDerivedSideEffects) {",
+      "   scopedOnly();",
+      "  }",
+      "  if (!skipDerivedSideEffects) {",
+      "   unscopedOnly();",
+      "  }",
+      " }",
+      " private void scopedOnly() { }",
+      " private void unscopedOnly() { }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "Mode.java"), [
+      "package demo;", "public enum Mode { FULL, INCREMENTAL }"
+    ].join("\n"));
+    const analyzer = await createJavaEndpointAnalyzer(dir);
+    const full = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "full")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
+    assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullGuarded"));
+    assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullDirectGuarded"));
+    assert.equal(full.callGraph.nodes.some((node) => node.methodName === "incrementalDirectGuarded"), false);
+    assert.equal(full.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"), false);
+    assert.ok(full.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[null:ids]")));
+    const incremental = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "incremental")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(incremental.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
+    assert.ok(incremental.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+    const initialized = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "initialized")!, { maxDepth: 5, maxEdges: 30 });
+    assert.equal(initialized.callGraph.nodes.some((node) => node.methodName === "fullOnly"), false);
+    assert.equal(initialized.callGraph.nodes.some((node) => node.methodName === "fullGuarded"), false);
+    assert.equal(initialized.callGraph.nodes.some((node) => node.methodName === "fullDirectGuarded"), false);
+    assert.ok(initialized.callGraph.nodes.some((node) => node.methodName === "incrementalDirectGuarded"));
+    assert.ok(initialized.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+    assert.ok(initialized.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[nonnull:ids]")));
+    for (const methodName of ["initializedFactory", "directFactory"]) {
+      const factory = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === methodName)!, { maxDepth: 5, maxEdges: 30 });
+      assert.equal(factory.callGraph.nodes.some((node) => node.methodName === "fullOnly"), false);
+      assert.ok(factory.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+      assert.ok(factory.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[nonnull:ids]")));
+    }
+    const reassigned = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "reassigned")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(reassigned.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
+    assert.ok(reassigned.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+    const both = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "both")!, { maxDepth: 5, maxEdges: 30 });
+    assert.equal(both.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[null:ids]")), false);
+    assert.equal(both.callGraph.nodes.some((node) => node.methodName === "work" && node.id.includes("[nonnull:ids]")), false);
+    assert.ok(both.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
+    assert.ok(both.callGraph.nodes.some((node) => node.methodName === "incrementalOnly"));
+    const fullMode = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "fullMode")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(fullMode.callGraph.nodes.some((node) => node.methodName === "boolFull"));
+    assert.equal(fullMode.callGraph.nodes.some((node) => node.methodName === "boolIncremental"), false);
+    assert.ok(fullMode.callGraph.nodes.some((node) => node.methodName === "enumFull"));
+    assert.equal(fullMode.callGraph.nodes.some((node) => node.methodName === "enumIncremental"), false);
+    const incrementalMode = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "incrementalMode")!, { maxDepth: 5, maxEdges: 30 });
+    assert.equal(incrementalMode.callGraph.nodes.some((node) => node.methodName === "boolFull"), false);
+    assert.ok(incrementalMode.callGraph.nodes.some((node) => node.methodName === "boolIncremental"));
+    assert.equal(incrementalMode.callGraph.nodes.some((node) => node.methodName === "enumFull"), false);
+    assert.ok(incrementalMode.callGraph.nodes.some((node) => node.methodName === "enumIncremental"));
+    const fullModeForward = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "fullModeForward")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(fullModeForward.callGraph.nodes.some((node) => node.methodName === "boolFull"));
+    assert.equal(fullModeForward.callGraph.nodes.some((node) => node.methodName === "boolIncremental"), false);
+    assert.ok(fullModeForward.callGraph.nodes.some((node) => node.methodName === "enumFull"));
+    assert.equal(fullModeForward.callGraph.nodes.some((node) => node.methodName === "enumIncremental"), false);
+    const boxedFalse = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "boxedFalse")!, { maxDepth: 5, maxEdges: 30 });
+    assert.equal(boxedFalse.callGraph.nodes.some((node) => node.methodName === "boxedTrueOnly"), false);
+    assert.ok(boxedFalse.callGraph.nodes.some((node) => node.methodName === "boxedFalseOnly"));
+    const scopedAsync = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "scopedAsync")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(scopedAsync.callGraph.nodes.some((node) => node.methodName === "scopedOnly"));
+    assert.equal(scopedAsync.callGraph.nodes.some((node) => node.methodName === "unscopedOnly"), false);
+    assert.ok(scopedAsync.callGraph.nodes.some((node) => node.methodName === "syncUpdateCalculateLocalValueWithContext"
+      && node.id.includes("[bool:skipDerivedSideEffects=true]")));
+    const unscopedAsync = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "unscopedAsync")!, { maxDepth: 5, maxEdges: 30 });
+    assert.ok(unscopedAsync.callGraph.nodes.some((node) => node.methodName === "scopedOnly"));
+    assert.ok(unscopedAsync.callGraph.nodes.some((node) => node.methodName === "unscopedOnly"));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

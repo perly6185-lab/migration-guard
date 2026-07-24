@@ -210,7 +210,7 @@ export function renderServiceRustAssessment(report: ServiceRustAssessmentReport)
   ].join("\n");
 }
 
-function classifyUnclassifiedBoundary(node: { evidence: { symbol: string; detail?: string }; id: string }): UnclassifiedBoundaryCategory {
+export function classifyUnclassifiedBoundary(node: { evidence: { symbol: string; detail?: string }; id: string }): UnclassifiedBoundaryCategory {
   const text = `${node.evidence.symbol} ${node.evidence.detail ?? ""}`;
   if (/\b[A-Za-z0-9_]*Context\.|\b(?:scope|barrier|queue)\./i.test(text)) return "context-coordination";
   if (/\b[A-Z][A-Za-z0-9_]*\.(?:of|from|create|empty|ok|no|failed|skipped|resolve|extract)\b/.test(text)) return "value-object-factory";

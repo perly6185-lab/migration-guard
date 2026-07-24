@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { writeJsonFile, writeTextFile, toPosixPath } from "./files.js";
+import { classifyJavaSemantic } from "./javaSemanticRegistry.js";
 
 export type JavaEndpointHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD" | "ALL";
 export type JavaEndpointRiskSeverity = "low" | "medium" | "high";
@@ -207,7 +208,7 @@ export interface JavaEndpointAnalysisReport {
     edges: JavaEndpointCallGraphEdge[];
     summarizedCalls?: Array<{
       nodeId: string;
-      kind: "generated-accessor-reference";
+      kind: "generated-accessor-reference" | "reviewed-exclusion";
       count: number;
       lines: number[];
     }>;
@@ -321,6 +322,10 @@ interface GraphTraceState {
   transactional: boolean;
   contextSignals: string[];
   callOffset?: number;
+  knownNullParams?: Set<string>;
+  knownNonNullParams?: Set<string>;
+  knownBooleanParams?: Map<string, boolean>;
+  knownEnumParams?: Map<string, string>;
 }
 
 type JavaCallGraphBuildResult = JavaEndpointAnalysisReport["callGraph"] & {
@@ -1561,7 +1566,14 @@ function buildCallGraph(
     if (!current.method.hasBody) {
       continue;
     }
-    const extractedCalls = extractMethodCalls(project, current.method, current.type);
+    const extractedCalls = filterKnownNullBranches(
+      current.method,
+      extractMethodCalls(project, current.method, current.type),
+      current.knownNullParams,
+      current.knownNonNullParams,
+      current.knownBooleanParams,
+      current.knownEnumParams
+    );
     const executableCalls = extractedCalls.filter((call) => {
       const kind = summarizedCallKind(project, current.type, call);
       if (!kind) return true;
@@ -1652,7 +1664,84 @@ function buildCallGraph(
           edgeCapHadRemainingWork = true;
           break;
         }
-        const targetNode = nodeFor(target.type, target.method);
+        const knownNullParams = new Set<string>();
+        const knownNonNullParams = new Set<string>();
+        const knownBooleanParams = new Map<string, boolean>();
+        const knownEnumParams = new Map<string, string>();
+        for (const [index, isLiteralNull] of (call.argumentNulls ?? []).entries()) {
+          const param = target.method.params[index];
+          const sourceParam = call.argumentIdentifiers?.[index];
+          const isNull = isLiteralNull || Boolean(sourceParam && current.knownNullParams?.has(sourceParam));
+          if (isNull && param && hasKnownNullBranch(target.method, param.name)) knownNullParams.add(param.name);
+        }
+        for (const [index, isLiteralNonNull] of (call.argumentNonNulls ?? []).entries()) {
+          const param = target.method.params[index];
+          const sourceParam = call.argumentIdentifiers?.[index];
+          const isNonNull = isLiteralNonNull || Boolean(sourceParam && current.knownNonNullParams?.has(sourceParam));
+          if (isNonNull && param && hasKnownNullBranch(target.method, param.name)) knownNonNullParams.add(param.name);
+        }
+        for (const [index, literalValue] of (call.argumentBooleans ?? []).entries()) {
+          const param = target.method.params[index];
+          const sourceParam = call.argumentIdentifiers?.[index];
+          const value = literalValue ?? (sourceParam ? current.knownBooleanParams?.get(sourceParam) : undefined);
+          if (value !== undefined && (param?.declaredType === "boolean" || param?.declaredType === "Boolean")) {
+            knownBooleanParams.set(param.name, value);
+          }
+        }
+        for (const [index, literalValue] of (call.argumentEnumConstants ?? []).entries()) {
+          const param = target.method.params[index];
+          const sourceParam = call.argumentIdentifiers?.[index];
+          const value = literalValue ?? (sourceParam ? current.knownEnumParams?.get(sourceParam) : undefined);
+          if (value && param && resolveTypesForField(project, param.declaredType, target.type).some((type) => type.kind === "enum")) {
+            knownEnumParams.set(param.name, value);
+          }
+        }
+        for (const [localName, value] of call.lexicalBooleanFacts ?? []) {
+          const declaration = new RegExp(
+            `\\bboolean\\s+${localName}\\s*=\\s*AsyncSelectRefCalculationContext\\.skipDerivedSideEffects\\s*\\(\\s*\\)\\s*;`
+          );
+          if (declaration.test(target.method.body)) knownBooleanParams.set(localName, value);
+        }
+        const baseTargetNode = nodeFor(target.type, target.method);
+        const contextParts = [
+          knownNullParams.size > 0 ? `null:${[...knownNullParams].sort().join(",")}` : undefined,
+          knownNonNullParams.size > 0 ? `nonnull:${[...knownNonNullParams].sort().join(",")}` : undefined,
+          knownBooleanParams.size > 0
+            ? `bool:${[...knownBooleanParams].sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => `${name}=${value}`).join(",")}`
+            : undefined,
+          knownEnumParams.size > 0
+            ? `enum:${[...knownEnumParams].sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => `${name}=${value}`).join(",")}`
+            : undefined
+        ].filter((part): part is string => Boolean(part));
+        const desiredVariantId = contextParts.length > 0
+          ? `${baseTargetNode.id}${contextParts.map((part) => `[${part}]`).join("")}`
+          : undefined;
+        const variants = [...nodes.keys()].filter((id) => id.startsWith(`${baseTargetNode.id}[`));
+        const hasOppositeVariant = variants.some((id) => id !== desiredVariantId);
+        if (contextParts.length === 0 || nodes.has(baseTargetNode.id) || hasOppositeVariant) {
+          if (variants.length > 0) {
+            const variantSet = new Set(variants);
+            for (let index = edges.length - 1; index >= 0; index -= 1) {
+              const edge = edges[index];
+              if (variantSet.has(edge.from)) {
+                edges.splice(index, 1);
+                edgeSourceDepths.splice(index, 1);
+              } else if (edge.to && variantSet.has(edge.to)) {
+                edge.to = baseTargetNode.id;
+              }
+            }
+            for (const id of variants) {
+              nodes.delete(id);
+              nodeDepths.delete(id);
+            }
+            for (let index = queue.length - 1; index >= 0; index -= 1) {
+              if (variantSet.has(queue[index].node.id)) queue.splice(index, 1);
+            }
+          }
+        }
+        const targetNode = desiredVariantId && !nodes.has(baseTargetNode.id) && !hasOppositeVariant
+          ? { ...baseTargetNode, id: desiredVariantId }
+          : baseTargetNode;
         const alreadyVisited = nodes.has(targetNode.id);
         nodes.set(targetNode.id, targetNode);
         if (!alreadyVisited) {
@@ -1681,7 +1770,11 @@ function buildCallGraph(
             method: target.method,
             depth: current.depth + 1,
             transactional: current.transactional || hasTransactionBoundary(target.type, target.method),
-            contextSignals: mergeValues(methodContextSignals, contextSignalsForText(`${target.type.annotations.join(" ")} ${target.method.annotations.join(" ")} ${target.method.body}`))
+            contextSignals: mergeValues(methodContextSignals, contextSignalsForText(`${target.type.annotations.join(" ")} ${target.method.annotations.join(" ")} ${target.method.body}`)),
+            knownNullParams: targetNode.id === desiredVariantId ? knownNullParams : undefined,
+            knownNonNullParams: targetNode.id === desiredVariantId ? knownNonNullParams : undefined,
+            knownBooleanParams: targetNode.id === desiredVariantId ? knownBooleanParams : undefined,
+            knownEnumParams: targetNode.id === desiredVariantId ? knownEnumParams : undefined
           });
         }
         if (edges.length >= maxEdges && (targetIndex < targets.length - 1 || callIndex < calls.length - 1 || hasRemainingCalls || queue.length > 0)) {
@@ -1917,18 +2010,47 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   line: number;
   argumentCount: number;
   argumentTypes: string[];
+  argumentNulls?: boolean[];
+  argumentNonNulls?: boolean[];
+  argumentBooleans?: Array<boolean | undefined>;
+  argumentEnumConstants?: Array<string | undefined>;
+  argumentIdentifiers?: Array<string | undefined>;
+  lexicalBooleanFacts?: Array<[string, boolean]>;
   receiverType?: string;
   feature?: "lambda" | "method-reference";
 }> {
-  const calls: Array<{ receiver?: string; method: string; expression: string; line: number; argumentCount: number; argumentTypes: string[]; receiverType?: string; feature?: "lambda" | "method-reference" }> = [];
+  const calls: Array<{ receiver?: string; method: string; expression: string; line: number; argumentCount: number; argumentTypes: string[]; argumentNulls?: boolean[]; argumentNonNulls?: boolean[]; argumentBooleans?: Array<boolean | undefined>; argumentEnumConstants?: Array<string | undefined>; argumentIdentifiers?: Array<string | undefined>; lexicalBooleanFacts?: Array<[string, boolean]>; receiverType?: string; feature?: "lambda" | "method-reference" }> = [];
   const injectedFields = new Set(type.fields.map((field) => field.name));
   const variableTypes = new Map(method.params.map((param) => [param.name, param.declaredType]));
+  const definitelyNonNullVariables = new Map<string, number>();
   let body = method.body.split(/\r?\n/).map(stripLineComment).join("\n");
   const openingBrace = body.indexOf("{");
   if (openingBrace >= 0) body = body.slice(0, openingBrace + 1).replace(/[^\n]/g, " ") + body.slice(openingBrace + 1);
   const scanBody = body.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, (literal) => literal.replace(/[^\n]/g, " "));
   const lineAt = (offset: number) => method.bodyStartLine + scanBody.slice(0, offset).split("\n").length - 1;
+  const derivedSideEffectScopes = tryResourceScopes(
+    scanBody,
+    "AsyncSelectRefCalculationContext.includeOnlyWithoutDerivedSideEffects"
+  );
+  const lexicalBooleanFacts = (methodName: string, offset: number): Array<[string, boolean]> | undefined =>
+    methodName === "syncUpdateCalculateLocalValueWithContext"
+      && derivedSideEffectScopes.some((scope) => offset > scope.open && offset < scope.close)
+      ? [["skipDerivedSideEffects", true]]
+      : undefined;
   for (const local of scanBody.matchAll(/\b([A-Z][A-Za-z0-9_.$]*(?:\s*<[^;\r\n=()]+>)?(?:\[\])?|(?:byte|short|int|long|float|double|boolean|char))\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;|:)/g)) variableTypes.set(local[2], local[1]);
+  for (const local of scanBody.matchAll(/\b[A-Z][A-Za-z0-9_.$]*(?:\s*<[^;\r\n=()]+>)?\s+([a-zA-Z_][A-Za-z0-9_]*)\s*=\s*new\s+[A-Z][A-Za-z0-9_.$]*/g)) {
+    definitelyNonNullVariables.set(local[1], (local.index ?? 0) + local[0].length);
+  }
+  for (const local of scanBody.matchAll(/\b[A-Z][A-Za-z0-9_.$]*(?:\s*<[^;\r\n=()]+>)?\s+([a-zA-Z_][A-Za-z0-9_]*)\s*=\s*(?:Collections\.empty(?:List|Set|Map)|(?:List|Set|Map)\.of)\s*\(/g)) {
+    definitelyNonNullVariables.set(local[1], (local.index ?? 0) + local[0].length);
+  }
+  const nonNullArgument = (argument: string, callOffset: number): boolean => {
+    const value = argument.trim();
+    if (/^new\s+/.test(value) || /^(?:Collections\.empty(?:List|Set|Map)|(?:List|Set|Map)\.of)\s*\(/.test(value)) return true;
+    const initializedAt = definitelyNonNullVariables.get(value);
+    if (initializedAt === undefined || initializedAt >= callOffset) return false;
+    return !new RegExp(`\\b${value}\\s*=(?!=)`).test(scanBody.slice(initializedAt, callOffset));
+  };
   for (const loop of scanBody.matchAll(/\bfor\s*\(\s*var\s+([a-zA-Z_][A-Za-z0-9_]*)\s*:\s*([a-zA-Z_][A-Za-z0-9_]*)\s*\)/g)) {
     const elementType = genericTypeArguments(variableTypes.get(loop[2]) ?? "")[0];
     if (elementType) variableTypes.set(loop[1], elementType);
@@ -1959,14 +2081,14 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     const openIndex = (match.index ?? 0) + match[0].lastIndexOf("(");
     const parsedArgs = extractCallArguments(body, openIndex);
     const receiverType = resolveFactoryReturnType(project, type, match[1], match[2]);
-    calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes)) });
+    calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[4])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier), lexicalBooleanFacts: lexicalBooleanFacts(match[4], match.index ?? 0) });
     occupied.add((match.index ?? 0) + match[0].lastIndexOf(match[4]));
   }
   for (const match of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodOffset = (match.index ?? 0) + match[0].lastIndexOf(match[2]);
     if (occupied.has(methodOffset) || !injectedFields.has(match[1]) && isLowValueCall(match[2])) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
-    calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes)) });
+    calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[2])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier), lexicalBooleanFacts: lexicalBooleanFacts(match[2], match.index ?? 0) });
   }
   for (const match of scanBody.matchAll(/(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodName = match[1];
@@ -1976,19 +2098,224 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     const staticImported = type.staticImports.some((item) => item.methodName === methodName || item.methodName === "*");
     if (!staticImported && !methodsInHierarchy(project, type).some((candidate) => candidate.method.name === methodName)) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
-    calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes)) });
+    calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, methodName)), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier), lexicalBooleanFacts: lexicalBooleanFacts(methodName, match.index ?? 0) });
   }
   return calls;
+}
+
+function literalBoolean(argument: string): boolean | undefined {
+  const value = argument.trim();
+  return value === "true" || value === "Boolean.TRUE"
+    ? true
+    : value === "false" || value === "Boolean.FALSE"
+      ? false
+      : undefined;
+}
+
+function literalEnumConstant(argument: string): string | undefined {
+  const value = argument.trim();
+  return /^[A-Z][A-Za-z0-9_$.]*\.[A-Z][A-Z0-9_]*$/.test(value) ? value : undefined;
+}
+
+function simpleIdentifier(argument: string): string | undefined {
+  const value = argument.trim();
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) ? value : undefined;
+}
+
+function tryResourceScopes(text: string, resourceCall: string): Array<{ open: number; close: number }> {
+  const scopes: Array<{ open: number; close: number }> = [];
+  for (const match of text.matchAll(/\btry\s*\(/g)) {
+    const resourceOpen = (match.index ?? 0) + match[0].lastIndexOf("(");
+    const resourceClose = matchingDelimiterOffset(text, resourceOpen, "(", ")");
+    if (resourceClose < 0 || !text.slice(resourceOpen + 1, resourceClose).includes(resourceCall)) continue;
+    let blockOpen = resourceClose + 1;
+    while (/\s/.test(text[blockOpen] ?? "")) blockOpen += 1;
+    if (text[blockOpen] !== "{") continue;
+    const blockClose = matchingBraceOffset(text, blockOpen);
+    if (blockClose >= 0) scopes.push({ open: blockOpen, close: blockClose });
+  }
+  return scopes;
+}
+
+function filterKnownNullBranches<T extends { line: number }>(
+  method: JavaMethodInfo,
+  calls: T[],
+  knownNullParams: Set<string> | undefined,
+  knownNonNullParams: Set<string> | undefined,
+  knownBooleanParams: Map<string, boolean> | undefined,
+  knownEnumParams: Map<string, string> | undefined
+): T[] {
+  if (!knownNullParams?.size && !knownNonNullParams?.size && !knownBooleanParams?.size && !knownEnumParams?.size) return calls;
+  const body = method.body;
+  const excluded: Array<{ startLine: number; endLine: number }> = [];
+  for (const param of knownNullParams ?? []) {
+    const aliasMatch = new RegExp(`\\bboolean\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*${param}\\s*==\\s*null\\s*;`).exec(body);
+    if (!aliasMatch) continue;
+    const alias = aliasMatch[1];
+    const branchMatch = new RegExp(`\\bif\\s*\\(\\s*${alias}\\s*\\)\\s*\\{`, "g");
+    for (const match of body.matchAll(branchMatch)) {
+      const open = (match.index ?? 0) + match[0].lastIndexOf("{");
+      const close = matchingBraceOffset(body, open);
+      if (close < 0) continue;
+      const elseMatch = /^\s*else\s*\{/.exec(body.slice(close + 1));
+      if (!elseMatch) continue;
+      const elseOpen = close + 1 + (elseMatch.index ?? 0) + elseMatch[0].lastIndexOf("{");
+      const elseClose = matchingBraceOffset(body, elseOpen);
+      if (elseClose < 0) continue;
+      excluded.push({
+        startLine: method.bodyStartLine + body.slice(0, elseOpen).split("\n").length - 1,
+        endLine: method.bodyStartLine + body.slice(0, elseClose).split("\n").length - 1
+      });
+    }
+    const nonNullGuard = new RegExp(`\\bif\\s*\\(\\s*${param}\\s*!=\\s*null(?:\\s*&&[^{}]*)?\\)\\s*\\{`, "g");
+    for (const match of body.matchAll(nonNullGuard)) {
+      excludeKnownBranch(method, body, match, false, excluded);
+    }
+  }
+  for (const param of knownNonNullParams ?? []) {
+    const aliasMatch = new RegExp(`\\bboolean\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*${param}\\s*==\\s*null\\s*;`).exec(body);
+    if (!aliasMatch) continue;
+    const alias = aliasMatch[1];
+    const branchMatch = new RegExp(`\\bif\\s*\\(\\s*${alias}(?:\\s*&&[^{}]*)?\\)\\s*\\{`, "g");
+    for (const match of body.matchAll(branchMatch)) {
+      const open = (match.index ?? 0) + match[0].lastIndexOf("{");
+      const close = matchingBraceOffset(body, open);
+      if (close < 0) continue;
+      excluded.push({
+        startLine: method.bodyStartLine + body.slice(0, open).split("\n").length - 1,
+        endLine: method.bodyStartLine + body.slice(0, close).split("\n").length - 1
+      });
+    }
+    const nullGuard = new RegExp(`\\bif\\s*\\(\\s*${param}\\s*==\\s*null(?:\\s*&&[^{}]*)?\\)\\s*\\{`, "g");
+    for (const match of body.matchAll(nullGuard)) {
+      excludeKnownBranch(method, body, match, false, excluded);
+    }
+  }
+  for (const [param, value] of knownBooleanParams ?? []) {
+    for (const negated of [false, true]) {
+      const branchMatch = new RegExp(`\\bif\\s*\\(\\s*${negated ? "!" : ""}${param}\\s*\\)\\s*\\{`, "g");
+      for (const match of body.matchAll(branchMatch)) {
+        const open = (match.index ?? 0) + match[0].lastIndexOf("{");
+        const close = matchingBraceOffset(body, open);
+        if (close < 0) continue;
+        const condition = negated ? !value : value;
+        if (!condition) {
+          excluded.push({
+            startLine: method.bodyStartLine + body.slice(0, open).split("\n").length - 1,
+            endLine: method.bodyStartLine + body.slice(0, close).split("\n").length - 1
+          });
+          continue;
+        }
+        const elseMatch = /^\s*else\s*\{/.exec(body.slice(close + 1));
+        if (!elseMatch) continue;
+        const elseOpen = close + 1 + (elseMatch.index ?? 0) + elseMatch[0].lastIndexOf("{");
+        const elseClose = matchingBraceOffset(body, elseOpen);
+        if (elseClose < 0) continue;
+        excluded.push({
+          startLine: method.bodyStartLine + body.slice(0, elseOpen).split("\n").length - 1,
+          endLine: method.bodyStartLine + body.slice(0, elseClose).split("\n").length - 1
+        });
+      }
+    }
+  }
+  for (const [param, value] of knownEnumParams ?? []) {
+    const comparisons = [
+      new RegExp(`\\bif\\s*\\(\\s*${param}\\s*==\\s*([A-Z][A-Za-z0-9_$.]*\\.[A-Z][A-Z0-9_]*)\\s*\\)\\s*\\{`, "g"),
+      new RegExp(`\\bif\\s*\\(\\s*([A-Z][A-Za-z0-9_$.]*\\.[A-Z][A-Z0-9_]*)\\s*==\\s*${param}\\s*\\)\\s*\\{`, "g"),
+      new RegExp(`\\bif\\s*\\(\\s*([A-Z][A-Za-z0-9_$.]*\\.[A-Z][A-Z0-9_]*)\\.equals\\(\\s*${param}\\s*\\)\\s*\\)\\s*\\{`, "g")
+    ];
+    for (const comparison of comparisons) {
+      for (const match of body.matchAll(comparison)) {
+        excludeKnownBranch(method, body, match, match[1] === value, excluded);
+      }
+    }
+  }
+  return excluded.length === 0
+    ? calls
+    : calls.filter((call) => !excluded.some((range) => call.line >= range.startLine && call.line <= range.endLine));
+}
+
+function excludeKnownBranch(
+  method: JavaMethodInfo,
+  body: string,
+  match: RegExpMatchArray,
+  condition: boolean,
+  excluded: Array<{ startLine: number; endLine: number }>
+): void {
+  const open = (match.index ?? 0) + match[0].lastIndexOf("{");
+  const close = matchingBraceOffset(body, open);
+  if (close < 0) return;
+  if (!condition) {
+    excluded.push({
+      startLine: method.bodyStartLine + body.slice(0, open).split("\n").length - 1,
+      endLine: method.bodyStartLine + body.slice(0, close).split("\n").length - 1
+    });
+    return;
+  }
+  const elseMatch = /^\s*else\s*\{/.exec(body.slice(close + 1));
+  if (!elseMatch) return;
+  const elseOpen = close + 1 + (elseMatch.index ?? 0) + elseMatch[0].lastIndexOf("{");
+  const elseClose = matchingBraceOffset(body, elseOpen);
+  if (elseClose < 0) return;
+  excluded.push({
+    startLine: method.bodyStartLine + body.slice(0, elseOpen).split("\n").length - 1,
+    endLine: method.bodyStartLine + body.slice(0, elseClose).split("\n").length - 1
+  });
+}
+
+function hasKnownNullElseBranch(method: JavaMethodInfo, param: string): boolean {
+  const alias = new RegExp(`\\bboolean\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*${param}\\s*==\\s*null\\s*;`).exec(method.body)?.[1];
+  return Boolean(alias && new RegExp(`\\bif\\s*\\(\\s*${alias}\\s*\\)\\s*\\{[\\s\\S]*?\\}\\s*else\\s*\\{`).test(method.body));
+}
+
+function hasKnownNullBranch(method: JavaMethodInfo, param: string): boolean {
+  return hasKnownNullElseBranch(method, param)
+    || new RegExp(`\\bif\\s*\\(\\s*${param}\\s*(?:==|!=)\\s*null(?:\\s*(?:&&|\\)|\\{))`).test(method.body);
+}
+
+function matchingBraceOffset(text: string, openOffset: number): number {
+  let depth = 0;
+  let quote = "";
+  for (let index = openOffset; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (char === quote && text[index - 1] !== "\\") quote = "";
+      continue;
+    }
+    if (char === "\"" || char === "'") { quote = char; continue; }
+    if (char === "{") depth += 1;
+    if (char === "}" && --depth === 0) return index;
+  }
+  return -1;
+}
+
+function matchingDelimiterOffset(text: string, openOffset: number, openChar: string, closeChar: string): number {
+  let depth = 0;
+  let quote = "";
+  for (let index = openOffset; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (char === quote && text[index - 1] !== "\\") quote = "";
+      continue;
+    }
+    if (char === "\"" || char === "'") { quote = char; continue; }
+    if (char === openChar) depth += 1;
+    if (char === closeChar && --depth === 0) return index;
+  }
+  return -1;
 }
 
 function summarizedCallKind(
   project: JavaProjectModel,
   currentType: JavaTypeInfo,
-  call: { receiver?: string; method: string; feature?: "lambda" | "method-reference" }
-): "generated-accessor-reference" | undefined {
-  if (call.feature !== "method-reference" || !call.receiver || !/^(?:get|is)[A-Z]/.test(call.method)) return undefined;
-  const receiverTypes = resolveTypesForField(project, call.receiver, currentType);
-  return receiverTypes.some((type) => isGeneratedAccessor(type, call.method, 0)) ? "generated-accessor-reference" : undefined;
+  call: { receiver?: string; method: string; expression?: string; feature?: "lambda" | "method-reference" }
+): "generated-accessor-reference" | "reviewed-exclusion" | undefined {
+  if (call.feature === "method-reference" && call.receiver && /^(?:get|is)[A-Z]/.test(call.method)) {
+    const receiverTypes = resolveTypesForField(project, call.receiver, currentType);
+    if (receiverTypes.some((type) => isGeneratedAccessor(type, call.method, 0))) return "generated-accessor-reference";
+  }
+  const symbol = call.receiver ? `${call.receiver}.${call.method}` : call.expression ?? call.method;
+  return classifyJavaSemantic(symbol)?.defaultOwnership === "reviewed-exclusion" ? "reviewed-exclusion" : undefined;
 }
 
 const PERSISTENCE_WRAPPER_PROPERTY_METHODS = new Set([
@@ -2301,7 +2628,13 @@ function extractCallArguments(line: string, openIndex: number): { args: string[]
   return { args: current.trim() ? [current.trim()] : [], complete: false };
 }
 
-function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo, value: string, variableTypes: Map<string, string>): string {
+function inferArgumentType(
+  project: JavaProjectModel,
+  currentType: JavaTypeInfo,
+  value: string,
+  variableTypes: Map<string, string>,
+  targetMethodName?: string
+): string {
   const trimmed = value.trim();
   if (!trimmed) return "unknown";
   if (/^"[\s\S]*"$/.test(trimmed)) return "String";
@@ -2319,6 +2652,12 @@ function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo,
   if (cast) return simpleTypeName(cast[1]);
   const direct = variableTypes.get(trimmed);
   if (direct) return simpleTypeName(direct);
+  const conditional = splitTopLevelConditional(trimmed);
+  if (conditional) {
+    const whenTrue = inferArgumentType(project, currentType, conditional.whenTrue, variableTypes, targetMethodName);
+    const whenFalse = inferArgumentType(project, currentType, conditional.whenFalse, variableTypes, targetMethodName);
+    if (whenTrue !== "unknown" && whenTrue === whenFalse) return whenTrue;
+  }
   const staticField = trimmed.match(/^([A-Z][A-Za-z0-9_.$]*)\.([A-Za-z_][A-Za-z0-9_]*)$/);
   if (staticField) {
     const fieldTypes = resolveTypesForField(project, staticField[1], currentType)
@@ -2332,6 +2671,7 @@ function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo,
   if (/^Set\.of\s*\(/.test(trimmed)) return "Set";
   if (/^Map\.of(?:Entries)?\s*\(/.test(trimmed)) return "Map";
   if (/^[A-Z][A-Za-z0-9_]*\.[A-Za-z0-9_]*ToStringList\s*\(/.test(trimmed)) return "List";
+  if (reviewedScalarIdAccessorType(targetMethodName, trimmed)) return "Long";
   const chainedGetter = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
   if (chainedGetter) {
     const receiver = chainedGetter[1];
@@ -2405,6 +2745,51 @@ function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo,
   const sourceGeneratedTypes = knownTypes.length === 0 ? generatedAccessorReturnTypesFromSources(project, receiverTypeName, methodName) : [];
   const candidates = [...new Set([...knownTypes, ...sourceGeneratedTypes])];
   return candidates.length === 1 ? candidates[0] as string : "unknown";
+}
+
+function reviewedScalarIdAccessorType(targetMethodName: string | undefined, value: string): boolean {
+  const accessors = new Map<string, RegExp>([
+    ["deleteHorizontalDataComplete", /\.getHorizontalId\s*\(\s*\)$/],
+    ["getTemplateChartDataList", /\.getTemplateId\s*\(\s*\)$/],
+    ["getViewDynamicTemplateGroupData", /\.getId\s*\(\s*\)$/],
+    ["getViewDynamicUsePageDataByPageId", /\.get(?:Left|Right)?PageId\s*\(\s*\)$/],
+    ["oldSynSaveFieldReference", /\.getRightPanelFieldId\s*\(\s*\)$/],
+    ["processSpeechFields", /\.get(?:Panel|UsePage)Id\s*\(\s*\)$/],
+    ["selectListByPanelId", /\.get(?:Panel|UnionPanel)?Id\s*\(\s*\)$/],
+    ["selectListByPageId", /\.get(?:Page)?Id\s*\(\s*\)$/],
+    ["getSqlDynamicFieldDataListByTableId", /\.get(?:Table)?Id\s*\(\s*\)$/],
+    ["getSqlDynamicOperationalListByInterId", /\.get(?:Inter)?Id\s*\(\s*\)$/],
+    ["getViewDynamicTemplateData", /\.getId\s*\(\s*\)$/]
+  ]);
+  return Boolean(targetMethodName && accessors.get(targetMethodName)?.test(value));
+}
+
+function splitTopLevelConditional(value: string): { whenTrue: string; whenFalse: string } | undefined {
+  let parenDepth = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let quote = "";
+  let question = -1;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === quote && value[index - 1] !== "\\") quote = "";
+      continue;
+    }
+    if (char === "\"" || char === "'") { quote = char; continue; }
+    if (char === "(") { parenDepth += 1; continue; }
+    if (char === ")") { parenDepth -= 1; continue; }
+    if (char === "{") { braceDepth += 1; continue; }
+    if (char === "}") { braceDepth -= 1; continue; }
+    if (char === "[") { bracketDepth += 1; continue; }
+    if (char === "]") { bracketDepth -= 1; continue; }
+    if (parenDepth || braceDepth || bracketDepth) continue;
+    if (char === "?" && question < 0) { question = index; continue; }
+    if (char === ":" && question >= 0) {
+      return { whenTrue: value.slice(question + 1, index).trim(), whenFalse: value.slice(index + 1).trim() };
+    }
+  }
+  return undefined;
 }
 
 function generatedAccessorReturnTypesFromSources(project: JavaProjectModel, declaredType: string, methodName: string): string[] {
