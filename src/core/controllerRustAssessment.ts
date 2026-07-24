@@ -79,6 +79,7 @@ export interface ControllerTruncationDiagnostic {
   unexpandedBoundaryNodes: string[];
   perMethodCallCapNodes: Array<{ nodeId: string; extractedCalls: number; retainedCalls: number; omittedCalls: number }>;
   omittedCalls: number;
+  highOutDegreeNodes: Array<{ nodeId: string; file: string; line: number; kind: string; outDegree: number }>;
 }
 
 export interface ControllerTruncationInventoryItem extends ControllerTruncationDiagnostic {
@@ -89,6 +90,17 @@ export interface ControllerTruncationInventoryItem extends ControllerTruncationD
   expansionStatus?: "complete" | "budget-exhausted";
   expansionTopology?: AdaptiveExpansionTopology;
   expansionRounds?: number;
+}
+
+export interface ControllerHighFanoutInventoryItem {
+  nodeId: string;
+  file: string;
+  line: number;
+  kind: string;
+  affectedRoutes: string[];
+  affectedHandlers: string[];
+  minOutDegree: number;
+  maxOutDegree: number;
 }
 
 export interface ControllerUnclassifiedBoundaryOccurrence {
@@ -162,6 +174,7 @@ export interface ControllerRustAssessmentReport {
   unclassifiedBoundaryInventory: ControllerUnclassifiedBoundaryInventoryItem[];
   ambiguousCallInventory: ControllerAmbiguousCallInventoryItem[];
   truncationInventory: ControllerTruncationInventoryItem[];
+  highFanoutInventory: ControllerHighFanoutInventoryItem[];
   reportHash: string;
 }
 
@@ -228,6 +241,7 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
   const unclassifiedBoundaryInventory = aggregateUnclassifiedBoundaries(methods);
   const ambiguousCallInventory = aggregateAmbiguousCalls(methods);
   const truncationInventory = aggregateTruncations(methods);
+  const highFanoutInventory = aggregateHighFanoutNodes(methods);
   const base = {
     version: 1 as const,
     createdAt: new Date().toISOString(),
@@ -273,7 +287,8 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
     methods,
     unclassifiedBoundaryInventory,
     ambiguousCallInventory,
-    truncationInventory
+    truncationInventory,
+    highFanoutInventory
   };
   return { ...base, reportHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
 }
@@ -319,6 +334,11 @@ export function renderControllerRustAssessment(report: ControllerRustAssessmentR
     "| Route | Handler | Topology | Nodes | Edges | Max depth | Unexpanded | Omitted calls |",
     "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
     ...report.truncationInventory.map((item) => `| ${escapeTable(item.route)} | ${escapeTable(item.handler)} | ${item.expansionTopology ?? "fixed"} | ${item.nodes} | ${item.edges} | ${item.maxObservedDepth} | ${item.unexpandedBoundaryNodes.length} | ${item.omittedCalls} |`), "",
+    "## Shared high-out-degree nodes", "",
+    `- Nodes: ${report.highFanoutInventory.length}`, "",
+    "| Node | Routes | Out degree | Kind | Source |",
+    "| --- | ---: | --- | --- | --- |",
+    ...report.highFanoutInventory.map((item) => `| ${escapeTable(item.nodeId)} | ${item.affectedRoutes.length} | ${item.minOutDegree}-${item.maxOutDegree} | ${item.kind} | ${escapeTable(`${item.file}:${item.line}`)} |`), "",
     "## Findings", "",
     ...Object.entries(report.summary.findings).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([finding, count]) => `- ${finding}: ${count}`), ""
   ].join("\n");
@@ -516,11 +536,51 @@ function aggregateTruncations(methods: ControllerMethodAssessment[]): Controller
   );
 }
 
+function aggregateHighFanoutNodes(methods: ControllerMethodAssessment[]): ControllerHighFanoutInventoryItem[] {
+  const groups = new Map<string, ControllerHighFanoutInventoryItem>();
+  for (const method of methods.filter((item) => item.truncation.edgeCapHit)) {
+    const route = `${method.method} ${method.path}`;
+    for (const node of method.truncation.highOutDegreeNodes) {
+      const current = groups.get(node.nodeId) ?? {
+        nodeId: node.nodeId,
+        file: node.file,
+        line: node.line,
+        kind: node.kind,
+        affectedRoutes: [],
+        affectedHandlers: [],
+        minOutDegree: node.outDegree,
+        maxOutDegree: node.outDegree
+      };
+      if (!current.affectedRoutes.includes(route)) current.affectedRoutes.push(route);
+      if (!current.affectedHandlers.includes(method.handler)) current.affectedHandlers.push(method.handler);
+      current.minOutDegree = Math.min(current.minOutDegree, node.outDegree);
+      current.maxOutDegree = Math.max(current.maxOutDegree, node.outDegree);
+      groups.set(node.nodeId, current);
+    }
+  }
+  return [...groups.values()].map((item) => ({
+    ...item,
+    affectedRoutes: item.affectedRoutes.sort(),
+    affectedHandlers: item.affectedHandlers.sort()
+  })).sort((a, b) =>
+    b.affectedRoutes.length - a.affectedRoutes.length
+    || b.maxOutDegree - a.maxOutDegree
+    || a.nodeId.localeCompare(b.nodeId)
+  );
+}
+
 function createTruncationDiagnostic(report: JavaEndpointAnalysisReport): ControllerTruncationDiagnostic {
   const truncation = report.callGraph.truncation;
   const perMethodCallCapNodes = [...(truncation.perMethodCallCapNodes ?? [])].sort((a, b) =>
     b.omittedCalls - a.omittedCalls || a.nodeId.localeCompare(b.nodeId)
   );
+  const nodes = new Map(report.callGraph.nodes.map((node) => [node.id, node]));
+  const outDegrees = new Map<string, number>();
+  for (const edge of report.callGraph.edges) outDegrees.set(edge.from, (outDegrees.get(edge.from) ?? 0) + 1);
+  const highOutDegreeNodes = [...outDegrees.entries()].filter(([, degree]) => degree >= 20).map(([nodeId, outDegree]) => {
+    const node = nodes.get(nodeId);
+    return { nodeId, file: node?.file ?? "", line: node?.line ?? 0, kind: node?.kind ?? "unknown", outDegree };
+  }).sort((a, b) => b.outDegree - a.outDegree || a.nodeId.localeCompare(b.nodeId));
   return {
     edgeCapHit: truncation.edgeCapHit,
     depthCapHit: truncation.depthCapHit,
@@ -529,7 +589,8 @@ function createTruncationDiagnostic(report: JavaEndpointAnalysisReport): Control
     maxTotalEdges: truncation.maxTotalEdges,
     unexpandedBoundaryNodes: [...truncation.unexpandedBoundaryNodes].sort(),
     perMethodCallCapNodes,
-    omittedCalls: perMethodCallCapNodes.reduce((total, item) => total + item.omittedCalls, 0)
+    omittedCalls: perMethodCallCapNodes.reduce((total, item) => total + item.omittedCalls, 0),
+    highOutDegreeNodes
   };
 }
 

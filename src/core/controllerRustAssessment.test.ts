@@ -92,6 +92,7 @@ test("controller Rust assessment adaptively expands truncated call graphs", asyn
     assert.equal(adaptive.summary.adaptivelyExpanded, 1);
     assert.equal(adaptive.methods[0]?.expansionStatus, "complete");
     assert.equal(adaptive.truncationInventory.length, 0);
+    assert.deepEqual(adaptive.highFanoutInventory, []);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
