@@ -80,6 +80,17 @@ export interface ControllerTruncationDiagnostic {
   perMethodCallCapNodes: Array<{ nodeId: string; extractedCalls: number; retainedCalls: number; omittedCalls: number }>;
   omittedCalls: number;
   highOutDegreeNodes: Array<{ nodeId: string; file: string; line: number; kind: string; outDegree: number }>;
+  fanoutContributions: ControllerRouteFanoutContribution[];
+  minimumEdgeReductionToUncap: number;
+  edgeReductionCertainty: "exact" | "lower-bound";
+}
+
+export interface ControllerRouteFanoutContribution {
+  nodeId: string;
+  directEdges: number;
+  reachableEdges: number;
+  exclusiveDownstreamEdges: number;
+  repeatedDownstreamEdges: number;
 }
 
 export interface ControllerTruncationInventoryItem extends ControllerTruncationDiagnostic {
@@ -101,6 +112,18 @@ export interface ControllerHighFanoutInventoryItem {
   affectedHandlers: string[];
   minOutDegree: number;
   maxOutDegree: number;
+  exclusiveDownstreamEdges: number;
+  repeatedDownstreamEdges: number;
+  priorityScore: number;
+}
+
+export interface ControllerTruncationRouteCluster {
+  signature: string;
+  routes: string[];
+  handlers: string[];
+  commonNodeIds: string[];
+  minimumEdgeReductionToUncap: number;
+  edgeReductionCertainty: "exact" | "lower-bound";
 }
 
 export interface ControllerUnclassifiedBoundaryOccurrence {
@@ -175,6 +198,7 @@ export interface ControllerRustAssessmentReport {
   ambiguousCallInventory: ControllerAmbiguousCallInventoryItem[];
   truncationInventory: ControllerTruncationInventoryItem[];
   highFanoutInventory: ControllerHighFanoutInventoryItem[];
+  truncationRouteClusters: ControllerTruncationRouteCluster[];
   reportHash: string;
 }
 
@@ -242,6 +266,7 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
   const ambiguousCallInventory = aggregateAmbiguousCalls(methods);
   const truncationInventory = aggregateTruncations(methods);
   const highFanoutInventory = aggregateHighFanoutNodes(methods);
+  const truncationRouteClusters = aggregateTruncationRouteClusters(methods);
   const base = {
     version: 1 as const,
     createdAt: new Date().toISOString(),
@@ -288,7 +313,8 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
     unclassifiedBoundaryInventory,
     ambiguousCallInventory,
     truncationInventory,
-    highFanoutInventory
+    highFanoutInventory,
+    truncationRouteClusters
   };
   return { ...base, reportHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
 }
@@ -331,14 +357,18 @@ export function renderControllerRustAssessment(report: ControllerRustAssessmentR
     `- Per-method call-cap routes: ${report.summary.truncationInventory.perMethodCallCapRoutes}`,
     `- Unexpanded boundary nodes: ${report.summary.truncationInventory.unexpandedBoundaryNodes}`,
     `- Omitted calls: ${report.summary.truncationInventory.omittedCalls}`, "",
-    "| Route | Handler | Topology | Nodes | Edges | Max depth | Unexpanded | Omitted calls |",
-    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
-    ...report.truncationInventory.map((item) => `| ${escapeTable(item.route)} | ${escapeTable(item.handler)} | ${item.expansionTopology ?? "fixed"} | ${item.nodes} | ${item.edges} | ${item.maxObservedDepth} | ${item.unexpandedBoundaryNodes.length} | ${item.omittedCalls} |`), "",
+    "| Route | Handler | Topology | Nodes | Edges | Distance to uncap | Certainty | Max depth |",
+    "| --- | --- | --- | ---: | ---: | ---: | --- | ---: |",
+    ...report.truncationInventory.map((item) => `| ${escapeTable(item.route)} | ${escapeTable(item.handler)} | ${item.expansionTopology ?? "fixed"} | ${item.nodes} | ${item.edges} | ${item.minimumEdgeReductionToUncap} | ${item.edgeReductionCertainty} | ${item.maxObservedDepth} |`), "",
     "## Shared high-out-degree nodes", "",
     `- Nodes: ${report.highFanoutInventory.length}`, "",
-    "| Node | Routes | Out degree | Kind | Source |",
-    "| --- | ---: | --- | --- | --- |",
-    ...report.highFanoutInventory.map((item) => `| ${escapeTable(item.nodeId)} | ${item.affectedRoutes.length} | ${item.minOutDegree}-${item.maxOutDegree} | ${item.kind} | ${escapeTable(`${item.file}:${item.line}`)} |`), "",
+    "| Node | Routes | Out degree | Exclusive edges | Repeated edges | Priority | Kind | Source |",
+    "| --- | ---: | --- | ---: | ---: | ---: | --- | --- |",
+    ...report.highFanoutInventory.map((item) => `| ${escapeTable(item.nodeId)} | ${item.affectedRoutes.length} | ${item.minOutDegree}-${item.maxOutDegree} | ${item.exclusiveDownstreamEdges} | ${item.repeatedDownstreamEdges} | ${item.priorityScore} | ${item.kind} | ${escapeTable(`${item.file}:${item.line}`)} |`), "",
+    "## Truncation route clusters", "",
+    "| Signature | Routes | Common amplification chain | Distance to uncap | Certainty |",
+    "| --- | ---: | --- | ---: | --- |",
+    ...report.truncationRouteClusters.map((item) => `| ${item.signature} | ${item.routes.length} | ${escapeTable(item.commonNodeIds.join("<br>"))} | ${item.minimumEdgeReductionToUncap} | ${item.edgeReductionCertainty} |`), "",
     "## Findings", "",
     ...Object.entries(report.summary.findings).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([finding, count]) => `- ${finding}: ${count}`), ""
   ].join("\n");
@@ -549,24 +579,65 @@ function aggregateHighFanoutNodes(methods: ControllerMethodAssessment[]): Contro
         affectedRoutes: [],
         affectedHandlers: [],
         minOutDegree: node.outDegree,
-        maxOutDegree: node.outDegree
+        maxOutDegree: node.outDegree,
+        exclusiveDownstreamEdges: 0,
+        repeatedDownstreamEdges: 0,
+        priorityScore: 0
       };
       if (!current.affectedRoutes.includes(route)) current.affectedRoutes.push(route);
       if (!current.affectedHandlers.includes(method.handler)) current.affectedHandlers.push(method.handler);
       current.minOutDegree = Math.min(current.minOutDegree, node.outDegree);
       current.maxOutDegree = Math.max(current.maxOutDegree, node.outDegree);
+      const contribution = method.truncation.fanoutContributions.find((item) => item.nodeId === node.nodeId);
+      current.exclusiveDownstreamEdges += contribution?.exclusiveDownstreamEdges ?? 0;
+      current.repeatedDownstreamEdges += contribution?.repeatedDownstreamEdges ?? 0;
       groups.set(node.nodeId, current);
     }
   }
   return [...groups.values()].map((item) => ({
     ...item,
     affectedRoutes: item.affectedRoutes.sort(),
-    affectedHandlers: item.affectedHandlers.sort()
+    affectedHandlers: item.affectedHandlers.sort(),
+    priorityScore: item.exclusiveDownstreamEdges
   })).sort((a, b) =>
-    b.affectedRoutes.length - a.affectedRoutes.length
+    b.priorityScore - a.priorityScore
+    || b.affectedRoutes.length - a.affectedRoutes.length
     || b.maxOutDegree - a.maxOutDegree
     || a.nodeId.localeCompare(b.nodeId)
   );
+}
+
+function aggregateTruncationRouteClusters(methods: ControllerMethodAssessment[]): ControllerTruncationRouteCluster[] {
+  const groups = new Map<string, ControllerTruncationRouteCluster>();
+  for (const method of methods.filter((item) => item.truncation.edgeCapHit)) {
+    const chain = method.truncation.fanoutContributions
+      .slice()
+      .sort((a, b) => b.exclusiveDownstreamEdges - a.exclusiveDownstreamEdges || b.reachableEdges - a.reachableEdges || a.nodeId.localeCompare(b.nodeId))
+      .slice(0, 5)
+      .map((item) => item.nodeId);
+    const signature = sha256(stableStringify(chain)).slice(0, 12);
+    const current = groups.get(signature) ?? {
+      signature,
+      routes: [],
+      handlers: [],
+      commonNodeIds: chain,
+      minimumEdgeReductionToUncap: 0,
+      edgeReductionCertainty: "exact" as const
+    };
+    current.routes.push(`${method.method} ${method.path}`);
+    current.handlers.push(method.handler);
+    current.minimumEdgeReductionToUncap = Math.max(
+      current.minimumEdgeReductionToUncap,
+      method.truncation.minimumEdgeReductionToUncap
+    );
+    if (method.truncation.edgeReductionCertainty === "lower-bound") current.edgeReductionCertainty = "lower-bound";
+    groups.set(signature, current);
+  }
+  return [...groups.values()].map((item) => ({
+    ...item,
+    routes: [...new Set(item.routes)].sort(),
+    handlers: [...new Set(item.handlers)].sort()
+  })).sort((a, b) => b.routes.length - a.routes.length || a.signature.localeCompare(b.signature));
 }
 
 function createTruncationDiagnostic(report: JavaEndpointAnalysisReport): ControllerTruncationDiagnostic {
@@ -581,6 +652,10 @@ function createTruncationDiagnostic(report: JavaEndpointAnalysisReport): Control
     const node = nodes.get(nodeId);
     return { nodeId, file: node?.file ?? "", line: node?.line ?? 0, kind: node?.kind ?? "unknown", outDegree };
   }).sort((a, b) => b.outDegree - a.outDegree || a.nodeId.localeCompare(b.nodeId));
+  const fanoutContributions = calculateFanoutContributions(report, highOutDegreeNodes.map((item) => item.nodeId));
+  const minimumEdgeReductionToUncap = truncation.edgeCapHit
+    ? Math.max(1, report.callGraph.edges.length - truncation.maxTotalEdges + 1)
+    : 0;
   return {
     edgeCapHit: truncation.edgeCapHit,
     depthCapHit: truncation.depthCapHit,
@@ -590,8 +665,64 @@ function createTruncationDiagnostic(report: JavaEndpointAnalysisReport): Control
     unexpandedBoundaryNodes: [...truncation.unexpandedBoundaryNodes].sort(),
     perMethodCallCapNodes,
     omittedCalls: perMethodCallCapNodes.reduce((total, item) => total + item.omittedCalls, 0),
-    highOutDegreeNodes
+    highOutDegreeNodes,
+    fanoutContributions,
+    minimumEdgeReductionToUncap,
+    edgeReductionCertainty: truncation.edgeCapHit ? "lower-bound" : "exact"
   };
+}
+
+function calculateFanoutContributions(
+  report: JavaEndpointAnalysisReport,
+  seedNodeIds: string[]
+): ControllerRouteFanoutContribution[] {
+  const adjacency = new Map<string, number[]>();
+  report.callGraph.edges.forEach((edge, index) => {
+    const current = adjacency.get(edge.from) ?? [];
+    current.push(index);
+    adjacency.set(edge.from, current);
+  });
+  const reachableBySeed = new Map<string, Set<number>>();
+  for (const seed of seedNodeIds) {
+    const reachable = new Set<number>();
+    const visitedNodes = new Set<string>();
+    const queue = [seed];
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      if (visitedNodes.has(nodeId)) continue;
+      visitedNodes.add(nodeId);
+      for (const edgeIndex of adjacency.get(nodeId) ?? []) {
+        reachable.add(edgeIndex);
+        const target = report.callGraph.edges[edgeIndex]?.to;
+        if (target && !visitedNodes.has(target)) queue.push(target);
+      }
+    }
+    reachableBySeed.set(seed, reachable);
+  }
+  const ownerCounts = new Map<number, number>();
+  for (const reachable of reachableBySeed.values()) {
+    for (const edgeIndex of reachable) ownerCounts.set(edgeIndex, (ownerCounts.get(edgeIndex) ?? 0) + 1);
+  }
+  return seedNodeIds.map((nodeId) => {
+    const reachable = reachableBySeed.get(nodeId) ?? new Set<number>();
+    let exclusiveDownstreamEdges = 0;
+    let repeatedDownstreamEdges = 0;
+    for (const edgeIndex of reachable) {
+      if ((ownerCounts.get(edgeIndex) ?? 0) === 1) exclusiveDownstreamEdges += 1;
+      else repeatedDownstreamEdges += 1;
+    }
+    return {
+      nodeId,
+      directEdges: adjacency.get(nodeId)?.length ?? 0,
+      reachableEdges: reachable.size,
+      exclusiveDownstreamEdges,
+      repeatedDownstreamEdges
+    };
+  }).sort((a, b) =>
+    b.exclusiveDownstreamEdges - a.exclusiveDownstreamEdges
+    || b.reachableEdges - a.reachableEdges
+    || a.nodeId.localeCompare(b.nodeId)
+  );
 }
 
 function compareBoundaryOccurrences(a: ControllerUnclassifiedBoundaryOccurrence, b: ControllerUnclassifiedBoundaryOccurrence): number {

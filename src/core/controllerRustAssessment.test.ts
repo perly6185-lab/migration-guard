@@ -96,6 +96,29 @@ test("controller Rust assessment adaptively expands truncated call graphs", asyn
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test("controller assessment attributes exclusive and repeated fanout edges and clusters truncated routes", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-fanout-attribution-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    const calls = Array.from({ length: 25 }, (_, index) => `  branch${index}();`);
+    const branches = Array.from({ length: 25 }, (_, index) => ` private void branch${index}() { }`);
+    await writeFile(path.join(dir, "demo", "FanoutController.java"), [
+      "package demo;", "@RestController", "public class FanoutController {",
+      " @GetMapping(\"/fanout\")", " public void run() {", ...calls, " }", ...branches, "}"
+    ].join("\n"));
+    const report = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 20 });
+    assert.equal(report.summary.truncationInventory.edgeCapRoutes, 1);
+    assert.equal(report.methods[0]?.truncation.minimumEdgeReductionToUncap, 1);
+    assert.equal(report.methods[0]?.truncation.edgeReductionCertainty, "lower-bound");
+    assert.equal(report.methods[0]?.truncation.fanoutContributions[0]?.directEdges, 20);
+    assert.equal(report.methods[0]?.truncation.fanoutContributions[0]?.exclusiveDownstreamEdges, 20);
+    assert.equal(report.methods[0]?.truncation.fanoutContributions[0]?.repeatedDownstreamEdges, 0);
+    assert.equal(report.highFanoutInventory[0]?.priorityScore, 20);
+    assert.equal(report.truncationRouteClusters[0]?.routes[0], "GET /fanout");
+    assert.equal(report.truncationRouteClusters[0]?.edgeReductionCertainty, "lower-bound");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("controller assessment inventories and ranks shared unclassified boundaries without changing readiness", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-boundary-inventory-"));
   try {
