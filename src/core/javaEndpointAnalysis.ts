@@ -1684,7 +1684,9 @@ function buildCallGraph(
           const param = target.method.params[index];
           const sourceParam = call.argumentIdentifiers?.[index];
           const value = literalValue ?? (sourceParam ? current.knownBooleanParams?.get(sourceParam) : undefined);
-          if (value !== undefined && param?.declaredType === "boolean") knownBooleanParams.set(param.name, value);
+          if (value !== undefined && (param?.declaredType === "boolean" || param?.declaredType === "Boolean")) {
+            knownBooleanParams.set(param.name, value);
+          }
         }
         for (const [index, literalValue] of (call.argumentEnumConstants ?? []).entries()) {
           const param = target.method.params[index];
@@ -2087,7 +2089,11 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
 
 function literalBoolean(argument: string): boolean | undefined {
   const value = argument.trim();
-  return value === "true" ? true : value === "false" ? false : undefined;
+  return value === "true" || value === "Boolean.TRUE"
+    ? true
+    : value === "false" || value === "Boolean.FALSE"
+      ? false
+      : undefined;
 }
 
 function literalEnumConstant(argument: string): string | undefined {

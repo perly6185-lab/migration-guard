@@ -277,6 +277,7 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " public void fullMode() { mode(true, Mode.FULL); }",
       " public void incrementalMode() { mode(false, Mode.INCREMENTAL); }",
       " public void fullModeForward() { forwardMode(true, Mode.FULL); }",
+      " public void boxedFalse() { boxedMode(Boolean.FALSE); }",
       " private void work(List<Long> ids) {",
       "  boolean fullPanel = ids == null;",
       "  if (fullPanel && ready()) {",
@@ -317,6 +318,15 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " private void enumFull() { }",
       " private void enumIncremental() { }",
       " private void forwardMode(boolean full, Mode mode) { mode(full, mode); }",
+      " private void boxedMode(Boolean full) {",
+      "  if (full) {",
+      "   boxedTrueOnly();",
+      "  } else {",
+      "   boxedFalseOnly();",
+      "  }",
+      " }",
+      " private void boxedTrueOnly() { }",
+      " private void boxedFalseOnly() { }",
       "}"
     ].join("\n"));
     await writeFile(path.join(dir, "demo", "Mode.java"), [
@@ -369,6 +379,9 @@ test("Java call graph specializes literal-null branches without assuming variabl
     assert.equal(fullModeForward.callGraph.nodes.some((node) => node.methodName === "boolIncremental"), false);
     assert.ok(fullModeForward.callGraph.nodes.some((node) => node.methodName === "enumFull"));
     assert.equal(fullModeForward.callGraph.nodes.some((node) => node.methodName === "enumIncremental"), false);
+    const boxedFalse = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "boxedFalse")!, { maxDepth: 5, maxEdges: 30 });
+    assert.equal(boxedFalse.callGraph.nodes.some((node) => node.methodName === "boxedTrueOnly"), false);
+    assert.ok(boxedFalse.callGraph.nodes.some((node) => node.methodName === "boxedFalseOnly"));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
