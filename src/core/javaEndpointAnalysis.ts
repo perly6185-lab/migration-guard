@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { writeJsonFile, writeTextFile, toPosixPath } from "./files.js";
+import { classifyJavaSemantic } from "./javaSemanticRegistry.js";
 
 export type JavaEndpointHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD" | "ALL";
 export type JavaEndpointRiskSeverity = "low" | "medium" | "high";
@@ -207,7 +208,7 @@ export interface JavaEndpointAnalysisReport {
     edges: JavaEndpointCallGraphEdge[];
     summarizedCalls?: Array<{
       nodeId: string;
-      kind: "generated-accessor-reference";
+      kind: "generated-accessor-reference" | "reviewed-exclusion";
       count: number;
       lines: number[];
     }>;
@@ -1984,11 +1985,14 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
 function summarizedCallKind(
   project: JavaProjectModel,
   currentType: JavaTypeInfo,
-  call: { receiver?: string; method: string; feature?: "lambda" | "method-reference" }
-): "generated-accessor-reference" | undefined {
-  if (call.feature !== "method-reference" || !call.receiver || !/^(?:get|is)[A-Z]/.test(call.method)) return undefined;
-  const receiverTypes = resolveTypesForField(project, call.receiver, currentType);
-  return receiverTypes.some((type) => isGeneratedAccessor(type, call.method, 0)) ? "generated-accessor-reference" : undefined;
+  call: { receiver?: string; method: string; expression?: string; feature?: "lambda" | "method-reference" }
+): "generated-accessor-reference" | "reviewed-exclusion" | undefined {
+  if (call.feature === "method-reference" && call.receiver && /^(?:get|is)[A-Z]/.test(call.method)) {
+    const receiverTypes = resolveTypesForField(project, call.receiver, currentType);
+    if (receiverTypes.some((type) => isGeneratedAccessor(type, call.method, 0))) return "generated-accessor-reference";
+  }
+  const symbol = call.receiver ? `${call.receiver}.${call.method}` : call.expression ?? call.method;
+  return classifyJavaSemantic(symbol)?.defaultOwnership === "reviewed-exclusion" ? "reviewed-exclusion" : undefined;
 }
 
 const PERSISTENCE_WRAPPER_PROPERTY_METHODS = new Set([

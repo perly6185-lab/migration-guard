@@ -236,6 +236,7 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
     const selector = analyzer.serviceMethods.find((item) => item.className === "SelectorService" && item.methodName === "select")!;
     const summarized = analyzer.analyzeServiceMethod(selector, { maxDepth: 4, maxEdges: 20 });
     assert.equal(summarized.callGraph.summarizedCalls?.find((item) => item.kind === "generated-accessor-reference")?.count, 1);
+    assert.ok((summarized.callGraph.summarizedCalls?.find((item) => item.kind === "reviewed-exclusion")?.count ?? 0) > 0);
     assert.equal(summarized.callGraph.edges.some((edge) => edge.call.method === "getId"), false);
     assert.equal(summarized.callGraph.edges.some((edge) => edge.call.receiver === "$lambda"), true);
     const serviceReport = await assessJavaServicesForRust({ root: dir, maxDepth: 4, maxEdges: 32, adaptive: true, maxExpansionDepth: 8, maxExpansionEdges: 90, maxExpansionRounds: 3 });
