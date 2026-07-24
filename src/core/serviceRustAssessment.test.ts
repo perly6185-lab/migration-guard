@@ -97,12 +97,16 @@ test("Java call resolution covers multiline arguments, static imports, generic f
       "Payload.java": ["package demo;", "@Data", "public class Payload {", " private String name;", " private Long id;", "}"],
       "PayloadHolder.java": ["package demo;", "@Value", "public class PayloadHolder {", " Payload payload;", "}"],
       "GeneratedConfig.java": ["package demo;", "@Getter", "public class GeneratedConfig {", " private long timeout;", "}"],
-      "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", " public Object chooseList(Long value) { return null; }", " public Object chooseList(List<Long> value) { return null; }", "}"],
+      "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", " public Object chooseList(Long value) { return null; }", " public Object chooseList(List<Long> value) { return null; }", " public Object getViewDynamicUsePageDataByPageId(Long value) { return null; }", " public Object getViewDynamicUsePageDataByPageId(List<Long> values) { return null; }", " public Object selectListByPanelId(Long value) { return null; }", " public Object selectListByPanelId(List<Long> values) { return null; }", " public String toString(Long value) { return String.valueOf(value); }", "}"],
       "ExternalAccessorService.java": [
         "package demo;", "public class ExternalAccessorService {", " @Resource", " private OverloadWorker overloadWorker;",
-        " public Object page(List<ExternalRow> rows) { return overloadWorker.choose(rows.get(0).getPageId()); }",
-        " public Object rightPage(List<ExternalRow> rows) { return overloadWorker.choose(rows.get(0).getRightPageId()); }",
-        " public Object pages(List<ExternalRow> rows) { return overloadWorker.choose(rows.get(0).getPageIds()); }", "}"
+        " public Object page(List<ExternalRow> rows) { return overloadWorker.getViewDynamicUsePageDataByPageId(rows.get(0).getPageId()); }",
+        " public Object rightPage(List<ExternalRow> rows) { return overloadWorker.getViewDynamicUsePageDataByPageId(rows.get(0).getRightPageId()); }",
+        " public Object panel(List<ExternalRow> rows) { return overloadWorker.selectListByPanelId(rows.get(0).getId()); }",
+        " public Object unionPanel(List<ExternalRow> rows) { return overloadWorker.selectListByPanelId(rows.get(0).getUnionPanelId()); }",
+        " public Object pages(List<ExternalRow> rows) { return overloadWorker.getViewDynamicUsePageDataByPageId(rows.get(0).getPageIds()); }",
+        " public Object unrelated(List<ExternalRow> rows) { return overloadWorker.choose(rows.get(0).getPageId()); }",
+        " public Object prototypeName(List<ExternalRow> rows) { return overloadWorker.toString(rows.get(0).getId()); }", "}"
       ],
       "InitializerService.java": [
         "package demo;", "public class InitializerService {", " private Worker worker;",
@@ -140,13 +144,23 @@ test("Java call resolution covers multiline arguments, static imports, generic f
     const initializer = analyzer.analyzeServiceMethod(initializerRun, { maxDepth: 5, maxEdges: 100 });
     assert.equal(initializer.callGraph.edges.find((edge) => edge.call.receiver === "worker")?.resolution, "field-injection");
     const pageAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "page")!, { maxDepth: 4, maxEdges: 100 });
-    assert.equal(pageAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.call.argumentTypes?.[0], "Long");
-    assert.equal(pageAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "field-injection");
+    assert.equal(pageAccessor.callGraph.edges.find((edge) => edge.call.method === "getViewDynamicUsePageDataByPageId")?.call.argumentTypes?.[0], "Long");
+    assert.equal(pageAccessor.callGraph.edges.find((edge) => edge.call.method === "getViewDynamicUsePageDataByPageId")?.resolution, "field-injection");
     const rightPageAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "rightPage")!, { maxDepth: 4, maxEdges: 100 });
-    assert.equal(rightPageAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.call.argumentTypes?.[0], "Long");
-    assert.equal(rightPageAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "field-injection");
+    assert.equal(rightPageAccessor.callGraph.edges.find((edge) => edge.call.method === "getViewDynamicUsePageDataByPageId")?.call.argumentTypes?.[0], "Long");
+    assert.equal(rightPageAccessor.callGraph.edges.find((edge) => edge.call.method === "getViewDynamicUsePageDataByPageId")?.resolution, "field-injection");
+    const panelAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "panel")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(panelAccessor.callGraph.edges.find((edge) => edge.call.method === "selectListByPanelId")?.call.argumentTypes?.[0], "Long");
+    assert.equal(panelAccessor.callGraph.edges.find((edge) => edge.call.method === "selectListByPanelId")?.resolution, "field-injection");
+    const unionPanelAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "unionPanel")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(unionPanelAccessor.callGraph.edges.find((edge) => edge.call.method === "selectListByPanelId")?.call.argumentTypes?.[0], "Long");
+    assert.equal(unionPanelAccessor.callGraph.edges.find((edge) => edge.call.method === "selectListByPanelId")?.resolution, "field-injection");
     const unknownAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "pages")!, { maxDepth: 4, maxEdges: 100 });
-    assert.equal(unknownAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "ambiguous");
+    assert.equal(unknownAccessor.callGraph.edges.find((edge) => edge.call.method === "getViewDynamicUsePageDataByPageId")?.resolution, "ambiguous");
+    const unrelatedAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "unrelated")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(unrelatedAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "ambiguous");
+    const prototypeName = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "prototypeName")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(prototypeName.callGraph.edges.find((edge) => edge.call.method === "toString")?.resolution, "field-injection");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

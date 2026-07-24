@@ -1959,14 +1959,14 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     const openIndex = (match.index ?? 0) + match[0].lastIndexOf("(");
     const parsedArgs = extractCallArguments(body, openIndex);
     const receiverType = resolveFactoryReturnType(project, type, match[1], match[2]);
-    calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes)) });
+    calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[4])) });
     occupied.add((match.index ?? 0) + match[0].lastIndexOf(match[4]));
   }
   for (const match of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodOffset = (match.index ?? 0) + match[0].lastIndexOf(match[2]);
     if (occupied.has(methodOffset) || !injectedFields.has(match[1]) && isLowValueCall(match[2])) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
-    calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes)) });
+    calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[2])) });
   }
   for (const match of scanBody.matchAll(/(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodName = match[1];
@@ -1976,7 +1976,7 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     const staticImported = type.staticImports.some((item) => item.methodName === methodName || item.methodName === "*");
     if (!staticImported && !methodsInHierarchy(project, type).some((candidate) => candidate.method.name === methodName)) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
-    calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes)) });
+    calls.push({ method: methodName, expression: `${methodName}(`, line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, methodName)) });
   }
   return calls;
 }
@@ -2301,7 +2301,13 @@ function extractCallArguments(line: string, openIndex: number): { args: string[]
   return { args: current.trim() ? [current.trim()] : [], complete: false };
 }
 
-function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo, value: string, variableTypes: Map<string, string>): string {
+function inferArgumentType(
+  project: JavaProjectModel,
+  currentType: JavaTypeInfo,
+  value: string,
+  variableTypes: Map<string, string>,
+  targetMethodName?: string
+): string {
   const trimmed = value.trim();
   if (!trimmed) return "unknown";
   if (/^"[\s\S]*"$/.test(trimmed)) return "String";
@@ -2332,11 +2338,7 @@ function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo,
   if (/^Set\.of\s*\(/.test(trimmed)) return "Set";
   if (/^Map\.of(?:Entries)?\s*\(/.test(trimmed)) return "Map";
   if (/^[A-Z][A-Za-z0-9_]*\.[A-Za-z0-9_]*ToStringList\s*\(/.test(trimmed)) return "List";
-  // The assessed service source can reference data objects declared in sibling
-  // modules that are outside the selected root. In this codebase page ids use
-  // the shared Long contract, so retain that exact accessor contract without
-  // generalizing arbitrary get*Id methods.
-  if (/\.get(?:Left|Right)?PageId\s*\(\s*\)$/.test(trimmed)) return "Long";
+  if (reviewedScalarIdAccessorType(targetMethodName, trimmed)) return "Long";
   const chainedGetter = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
   if (chainedGetter) {
     const receiver = chainedGetter[1];
@@ -2410,6 +2412,18 @@ function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo,
   const sourceGeneratedTypes = knownTypes.length === 0 ? generatedAccessorReturnTypesFromSources(project, receiverTypeName, methodName) : [];
   const candidates = [...new Set([...knownTypes, ...sourceGeneratedTypes])];
   return candidates.length === 1 ? candidates[0] as string : "unknown";
+}
+
+function reviewedScalarIdAccessorType(targetMethodName: string | undefined, value: string): boolean {
+  const accessors = new Map<string, RegExp>([
+    ["getViewDynamicUsePageDataByPageId", /\.get(?:Left|Right)?PageId\s*\(\s*\)$/],
+    ["selectListByPanelId", /\.get(?:Panel|UnionPanel)?Id\s*\(\s*\)$/],
+    ["selectListByPageId", /\.get(?:Page)?Id\s*\(\s*\)$/],
+    ["getSqlDynamicFieldDataListByTableId", /\.get(?:Table)?Id\s*\(\s*\)$/],
+    ["getSqlDynamicOperationalListByInterId", /\.get(?:Inter)?Id\s*\(\s*\)$/],
+    ["getViewDynamicTemplateData", /\.getId\s*\(\s*\)$/]
+  ]);
+  return Boolean(targetMethodName && accessors.get(targetMethodName)?.test(value));
 }
 
 function generatedAccessorReturnTypesFromSources(project: JavaProjectModel, declaredType: string, methodName: string): string[] {
