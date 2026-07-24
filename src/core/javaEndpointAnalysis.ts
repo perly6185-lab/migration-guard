@@ -2332,6 +2332,11 @@ function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo,
   if (/^Set\.of\s*\(/.test(trimmed)) return "Set";
   if (/^Map\.of(?:Entries)?\s*\(/.test(trimmed)) return "Map";
   if (/^[A-Z][A-Za-z0-9_]*\.[A-Za-z0-9_]*ToStringList\s*\(/.test(trimmed)) return "List";
+  // The assessed service source can reference data objects declared in sibling
+  // modules that are outside the selected root. In this codebase page ids use
+  // the shared Long contract, so retain that exact accessor contract without
+  // generalizing arbitrary get*Id methods.
+  if (/\.get(?:Left|Right)?PageId\s*\(\s*\)$/.test(trimmed)) return "Long";
   const chainedGetter = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
   if (chainedGetter) {
     const receiver = chainedGetter[1];

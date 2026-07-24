@@ -98,6 +98,12 @@ test("Java call resolution covers multiline arguments, static imports, generic f
       "PayloadHolder.java": ["package demo;", "@Value", "public class PayloadHolder {", " Payload payload;", "}"],
       "GeneratedConfig.java": ["package demo;", "@Getter", "public class GeneratedConfig {", " private long timeout;", "}"],
       "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", " public Object chooseList(Long value) { return null; }", " public Object chooseList(List<Long> value) { return null; }", "}"],
+      "ExternalAccessorService.java": [
+        "package demo;", "public class ExternalAccessorService {", " @Resource", " private OverloadWorker overloadWorker;",
+        " public Object page(List<ExternalRow> rows) { return overloadWorker.choose(rows.get(0).getPageId()); }",
+        " public Object rightPage(List<ExternalRow> rows) { return overloadWorker.choose(rows.get(0).getRightPageId()); }",
+        " public Object pages(List<ExternalRow> rows) { return overloadWorker.choose(rows.get(0).getPageIds()); }", "}"
+      ],
       "InitializerService.java": [
         "package demo;", "public class InitializerService {", " private Worker worker;",
         " private final Object listener = Builder.create()", "  .listen(() -> {", "   try { worker.execute(1L); } catch (Exception error) {", "    error.printStackTrace();", "   }", "  })", "  .build();",
@@ -133,6 +139,14 @@ test("Java call resolution covers multiline arguments, static imports, generic f
     assert.ok(initializerRun, "method after a multiline field initializer must remain visible");
     const initializer = analyzer.analyzeServiceMethod(initializerRun, { maxDepth: 5, maxEdges: 100 });
     assert.equal(initializer.callGraph.edges.find((edge) => edge.call.receiver === "worker")?.resolution, "field-injection");
+    const pageAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "page")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(pageAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.call.argumentTypes?.[0], "Long");
+    assert.equal(pageAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "field-injection");
+    const rightPageAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "rightPage")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(rightPageAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.call.argumentTypes?.[0], "Long");
+    assert.equal(rightPageAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "field-injection");
+    const unknownAccessor = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "pages")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(unknownAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "ambiguous");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
