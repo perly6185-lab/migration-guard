@@ -247,6 +247,8 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
       "PackageSupport.java": ["package demo;", "public class PackageSupport {", " String braceText() { return \"${value}\"; }", " Object execute(", "  Long one,", "  Long two,", "  Long three,", "  Long four,", "  Long five,", "  Long six,", "  Long seven,", "  Long eight,", "  Long nine", ") { return null; }", "}"],
       "PackageSupportService.java": ["package demo;", "public class PackageSupportService {", " @Resource", " private PackageSupport packageSupport;", " public Object run() { return packageSupport.execute(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L); }", "}"],
       "TransactionService.java": ["package demo;", "public class TransactionService {", " @Transactional", " public Object save() {", "  return null;", " }", " public Object run() {", "  return save();", " }", "}"],
+      "EquivalentTransactionService.java": ["package demo;", "public class EquivalentTransactionService {", " @Transactional", " public Object save() { return null; }", " @Transactional", " public Object run() { return save(); }", "}"],
+      "RequiresNewTransactionService.java": ["package demo;", "public class RequiresNewTransactionService {", " @Transactional(propagation = Propagation.REQUIRES_NEW)", " public Object save() { return null; }", " @Transactional(propagation = Propagation.REQUIRES_NEW)", " public Object run() { return save(); }", "}"],
       "LambdaService.java": ["package demo;", "public class LambdaService {", " public Object run() {", "  items.forEach(item -> process(item));", "  return items.stream().map(this::convert);", " }", " protected void process(Object item) {", " }", " protected Object convert(Object item) {", "  return item;", " }", "}"]
     };
     for (const [name, lines] of Object.entries(files)) await writeFile(path.join(dir, "demo", name), lines.join("\n"));
@@ -266,7 +268,10 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
     assert.ok(repository.callGraph.nodes.some((item) => item.className === "JobRepositoryImpl"));
     assert.equal(repository.callGraph.edges.some((item) => item.resolution === "ambiguous"), false);
     assert.ok(analyze("PackageSupportService").callGraph.nodes.some((item) => item.className === "PackageSupport" && item.methodName === "execute"));
-    assert.ok(createEndpointReplacementPlanFromJava(analyze("TransactionService")).plan.findings.includes("RP-GRAPH-TRANSACTION-SELF-INVOCATION"));
+    const transaction = analyze("TransactionService");
+    assert.ok(createEndpointReplacementPlanFromJava(transaction).plan.findings.includes("RP-GRAPH-TRANSACTION-SELF-INVOCATION"), JSON.stringify(transaction.callGraph, null, 2));
+    assert.equal(createEndpointReplacementPlanFromJava(analyze("EquivalentTransactionService")).plan.findings.includes("RP-GRAPH-TRANSACTION-SELF-INVOCATION"), false);
+    assert.ok(createEndpointReplacementPlanFromJava(analyze("RequiresNewTransactionService")).plan.findings.includes("RP-GRAPH-TRANSACTION-SELF-INVOCATION"));
     const lambda = createEndpointReplacementPlanFromJava(analyze("LambdaService"));
     assert.ok(lambda.graph.nodes.some((item) => item.evidence.detail?.includes("lambda")));
     assert.ok(lambda.graph.nodes.some((item) => item.evidence.symbol.includes("convert")));

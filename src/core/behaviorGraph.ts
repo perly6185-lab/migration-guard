@@ -53,7 +53,7 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
     ...(truncation.unexpandedBoundaryNodes.length ? ["RP-GRAPH-UNEXPANDED-NODES"] : []),
     ...(unresolvedCalls ? ["RP-GRAPH-UNRESOLVED-EDGES"] : []),
     ...(ambiguousEdges ? ["RP-GRAPH-AMBIGUOUS-CALLS"] : []),
-    ...(report.callGraph.edges.some((edge) => edge.resolution === "same-class" && nodes.find((node) => node.id === edge.to)?.evidence.detail?.includes("@Transactional")) ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : []),
+    ...(hasRiskyTransactionSelfInvocation(report) ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : []),
     ...(sqlSources.some(dynamicSqlNeedsReplayContract) ? ["RP-SQL-DYNAMIC-SOURCE"] : []),
     ...(sqlSources.some((source) => sqlTableResolution(source) === "unresolved") ? ["RP-SQL-TABLE-UNRESOLVED"] : []),
     ...(missingSqlContracts.has("table-expansion") ? ["RP-SQL-MISSING-TABLE-EXPANSION"] : []),
@@ -92,6 +92,25 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
     }
   };
   return { ...base, graphHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
+}
+
+function hasRiskyTransactionSelfInvocation(report: JavaEndpointAnalysisReport): boolean {
+  const nodesById = new Map(report.callGraph.nodes.map((node) => [node.id, node]));
+  return report.callGraph.edges.some((edge) => {
+    if (edge.resolution !== "same-class" || !edge.to) return false;
+    const target = nodesById.get(edge.to);
+    if (!target?.signature?.includes("@Transactional")) return false;
+    const source = nodesById.get(edge.from);
+    return !hasPlainTransactional(source) || !hasPlainTransactional(target);
+  });
+}
+
+function hasPlainTransactional(node: JavaEndpointCallGraphNode | undefined): boolean {
+  if (!node?.signature) return false;
+  const methodStart = node.signature.lastIndexOf(`${node.methodName}(`);
+  if (methodStart < 0) return false;
+  const annotationPrefix = node.signature.slice(node.signature.lastIndexOf("}", methodStart) + 1, methodStart);
+  return /@Transactional\b(?!\s*\()/.test(annotationPrefix);
 }
 
 function dynamicSqlNeedsReplayContract(source: JavaSqlSourceInfo): boolean {
