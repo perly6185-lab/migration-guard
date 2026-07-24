@@ -1672,13 +1672,13 @@ function buildCallGraph(
           const param = target.method.params[index];
           const sourceParam = call.argumentIdentifiers?.[index];
           const isNull = isLiteralNull || Boolean(sourceParam && current.knownNullParams?.has(sourceParam));
-          if (isNull && param && hasKnownNullElseBranch(target.method, param.name)) knownNullParams.add(param.name);
+          if (isNull && param && hasKnownNullBranch(target.method, param.name)) knownNullParams.add(param.name);
         }
         for (const [index, isLiteralNonNull] of (call.argumentNonNulls ?? []).entries()) {
           const param = target.method.params[index];
           const sourceParam = call.argumentIdentifiers?.[index];
           const isNonNull = isLiteralNonNull || Boolean(sourceParam && current.knownNonNullParams?.has(sourceParam));
-          if (isNonNull && param && hasKnownNullElseBranch(target.method, param.name)) knownNonNullParams.add(param.name);
+          if (isNonNull && param && hasKnownNullBranch(target.method, param.name)) knownNonNullParams.add(param.name);
         }
         for (const [index, literalValue] of (call.argumentBooleans ?? []).entries()) {
           const param = target.method.params[index];
@@ -2130,6 +2130,10 @@ function filterKnownNullBranches<T extends { line: number }>(
         endLine: method.bodyStartLine + body.slice(0, elseClose).split("\n").length - 1
       });
     }
+    const nonNullGuard = new RegExp(`\\bif\\s*\\(\\s*${param}\\s*!=\\s*null(?:\\s*&&[^{}]*)?\\)\\s*\\{`, "g");
+    for (const match of body.matchAll(nonNullGuard)) {
+      excludeKnownBranch(method, body, match, false, excluded);
+    }
   }
   for (const param of knownNonNullParams ?? []) {
     const aliasMatch = new RegExp(`\\bboolean\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*${param}\\s*==\\s*null\\s*;`).exec(body);
@@ -2144,6 +2148,10 @@ function filterKnownNullBranches<T extends { line: number }>(
         startLine: method.bodyStartLine + body.slice(0, open).split("\n").length - 1,
         endLine: method.bodyStartLine + body.slice(0, close).split("\n").length - 1
       });
+    }
+    const nullGuard = new RegExp(`\\bif\\s*\\(\\s*${param}\\s*==\\s*null(?:\\s*&&[^{}]*)?\\)\\s*\\{`, "g");
+    for (const match of body.matchAll(nullGuard)) {
+      excludeKnownBranch(method, body, match, false, excluded);
     }
   }
   for (const [param, value] of knownBooleanParams ?? []) {
@@ -2221,6 +2229,11 @@ function excludeKnownBranch(
 function hasKnownNullElseBranch(method: JavaMethodInfo, param: string): boolean {
   const alias = new RegExp(`\\bboolean\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*${param}\\s*==\\s*null\\s*;`).exec(method.body)?.[1];
   return Boolean(alias && new RegExp(`\\bif\\s*\\(\\s*${alias}\\s*\\)\\s*\\{[\\s\\S]*?\\}\\s*else\\s*\\{`).test(method.body));
+}
+
+function hasKnownNullBranch(method: JavaMethodInfo, param: string): boolean {
+  return hasKnownNullElseBranch(method, param)
+    || new RegExp(`\\bif\\s*\\(\\s*${param}\\s*(?:==|!=)\\s*null(?:\\s*(?:&&|\\)|\\{))`).test(method.body);
 }
 
 function matchingBraceOffset(text: string, openOffset: number): number {
