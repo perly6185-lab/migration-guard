@@ -162,6 +162,17 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("NlsUsageController.toEpochMillis")?.kind, "context-resolution");
   assert.equal(classifyJavaSemantic("OcrUsageController.toEpochMillis")?.kind, "context-resolution");
   assert.equal(classifyJavaSemantic("ViewDynamicUsePageNewCopyServiceImpl.quickCopyKey")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("webSocketACL.sendToAdmin")?.kind, "event-publish");
+  assert.equal(classifyJavaSemantic("aiFieldClassifyACL.classifyFieldOption")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("aiFieldClassifyACL.matchFieldTags")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("aiFieldClassifyACL.summaryFields")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("aiImageAnalyzeACL.imageAnalyze")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("aiInfoExtractACL.extractInfo")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("AnomalyRuleServiceImpl.toggleStatus")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("SensitiveTableServiceImpl.toggleStatus")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("AutomationConfigDataBizServiceImpl.renameAutomationConfig")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("BatchExportAsyncServiceImpl.reexport")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("BatchExportAsyncServiceImpl.resumeTask")?.kind, "state-write");
   assert.equal(classifyJavaSemantic("ctx.validRulesByLeftFieldId")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("rule.leftField")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("rule.operator")?.kind, "calculation");
@@ -171,6 +182,8 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("rule.joinKeyToRightValues")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("OtherUsageController.toDTO")?.kind, undefined);
   assert.equal(classifyJavaSemantic("OtherCopyServiceImpl.quickCopyKey")?.kind, undefined);
+  assert.equal(classifyJavaSemantic("otherWebSocket.sendToAdmin")?.kind, undefined);
+  assert.equal(classifyJavaSemantic("OtherRuleServiceImpl.toggleStatus")?.kind, undefined);
   assert.equal(classifyJavaSemantic("am.max")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("cmp.thenComparing")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("c.reversed")?.kind, "calculation");
