@@ -145,6 +145,13 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("ViewDynamicOldDataHandleServiceImpl.escapeSql")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("ctx.horizontalId")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("plan.splitValues().size")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("sql.Timestamp")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("BackupServiceImpl.generateBackupId")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("DynamicDataSyncBizServiceImpl.refreshData")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("DynamicDataSyncDataBizFinalServiceImpl.refreshData")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("ViewDynamicUseGroupDataBizServiceImpl.refreshData")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("viewLayoutActivateExecutionPort.activate")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("viewLayoutTransferCopyHomeExecutionPort.transferToHome")?.kind, "state-write");
   assert.equal(classifyJavaSemantic("AutomationTriggerSuppressor.suppress")?.kind, "coordination");
   assert.equal(classifyJavaSemantic("AutomationTriggerSuppressor.isSuppressed")?.kind, "coordination");
   assert.equal(classifyJavaSemantic("ColorAttributeDefaultFilter.stripDefaultColors")?.kind, "calculation");
@@ -184,8 +191,6 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("wrapper.orderByAsc")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("phaseObserver.accept")?.kind, undefined);
   assert.equal(classifyJavaSemantic("rowHandler.accept")?.kind, undefined);
-  assert.equal(classifyJavaSemantic("viewLayoutActivateExecutionPort.activate")?.kind, undefined);
-  assert.equal(classifyJavaSemantic("DynamicDataSyncBizServiceImpl.refreshData")?.kind, undefined);
   assert.equal(classifyJavaSemantic("attrs.lastModifiedTime")?.kind, "external-call");
   assert.equal(classifyJavaSemantic("OperationLogSyncServiceImpl.sliceDetailField")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("ViewMetaExcelImportFieldDraft.applyBasic")?.kind, "state-write");
@@ -215,16 +220,10 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("ParentPanelRefreshServiceImpl.consumeLoop")?.kind, "coordination");
 });
 
-test("remaining callback, dynamic refresh, and execution ports stay fail-closed", () => {
+test("remaining callbacks and unreviewed dynamic boundaries stay fail-closed", () => {
   for (const symbol of [
     "phaseObserver.accept",
     "rowHandler.accept",
-    "DynamicDataSyncBizServiceImpl.refreshData",
-    "ViewDynamicUseGroupDataBizServiceImpl.refreshData",
-    "viewLayoutActivateExecutionPort.activate",
-    "viewLayoutCopyExecutionPort.copy",
-    "viewLayoutTransferCopyExecutionPort.transfer",
-    "viewLayoutTransferCopyHomeExecutionPort.transferToHome",
     "CrossModuleRefreshServiceImpl.refreshAcrossModules",
     "DynamicPortServiceImpl.resolveRuntimePort",
     "ComplexSynchronizationServiceImpl.synchronizeDependencies"
