@@ -229,7 +229,9 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("ScanOptions.scanOptions().match")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("wrapper.orderByAsc")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("phaseObserver.accept")?.kind, undefined);
-  assert.equal(classifyJavaSemantic("rowHandler.accept")?.kind, undefined);
+  assert.equal(classifyJavaSemantic("rowHandler.accept")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("nlsSpeechACL.tts")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("systemServerDirectInvoker.callPreferDirect")?.kind, "external-call");
   assert.equal(classifyJavaSemantic("attrs.lastModifiedTime")?.kind, "external-call");
   assert.equal(classifyJavaSemantic("OperationLogSyncServiceImpl.sliceDetailField")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("ViewMetaExcelImportFieldDraft.applyBasic")?.kind, "state-write");
@@ -262,7 +264,7 @@ test("Java semantic registry narrows helpers, value factories, and application c
 test("remaining callbacks and unreviewed dynamic boundaries stay fail-closed", () => {
   for (const symbol of [
     "phaseObserver.accept",
-    "rowHandler.accept",
+    "unreviewedHandler.accept",
     "CrossModuleRefreshServiceImpl.refreshAcrossModules",
     "DynamicPortServiceImpl.resolveRuntimePort",
     "ComplexSynchronizationServiceImpl.synchronizeDependencies"
