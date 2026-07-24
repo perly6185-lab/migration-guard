@@ -2325,6 +2325,12 @@ function inferArgumentType(
   if (cast) return simpleTypeName(cast[1]);
   const direct = variableTypes.get(trimmed);
   if (direct) return simpleTypeName(direct);
+  const conditional = splitTopLevelConditional(trimmed);
+  if (conditional) {
+    const whenTrue = inferArgumentType(project, currentType, conditional.whenTrue, variableTypes, targetMethodName);
+    const whenFalse = inferArgumentType(project, currentType, conditional.whenFalse, variableTypes, targetMethodName);
+    if (whenTrue !== "unknown" && whenTrue === whenFalse) return whenTrue;
+  }
   const staticField = trimmed.match(/^([A-Z][A-Za-z0-9_.$]*)\.([A-Za-z_][A-Za-z0-9_]*)$/);
   if (staticField) {
     const fieldTypes = resolveTypesForField(project, staticField[1], currentType)
@@ -2416,7 +2422,12 @@ function inferArgumentType(
 
 function reviewedScalarIdAccessorType(targetMethodName: string | undefined, value: string): boolean {
   const accessors = new Map<string, RegExp>([
+    ["deleteHorizontalDataComplete", /\.getHorizontalId\s*\(\s*\)$/],
+    ["getTemplateChartDataList", /\.getTemplateId\s*\(\s*\)$/],
+    ["getViewDynamicTemplateGroupData", /\.getId\s*\(\s*\)$/],
     ["getViewDynamicUsePageDataByPageId", /\.get(?:Left|Right)?PageId\s*\(\s*\)$/],
+    ["oldSynSaveFieldReference", /\.getRightPanelFieldId\s*\(\s*\)$/],
+    ["processSpeechFields", /\.get(?:Panel|UsePage)Id\s*\(\s*\)$/],
     ["selectListByPanelId", /\.get(?:Panel|UnionPanel)?Id\s*\(\s*\)$/],
     ["selectListByPageId", /\.get(?:Page)?Id\s*\(\s*\)$/],
     ["getSqlDynamicFieldDataListByTableId", /\.get(?:Table)?Id\s*\(\s*\)$/],
@@ -2424,6 +2435,34 @@ function reviewedScalarIdAccessorType(targetMethodName: string | undefined, valu
     ["getViewDynamicTemplateData", /\.getId\s*\(\s*\)$/]
   ]);
   return Boolean(targetMethodName && accessors.get(targetMethodName)?.test(value));
+}
+
+function splitTopLevelConditional(value: string): { whenTrue: string; whenFalse: string } | undefined {
+  let parenDepth = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let quote = "";
+  let question = -1;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === quote && value[index - 1] !== "\\") quote = "";
+      continue;
+    }
+    if (char === "\"" || char === "'") { quote = char; continue; }
+    if (char === "(") { parenDepth += 1; continue; }
+    if (char === ")") { parenDepth -= 1; continue; }
+    if (char === "{") { braceDepth += 1; continue; }
+    if (char === "}") { braceDepth -= 1; continue; }
+    if (char === "[") { bracketDepth += 1; continue; }
+    if (char === "]") { bracketDepth -= 1; continue; }
+    if (parenDepth || braceDepth || bracketDepth) continue;
+    if (char === "?" && question < 0) { question = index; continue; }
+    if (char === ":" && question >= 0) {
+      return { whenTrue: value.slice(question + 1, index).trim(), whenFalse: value.slice(index + 1).trim() };
+    }
+  }
+  return undefined;
 }
 
 function generatedAccessorReturnTypesFromSources(project: JavaProjectModel, declaredType: string, methodName: string): string[] {

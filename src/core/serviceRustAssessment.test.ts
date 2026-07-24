@@ -97,7 +97,7 @@ test("Java call resolution covers multiline arguments, static imports, generic f
       "Payload.java": ["package demo;", "@Data", "public class Payload {", " private String name;", " private Long id;", "}"],
       "PayloadHolder.java": ["package demo;", "@Value", "public class PayloadHolder {", " Payload payload;", "}"],
       "GeneratedConfig.java": ["package demo;", "@Getter", "public class GeneratedConfig {", " private long timeout;", "}"],
-      "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", " public Object chooseList(Long value) { return null; }", " public Object chooseList(List<Long> value) { return null; }", " public Object getViewDynamicUsePageDataByPageId(Long value) { return null; }", " public Object getViewDynamicUsePageDataByPageId(List<Long> values) { return null; }", " public Object selectListByPanelId(Long value) { return null; }", " public Object selectListByPanelId(List<Long> values) { return null; }", " public String toString(Long value) { return String.valueOf(value); }", "}"],
+      "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", " public Object chooseList(Long value) { return null; }", " public Object chooseList(List<Long> value) { return null; }", " public Object getViewDynamicUsePageDataByPageId(Long value) { return null; }", " public Object getViewDynamicUsePageDataByPageId(List<Long> values) { return null; }", " public Object selectListByPanelId(Long value) { return null; }", " public Object selectListByPanelId(List<Long> values) { return null; }", " public Object processSpeechFields(Long panelId, Long pageId) { return null; }", " public Object processSpeechFields(Long panelId, Supplier<String> supplier) { return null; }", " public String toString(Long value) { return String.valueOf(value); }", "}"],
       "ExternalAccessorService.java": [
         "package demo;", "public class ExternalAccessorService {", " @Resource", " private OverloadWorker overloadWorker;",
         " public Object page(List<ExternalRow> rows) { return overloadWorker.getViewDynamicUsePageDataByPageId(rows.get(0).getPageId()); }",
@@ -107,6 +107,12 @@ test("Java call resolution covers multiline arguments, static imports, generic f
         " public Object pages(List<ExternalRow> rows) { return overloadWorker.getViewDynamicUsePageDataByPageId(rows.get(0).getPageIds()); }",
         " public Object unrelated(List<ExternalRow> rows) { return overloadWorker.choose(rows.get(0).getPageId()); }",
         " public Object prototypeName(List<ExternalRow> rows) { return overloadWorker.toString(rows.get(0).getId()); }", "}"
+      ],
+      "ConditionalService.java": [
+        "package demo;", "public class ConditionalService {", " @Resource", " private OverloadWorker overloadWorker;",
+        " public Object run(Long requestedId, Long fallbackId) { return overloadWorker.choose(requestedId != null ? requestedId : fallbackId); }",
+        " public Object mixed(Long requestedId, List<Long> fallbackIds) { return overloadWorker.choose(requestedId != null ? requestedId : fallbackIds); }",
+        " public Object speech(ExternalRow row) { return overloadWorker.processSpeechFields(row.getPanelId(), row.getUsePageId()); }", "}"
       ],
       "InitializerService.java": [
         "package demo;", "public class InitializerService {", " private Worker worker;",
@@ -161,6 +167,14 @@ test("Java call resolution covers multiline arguments, static imports, generic f
     assert.equal(unrelatedAccessor.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "ambiguous");
     const prototypeName = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ExternalAccessorService" && item.methodName === "prototypeName")!, { maxDepth: 4, maxEdges: 100 });
     assert.equal(prototypeName.callGraph.edges.find((edge) => edge.call.method === "toString")?.resolution, "field-injection");
+    const conditional = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ConditionalService" && item.methodName === "run")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(conditional.callGraph.edges.find((edge) => edge.call.method === "choose")?.call.argumentTypes?.[0], "Long");
+    assert.equal(conditional.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "field-injection");
+    const mixedConditional = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ConditionalService" && item.methodName === "mixed")!, { maxDepth: 4, maxEdges: 100 });
+    assert.equal(mixedConditional.callGraph.edges.find((edge) => edge.call.method === "choose")?.resolution, "ambiguous");
+    const speech = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ConditionalService" && item.methodName === "speech")!, { maxDepth: 4, maxEdges: 100 });
+    assert.deepEqual(speech.callGraph.edges.find((edge) => edge.call.method === "processSpeechFields")?.call.argumentTypes, ["Long", "Long"]);
+    assert.equal(speech.callGraph.edges.find((edge) => edge.call.method === "processSpeechFields")?.resolution, "field-injection");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
