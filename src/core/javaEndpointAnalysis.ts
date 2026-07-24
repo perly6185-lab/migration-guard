@@ -38,7 +38,7 @@ export interface AdaptiveJavaAnalysisResult {
   report: JavaEndpointAnalysisReport;
   status: "complete" | "budget-exhausted";
   topology: AdaptiveExpansionTopology;
-  rounds: Array<{ round: number; maxDepth: number; maxEdges: number; nodes: number; edges: number; maxOutDegree: number; edgeCapHit: boolean; depthCapHit: boolean; unexpandedBoundaries: number; complete: boolean }>;
+  rounds: Array<{ round: number; maxDepth: number; maxEdges: number; nodes: number; edges: number; maxOutDegree: number; edgeCapHit: boolean; depthCapHit: boolean; perMethodCallCapHit: boolean; unexpandedBoundaries: number; complete: boolean }>;
 }
 
 export type AdaptiveExpansionTopology = "complete" | "edge-cap" | "depth-growth" | "high-fanout" | "mixed";
@@ -209,6 +209,8 @@ export interface JavaEndpointAnalysisReport {
       maxTotalEdges: number;
       edgeCapHit: boolean;
       depthCapHit: boolean;
+      perMethodCallCapHit?: boolean;
+      perMethodCallCapNodes?: Array<{ nodeId: string; extractedCalls: number; retainedCalls: number; omittedCalls: number }>;
       maxObservedDepth: number;
       nodeDepthCounts: Record<string, number>;
       edgeSourceDepthCounts: Record<string, number>;
@@ -245,6 +247,8 @@ interface JavaProjectModel {
   sqlSources: JavaSqlSourceInfo[];
   sqlSourcesByMethodKey: Map<string, JavaSqlSourceInfo[]>;
 }
+
+const GENERATED_ACCESSOR_SOURCE_CACHE = new WeakMap<JavaProjectModel, Map<string, string[]>>();
 
 interface JavaTypeInfo {
   name: string;
@@ -316,7 +320,7 @@ type JavaCallGraphBuildResult = JavaEndpointAnalysisReport["callGraph"] & {
 };
 
 const DEFAULT_MAX_DEPTH = 5;
-const MAX_EDGES_PER_METHOD = 40;
+export const JAVA_MAX_EDGES_PER_METHOD = 40;
 const DEFAULT_MAX_TOTAL_EDGES = 600;
 const JAVA_SKIP_DIRS = new Set([
   ".git",
@@ -426,8 +430,8 @@ function analyzeJavaMethodAdaptive(
   let report = analyzeJavaMethodModel(project, routes, candidate, entryKind, { maxDepth: depth, maxEdges: edges });
   for (let round = 1; round <= maxRounds; round += 1) {
     const truncation = report.callGraph.truncation;
-    const complete = !truncation.edgeCapHit && !truncation.depthCapHit && truncation.unexpandedBoundaryNodes.length === 0;
-    rounds.push({ round, maxDepth: depth, maxEdges: edges, nodes: report.callGraph.nodes.length, edges: report.callGraph.edges.length, maxOutDegree: maxCallGraphOutDegree(report), edgeCapHit: truncation.edgeCapHit, depthCapHit: truncation.depthCapHit, unexpandedBoundaries: truncation.unexpandedBoundaryNodes.length, complete });
+    const complete = !truncation.edgeCapHit && !truncation.depthCapHit && !truncation.perMethodCallCapHit && truncation.unexpandedBoundaryNodes.length === 0;
+    rounds.push({ round, maxDepth: depth, maxEdges: edges, nodes: report.callGraph.nodes.length, edges: report.callGraph.edges.length, maxOutDegree: maxCallGraphOutDegree(report), edgeCapHit: truncation.edgeCapHit, depthCapHit: truncation.depthCapHit, perMethodCallCapHit: Boolean(truncation.perMethodCallCapHit), unexpandedBoundaries: truncation.unexpandedBoundaryNodes.length, complete });
     if (complete) return { report, status: "complete", topology: "complete", rounds };
     if (round === maxRounds) break;
     const nextDepth = truncation.depthCapHit ? Math.min(maxDepth, depth + Math.max(2, Math.ceil(depth / 2))) : depth;
@@ -444,7 +448,7 @@ function classifyExpansionTopology(report: JavaEndpointAnalysisReport): Adaptive
   const truncation = report.callGraph.truncation;
   const edgeLimited = truncation.edgeCapHit;
   const depthLimited = truncation.depthCapHit || truncation.unexpandedBoundaryNodes.length > 0;
-  if (edgeLimited && maxCallGraphOutDegree(report) >= 32) return "high-fanout";
+  if ((edgeLimited || truncation.perMethodCallCapHit) && maxCallGraphOutDegree(report) >= 32) return "high-fanout";
   if (edgeLimited && depthLimited) return "mixed";
   if (edgeLimited) return "edge-cap";
   if (depthLimited) return "depth-growth";
@@ -883,7 +887,7 @@ function parseMethodAt(
   type: JavaTypeInfo
 ): { method: JavaMethodInfo; endLine: number } | undefined {
   const firstLine = lines[index].trim();
-  if (/^(?:\.|return\b|throw\b|new\b|if\b|for\b|while\b|switch\b|try\b|catch\b|else\b|do\b)/.test(firstLine)) return undefined;
+  if (/^(?:[}.]|return\b|throw\b|new\b|if\b|for\b|while\b|switch\b|try\b|catch\b|else\b|do\b)/.test(firstLine)) return undefined;
   const firstEquals = firstLine.indexOf("=");
   const firstParen = firstLine.indexOf("(");
   if (firstEquals >= 0 && (firstParen < 0 || firstEquals < firstParen)) return undefined;
@@ -907,7 +911,7 @@ function parseMethodAt(
     return undefined;
   }
   const signature = signatureLines.join(" ").replace(/\s+/g, " ");
-  const methodMatch = signature.match(/^(?:(?:public|protected|private)\s+)?(?:static\s+)?(?:final\s+)?(?:<[^>]+>\s+)?(.+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*(?:throws\s+[^{;]+)?([;{])\s*$/);
+  const methodMatch = signature.match(/^(?:(?:public|protected|private)\s+)?(?:default\s+)?(?:static\s+)?(?:final\s+)?(?:<[^>]+>\s+)?(.+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*(?:throws\s+[^{;]+)?([;{])\s*$/);
   if (!methodMatch) {
     return undefined;
   }
@@ -1489,6 +1493,7 @@ function buildCallGraph(
   const edgeSourceDepths: number[] = [];
   const queue: GraphTraceState[] = [];
   const unexpandedBoundaryNodes: string[] = [];
+  const perMethodCallCapNodes: NonNullable<JavaEndpointAnalysisReport["callGraph"]["truncation"]["perMethodCallCapNodes"]> = [];
   const sqlSources = new Map<string, JavaSqlSourceInfo>();
   let edgeCapHadRemainingWork = false;
   const rootNode = nodeFor(routeType, routeMethod, route);
@@ -1519,7 +1524,9 @@ function buildCallGraph(
     if (!current.method.hasBody) {
       continue;
     }
-    const calls = extractMethodCalls(project, current.method, current.type).slice(0, MAX_EDGES_PER_METHOD);
+    const extractedCalls = extractMethodCalls(project, current.method, current.type);
+    if (extractedCalls.length > JAVA_MAX_EDGES_PER_METHOD) perMethodCallCapNodes.push({ nodeId: current.node.id, extractedCalls: extractedCalls.length, retainedCalls: JAVA_MAX_EDGES_PER_METHOD, omittedCalls: extractedCalls.length - JAVA_MAX_EDGES_PER_METHOD });
+    const calls = extractedCalls.slice(0, JAVA_MAX_EDGES_PER_METHOD);
     for (const [callIndex, call] of calls.entries()) {
       if (edges.length >= maxEdges) {
         edgeCapHadRemainingWork = true;
@@ -1647,7 +1654,8 @@ function buildCallGraph(
       nodeDepths,
       edgeSourceDepths,
       unexpandedBoundaryNodes,
-      edgeCapHadRemainingWork || (queue.length > 0 && edges.length >= maxEdges)
+      edgeCapHadRemainingWork || (queue.length > 0 && edges.length >= maxEdges),
+      perMethodCallCapNodes
     ),
     sqlSources: [...sqlSources.values()].sort((a, b) => a.id.localeCompare(b.id))
   };
@@ -1786,6 +1794,8 @@ function emptyCallGraph(maxDepth: number, maxEdges: number): JavaCallGraphBuildR
       maxTotalEdges: maxEdges,
       edgeCapHit: false,
       depthCapHit: false,
+      perMethodCallCapHit: false,
+      perMethodCallCapNodes: [],
       maxObservedDepth: 0,
       nodeDepthCounts: {},
       edgeSourceDepthCounts: {},
@@ -1801,7 +1811,8 @@ function createCallGraphTruncation(
   nodeDepths: Map<string, number>,
   edgeSourceDepths: number[],
   unexpandedBoundaryNodes: string[],
-  edgeCapHit: boolean
+  edgeCapHit: boolean,
+  perMethodCallCapNodes: NonNullable<JavaEndpointAnalysisReport["callGraph"]["truncation"]["perMethodCallCapNodes"]> = []
 ): JavaEndpointAnalysisReport["callGraph"]["truncation"] {
   const nodeDepthCounts = countDepths([...nodeDepths.values()]);
   const edgeSourceDepthCounts = countDepths(edgeSourceDepths);
@@ -1810,6 +1821,8 @@ function createCallGraphTruncation(
     maxTotalEdges: maxEdges,
     edgeCapHit,
     depthCapHit: unexpandedBoundaryNodes.length > 0,
+    perMethodCallCapHit: perMethodCallCapNodes.length > 0,
+    perMethodCallCapNodes,
     maxObservedDepth: Math.max(...nodeDepths.values(), 0),
     nodeDepthCounts,
     edgeSourceDepthCounts,
@@ -1861,6 +1874,11 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   const scanBody = body.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, (literal) => literal.replace(/[^\n]/g, " "));
   const lineAt = (offset: number) => method.bodyStartLine + scanBody.slice(0, offset).split("\n").length - 1;
   for (const local of scanBody.matchAll(/\b([A-Z][A-Za-z0-9_.$]*(?:\s*<[^;\r\n=()]+>)?(?:\[\])?|(?:byte|short|int|long|float|double|boolean|char))\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:=|;|:)/g)) variableTypes.set(local[2], local[1]);
+  for (const loop of scanBody.matchAll(/\bfor\s*\(\s*var\s+([a-zA-Z_][A-Za-z0-9_]*)\s*:\s*([a-zA-Z_][A-Za-z0-9_]*)\s*\)/g)) {
+    const elementType = genericTypeArguments(variableTypes.get(loop[2]) ?? "")[0];
+    if (elementType) variableTypes.set(loop[1], elementType);
+  }
+  for (const narrowed of scanBody.matchAll(/\binstanceof\s+([A-Z][A-Za-z0-9_.$<>]*)\s+([a-zA-Z_][A-Za-z0-9_]*)\b/g)) variableTypes.set(narrowed[2], narrowed[1]);
   for (const lambda of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.forEach\s*\(\s*(?:\(\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:\))?\s*->/g)) {
     const elementType = genericTypeArguments(variableTypes.get(lambda[1]) ?? "")[0];
     if (elementType) variableTypes.set(lambda[2], elementType);
@@ -1870,11 +1888,12 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
     if (elementType) variableTypes.set(lambda[2], elementType);
   }
   for (const reference of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)::([A-Za-z_][A-Za-z0-9_]*)/g)) {
-    const prefix = scanBody.slice(Math.max(0, (reference.index ?? 0) - 120), reference.index ?? 0);
+    const prefix = scanBody.slice(Math.max(0, (reference.index ?? 0) - 500), reference.index ?? 0);
     const collection = prefix.match(/\b([A-Za-z_][A-Za-z0-9_]*)\.forEach\s*\(\s*$/)?.[1];
     const declaredCollection = collection ? variableTypes.get(collection) ?? "" : "";
     const referenceTypes = genericTypeArguments(declaredCollection);
-    const argumentTypes = /^Map\s*</.test(declaredCollection) ? referenceTypes.slice(0, 2) : referenceTypes.slice(0, 1);
+    const mappedType = [...prefix.matchAll(/\.map\s*\([\s\S]*?->\s*new\s+([A-Za-z_][A-Za-z0-9_.$<>]*)\s*\(/g)].at(-1)?.[1];
+    const argumentTypes = mappedType ? [simpleTypeName(mappedType)] : /^Map\s*</.test(declaredCollection) ? referenceTypes.slice(0, 2) : referenceTypes.slice(0, 1);
     calls.push({ receiver: reference[1], method: reference[2], expression: reference[0], line: lineAt(reference.index ?? 0), argumentCount: argumentTypes.length || -1, argumentTypes, feature: "method-reference" });
   }
   for (const lambda of scanBody.matchAll(/->/g)) calls.push({ receiver: "$lambda", method: "invoke", expression: "lambda ->", line: lineAt(lambda.index ?? 0), argumentCount: -1, argumentTypes: [], feature: "lambda" });
@@ -1996,7 +2015,9 @@ function resolveCallTargets(
     if (receiverCandidates.length === 0 && receiverTypes.some((type) => isGeneratedAccessor(type, call.method, call.argumentCount))) return { targets: [], resolution: "external", candidates: [] };
     return selectOverload(receiverCandidates, call);
   }
-  const field = [currentType, ...parentTypes(project, currentType)].flatMap((type) => type.fields).find((candidate) => candidate.name === call.receiver);
+  const field = [currentType, ...parentTypes(project, currentType)]
+    .flatMap((type) => [...type.fields, ...type.plainFields])
+    .find((candidate) => candidate.name === call.receiver);
   if (!field) {
     return { targets: [], resolution: "external", candidates: [] };
   }
@@ -2011,9 +2032,15 @@ function resolveCallTargets(
     let implementationTypes = candidateType.kind === "interface"
       ? [candidateType, ...(project.implementationsByInterface.get(candidateType.name) ?? [])]
       : [candidateType];
-    const qualifier = field.annotations.join(" ").match(/@Qualifier\s*\(\s*["']([^"']+)["']\s*\)/)?.[1];
+    const qualifier = ((field as Partial<JavaFieldInfo>).annotations ?? []).join(" ").match(/@Qualifier\s*\(\s*["']([^"']+)["']\s*\)/)?.[1];
     if (qualifier) implementationTypes = implementationTypes.filter((type) => type.name.toLowerCase() === qualifier.toLowerCase() || lowerCamel(type.name.replace(/Impl$/, "")) === qualifier);
-    else if (candidateType.kind === "interface") implementationTypes = narrowSpringImplementations(implementationTypes, field.name);
+    else if (candidateType.kind === "interface") {
+      implementationTypes = narrowSpringImplementations(implementationTypes, field.name);
+      if (candidateType.methods.some((method) => method.hasBody && method.name === call.method)
+        && !implementationTypes.some((type) => type.qualifiedName === candidateType.qualifiedName)) {
+        implementationTypes = [candidateType, ...implementationTypes];
+      }
+    }
     for (const implementationType of implementationTypes) {
       for (const method of implementationType.methods.filter((candidate) => candidate.name === call.method && (implementationType.kind !== "interface" || candidate.hasBody || isPersistenceType(implementationType)))) {
         targets.push({ type: implementationType, method });
@@ -2037,7 +2064,8 @@ function collapseOverriddenTargets(targets: Array<{ type: JavaTypeInfo; method: 
 function narrowSpringTargets(targets: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>, fieldName: string): Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> {
   const types = [...new Map(targets.map((target) => [target.type.qualifiedName, target.type])).values()];
   const narrowed = narrowSpringImplementations(types, fieldName);
-  return narrowed === types ? targets : targets.filter((target) => narrowed.some((type) => type.qualifiedName === target.type.qualifiedName));
+  return narrowed === types ? targets : targets.filter((target) => target.type.kind === "interface" && target.method.hasBody
+    || narrowed.some((type) => type.qualifiedName === target.type.qualifiedName));
 }
 
 function narrowSpringImplementations(types: JavaTypeInfo[], fieldName: string): JavaTypeInfo[] {
@@ -2045,7 +2073,9 @@ function narrowSpringImplementations(types: JavaTypeInfo[], fieldName: string): 
   const primary = concrete.filter((type) => type.annotations.some((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?Primary\b/.test(annotation)));
   if (primary.length === 1) return primary;
   const named = concrete.filter((type) => springBeanNames(type).includes(fieldName));
-  return named.length === 1 ? named : types;
+  if (named.length === 1) return named;
+  const registered = concrete.filter((type) => type.annotations.some((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?(?:Component|Service|Repository)\b/.test(annotation)));
+  return registered.length === 1 ? registered : types;
 }
 
 function springBeanNames(type: JavaTypeInfo): string[] {
@@ -2140,7 +2170,9 @@ function primitiveWrapper(value: string): string {
 
 function extractCallArguments(line: string, openIndex: number): { args: string[]; complete: boolean } {
   if (openIndex < 0 || line[openIndex] !== "(") return { args: [], complete: false };
-  let depth = 0;
+  let parenDepth = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
   let quote = "";
   let current = "";
   const args: string[] = [];
@@ -2152,10 +2184,14 @@ function extractCallArguments(line: string, openIndex: number): { args: string[]
       continue;
     }
     if (char === "\"" || char === "'") { quote = char; current += char; continue; }
-    if (char === "(") { depth += 1; current += char; continue; }
-    if (char === ")" && depth > 0) { depth -= 1; current += char; continue; }
-    if (char === ")" && depth === 0) { if (current.trim()) args.push(current.trim()); return { args, complete: true }; }
-    if (char === "," && depth === 0) { args.push(current.trim()); current = ""; continue; }
+    if (char === "(") { parenDepth += 1; current += char; continue; }
+    if (char === ")" && parenDepth > 0) { parenDepth -= 1; current += char; continue; }
+    if (char === ")" && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) { if (current.trim()) args.push(current.trim()); return { args, complete: true }; }
+    if (char === "{") { braceDepth += 1; current += char; continue; }
+    if (char === "}" && braceDepth > 0) { braceDepth -= 1; current += char; continue; }
+    if (char === "[") { bracketDepth += 1; current += char; continue; }
+    if (char === "]" && bracketDepth > 0) { bracketDepth -= 1; current += char; continue; }
+    if (char === "," && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) { args.push(current.trim()); current = ""; continue; }
     current += char;
   }
   return { args: current.trim() ? [current.trim()] : [], complete: false };
@@ -2172,13 +2208,25 @@ function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo,
   if (/^-?\d+\.\d+[fF]$/.test(trimmed)) return "float";
   if (/^-?\d+\.\d+$/.test(trimmed)) return "double";
   if (trimmed === "null") return "null";
+  if (/^\(\s*\)\s*->/.test(trimmed)) return "Supplier";
   const created = trimmed.match(/^new\s+([A-Za-z_][A-Za-z0-9_.$<>]*)/);
   if (created) return simpleTypeName(created[1]);
   const cast = trimmed.match(/^\(\s*([A-Za-z_][A-Za-z0-9_.$<>?\[\]]*)\s*\)/);
   if (cast) return simpleTypeName(cast[1]);
   const direct = variableTypes.get(trimmed);
   if (direct) return simpleTypeName(direct);
+  const staticField = trimmed.match(/^([A-Z][A-Za-z0-9_.$]*)\.([A-Za-z_][A-Za-z0-9_]*)$/);
+  if (staticField) {
+    const fieldTypes = resolveTypesForField(project, staticField[1], currentType)
+      .flatMap((type) => type.plainFields.filter((field) => field.name === staticField[2]).map((field) => simpleTypeName(field.declaredType)));
+    if (new Set(fieldTypes).size === 1) return fieldTypes[0] as string;
+  }
   if (/^IdWorker\.getId\s*\(/.test(trimmed)) return "Long";
+  const numericParse = trimmed.match(/^(Byte|Short|Integer|Long|Float|Double)\.(?:parse[A-Za-z]+|valueOf)\s*\(/);
+  if (numericParse) return numericParse[1] === "Integer" ? "int" : numericParse[1].toLowerCase();
+  if (/^(?:List|Arrays)\.(?:of|asList)\s*\(/.test(trimmed)) return "List";
+  if (/^Set\.of\s*\(/.test(trimmed)) return "Set";
+  if (/^Map\.of(?:Entries)?\s*\(/.test(trimmed)) return "Map";
   if (/^[A-Z][A-Za-z0-9_]*\.[A-Za-z0-9_]*ToStringList\s*\(/.test(trimmed)) return "List";
   const chainedGetter = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
   if (chainedGetter) {
@@ -2248,8 +2296,47 @@ function inferArgumentType(project: JavaProjectModel, currentType: JavaTypeInfo,
     const fieldName = property ? property[0].toLowerCase() + property.slice(1) : "";
     return type.plainFields.filter((item) => item.name === fieldName).map((item) => simpleTypeName(item.declaredType));
   });
-  const candidates = [...new Set([...returnTypes, ...generatedTypes])];
+  const knownTypes = [...new Set([...returnTypes, ...generatedTypes])];
+  if (knownTypes.length === 1) return knownTypes[0] as string;
+  const sourceGeneratedTypes = knownTypes.length === 0 ? generatedAccessorReturnTypesFromSources(project, receiverTypeName, methodName) : [];
+  const candidates = [...new Set([...knownTypes, ...sourceGeneratedTypes])];
   return candidates.length === 1 ? candidates[0] as string : "unknown";
+}
+
+function generatedAccessorReturnTypesFromSources(project: JavaProjectModel, declaredType: string, methodName: string): string[] {
+  const accessor = methodName.match(/^(?:get|is)([A-Z][A-Za-z0-9_]*)$/);
+  const typeName = simpleTypeName(declaredType);
+  const fieldName = accessor ? accessor[1][0].toLowerCase() + accessor[1].slice(1) : methodName;
+  let cache = GENERATED_ACCESSOR_SOURCE_CACHE.get(project);
+  if (!cache) {
+    cache = new Map<string, string[]>();
+    for (const file of project.files) {
+      const lines = stripBlockComments(file.content).split(/\r?\n/);
+      for (let index = 0; index < lines.length; index += 1) {
+        const declaration = lines[index].match(/\b(?:class|interface|record)\s+([A-Za-z_][A-Za-z0-9_]*)\b/);
+        if (!declaration) continue;
+        const annotations = collectLeadingAnnotations(lines, index).join(" ");
+        const recordDeclaration = /\brecord\s+/.test(lines[index]);
+        if (!recordDeclaration && !/@(?:[A-Za-z0-9_$.]+\.)?(?:Data|Getter|Value)\b/.test(annotations)) continue;
+        const range = findBraceRange(lines, index);
+        const body = lines.slice(range.start + 1, range.end).join("\n");
+        if (recordDeclaration) {
+          const header = lines.slice(index, Math.min(range.end + 1, index + 32)).join(" ").split("{")[0];
+          const components = header.match(/\((.*)\)/)?.[1];
+          for (const component of components ? splitJavaArgs(components) : []) {
+            const match = component.trim().match(/^([A-Za-z_][A-Za-z0-9_.$<>?\[\]]*)\s+([a-zA-Z_][A-Za-z0-9_]*)$/);
+            if (match) cache.set(`${declaration[1]}.${match[2]}`, [simpleTypeName(match[1])]);
+          }
+        }
+        for (const field of body.matchAll(/\b([A-Za-z_][A-Za-z0-9_.$<>?\[\]]*)\s+([a-zA-Z_][A-Za-z0-9_]*)\s*(?:[;=])/g)) {
+          const key = `${declaration[1]}.${field[2]}`;
+          cache.set(key, [...new Set([...(cache.get(key) ?? []), simpleTypeName(field[1])])]);
+        }
+      }
+    }
+    GENERATED_ACCESSOR_SOURCE_CACHE.set(project, cache);
+  }
+  return cache.get(`${typeName}.${fieldName}`) ?? [];
 }
 
 function resolveTypesForField(project: JavaProjectModel, typeName: string, contextType?: JavaTypeInfo): JavaTypeInfo[] {
@@ -2944,7 +3031,51 @@ function extractPlainFields(type: JavaTypeInfo): string[] {
 }
 
 function stripBlockComments(content: string): string {
-  return content.replace(/\/\*[\s\S]*?\*\//g, (match) => match.split(/\r?\n/).map(() => "").join("\n"));
+  let result = "";
+  let state: "code" | "line" | "block" | "string" | "char" = "code";
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const next = content[index + 1];
+    if (state === "line") {
+      result += char;
+      if (char === "\n") state = "code";
+      continue;
+    }
+    if (state === "block") {
+      if (char === "*" && next === "/") {
+        result += "  ";
+        index += 1;
+        state = "code";
+      } else {
+        result += char === "\r" || char === "\n" ? char : " ";
+      }
+      continue;
+    }
+    if (state === "string" || state === "char") {
+      result += char;
+      if (char === "\\" && next !== undefined) {
+        result += next;
+        index += 1;
+      } else if (char === (state === "string" ? '"' : "'")) {
+        state = "code";
+      }
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      result += "//";
+      index += 1;
+      state = "line";
+    } else if (char === "/" && next === "*") {
+      result += "  ";
+      index += 1;
+      state = "block";
+    } else {
+      result += char;
+      if (char === '"') state = "string";
+      else if (char === "'") state = "char";
+    }
+  }
+  return result;
 }
 
 function stripLineComment(line: string): string {

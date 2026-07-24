@@ -2,7 +2,7 @@ import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
 import { createJavaEndpointAnalyzer, type AdaptiveExpansionTopology } from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
-import type { EndpointWorkloadKind } from "./endpointReplacementModel.js";
+import type { BehaviorGraph, EndpointWorkloadKind } from "./endpointReplacementModel.js";
 import { captureAssessmentSourceIdentity, type AssessmentSourceIdentity } from "./assessmentSourceIdentity.js";
 
 export interface ServiceRustAssessmentOptions {
@@ -18,6 +18,22 @@ export interface ServiceRustAssessmentOptions {
 }
 
 export type UnclassifiedBoundaryCategory = "business-helper" | "value-object-factory" | "context-coordination" | "residual";
+
+export interface HighFanoutDiagnostics {
+  maxOutDegree: number;
+  callCapNodes: number;
+  omittedCalls: number;
+  outDegreeDistribution: Record<string, number>;
+  repeatedSubgraphGroups: number;
+  repeatedSubgraphNodes: number;
+  maxRepeatedSubgraphMultiplicity: number;
+  stronglyConnectedComponents: number;
+  cyclicStronglyConnectedComponents: number;
+  cyclicNodes: number;
+  largestStronglyConnectedComponent: number;
+  amplificationSignals: Array<"per-method-call-cap-saturated" | "repeated-outgoing-shape" | "cyclic-scc">;
+  assessment: "likely-genuine" | "mixed" | "likely-analyzer-amplified";
+}
 
 export interface ServiceMethodAssessment {
   id: string;
@@ -42,6 +58,7 @@ export interface ServiceMethodAssessment {
   expansionStatus?: "complete" | "budget-exhausted";
   expansionTopology?: AdaptiveExpansionTopology;
   expansionRounds?: number;
+  highFanoutDiagnostics?: HighFanoutDiagnostics;
 }
 
 export interface ServiceRustAssessmentReport {
@@ -65,6 +82,20 @@ export interface ServiceRustAssessmentReport {
     workloads: Record<string, number>;
     findings: Record<string, number>;
     roles: Record<string, number>;
+    highFanoutDiagnostics: {
+      methods: number;
+      assessments: Record<string, number>;
+      maxOutDegreeBuckets: Record<string, number>;
+      maxOutDegrees: Record<string, number>;
+      repeatedSubgraphGroups: Record<string, number>;
+      cyclicSccs: Record<string, number>;
+      largestSccs: Record<string, number>;
+      withRepeatedSubgraphs: number;
+      withCyclicSccs: number;
+      withPerMethodCallCapSaturation: number;
+      totalCallCapNodes: number;
+      totalOmittedCalls: number;
+    };
   };
   methods: ServiceMethodAssessment[];
   reportHash: string;
@@ -84,6 +115,7 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
     }) : undefined;
     const source = expansion?.report ?? analyzer.analyzeServiceMethod(candidate, { maxDepth: options.maxDepth, maxEdges: options.maxEdges });
     const { graph, plan } = createEndpointReplacementPlanFromJava(source);
+    const highFanoutDiagnostics = expansion?.topology === "high-fanout" ? diagnoseHighFanout(graph, source.callGraph.truncation) : undefined;
     const unclassifiedCategories = [...new Set(graph.nodes.filter((node) => node.kind === "unknown").map(classifyUnclassifiedBoundary))].sort();
     return {
       id: candidate.id,
@@ -107,7 +139,8 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
       findings: [...plan.findings, ...(expansion?.status === "budget-exhausted" ? ["RP-GRAPH-EXPANSION-BUDGET-EXHAUSTED"] : [])],
       expansionStatus: expansion?.status,
       expansionTopology: expansion?.topology,
-      expansionRounds: expansion?.rounds.length
+      expansionRounds: expansion?.rounds.length,
+      highFanoutDiagnostics
     };
   });
   const base = {
@@ -130,7 +163,8 @@ export async function assessJavaServicesForRust(options: ServiceRustAssessmentOp
       unclassifiedCategories: countValues(methods.flatMap((item) => item.unclassifiedCategories)),
       workloads: countValues(methods.map((item) => item.workload)),
       findings: countValues(methods.flatMap((item) => item.findings)),
-      roles: countValues(methods.flatMap((item) => item.roles))
+      roles: countValues(methods.flatMap((item) => item.roles)),
+      highFanoutDiagnostics: summarizeHighFanout(methods)
     },
     methods
   };
@@ -150,6 +184,19 @@ export function renderServiceRustAssessment(report: ServiceRustAssessmentReport)
     ...Object.entries(report.summary.findings).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([finding, count]) => `- ${finding}: ${count}`), "",
     "## Expansion topologies", "",
     ...Object.entries(report.summary.expansionTopologies).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([topology, count]) => `- ${topology}: ${count}`), "",
+    "## High-fanout diagnostics", "",
+    `- Methods: ${report.summary.highFanoutDiagnostics.methods}`,
+    `- With repeated subgraphs: ${report.summary.highFanoutDiagnostics.withRepeatedSubgraphs}`,
+    `- With cyclic SCCs: ${report.summary.highFanoutDiagnostics.withCyclicSccs}`,
+    `- With per-method call-cap saturation: ${report.summary.highFanoutDiagnostics.withPerMethodCallCapSaturation}`,
+    `- Per-method call-cap nodes: ${report.summary.highFanoutDiagnostics.totalCallCapNodes}`,
+    `- Omitted calls: ${report.summary.highFanoutDiagnostics.totalOmittedCalls}`,
+    ...Object.entries(report.summary.highFanoutDiagnostics.assessments).map(([assessment, count]) => `- Assessment ${assessment}: ${count}`),
+    ...Object.entries(report.summary.highFanoutDiagnostics.maxOutDegreeBuckets).map(([bucket, count]) => `- Max out-degree ${bucket}: ${count}`), "",
+    `- Exact max out-degree distribution: ${JSON.stringify(report.summary.highFanoutDiagnostics.maxOutDegrees)}`,
+    `- Repeated-subgraph group distribution: ${JSON.stringify(report.summary.highFanoutDiagnostics.repeatedSubgraphGroups)}`,
+    `- Cyclic-SCC distribution: ${JSON.stringify(report.summary.highFanoutDiagnostics.cyclicSccs)}`,
+    `- Largest-SCC distribution: ${JSON.stringify(report.summary.highFanoutDiagnostics.largestSccs)}`, "",
     "## Unclassified boundary categories", "",
     ...Object.entries(report.summary.unclassifiedCategories).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([category, count]) => `- ${category}: ${count}`), ""
   ].join("\n");
@@ -161,6 +208,105 @@ function classifyUnclassifiedBoundary(node: { evidence: { symbol: string; detail
   if (/\b[A-Z][A-Za-z0-9_]*\.(?:of|from|create|empty|ok|no|failed|skipped|resolve|extract)\b/.test(text)) return "value-object-factory";
   if (/\bprivate\s|\b(?:helper|util|support)\b/i.test(text) || !node.id.startsWith("external:")) return "business-helper";
   return "residual";
+}
+
+function diagnoseHighFanout(graph: BehaviorGraph, truncation: { perMethodCallCapNodes?: Array<{ omittedCalls: number }> }): HighFanoutDiagnostics {
+  const nodeIds = new Set(graph.nodes.map((node) => node.id));
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const outgoing = new Map<string, Array<{ to: string; kind: string }>>();
+  for (const node of graph.nodes) outgoing.set(node.id, []);
+  for (const edge of graph.edges) {
+    if (edge.to && nodeIds.has(edge.from) && nodeIds.has(edge.to)) outgoing.get(edge.from)?.push({ to: edge.to, kind: edge.kind });
+  }
+  const degrees = [...outgoing.values()].map((edges) => edges.length);
+  const outDegreeDistribution = countValues(degrees.map(String));
+  const shapes = new Map<string, number>();
+  for (const edges of outgoing.values()) {
+    if (edges.length === 0) continue;
+    const signature = edges.map((edge) => {
+      const target = nodeById.get(edge.to);
+      return `${edge.kind}:${target?.kind ?? "unknown"}:${target?.evidence.symbol ?? edge.to}`;
+    }).sort().join("|");
+    shapes.set(signature, (shapes.get(signature) ?? 0) + 1);
+  }
+  const repeated = [...shapes.values()].filter((count) => count > 1);
+  const components = stronglyConnectedComponents([...nodeIds], outgoing);
+  const cyclic = components.filter((component) => component.length > 1 || (outgoing.get(component[0] ?? "") ?? []).some((edge) => edge.to === component[0]));
+  const maxRepeatedSubgraphMultiplicity = Math.max(0, ...repeated);
+  const largestStronglyConnectedComponent = Math.max(0, ...components.map((component) => component.length));
+  const amplificationSignals: HighFanoutDiagnostics["amplificationSignals"] = [
+    (truncation.perMethodCallCapNodes?.length ?? 0) > 0 ? "per-method-call-cap-saturated" : undefined,
+    repeated.length > 0 ? "repeated-outgoing-shape" : undefined,
+    cyclic.length > 0 ? "cyclic-scc" : undefined
+  ].filter((signal): signal is HighFanoutDiagnostics["amplificationSignals"][number] => Boolean(signal));
+  const strongAmplification = maxRepeatedSubgraphMultiplicity >= 8 || largestStronglyConnectedComponent >= 8;
+  return {
+    maxOutDegree: Math.max(0, ...degrees),
+    callCapNodes: truncation.perMethodCallCapNodes?.length ?? 0,
+    omittedCalls: (truncation.perMethodCallCapNodes ?? []).reduce((total, item) => total + item.omittedCalls, 0),
+    outDegreeDistribution,
+    repeatedSubgraphGroups: repeated.length,
+    repeatedSubgraphNodes: repeated.reduce((total, count) => total + count, 0),
+    maxRepeatedSubgraphMultiplicity,
+    stronglyConnectedComponents: components.length,
+    cyclicStronglyConnectedComponents: cyclic.length,
+    cyclicNodes: cyclic.reduce((total, component) => total + component.length, 0),
+    largestStronglyConnectedComponent,
+    amplificationSignals,
+    assessment: strongAmplification ? "likely-analyzer-amplified" : amplificationSignals.length > 0 ? "mixed" : "likely-genuine"
+  };
+}
+
+function stronglyConnectedComponents(nodes: string[], outgoing: Map<string, Array<{ to: string }>>): string[][] {
+  let nextIndex = 0;
+  const indices = new Map<string, number>();
+  const lowLinks = new Map<string, number>();
+  const stack: string[] = [];
+  const onStack = new Set<string>();
+  const components: string[][] = [];
+  const visit = (node: string): void => {
+    indices.set(node, nextIndex); lowLinks.set(node, nextIndex); nextIndex += 1; stack.push(node); onStack.add(node);
+    for (const edge of outgoing.get(node) ?? []) {
+      if (!indices.has(edge.to)) { visit(edge.to); lowLinks.set(node, Math.min(lowLinks.get(node) as number, lowLinks.get(edge.to) as number)); }
+      else if (onStack.has(edge.to)) lowLinks.set(node, Math.min(lowLinks.get(node) as number, indices.get(edge.to) as number));
+    }
+    if (lowLinks.get(node) !== indices.get(node)) return;
+    const component: string[] = [];
+    let member: string | undefined;
+    do { member = stack.pop(); if (member) { onStack.delete(member); component.push(member); } } while (member && member !== node);
+    components.push(component);
+  };
+  for (const node of nodes) if (!indices.has(node)) visit(node);
+  return components;
+}
+
+function summarizeHighFanout(methods: ServiceMethodAssessment[]): ServiceRustAssessmentReport["summary"]["highFanoutDiagnostics"] {
+  const diagnostics = methods.map((method) => method.highFanoutDiagnostics).filter((item): item is HighFanoutDiagnostics => Boolean(item));
+  return {
+    methods: diagnostics.length,
+    assessments: countValues(diagnostics.map((item) => item.assessment)),
+    maxOutDegreeBuckets: countValues(diagnostics.map((item) => outDegreeBucket(item.maxOutDegree))),
+    maxOutDegrees: numericCountValues(diagnostics.map((item) => item.maxOutDegree)),
+    repeatedSubgraphGroups: numericCountValues(diagnostics.map((item) => item.repeatedSubgraphGroups)),
+    cyclicSccs: numericCountValues(diagnostics.map((item) => item.cyclicStronglyConnectedComponents)),
+    largestSccs: numericCountValues(diagnostics.map((item) => item.largestStronglyConnectedComponent)),
+    withRepeatedSubgraphs: diagnostics.filter((item) => item.repeatedSubgraphGroups > 0).length,
+    withCyclicSccs: diagnostics.filter((item) => item.cyclicStronglyConnectedComponents > 0).length,
+    withPerMethodCallCapSaturation: diagnostics.filter((item) => item.amplificationSignals.includes("per-method-call-cap-saturated")).length,
+    totalCallCapNodes: diagnostics.reduce((total, item) => total + item.callCapNodes, 0),
+    totalOmittedCalls: diagnostics.reduce((total, item) => total + item.omittedCalls, 0)
+  };
+}
+
+function outDegreeBucket(value: number): string {
+  if (value < 32) return "0-31";
+  if (value < 64) return "32-63";
+  if (value < 128) return "64-127";
+  return "128+";
+}
+
+function numericCountValues(values: number[]): Record<string, number> {
+  return Object.fromEntries(Object.entries(countValues(values.map(String))).sort((a, b) => Number(a[0]) - Number(b[0])));
 }
 
 function countValues(values: string[]): Record<string, number> {

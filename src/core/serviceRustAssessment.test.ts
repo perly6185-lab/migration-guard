@@ -42,6 +42,8 @@ test("service assessment reports unclassified boundary review categories", async
     const report = await assessJavaServicesForRust({ root: dir, maxDepth: 4, maxEdges: 100 });
     const run = report.methods.find((item) => item.method === "run")!;
     assert.deepEqual(run.unclassifiedCategories, ["business-helper", "context-coordination", "residual", "value-object-factory"]);
+    assert.ok(run.unknownNodes > 0);
+    assert.equal(run.status, "blocked", "unknown Service boundaries must remain fail-closed");
     assert.equal(report.summary.unclassifiedCategories["business-helper"], 1);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
@@ -85,14 +87,20 @@ test("Java call resolution covers multiline arguments, static imports, generic f
       "Factory.java": ["package demo;", "public interface Factory<T> {", " T create();", "}"],
       "StaticTools.java": ["package demo;", "public class StaticTools {", " public static Object normalize(long value) { return null; }", " public static Object normalize(String value) { return null; }", "}"],
       "ResolutionService.java": [
-        "package demo;", "import static demo.StaticTools.normalize;", "import static external.Results.success;", "import static external.Constants.*;", "public class ResolutionService {", " @Resource", " private Worker worker;", " @Resource", " private Factory<Worker> factory;", " @Resource", " private GeneratedConfig config;", " @Resource", " private OverloadWorker overloadWorker;",
-        " public Object run() {", "  Payload payload = worker.payload();", "  PayloadHolder holder = new PayloadHolder(payload);", "  List<Payload> payloads = new ArrayList<>();", "  worker.process(", "    1L,", "    \"ready\"", "  );", "  factory.create().execute(1);", "  worker.payload().getName();", "  overloadWorker.choose(payload.getId());", "  overloadWorker.choose(holder.getPayload().getId());", "  payloads.stream().map(item -> overloadWorker.choose(item.getId()));", "  overloadWorker.chooseList(new ArrayList<Long>());", "  config.getTimeout();", "  normalize(1);", "  success(new Payload());", "  collect(\"batch\", 1L, 2L);", "  return null;", " }",
-        " protected Object collect(String name, Long... values) { return null; }", "}"
+        "package demo;", "import static demo.StaticTools.normalize;", "import static external.Results.success;", "import static external.Constants.*;", "public class ResolutionService {", " @Resource", " private Worker worker;", " private Worker sourceTypedWorker;", " @Resource", " private Factory<Worker> factory;", " @Resource", " private GeneratedConfig config;", " @Resource", " private OverloadWorker overloadWorker;",
+        " public Object run() {", "  Payload payload = worker.payload();", "  sourceTypedWorker.execute(1);", "  PayloadHolder holder = new PayloadHolder(payload);", "  List<Payload> payloads = new ArrayList<>();", "  for (var item : payloads) { accept(item); }", "  worker.process(", "    1L,", "    \"ready\"", "  );", "  runBatch(payloads, item -> { worker.process(1L, \"batch\"); });", "  resolveLazy(1L, () -> worker.payload());", "  factory.create().execute(1);", "  worker.payload().getName();", "  overloadWorker.choose(Long.parseLong(\"1\"));", "  overloadWorker.choose(payload.getId());", "  overloadWorker.choose(holder.getPayload().getId());", "  payloads.stream().map(item -> overloadWorker.choose(item.getId()));", "  payloads.stream().map(item -> new PayloadHolder(item)).distinct().forEach(this::accept);", "  overloadWorker.chooseList(new ArrayList<Long>());", "  config.getTimeout();", "  normalize(1);", "  success(new Payload());", "  collect(\"batch\", 1L, 2L);", "  return null;", " }",
+        " protected void runBatch(List<Payload> values, Consumer<Payload> handler) { }", " protected void resolveLazy(Long id, Supplier<Payload> supplier) { }", " protected void resolveLazy(Long id, Long value) { }", " protected void accept(PayloadHolder holder) { }", " protected void accept(Payload payload) { }", " protected Object collect(String name, Long... values) { return null; }", "}"
       ],
       "Payload.java": ["package demo;", "@Data", "public class Payload {", " private String name;", " private Long id;", "}"],
       "PayloadHolder.java": ["package demo;", "@Value", "public class PayloadHolder {", " Payload payload;", "}"],
       "GeneratedConfig.java": ["package demo;", "@Getter", "public class GeneratedConfig {", " private long timeout;", "}"],
       "OverloadWorker.java": ["package demo;", "public class OverloadWorker {", " public Object choose(Long value) { return null; }", " public Object choose(List<Long> value) { return null; }", " public Object chooseList(Long value) { return null; }", " public Object chooseList(List<Long> value) { return null; }", "}"],
+      "InitializerService.java": [
+        "package demo;", "public class InitializerService {", " private Worker worker;",
+        " private final Object listener = Builder.create()", "  .listen(() -> {", "   try { worker.execute(1L); } catch (Exception error) {", "    error.printStackTrace();", "   }", "  })", "  .build();",
+        " public Object before() {", "  // match status/*_rule_id without opening a block comment", "  return worker.execute(1L);", " }",
+        " public Object run() { return worker.execute(1L); }", "}"
+      ],
       "one/DuplicateWorker.java": ["package demo.one;", "public class DuplicateWorker {", " public Object execute() { return null; }", "}"],
       "two/DuplicateWorker.java": ["package demo.two;", "public class DuplicateWorker {", " public Object execute() { return null; }", "}"],
       "ImportedService.java": ["package demo;", "import demo.one.DuplicateWorker;", "public class ImportedService {", " @Resource", " private DuplicateWorker duplicateWorker;", " public Object run() { return duplicateWorker.execute(); }", "}"]
@@ -102,6 +110,7 @@ test("Java call resolution covers multiline arguments, static imports, generic f
     const report = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.className === "ResolutionService" && item.methodName === "run")!, { maxDepth: 5, maxEdges: 100 });
     assert.ok(report.callGraph.nodes.some((item) => item.className === "Worker" && item.methodName === "process"));
     assert.ok(report.callGraph.nodes.some((item) => item.className === "Worker" && item.methodName === "execute"));
+    assert.equal(report.callGraph.edges.find((edge) => edge.call.receiver === "sourceTypedWorker")?.resolution, "field-injection");
     assert.ok(report.callGraph.nodes.some((item) => item.className === "StaticTools" && item.methodName === "normalize" && /long value/.test(item.signature ?? "")));
     assert.ok(report.callGraph.nodes.some((item) => item.className === "ResolutionService" && item.methodName === "collect"));
     assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "success")?.resolution, "static-or-external");
@@ -114,6 +123,13 @@ test("Java call resolution covers multiline arguments, static imports, generic f
     assert.equal(imported.callGraph.nodes.some((item) => item.file === "demo/two/DuplicateWorker.java"), false);
     assert.equal(report.callGraph.edges.some((edge) => edge.resolution === "ambiguous"), false, JSON.stringify(report.callGraph.edges.filter((edge) => edge.resolution === "ambiguous"), null, 2));
     assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "process")?.call.argumentCount, 2);
+    assert.equal(report.callGraph.edges.find((edge) => edge.call.method === "runBatch")?.call.argumentCount, 2);
+    assert.match(report.callGraph.nodes.find((item) => item.methodName === "resolveLazy")?.signature ?? "", /Supplier<Payload>/);
+    assert.match(report.callGraph.nodes.find((item) => item.methodName === "accept")?.signature ?? "", /PayloadHolder holder/);
+    const initializerRun = analyzer.serviceMethods.find((item) => item.className === "InitializerService" && item.methodName === "run");
+    assert.ok(initializerRun, "method after a multiline field initializer must remain visible");
+    const initializer = analyzer.analyzeServiceMethod(initializerRun, { maxDepth: 5, maxEdges: 100 });
+    assert.equal(initializer.callGraph.edges.find((edge) => edge.call.receiver === "worker")?.resolution, "field-injection");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -131,7 +147,9 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
     await writeFile(path.join(dir, "demo", "WideService.java"), [
       "package demo;", "public class WideService {",
       " public void start() {", ...Array.from({ length: 40 }, (_, index) => `  branch${index}();`), " }",
-      ...Array.from({ length: 40 }, (_, index) => ` private void branch${index}() { }`), "}"
+      ...Array.from({ length: 40 }, (_, index) => ` private void branch${index}() { shared(); }`),
+      " private void shared() { start();", ...Array.from({ length: 40 }, (_, index) => `  tail${index}();`), " }",
+      ...Array.from({ length: 40 }, (_, index) => ` private void tail${index}() { }`), "}"
     ].join("\n"));
     const analyzer = await createJavaEndpointAnalyzer(dir);
     const start = analyzer.serviceMethods.find((item) => item.methodName === "start")!;
@@ -145,11 +163,32 @@ test("adaptive Service analysis expands only while graph budgets can progress", 
     assert.equal(exhausted.status, "budget-exhausted");
     assert.equal(exhausted.topology, "depth-growth");
     assert.equal(exhausted.rounds.length, 1);
+    assert.equal(createEndpointReplacementPlanFromJava(exhausted.report).plan.status, "blocked", "depth exhaustion must remain fail-closed");
     const wide = analyzer.serviceMethods.find((item) => item.className === "WideService" && item.methodName === "start")!;
     const highFanout = analyzer.analyzeServiceMethodAdaptive(wide, { initialDepth: 2, initialEdges: 32, maxDepth: 2, maxEdges: 32, maxRounds: 1 });
     assert.equal(highFanout.status, "budget-exhausted");
     assert.equal(highFanout.topology, "high-fanout");
     assert.equal(highFanout.rounds[0].maxOutDegree, 32);
+    assert.equal(createEndpointReplacementPlanFromJava(highFanout.report).plan.status, "blocked", "high-fanout exhaustion must remain fail-closed");
+    const serviceReport = await assessJavaServicesForRust({ root: dir, maxDepth: 4, maxEdges: 32, adaptive: true, maxExpansionDepth: 8, maxExpansionEdges: 90, maxExpansionRounds: 3 });
+    const diagnosed = serviceReport.methods.find((item) => item.service.endsWith("WideService") && item.method === "start")!;
+    assert.equal(diagnosed.status, "blocked");
+    assert.equal(diagnosed.expansionTopology, "high-fanout");
+    assert.ok((diagnosed.highFanoutDiagnostics?.maxOutDegree ?? 0) >= 32);
+    assert.ok((diagnosed.highFanoutDiagnostics?.callCapNodes ?? 0) > 0);
+    assert.ok((diagnosed.highFanoutDiagnostics?.omittedCalls ?? 0) > 0);
+    assert.ok((diagnosed.highFanoutDiagnostics?.repeatedSubgraphGroups ?? 0) > 0);
+    assert.ok((diagnosed.highFanoutDiagnostics?.cyclicStronglyConnectedComponents ?? 0) > 0);
+    assert.ok(diagnosed.highFanoutDiagnostics?.amplificationSignals.includes("repeated-outgoing-shape"));
+    assert.ok(diagnosed.highFanoutDiagnostics?.amplificationSignals.includes("cyclic-scc"));
+    assert.ok(diagnosed.highFanoutDiagnostics?.amplificationSignals.includes("per-method-call-cap-saturated"));
+    assert.ok(serviceReport.summary.highFanoutDiagnostics.methods > 0);
+    assert.ok(serviceReport.summary.highFanoutDiagnostics.withPerMethodCallCapSaturation > 0);
+    assert.ok(serviceReport.summary.highFanoutDiagnostics.totalCallCapNodes > 0);
+    assert.ok(serviceReport.summary.highFanoutDiagnostics.totalOmittedCalls > 0);
+    assert.ok(Object.keys(serviceReport.summary.highFanoutDiagnostics.maxOutDegrees).length > 0);
+    assert.ok(Object.keys(serviceReport.summary.highFanoutDiagnostics.repeatedSubgraphGroups).length > 0);
+    assert.ok(Object.keys(serviceReport.summary.highFanoutDiagnostics.cyclicSccs).length > 0);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -169,8 +208,13 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
       "PrimaryWorkerImpl.java": ["package demo;", "@Primary", "public class PrimaryWorkerImpl implements PrimaryWorker {", " public Object execute() { return null; }", "}"],
       "BackupPrimaryWorkerImpl.java": ["package demo;", "public class BackupPrimaryWorkerImpl implements PrimaryWorker {", " public Object execute() { return null; }", "}"],
       "PrimaryService.java": ["package demo;", "public class PrimaryService {", " @Resource", " private PrimaryWorker primaryWorker;", " public Object run() { return primaryWorker.execute(); }", "}"],
-      "DefaultWorker.java": ["package demo;", "public interface DefaultWorker {", " default Object execute() {", "  return null;", " }", "}"],
-      "DefaultService.java": ["package demo;", "public class DefaultService {", " @Resource", " private DefaultWorker worker;", " public Object run() {", "  return worker.execute();", " }", "}"],
+      "RegisteredWorker.java": ["package demo;", "public interface RegisteredWorker {", " Object execute();", "}"],
+      "RegisteredWorkerImpl.java": ["package demo;", "@Component", "public class RegisteredWorkerImpl implements RegisteredWorker {", " public Object execute() { return null; }", "}"],
+      "LegacyRegisteredWorker.java": ["package demo;", "public class LegacyRegisteredWorker implements RegisteredWorker {", " public Object execute() { return null; }", "}"],
+      "RegisteredService.java": ["package demo;", "public class RegisteredService {", " @Resource", " private RegisteredWorker worker;", " public Object run() { return worker.execute(); }", "}"],
+      "DefaultWorker.java": ["package demo;", "public interface DefaultWorker {", " default Object execute() {", "  return execute(\"default\");", " }", " Object execute(String mode);", "}"],
+      "DefaultWorkerImpl.java": ["package demo;", "public class DefaultWorkerImpl implements DefaultWorker {", " public Object execute(String mode) { return null; }", "}"],
+      "DefaultService.java": ["package demo;", "public class DefaultService {", " @Resource", " private DefaultWorker defaultWorker;", " public Object run() {", "  return defaultWorker.execute();", " }", "}"],
       "IJobRepository.java": ["package demo;", "public interface IJobRepository {", " Object selectById(Long id);", "}"],
       "JobRepositoryImpl.java": ["package demo;", "public class JobRepositoryImpl", " implements IJobRepository {", " public Object selectById(Long id) { return null; }", "}"],
       "RepositoryService.java": ["package demo;", "public class RepositoryService {", " @Resource", " private IJobRepository jobRepository;", " public Object run() { return jobRepository.selectById(1L); }", "}"],
@@ -189,6 +233,8 @@ test("advanced Java semantics cover inheritance, qualifiers, defaults, transacti
     const primary = analyze("PrimaryService");
     assert.ok(primary.callGraph.nodes.some((item) => item.className === "PrimaryWorkerImpl"), JSON.stringify(primary.callGraph, null, 2));
     assert.equal(primary.callGraph.nodes.some((item) => item.className === "BackupPrimaryWorkerImpl"), false);
+    assert.ok(analyze("RegisteredService").callGraph.nodes.some((item) => item.className === "RegisteredWorkerImpl"));
+    assert.equal(analyze("RegisteredService").callGraph.nodes.some((item) => item.className === "LegacyRegisteredWorker"), false);
     assert.ok(analyze("DefaultService").callGraph.nodes.some((item) => item.className === "DefaultWorker"));
     const repository = analyze("RepositoryService");
     assert.ok(repository.callGraph.nodes.some((item) => item.className === "JobRepositoryImpl"));

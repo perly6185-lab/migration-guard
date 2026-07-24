@@ -7,8 +7,8 @@
 - Project: `zboss-module-data`
 - Source: `8a68de49679502a52232798a3c1f6acba01b7789+dirty:5641e05dcd43`
 - Shared initial graph budget: depth 12, edges 500, tests excluded
-- Aggregate report hash: `58f650a3ba6660d1234973cab1510c3298afc67eecdb5fb67f2590e7ea4e03b9`
-- Cross-layer evidence hash: `496d9458ba1233c598582def4f1d642ff4d339eafa2b097dffe0e97131670fac`
+- Aggregate report hash: `5714498d165b4b4e1528909da131c65c3425f669caa06df0b02d1acbb48bc818`
+- Cross-layer evidence hash: `5b39ac6db37c96ced658f29c0ee0ef8e430ac70d9ae92b27ed226d681e6e7049`
 
 `metrics-report` rejects reports whose source identity or shared initial graph budget differs. Service and Repository may use explicitly recorded adaptive expansion budgets after the shared initial budget.
 
@@ -16,9 +16,9 @@
 
 | Layer | Total | Ready | Blocked | Ready rate |
 | --- | ---: | ---: | ---: | ---: |
-| Controller | 1856 | 1430 | 426 | 77.0% |
-| Service | 5524 | 4747 | 777 | 85.9% |
-| Repository | 4068 | 4068 | 0 | 100.0% |
+| Controller | 1856 | 1421 | 435 | 76.6% |
+| Service | 5541 | 4880 | 661 | 88.1% |
+| Repository | 4068 | 4064 | 4 | 99.9% |
 
 Repository evidence now contains 3316 SQL-backed methods (81.5% coverage), no generated boundaries, 6 unknown operations, no unresolved-edge findings, no ambiguous-call findings, and no dynamic SQL blockers. The regression gate passes against the checked-in baseline, reducing generated boundaries by 21, unresolved-edge findings by 1196, and dynamic SQL blockers by 107 to zero.
 
@@ -54,9 +54,17 @@ Unclassified review now separates private deterministic helpers, value-object fa
 
 The 9 context-coordination candidates were reviewed against their source implementations. `AiCallContext.runWithBizContext` and Cascade Context push/pop/exit/snapshot operations are ThreadLocal scope lifecycle, while `ruleContext.rulesOf` and `nodesOf` are read-only preloaded Map lookups. Classifying only those shapes cleared the context-coordination bucket, reduced Service unclassified findings from 747 to 744, and raised readiness to 4747. Controller unclassified findings decreased from 282 to 280 and readiness rose to 1430; six of the original nine Service methods retain independent blockers.
 
+The 63 value-object-factory candidates collapsed to ten unique source symbols. Source review confirmed deterministic number parsing (`IntegerExtractor`, `NumberExtractor`, and `NumberPercentageExtractor`), value selection (`AiOutputTypeResolver`, `ImportFailureMessageResolver`, and `ViewMetaRespKeyResolver`), in-memory validation (`BatchTypedFieldResolver`), and value construction (`Eligibility.no`, `NoMenuUsePageCleanupStats.empty`, and `ViewMetaExcelHeadSnapshot.from`) with no database, network, clock, or random effects. An explicit type-and-method allowlist clears the candidate bucket without classifying generic `resolve`, `extract`, `from`, or `create` calls. Service unclassified findings decreased from 744 to 722 and readiness rose from 4747 to 4769; the other 41 candidate methods retain independent blockers. Controller unclassified findings decreased from 280 to 279 while readiness remained 1430.
+
+The 639 business-helper candidates collapsed to 217 unique source methods. Review separated deterministic field formatting, DTO/config transformation, scalar conversion, formula rendering, key construction, local status-cache coordination, and an explicit dynamic-DDL write from effectful orchestration. Narrow class-and-method rules preserve nested repository, remote, logging, and state effects instead of treating generic `handle`, `process`, `apply`, `copy`, or `sync` verbs as pure. The business-helper bucket decreased from 639 to 275 methods, Service unclassified findings fell from 722 to 410, and readiness rose from 4769 to 4990. Controller unclassified findings decreased from 279 to 235 and readiness rose from 1430 to 1437. The remaining helpers include repository/remote orchestration, task lifecycle, synchronization, file cleanup, OCR, copying, and other behavior that remains fail-closed pending stronger ownership evidence.
+
+The 235 residual-unknown methods expanded to 258 distinct symbols, dominated by missed deterministic JDK collection/date operations, source value accessors, and expression parsing/evaluation helpers. Extending those narrow semantic families reduced the residual bucket from 235 to 162 without classifying random UUID generation, WebSocket/JDBC calls, processes, files/ZIP streams, schedulers, or dynamic ports as pure. Service unclassified findings decreased from 410 to 359 and readiness rose from 4990 to 5034. Controller unclassified findings decreased from 235 to 221 and readiness rose from 1437 to 1443. The remaining residuals retain explicit effect or ownership uncertainty.
+
+A second review of the 275 remaining business-helper methods collapsed them to 175 unique implementations and assigned explicit effect kinds instead of purity: relationship cleanup, synchronization, initialization, copying, task lifecycle, and backup/cleanup operations are state writes; OCR, speech, and document operations are external calls; background refresh and heartbeat work is asynchronous or coordinated; WebSocket notification is event publication; current-user lookup is context resolution. Local request, DTO, metadata, rendering, and scalar helpers remain calculations with nested effects retained. The business-helper bucket decreased from 275 to 23, Service unclassified findings fell from 359 to 173, and readiness rose from 5034 to 5179. Controller unclassified findings decreased from 221 to 139 and readiness rose from 1443 to 1475. The final 23 business helpers remain fail-closed because their cross-module refresh, dynamic-port, or complex synchronization ownership is still insufficiently evidenced.
+
 Overload argument inference now uses local and foreach declarations, primitive declarations, explicit casts, `List<T>.get()`, source-declared method return types, and Lombok getter field types. Controller ambiguous routes decreased from 346 to 132 and Service ambiguous findings from 802 to 453. Deeper valid traversal exposed additional downstream dynamic SQL, unresolved calls, and graph-cap findings; those remain fail-closed.
 
-Cross-layer lineage covers 1856 routes. Of these, 1627 reach SQL and 1624 (87.5%) have a complete Controller -> Service -> Repository -> SQL chain.
+Cross-layer lineage covers 1856 routes. Of these, 1632 reach SQL and 1629 (87.8%) have a complete Controller -> Service -> Repository -> SQL chain.
 
 ## Interpretation and next work
 
@@ -64,12 +72,22 @@ BaseMapper operations are reviewable only when the mapper generic entity resolve
 
 Next work is ordered by evidence impact:
 
-1. Retain the remaining 8 Controller unresolved-edge findings and 6 ambiguous calls without sufficient implementation, arity, nested-type, or stream-flow evidence as fail-closed.
-2. Review the remaining 744 Service unclassified boundaries, starting with the 63 value-object factory candidates before the broader 639 business-helper group; retain the 159 classified high-fanout expansion exhaustions behind the 2000-edge hard limit.
-3. Shift the next cleanup phase to Controller and Service graph completeness; Repository has no remaining blockers.
+1. Review the 336 Controller routes that reach at least one method whose extracted calls exceed the retained-call cap; all remain fail-closed.
+2. Review the remaining 19 Service unclassified boundaries: 5 insufficiently evidenced business helpers and 14 residual-unknown methods; retain all 636 call-cap-saturated high-fanout assessments behind the 2000-edge hard limit.
+3. Review the four Repository methods blocked only by per-method call-cap saturation; their SQL contracts remain reviewable, but their behavior graphs are incomplete.
 4. Update the checked-in real-project baseline only after the dirty source fingerprint and reports are reviewed.
 
 Assessment readiness measures static evidence coverage. It does not prove Rust implementation, runtime replay, performance parity, or source-off readiness.
+
+## Full evidence recomputation (2026-07-24)
+
+The full Controller, Service, Repository, and cross-layer evidence set was recomputed from the same source identity and shared initial graph budget. The source revision is `8a68de49679502a52232798a3c1f6acba01b7789+dirty:5641e05dcd43`. Tests are excluded. Service uses a hard adaptive maximum of depth 36 / 2000 edges across six rounds; Repository uses depth 24 / 2000 edges across four rounds.
+
+The per-method call cap is now an explicit truncation signal. Any graph that omits extracted calls at that cap is incomplete and remains blocked even when the total edge and depth budgets have room. This conservative correction changes the aggregate result to Controller 1421/1856 ready, Service 4880/5541 ready, and Repository 4064/4068 ready. Controller has 336 call-cap findings. Service has 636 call-cap-saturated high-fanout assessments and 19 unknown-boundary methods. Repository has four call-cap-saturated methods; it still has zero generated boundaries, zero unresolved-edge findings, and zero dynamic SQL blockers.
+
+Service diagnostics report 1271 cap-saturated nodes with 37674 omitted calls across 636 affected methods. Of those methods, 442 contain repeated outgoing-subgraph shapes and 235 contain cyclic strongly connected components. Conservative triage labels 50 `likely-analyzer-amplified` and 586 `mixed`. None are auto-unblocked: call-cap saturation proves analyzer truncation is present, but does not disprove genuine business fan-out.
+
+The recomputed component report hashes are Controller `3954b18195df4ea5c5d387d4fe677c9a07812501344d8a162bbb0c71c7151209`, Service `9ef9b769c1f9a4d6f564a66860c0192087bf2a7bbcc6fe7bb8ea9b35bffddcde`, Repository `fec9f05ce42916b536f283b2ffb9b90ab6c7231d861727a4e12f9c7e1599d378`, and lineage report `1549698af7fc5fd156e4001437fb7da6a0b20d40a533a7e9a4cdc9a20269ca01`.
 
 ## Command
 

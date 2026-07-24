@@ -49,6 +49,7 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
   const findings = [
     ...(truncation.edgeCapHit ? ["RP-GRAPH-EDGE-CAP"] : []),
     ...(truncation.depthCapHit ? ["RP-GRAPH-DEPTH-CAP"] : []),
+    ...(truncation.perMethodCallCapHit ? ["RP-GRAPH-PER-METHOD-CALL-CAP"] : []),
     ...(truncation.unexpandedBoundaryNodes.length ? ["RP-GRAPH-UNEXPANDED-NODES"] : []),
     ...(unresolvedCalls ? ["RP-GRAPH-UNRESOLVED-EDGES"] : []),
     ...(ambiguousEdges ? ["RP-GRAPH-AMBIGUOUS-CALLS"] : []),
