@@ -295,9 +295,17 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " private void execute(Command command) {",
       "  ReqVO reqVO = command.getReqVO();",
       "  if (FieldTagEnum.FILL_DIMENSION.getTagKey().equals(reqVO.getFieldTagInnerKey())) { fillOnly(); }",
+      "  if (FieldTagEnum.isGroupRefByTagKey(reqVO.getFieldTagInnerKey())) { groupRefOnly(); }",
+      "  if (FieldTagEnum.isGroupRefByTagKey(reqVO.getFieldTagInnerKey())",
+      "      || FieldTagEnum.isFillKey(reqVO.getFieldTagInnerKey())) { groupedOnly(); }",
+      "  String innerKey = reqVO.getFieldTagInnerKey();",
+      "  if (FieldTagEnum.isGroupRefByTagKey(innerKey)) { aliasedGroupRefOnly(); }",
       "  if (FieldTagEnum.TEXT.getTagKey().equals(reqVO.getFieldTagInnerKey())) { possibleText(); }",
       " }",
       " private void fillOnly() { }",
+      " private void groupRefOnly() { }",
+      " private void groupedOnly() { }",
+      " private void aliasedGroupRefOnly() { }",
       " private void possibleText() { }",
       " private void work(List<Long> ids) {",
       "  boolean fullPanel = ids == null;",
@@ -364,6 +372,17 @@ test("Java call graph specializes literal-null branches without assuming variabl
     await writeFile(path.join(dir, "demo", "Mode.java"), [
       "package demo;", "public enum Mode { FULL, INCREMENTAL }"
     ].join("\n"));
+    await writeFile(path.join(dir, "demo", "FieldTagEnum.java"), [
+      "package demo;", "public enum FieldTagEnum { TEXT, TEXT_MULTI, FILL_DIMENSION, GROUP_REF;",
+      " public String getTagKey() { return name(); }",
+      " public static boolean isGroupRefByTagKey(String tagKey) {",
+      "  return FieldTagEnum.GROUP_REF.getTagKey().equals(tagKey);",
+      " }",
+      " public static boolean isFillKey(String tagKey) {",
+      "  return FieldTagEnum.FILL_DIMENSION.getTagKey().equals(tagKey);",
+      " }",
+      "}"
+    ].join("\n"));
     const analyzer = await createJavaEndpointAnalyzer(dir);
     const full = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "full")!, { maxDepth: 5, maxEdges: 30 });
     assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
@@ -424,6 +443,9 @@ test("Java call graph specializes literal-null branches without assuming variabl
     assert.ok(unscopedAsync.callGraph.nodes.some((node) => node.methodName === "unscopedOnly"));
     const typedText = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "typedText")!, { maxDepth: 5, maxEdges: 30 });
     assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "fillOnly"), false);
+    assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "groupRefOnly"), false);
+    assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "groupedOnly"), false);
+    assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "aliasedGroupRefOnly"), false);
     assert.ok(typedText.callGraph.nodes.some((node) => node.methodName === "possibleText"));
     assert.ok(typedText.callGraph.nodes.some((node) => node.methodName === "execute"
       && node.id.includes("FieldTagEnum.TEXT|FieldTagEnum.TEXT_MULTI")));

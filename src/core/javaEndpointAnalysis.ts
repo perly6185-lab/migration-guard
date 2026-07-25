@@ -1568,6 +1568,7 @@ function buildCallGraph(
       continue;
     }
     const extractedCalls = filterKnownNullBranches(
+      project,
       current.method,
       extractMethodCalls(project, current.method, current.type),
       current.knownNullParams,
@@ -2173,6 +2174,7 @@ function tryResourceScopes(text: string, resourceCall: string): Array<{ open: nu
 }
 
 function filterKnownNullBranches<T extends { line: number }>(
+  project: JavaProjectModel,
   method: JavaMethodInfo,
   calls: T[],
   knownNullParams: Set<string> | undefined,
@@ -2276,10 +2278,87 @@ function filterKnownNullBranches<T extends { line: number }>(
       if (!values.has(constant)) excludeKnownBranch(method, body, match, false, excluded);
       else if (values.size === 1) excludeKnownBranch(method, body, match, true, excluded);
     }
+    const predicateCall = new RegExp(
+      `\\bif\\s*\\(\\s*(!\\s*)?FieldTagEnum\\.(is[A-Za-z0-9_]+)\\s*\\(\\s*(?:${param}\\.getFieldTagInnerKey\\s*\\(\\s*\\)|${param})\\s*\\)\\s*\\)\\s*\\{`,
+      "g"
+    );
+    for (const match of body.matchAll(predicateCall)) {
+      const accepted = fieldTagPredicateConstants(project, match[2]);
+      if (!accepted) continue;
+      const matched = [...values].filter((value) => accepted.has(value)).length;
+      const predicateValue = matched === 0 ? false : matched === values.size ? true : undefined;
+      if (predicateValue !== undefined) {
+        excludeKnownBranch(method, body, match, match[1] ? !predicateValue : predicateValue, excluded);
+      }
+    }
+    for (const branch of fieldTagPredicateBranches(project, body, param, values)) {
+      const synthetic = [body.slice(branch.start, branch.blockOpen + 1)] as unknown as RegExpMatchArray;
+      synthetic.index = branch.start;
+      excludeKnownBranch(method, body, synthetic, branch.value, excluded);
+    }
   }
   return excluded.length === 0
     ? calls
     : calls.filter((call) => !excluded.some((range) => call.line >= range.startLine && call.line <= range.endLine));
+}
+
+function fieldTagPredicateBranches(
+  project: JavaProjectModel,
+  body: string,
+  param: string,
+  values: Set<string>
+): Array<{ start: number; blockOpen: number; value: boolean }> {
+  const branches: Array<{ start: number; blockOpen: number; value: boolean }> = [];
+  for (const match of body.matchAll(/\bif\s*\(/g)) {
+    const start = match.index ?? 0;
+    const conditionOpen = start + match[0].lastIndexOf("(");
+    const conditionClose = matchingDelimiterOffset(body, conditionOpen, "(", ")");
+    if (conditionClose < 0) continue;
+    let blockOpen = conditionClose + 1;
+    while (/\s/.test(body[blockOpen] ?? "")) blockOpen += 1;
+    if (body[blockOpen] !== "{") continue;
+    const condition = body.slice(conditionOpen + 1, conditionClose);
+    const callPattern = new RegExp(
+      `(!\\s*)?FieldTagEnum\\.(is[A-Za-z0-9_]+)\\s*\\(\\s*(?:${param}\\.getFieldTagInnerKey\\s*\\(\\s*\\)|${param})\\s*\\)`,
+      "g"
+    );
+    const calls = [...condition.matchAll(callPattern)];
+    if (calls.length < 2) continue;
+    const remainder = condition.replace(callPattern, "").replace(/[()!|&\s]/g, "");
+    if (remainder.length > 0) continue;
+    const hasOr = condition.includes("||");
+    const hasAnd = condition.includes("&&");
+    if (hasOr === hasAnd) continue;
+    const results = calls.map((call): boolean | undefined => {
+      const accepted = fieldTagPredicateConstants(project, call[2]);
+      if (!accepted) return undefined;
+      const matched = [...values].filter((value) => accepted.has(value)).length;
+      const value = matched === 0 ? false : matched === values.size ? true : undefined;
+      return value === undefined ? undefined : call[1] ? !value : value;
+    });
+    const value = hasOr
+      ? results.some((result) => result === true) ? true : results.every((result) => result === false) ? false : undefined
+      : results.some((result) => result === false) ? false : results.every((result) => result === true) ? true : undefined;
+    if (value !== undefined) branches.push({ start, blockOpen, value });
+  }
+  return branches;
+}
+
+function fieldTagPredicateConstants(project: JavaProjectModel, methodName: string): Set<string> | undefined {
+  const enumType = project.typesByName.get("FieldTagEnum")?.find((type) => type.kind === "enum");
+  const method = enumType?.methods.find((candidate) =>
+    candidate.name === methodName
+    && candidate.params.length === 1
+    && candidate.returnType === "boolean"
+  );
+  if (!method || !method.hasBody) return undefined;
+  if (/\.(?:type|formatTag|value)\b|\.get(?:Type|FormatTag|Value)\s*\(/.test(method.body)) return undefined;
+  if (/\b(?:for|while|stream|contains)\b/.test(method.body)) return undefined;
+  const constants = new Set([
+    ...[...method.body.matchAll(/\b(?:FieldTagEnum\.)?([A-Z][A-Z0-9_]*)\.(?:tagKey|getTagKey\s*\(\s*\))/g)]
+      .map((match) => `FieldTagEnum.${match[1]}`)
+  ]);
+  return constants.size > 0 ? constants : undefined;
 }
 
 function validatedFieldTagPair(method: JavaMethodInfo): { commandParam: string; setParam: string; line: number } | undefined {
@@ -2315,7 +2394,7 @@ function constrainedFieldTagAliases(
       if (aliases.has(match[1])) continue;
       const source = [...aliases.entries()].find(([name]) => new RegExp(`\\b${name}\\b`).test(match[2]));
       if (!source) continue;
-      if (!/\.(?:getReqVO|toExecutionCommand)\s*\(|\bbuildUpdatePlan\s*\(/.test(match[2])) continue;
+      if (!/\.(?:getReqVO|toExecutionCommand|getFieldTagInnerKey)\s*\(|\bbuildUpdatePlan\s*\(/.test(match[2])) continue;
       aliases.set(match[1], new Set(source[1]));
       changed = true;
     }
