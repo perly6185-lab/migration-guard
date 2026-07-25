@@ -2425,11 +2425,15 @@ function constrainedFieldTagAliases(
   let changed = true;
   while (changed) {
     changed = false;
-    for (const match of method.body.matchAll(/\b[A-Z][A-Za-z0-9_.$<>?, ]*\s+([a-zA-Z_][A-Za-z0-9_]*)\s*=\s*([^;]+);/g)) {
+    const assignments = [
+      ...method.body.matchAll(/\b[A-Z][A-Za-z0-9_.$<>?, ]*\s+([a-zA-Z_][A-Za-z0-9_]*)\s*=\s*([^;]+);/g),
+      ...method.body.matchAll(/(?:^|[;{}]\s*)\b([a-zA-Z_][A-Za-z0-9_]*)\s*=\s*([^;]+);/gm)
+    ];
+    for (const match of assignments) {
       if (aliases.has(match[1])) continue;
       const source = [...aliases.entries()].find(([name]) => new RegExp(`\\b${name}\\b`).test(match[2]));
       if (!source) continue;
-      if (!/\.(?:getReqVO|toExecutionCommand|getFieldTagInnerKey)\s*\(|\bbuildUpdatePlan\s*\(/.test(match[2])) continue;
+      if (!/\.(?:getReqVO|toExecutionCommand|getFieldTagInnerKey|persistedField)\s*\(|\b(?:buildUpdatePlan|applyUpdateToFieldDO|saveField|executeCoreDbUpdate)\s*\(/.test(match[2])) continue;
       aliases.set(match[1], new Set(source[1]));
       changed = true;
     }

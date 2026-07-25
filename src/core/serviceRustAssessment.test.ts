@@ -294,6 +294,11 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " private void validateFieldType(Command command, Set<String> supportedTagKeys) { }",
       " private void execute(Command command) {",
       "  ReqVO reqVO = command.getReqVO();",
+      "  ReqVO currentDO = null;",
+      "  currentDO = applyUpdateToFieldDO(reqVO);",
+      "  ReqVO persistedField = saveField(currentDO);",
+      "  if (FieldTagEnum.isGroupRefByTagKey(currentDO.getFieldTagInnerKey())) { currentGroupOnly(); }",
+      "  if (FieldTagEnum.isGroupRefByTagKey(persistedField.getFieldTagInnerKey())) { persistedGroupOnly(); }",
       "  Plan plan = buildUpdatePlan(command);",
       "  plan.getTypeStrategy().apply();",
       "  if (FieldTagEnum.FILL_DIMENSION.getTagKey().equals(reqVO.getFieldTagInnerKey())) { fillOnly(); }",
@@ -309,6 +314,10 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " private void groupedOnly() { }",
       " private void aliasedGroupRefOnly() { }",
       " private void possibleText() { }",
+      " private void currentGroupOnly() { }",
+      " private void persistedGroupOnly() { }",
+      " private ReqVO applyUpdateToFieldDO(ReqVO reqVO) { return reqVO; }",
+      " private ReqVO saveField(ReqVO currentDO) { return currentDO; }",
       " private Plan buildUpdatePlan(Command command) { return null; }",
       " private void work(List<Long> ids) {",
       "  boolean fullPanel = ids == null;",
@@ -474,6 +483,8 @@ test("Java call graph specializes literal-null branches without assuming variabl
     assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "groupRefOnly"), false);
     assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "groupedOnly"), false);
     assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "aliasedGroupRefOnly"), false);
+    assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "currentGroupOnly"), false);
+    assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "persistedGroupOnly"), false);
     assert.ok(typedText.callGraph.nodes.some((node) => node.methodName === "possibleText"));
     assert.ok(typedText.callGraph.nodes.some((node) => node.methodName === "textStrategyOnly"));
     assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "groupStrategyOnly"), false);
