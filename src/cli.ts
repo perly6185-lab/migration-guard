@@ -326,6 +326,7 @@ async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
   }
   if (action === "assess-controllers") {
     const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
+    const progressEvery = Math.max(1, numberOption(args, "progress-every") ?? 25);
     const report = await assessJavaControllersForRust({
       root,
       maxDepth: numberOption(args, "max-depth"),
@@ -335,7 +336,14 @@ async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
       maxExpansionEdges: numberOption(args, "max-expansion-edges"),
       maxExpansionRounds: numberOption(args, "max-expansion-rounds"),
       limit: numberOption(args, "limit"),
-      includeTests: Boolean(args.options["include-tests"])
+      includeTests: Boolean(args.options["include-tests"]),
+      onProgress: args.options.json ? undefined : (progress) => {
+        const position = progress.phase === "started" ? progress.completed + 1 : progress.completed;
+        if (position !== progress.total && position % progressEvery !== 0) return;
+        const elapsedSeconds = Math.round(progress.elapsedMs / 1000);
+        const routeSeconds = (progress.routeElapsedMs / 1000).toFixed(1);
+        console.error(`[controller-assessment] ${progress.phase} ${position}/${progress.total} elapsed=${elapsedSeconds}s route=${routeSeconds}s cache=${progress.cache.methodCallHits}/${progress.cache.methodCallMisses} ${progress.route} -> ${progress.handler}`);
+      }
     });
     if (args.options.apply) {
       await writeFullReplacementArtifact("controller-rust-assessment", report, path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderControllerRustAssessment(report));
@@ -2649,7 +2657,7 @@ Usage:
   migration-guard self-refactor promote --cross-validation <report.json> --confirm <report-hash>
   migration-guard self-refactor rollback --checkpoint <checkpoint.json> --confirm <checkpoint-hash>
   migration-guard java-endpoint analyze --root <java-project> --endpoint <path> [--method POST] [--max-depth <n>] [--max-edges <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--strict] [--json]
-  migration-guard java-endpoint assess-controllers --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard java-endpoint assess-controllers --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--progress-every <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-services --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-repositories --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-lineage --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]

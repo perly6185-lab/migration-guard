@@ -87,12 +87,29 @@ test("controller Rust assessment adaptively expands truncated call graphs", asyn
     assert.equal(fixed.summary.truncationInventory.routes, 1);
     assert.equal(fixed.truncationInventory[0]?.edgeCapHit, true);
     assert.equal(fixed.truncationInventory[0]?.route, "GET /chain");
-    const adaptive = await assessJavaControllersForRust({ root: dir, maxDepth: 2, maxEdges: 2, adaptive: true, maxExpansionDepth: 8, maxExpansionEdges: 20, maxExpansionRounds: 3 });
+    const progress: Array<{ completed: number; total: number; cacheHits: number }> = [];
+    const adaptive = await assessJavaControllersForRust({
+      root: dir,
+      maxDepth: 2,
+      maxEdges: 2,
+      adaptive: true,
+      maxExpansionDepth: 8,
+      maxExpansionEdges: 20,
+      maxExpansionRounds: 3,
+      onProgress: (item) => item.phase === "completed" && progress.push({
+        completed: item.completed,
+        total: item.total,
+        cacheHits: item.cache.methodCallHits
+      })
+    });
     assert.equal(adaptive.summary.findings["RP-GRAPH-EDGE-CAP"] ?? 0, 0);
     assert.equal(adaptive.summary.adaptivelyExpanded, 1);
     assert.equal(adaptive.methods[0]?.expansionStatus, "complete");
     assert.equal(adaptive.truncationInventory.length, 0);
     assert.deepEqual(adaptive.highFanoutInventory, []);
+    assert.deepEqual(progress.map((item) => [item.completed, item.total]), [[1, 1]]);
+    assert.ok((progress[0]?.cacheHits ?? 0) > 0);
+    assert.equal("onProgress" in adaptive.assessmentScope, false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

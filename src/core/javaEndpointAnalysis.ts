@@ -26,6 +26,13 @@ export interface JavaEndpointAnalyzer {
   analyzeServiceMethodAdaptive(candidate: JavaServiceMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
   analyzeRepositoryMethod(candidate: JavaRepositoryMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
   analyzeRepositoryMethodAdaptive(candidate: JavaRepositoryMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
+  cacheStats(): JavaEndpointAnalyzerCacheStats;
+}
+
+export interface JavaEndpointAnalyzerCacheStats {
+  methodCallEntries: number;
+  methodCallHits: number;
+  methodCallMisses: number;
 }
 
 export interface AdaptiveJavaAnalysisOptions {
@@ -254,6 +261,9 @@ interface JavaProjectModel {
   implementationsByInterface: Map<string, JavaTypeInfo[]>;
   sqlSources: JavaSqlSourceInfo[];
   sqlSourcesByMethodKey: Map<string, JavaSqlSourceInfo[]>;
+  methodCallCache: Map<string, ReturnType<typeof extractMethodCalls>>;
+  methodCallCacheHits: number;
+  methodCallCacheMisses: number;
 }
 
 const GENERATED_ACCESSOR_SOURCE_CACHE = new WeakMap<JavaProjectModel, Map<string, string[]>>();
@@ -416,7 +426,12 @@ export async function createJavaEndpointAnalyzer(rootValue: string, includeTests
     analyzeServiceMethod: (candidate, options = {}) => analyzeJavaServiceMethodModel(project, routes, candidate, options),
     analyzeServiceMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "service", options),
     analyzeRepositoryMethod: (candidate, options = {}) => analyzeJavaMethodModel(project, routes, candidate, "repository", options),
-    analyzeRepositoryMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "repository", options)
+    analyzeRepositoryMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "repository", options),
+    cacheStats: () => ({
+      methodCallEntries: project.methodCallCache.size,
+      methodCallHits: project.methodCallCacheHits,
+      methodCallMisses: project.methodCallCacheMisses
+    })
   };
 }
 
@@ -797,7 +812,10 @@ async function collectJavaProject(root: string, includeTests: boolean): Promise<
     typesByName,
     implementationsByInterface,
     sqlSources: [],
-    sqlSourcesByMethodKey: new Map()
+    sqlSourcesByMethodKey: new Map(),
+    methodCallCache: new Map(),
+    methodCallCacheHits: 0,
+    methodCallCacheMisses: 0
   };
   const sqlSources = collectProjectSqlSources(project);
   const sqlSourcesByMethodKey = new Map<string, JavaSqlSourceInfo[]>();
@@ -1562,6 +1580,7 @@ function buildCallGraph(
     return emptyCallGraph(maxDepth, maxEdges);
   }
   const nodes = new Map<string, JavaEndpointCallGraphNode>();
+  const variantNodeIdsByBase = new Map<string, Set<string>>();
   const nodeDepths = new Map<string, number>();
   const edges: JavaEndpointCallGraphEdge[] = [];
   const edgeSourceDepths: number[] = [];
@@ -1603,7 +1622,7 @@ function buildCallGraph(
     const extractedCalls = filterKnownNullBranches(
       project,
       current.method,
-      extractMethodCalls(project, current.method, current.type),
+      cachedMethodCalls(project, current.method, current.type),
       current.knownNullParams,
       current.knownNonNullParams,
       current.knownBooleanParams,
@@ -1786,7 +1805,7 @@ function buildCallGraph(
         const desiredVariantId = contextParts.length > 0
           ? `${baseTargetNode.id}${contextParts.map((part) => `[${part}]`).join("")}`
           : undefined;
-        const variants = [...nodes.keys()].filter((id) => id.startsWith(`${baseTargetNode.id}[`));
+        const variants = [...(variantNodeIdsByBase.get(baseTargetNode.id) ?? [])];
         const hasOppositeVariant = variants.some((id) => id !== desiredVariantId);
         if (contextParts.length === 0 || nodes.has(baseTargetNode.id) || hasOppositeVariant) {
           if (variants.length > 0) {
@@ -1804,6 +1823,7 @@ function buildCallGraph(
               nodes.delete(id);
               nodeDepths.delete(id);
             }
+            variantNodeIdsByBase.delete(baseTargetNode.id);
             for (let index = queue.length - 1; index >= 0; index -= 1) {
               if (variantSet.has(queue[index].node.id)) queue.splice(index, 1);
             }
@@ -1814,6 +1834,11 @@ function buildCallGraph(
           : baseTargetNode;
         const alreadyVisited = nodes.has(targetNode.id);
         nodes.set(targetNode.id, targetNode);
+        if (targetNode.id !== baseTargetNode.id) {
+          const variantIds = variantNodeIdsByBase.get(baseTargetNode.id) ?? new Set<string>();
+          variantIds.add(targetNode.id);
+          variantNodeIdsByBase.set(baseTargetNode.id, variantIds);
+        }
         if (!alreadyVisited) {
           nodeDepths.set(targetNode.id, current.depth + 1);
         }
@@ -2072,6 +2097,23 @@ function truncationSummary(truncation: JavaEndpointAnalysisReport["callGraph"]["
 function formatDepthCounts(counts: Record<string, number>): string {
   const entries = Object.entries(counts);
   return entries.length > 0 ? entries.map(([depth, count]) => `d${depth}=${count}`).join(", ") : "none";
+}
+
+function cachedMethodCalls(
+  project: JavaProjectModel,
+  method: JavaMethodInfo,
+  type: JavaTypeInfo
+): ReturnType<typeof extractMethodCalls> {
+  const key = methodId(type, method);
+  const cached = project.methodCallCache.get(key);
+  if (cached) {
+    project.methodCallCacheHits += 1;
+    return cached;
+  }
+  const calls = extractMethodCalls(project, method, type);
+  project.methodCallCache.set(key, calls);
+  project.methodCallCacheMisses += 1;
+  return calls;
 }
 
 function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, type: JavaTypeInfo): Array<{
