@@ -157,6 +157,15 @@ export interface JavaEndpointCallGraphEdge {
     };
   resolution: "field-injection" | "same-class" | "static-or-external" | "ambiguous" | "unresolved";
   resolutionCandidates?: Array<{ methodId: string; signature: string; score: number }>;
+  context?: JavaCallGraphContext;
+}
+
+export interface JavaCallGraphContext {
+  nullParams?: string[];
+  nonNullParams?: string[];
+  booleanParams?: Record<string, boolean>;
+  enumParams?: Record<string, string>;
+  fieldTagParams?: Record<string, string[]>;
 }
 
 export interface JavaEndpointRiskSignal {
@@ -1855,7 +1864,14 @@ function buildCallGraph(
             argumentTypes: call.argumentTypes
           },
           resolution: call.receiver ? "field-injection" : "same-class",
-          resolutionCandidates: resolved.candidates
+          resolutionCandidates: resolved.candidates,
+          context: callGraphContext(
+            knownNullParams,
+            knownNonNullParams,
+            knownBooleanParams,
+            knownEnumParams,
+            knownFieldTagParams
+          )
         });
         edgeSourceDepths.push(current.depth);
         if (!alreadyVisited) {
@@ -2097,6 +2113,28 @@ function truncationSummary(truncation: JavaEndpointAnalysisReport["callGraph"]["
 function formatDepthCounts(counts: Record<string, number>): string {
   const entries = Object.entries(counts);
   return entries.length > 0 ? entries.map(([depth, count]) => `d${depth}=${count}`).join(", ") : "none";
+}
+
+function callGraphContext(
+  nullParams: Set<string>,
+  nonNullParams: Set<string>,
+  booleanParams: Map<string, boolean>,
+  enumParams: Map<string, string>,
+  fieldTagParams: Map<string, Set<string>>
+): JavaCallGraphContext | undefined {
+  const context: JavaCallGraphContext = {};
+  if (nullParams.size > 0) context.nullParams = [...nullParams].sort();
+  if (nonNullParams.size > 0) context.nonNullParams = [...nonNullParams].sort();
+  if (booleanParams.size > 0) context.booleanParams = Object.fromEntries([...booleanParams].sort(([a], [b]) => a.localeCompare(b)));
+  if (enumParams.size > 0) context.enumParams = Object.fromEntries([...enumParams].sort(([a], [b]) => a.localeCompare(b)));
+  if (fieldTagParams.size > 0) {
+    context.fieldTagParams = Object.fromEntries(
+      [...fieldTagParams]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, values]) => [name, [...values].sort()])
+    );
+  }
+  return Object.keys(context).length > 0 ? context : undefined;
 }
 
 function cachedMethodCalls(
