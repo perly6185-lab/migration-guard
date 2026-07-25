@@ -495,6 +495,8 @@ test("Java call graph specializes literal-null branches without assuming variabl
       typedText.callGraph.edges.find((edge) => edge.call.method === "execute")?.context?.fieldTagParams,
       { command: ["FieldTagEnum.TEXT", "FieldTagEnum.TEXT_MULTI"] }
     );
+    const textStrategyEdge = typedText.callGraph.edges.find((edge) => edge.to?.includes("TextFieldUpdateStrategy.apply"));
+    assert.ok(textStrategyEdge && callGraphEdgeMatchesFieldTags(textStrategyEdge, { $fieldTag: ["FieldTagEnum.TEXT"] }));
     const directTypedText = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "directTypedText")!, { maxDepth: 5, maxEdges: 30 });
     assert.equal(directTypedText.callGraph.nodes.some((node) => node.methodName === "fillOnly"), false);
     assert.ok(directTypedText.callGraph.nodes.some((node) => node.methodName === "possibleText"));

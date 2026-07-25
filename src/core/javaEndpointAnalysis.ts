@@ -1890,7 +1890,7 @@ function buildCallGraph(
           },
           resolution: call.receiver ? "field-injection" : "same-class",
           resolutionCandidates: resolved.candidates,
-          predicates,
+          predicates: mergeCallGraphPredicates(predicates, fieldTypeStrategyPredicates(project, target.type)),
           context: callGraphContext(
             knownNullParams,
             knownNonNullParams,
@@ -2812,6 +2812,42 @@ function narrowFieldTypeStrategyTargets(
     const supported = supportedByType.get(target.type.qualifiedName);
     return !supported || [...values].some((value) => supported.has(value));
   });
+}
+
+function fieldTypeStrategyPredicates(
+  project: JavaProjectModel,
+  type: JavaTypeInfo
+): JavaCallGraphPredicate[] | undefined {
+  if (!type.implements.some((name) => simpleTypeName(name) === "FieldTypeUpdateStrategy")) return undefined;
+  if (type.name === "DefaultFieldUpdateStrategy") {
+    const known = (project.implementationsByInterface.get("FieldTypeUpdateStrategy") ?? [])
+      .filter((candidate) => candidate.name !== "DefaultFieldUpdateStrategy")
+      .flatMap((candidate) => [...(supportedFieldTagsForStrategy(project, candidate) ?? [])]);
+    return known.length > 0
+      ? [{ kind: "field-tag", parameter: "$fieldTag", anyOf: [...new Set(known)].sort(), negated: true }]
+      : undefined;
+  }
+  const supported = supportedFieldTagsForStrategy(project, type);
+  return supported?.size
+    ? [{ kind: "field-tag", parameter: "$fieldTag", anyOf: [...supported].sort(), negated: false }]
+    : undefined;
+}
+
+function mergeCallGraphPredicates(
+  ...groups: Array<JavaCallGraphPredicate[] | undefined>
+): JavaCallGraphPredicate[] | undefined {
+  const byKey = new Map<string, JavaCallGraphPredicate>();
+  for (const predicate of groups.flatMap((group) => group ?? [])) {
+    const normalized = { ...predicate, anyOf: [...predicate.anyOf].sort() };
+    byKey.set(`${normalized.kind}:${normalized.parameter}:${normalized.negated}:${normalized.anyOf.join("|")}`, normalized);
+  }
+  return byKey.size > 0
+    ? [...byKey.values()].sort((a, b) =>
+      a.parameter.localeCompare(b.parameter)
+      || Number(a.negated) - Number(b.negated)
+      || a.anyOf.join("|").localeCompare(b.anyOf.join("|"))
+    )
+    : undefined;
 }
 
 function supportedFieldTagsForStrategy(project: JavaProjectModel, type: JavaTypeInfo): Set<string> | undefined {
