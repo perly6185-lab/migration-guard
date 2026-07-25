@@ -1,10 +1,16 @@
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
-import { createJavaEndpointAnalyzer, type AdaptiveExpansionTopology, type JavaEndpointHttpMethod } from "./javaEndpointAnalysis.js";
+import {
+  createJavaEndpointAnalyzer,
+  type AdaptiveExpansionTopology,
+  type JavaEndpointAnalysisReport,
+  type JavaEndpointHttpMethod
+} from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
 import { findRiskyTransactionSelfInvocations } from "./behaviorGraph.js";
-import type { EndpointWorkloadKind } from "./endpointReplacementModel.js";
+import type { BehaviorGraph, EndpointWorkloadKind } from "./endpointReplacementModel.js";
 import { captureAssessmentSourceIdentity, type AssessmentSourceIdentity } from "./assessmentSourceIdentity.js";
+import { classifyUnclassifiedBoundary, type UnclassifiedBoundaryCategory } from "./serviceRustAssessment.js";
 
 export interface ControllerRustAssessmentOptions {
   root: string;
@@ -30,12 +36,119 @@ export interface ControllerMethodAssessment {
   edges: number;
   externalBoundaries: number;
   unknownNodes: number;
+  unclassifiedBoundaries: ControllerUnclassifiedBoundaryOccurrence[];
+  ambiguousCalls: ControllerAmbiguousCallOccurrence[];
+  truncation: ControllerTruncationDiagnostic;
   findings: string[];
   expansionStatus?: "complete" | "budget-exhausted";
   expansionTopology?: AdaptiveExpansionTopology;
   expansionRounds?: number;
   transactionSelfInvocations: string[];
   transactionSelfInvocationReasons: string[];
+}
+
+export interface ControllerAmbiguousCallOccurrence {
+  expression: string;
+  file: string;
+  line: number;
+  receiver?: string;
+  method: string;
+  argumentCount?: number;
+  argumentTypes: string[];
+  candidates: Array<{ methodId: string; signature: string; score: number }>;
+}
+
+export interface ControllerAmbiguousCallInventoryItem {
+  expression: string;
+  sourceLocations: Array<{ file: string; line: number }>;
+  methods: string[];
+  argumentCounts: number[];
+  argumentTypes: string[][];
+  candidates: Array<{ methodId: string; signature: string; score: number }>;
+  occurrences: number;
+  affectedRoutes: string[];
+  affectedHandlers: string[];
+}
+
+export interface ControllerTruncationDiagnostic {
+  edgeCapHit: boolean;
+  depthCapHit: boolean;
+  perMethodCallCapHit: boolean;
+  maxObservedDepth: number;
+  maxTotalEdges: number;
+  unexpandedBoundaryNodes: string[];
+  perMethodCallCapNodes: Array<{ nodeId: string; extractedCalls: number; retainedCalls: number; omittedCalls: number }>;
+  omittedCalls: number;
+  highOutDegreeNodes: Array<{ nodeId: string; file: string; line: number; kind: string; outDegree: number }>;
+  fanoutContributions: ControllerRouteFanoutContribution[];
+  minimumEdgeReductionToUncap: number;
+  edgeReductionCertainty: "exact" | "lower-bound";
+}
+
+export interface ControllerRouteFanoutContribution {
+  nodeId: string;
+  directEdges: number;
+  reachableEdges: number;
+  exclusiveDownstreamEdges: number;
+  repeatedDownstreamEdges: number;
+}
+
+export interface ControllerTruncationInventoryItem extends ControllerTruncationDiagnostic {
+  route: string;
+  handler: string;
+  nodes: number;
+  edges: number;
+  expansionStatus?: "complete" | "budget-exhausted";
+  expansionTopology?: AdaptiveExpansionTopology;
+  expansionRounds?: number;
+}
+
+export interface ControllerHighFanoutInventoryItem {
+  nodeId: string;
+  file: string;
+  line: number;
+  kind: string;
+  affectedRoutes: string[];
+  affectedHandlers: string[];
+  minOutDegree: number;
+  maxOutDegree: number;
+  exclusiveDownstreamEdges: number;
+  repeatedDownstreamEdges: number;
+  priorityScore: number;
+}
+
+export interface ControllerTruncationRouteCluster {
+  signature: string;
+  routes: string[];
+  handlers: string[];
+  commonNodeIds: string[];
+  minimumEdgeReductionToUncap: number;
+  edgeReductionCertainty: "exact" | "lower-bound";
+}
+
+export interface ControllerUnclassifiedBoundaryOccurrence {
+  symbol: string;
+  file: string;
+  line: number;
+  category: UnclassifiedBoundaryCategory;
+  reason: string;
+  depth: number | null;
+}
+
+export interface ControllerUnclassifiedBoundaryInventoryItem {
+  symbol: string;
+  file: string;
+  line: number;
+  sourceLocations: Array<{ file: string; line: number }>;
+  category: UnclassifiedBoundaryCategory;
+  reason: string;
+  categories: UnclassifiedBoundaryCategory[];
+  reasons: string[];
+  occurrences: number;
+  affectedRoutes: string[];
+  affectedHandlers: string[];
+  minDepth: number | null;
+  maxDepth: number | null;
 }
 
 export interface ControllerRustAssessmentReport {
@@ -58,8 +171,34 @@ export interface ControllerRustAssessmentReport {
     expansionTopologies: Record<string, number>;
     transactionSelfInvocationEdges: number;
     transactionSelfInvocationReasons: Record<string, number>;
+    unclassifiedBoundaryInventory: {
+      occurrences: number;
+      uniqueSymbols: number;
+      affectedRoutes: number;
+      categories: Record<string, number>;
+      depths: Record<string, number>;
+    };
+    ambiguousCallInventory: {
+      occurrences: number;
+      uniqueExpressions: number;
+      affectedRoutes: number;
+      candidateCountDistribution: Record<string, number>;
+    };
+    truncationInventory: {
+      routes: number;
+      edgeCapRoutes: number;
+      depthCapRoutes: number;
+      perMethodCallCapRoutes: number;
+      unexpandedBoundaryNodes: number;
+      omittedCalls: number;
+    };
   };
   methods: ControllerMethodAssessment[];
+  unclassifiedBoundaryInventory: ControllerUnclassifiedBoundaryInventoryItem[];
+  ambiguousCallInventory: ControllerAmbiguousCallInventoryItem[];
+  truncationInventory: ControllerTruncationInventoryItem[];
+  highFanoutInventory: ControllerHighFanoutInventoryItem[];
+  truncationRouteClusters: ControllerTruncationRouteCluster[];
   reportHash: string;
 }
 
@@ -79,6 +218,26 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
     }) : undefined;
     const source = expansion?.report ?? analyzer.analyze({ endpoint: route.path, method: route.method, maxDepth: options.maxDepth, maxEdges: options.maxEdges });
     const { graph, plan } = createEndpointReplacementPlanFromJava(source);
+    const depths = nodeDepths(graph);
+    const unclassifiedBoundaries = graph.nodes.filter((node) => node.kind === "unknown").map((node): ControllerUnclassifiedBoundaryOccurrence => ({
+      symbol: node.evidence.symbol,
+      file: node.evidence.file,
+      line: node.evidence.line,
+      category: classifyUnclassifiedBoundary(node),
+      reason: node.reasons.join("; "),
+      depth: depths.get(node.id) ?? null
+    })).sort(compareBoundaryOccurrences);
+    const ambiguousCalls = source.callGraph.edges.filter((edge) => edge.resolution === "ambiguous").map((edge): ControllerAmbiguousCallOccurrence => ({
+      expression: edge.call.expression,
+      file: edge.call.file,
+      line: edge.call.line,
+      receiver: edge.call.receiver,
+      method: edge.call.method,
+      argumentCount: edge.call.argumentCount,
+      argumentTypes: [...(edge.call.argumentTypes ?? [])],
+      candidates: [...(edge.resolutionCandidates ?? [])].sort(compareCandidates)
+    })).sort(compareAmbiguousOccurrences);
+    const truncation = createTruncationDiagnostic(source);
     const transactionSelfInvocations = findRiskyTransactionSelfInvocations(source);
     return {
       method: route.method,
@@ -91,7 +250,10 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       nodes: graph.nodes.length,
       edges: graph.edges.length,
       externalBoundaries: graph.nodes.filter((node) => node.id.startsWith("external:")).length,
-      unknownNodes: graph.nodes.filter((node) => node.kind === "unknown").length,
+      unknownNodes: unclassifiedBoundaries.length,
+      unclassifiedBoundaries,
+      ambiguousCalls,
+      truncation,
       findings: [...plan.findings, ...(expansion?.status === "budget-exhausted" ? ["RP-GRAPH-EXPANSION-BUDGET-EXHAUSTED"] : [])],
       expansionStatus: expansion?.status,
       expansionTopology: expansion?.topology,
@@ -100,6 +262,11 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       transactionSelfInvocationReasons: [...new Set(transactionSelfInvocations.map((item) => item.reason))].sort()
     };
   });
+  const unclassifiedBoundaryInventory = aggregateUnclassifiedBoundaries(methods);
+  const ambiguousCallInventory = aggregateAmbiguousCalls(methods);
+  const truncationInventory = aggregateTruncations(methods);
+  const highFanoutInventory = aggregateHighFanoutNodes(methods);
+  const truncationRouteClusters = aggregateTruncationRouteClusters(methods);
   const base = {
     version: 1 as const,
     createdAt: new Date().toISOString(),
@@ -119,9 +286,35 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       expansionBudgetExhausted: methods.filter((item) => item.expansionStatus === "budget-exhausted").length,
       expansionTopologies: countValues(methods.map((item) => item.expansionTopology).filter((item): item is AdaptiveExpansionTopology => Boolean(item))),
       transactionSelfInvocationEdges: new Set(methods.flatMap((item) => item.transactionSelfInvocations)).size,
-      transactionSelfInvocationReasons: countValues(methods.flatMap((item) => item.transactionSelfInvocationReasons))
+      transactionSelfInvocationReasons: countValues(methods.flatMap((item) => item.transactionSelfInvocationReasons)),
+      unclassifiedBoundaryInventory: {
+        occurrences: methods.reduce((total, item) => total + item.unclassifiedBoundaries.length, 0),
+        uniqueSymbols: unclassifiedBoundaryInventory.length,
+        affectedRoutes: methods.filter((item) => item.unclassifiedBoundaries.length > 0).length,
+        categories: countValues(unclassifiedBoundaryInventory.flatMap((item) => item.categories)),
+        depths: countValues(methods.flatMap((item) => item.unclassifiedBoundaries).map((item) => item.depth === null ? "unreachable" : String(item.depth)))
+      },
+      ambiguousCallInventory: {
+        occurrences: methods.reduce((total, item) => total + item.ambiguousCalls.length, 0),
+        uniqueExpressions: ambiguousCallInventory.length,
+        affectedRoutes: methods.filter((item) => item.ambiguousCalls.length > 0).length,
+        candidateCountDistribution: countValues(ambiguousCallInventory.map((item) => String(item.candidates.length)))
+      },
+      truncationInventory: {
+        routes: truncationInventory.length,
+        edgeCapRoutes: truncationInventory.filter((item) => item.edgeCapHit).length,
+        depthCapRoutes: truncationInventory.filter((item) => item.depthCapHit).length,
+        perMethodCallCapRoutes: truncationInventory.filter((item) => item.perMethodCallCapHit).length,
+        unexpandedBoundaryNodes: truncationInventory.reduce((total, item) => total + item.unexpandedBoundaryNodes.length, 0),
+        omittedCalls: truncationInventory.reduce((total, item) => total + item.omittedCalls, 0)
+      }
     },
-    methods
+    methods,
+    unclassifiedBoundaryInventory,
+    ambiguousCallInventory,
+    truncationInventory,
+    highFanoutInventory,
+    truncationRouteClusters
   };
   return { ...base, reportHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
 }
@@ -140,6 +333,42 @@ export function renderControllerRustAssessment(report: ControllerRustAssessmentR
     "## Transaction self-invocation evidence", "",
     `- Unique route-edge evidence: ${report.summary.transactionSelfInvocationEdges}`,
     ...Object.entries(report.summary.transactionSelfInvocationReasons).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([reason, count]) => `- ${reason}: ${count}`), "",
+    "## Unclassified boundary inventory", "",
+    `- Occurrences: ${report.summary.unclassifiedBoundaryInventory.occurrences}`,
+    `- Unique symbols: ${report.summary.unclassifiedBoundaryInventory.uniqueSymbols}`,
+    `- Affected routes: ${report.summary.unclassifiedBoundaryInventory.affectedRoutes}`,
+    ...Object.entries(report.summary.unclassifiedBoundaryInventory.categories).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([category, count]) => `- ${category}: ${count}`),
+    `- Depth distribution: ${JSON.stringify(report.summary.unclassifiedBoundaryInventory.depths)}`, "",
+    "| Symbol | Category | Routes | Occurrences | Depth | Evidence |",
+    "| --- | --- | ---: | ---: | --- | --- |",
+    ...report.unclassifiedBoundaryInventory.map((item) => `| ${escapeTable(item.symbol)} | ${item.categories.join(", ")} | ${item.affectedRoutes.length} | ${item.occurrences} | ${formatDepthRange(item)} | ${escapeTable(item.sourceLocations.map((location) => `${location.file}:${location.line}`).join("<br>"))} |`), "",
+    "## Ambiguous call inventory", "",
+    `- Occurrences: ${report.summary.ambiguousCallInventory.occurrences}`,
+    `- Unique expressions: ${report.summary.ambiguousCallInventory.uniqueExpressions}`,
+    `- Affected routes: ${report.summary.ambiguousCallInventory.affectedRoutes}`,
+    `- Candidate count distribution: ${JSON.stringify(report.summary.ambiguousCallInventory.candidateCountDistribution)}`, "",
+    "| Expression | Routes | Occurrences | Candidates | Evidence |",
+    "| --- | ---: | ---: | --- | --- |",
+    ...report.ambiguousCallInventory.map((item) => `| ${escapeTable(item.expression)} | ${item.affectedRoutes.length} | ${item.occurrences} | ${escapeTable(item.candidates.map((candidate) => `${candidate.signature} [${candidate.score}]`).join("<br>"))} | ${escapeTable(item.sourceLocations.map((location) => `${location.file}:${location.line}`).join("<br>"))} |`), "",
+    "## Truncation inventory", "",
+    `- Routes: ${report.summary.truncationInventory.routes}`,
+    `- Edge-cap routes: ${report.summary.truncationInventory.edgeCapRoutes}`,
+    `- Depth-cap routes: ${report.summary.truncationInventory.depthCapRoutes}`,
+    `- Per-method call-cap routes: ${report.summary.truncationInventory.perMethodCallCapRoutes}`,
+    `- Unexpanded boundary nodes: ${report.summary.truncationInventory.unexpandedBoundaryNodes}`,
+    `- Omitted calls: ${report.summary.truncationInventory.omittedCalls}`, "",
+    "| Route | Handler | Topology | Nodes | Edges | Distance to uncap | Certainty | Max depth |",
+    "| --- | --- | --- | ---: | ---: | ---: | --- | ---: |",
+    ...report.truncationInventory.map((item) => `| ${escapeTable(item.route)} | ${escapeTable(item.handler)} | ${item.expansionTopology ?? "fixed"} | ${item.nodes} | ${item.edges} | ${item.minimumEdgeReductionToUncap} | ${item.edgeReductionCertainty} | ${item.maxObservedDepth} |`), "",
+    "## Shared high-out-degree nodes", "",
+    `- Nodes: ${report.highFanoutInventory.length}`, "",
+    "| Node | Routes | Out degree | Exclusive edges | Repeated edges | Priority | Kind | Source |",
+    "| --- | ---: | --- | ---: | ---: | ---: | --- | --- |",
+    ...report.highFanoutInventory.map((item) => `| ${escapeTable(item.nodeId)} | ${item.affectedRoutes.length} | ${item.minOutDegree}-${item.maxOutDegree} | ${item.exclusiveDownstreamEdges} | ${item.repeatedDownstreamEdges} | ${item.priorityScore} | ${item.kind} | ${escapeTable(`${item.file}:${item.line}`)} |`), "",
+    "## Truncation route clusters", "",
+    "| Signature | Routes | Common amplification chain | Distance to uncap | Certainty |",
+    "| --- | ---: | --- | ---: | --- |",
+    ...report.truncationRouteClusters.map((item) => `| ${item.signature} | ${item.routes.length} | ${escapeTable(item.commonNodeIds.join("<br>"))} | ${item.minimumEdgeReductionToUncap} | ${item.edgeReductionCertainty} |`), "",
     "## Findings", "",
     ...Object.entries(report.summary.findings).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([finding, count]) => `- ${finding}: ${count}`), ""
   ].join("\n");
@@ -153,4 +382,369 @@ function countValues(values: string[]): Record<string, number> {
 
 function positiveLimit(value: number | undefined, fallback: number): number {
   return Number.isInteger(value) && (value as number) > 0 ? value as number : fallback;
+}
+
+function nodeDepths(graph: BehaviorGraph): Map<string, number> {
+  const entry = graph.nodes.find((node) => node.kind === "entrypoint");
+  if (!entry) return new Map();
+  const outgoing = new Map<string, string[]>();
+  for (const edge of graph.edges) {
+    if (!edge.to) continue;
+    const targets = outgoing.get(edge.from) ?? [];
+    targets.push(edge.to);
+    outgoing.set(edge.from, targets);
+  }
+  const depths = new Map([[entry.id, 0]]);
+  const queue = [entry.id];
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index] as string;
+    const nextDepth = (depths.get(current) as number) + 1;
+    for (const target of outgoing.get(current) ?? []) {
+      if ((depths.get(target) ?? Number.POSITIVE_INFINITY) <= nextDepth) continue;
+      depths.set(target, nextDepth);
+      queue.push(target);
+    }
+  }
+  return depths;
+}
+
+function aggregateUnclassifiedBoundaries(methods: ControllerMethodAssessment[]): ControllerUnclassifiedBoundaryInventoryItem[] {
+  const values = new Map<string, {
+    item: ControllerUnclassifiedBoundaryInventoryItem;
+    routes: Set<string>;
+    handlers: Set<string>;
+    depths: number[];
+    locations: Map<string, { file: string; line: number }>;
+    categories: Set<UnclassifiedBoundaryCategory>;
+    reasons: Set<string>;
+  }>();
+  for (const method of methods) {
+    const route = `${method.method} ${method.path}`;
+    for (const boundary of method.unclassifiedBoundaries) {
+      const key = boundary.symbol;
+      const current = values.get(key) ?? {
+        item: {
+          ...boundary,
+          sourceLocations: [],
+          categories: [],
+          reasons: [],
+          occurrences: 0,
+          affectedRoutes: [],
+          affectedHandlers: [],
+          minDepth: boundary.depth,
+          maxDepth: boundary.depth
+        },
+        routes: new Set<string>(),
+        handlers: new Set<string>(),
+        depths: [],
+        locations: new Map<string, { file: string; line: number }>(),
+        categories: new Set<UnclassifiedBoundaryCategory>(),
+        reasons: new Set<string>()
+      };
+      current.item.occurrences += 1;
+      current.routes.add(route);
+      current.handlers.add(method.handler);
+      current.locations.set(`${boundary.file}\0${boundary.line}`, { file: boundary.file, line: boundary.line });
+      current.categories.add(boundary.category);
+      current.reasons.add(boundary.reason);
+      if (boundary.depth !== null) current.depths.push(boundary.depth);
+      values.set(key, current);
+    }
+  }
+  return [...values.values()].map(({ item, routes, handlers, depths, locations, categories, reasons }) => {
+    const sourceLocations = [...locations.values()].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+    const sortedCategories = [...categories].sort();
+    const sortedReasons = [...reasons].sort();
+    return {
+      ...item,
+      file: sourceLocations[0]?.file ?? item.file,
+      line: sourceLocations[0]?.line ?? item.line,
+      sourceLocations,
+      category: sortedCategories[0] ?? item.category,
+      reason: sortedReasons[0] ?? item.reason,
+      categories: sortedCategories,
+      reasons: sortedReasons,
+      affectedRoutes: [...routes].sort(),
+      affectedHandlers: [...handlers].sort(),
+      minDepth: depths.length ? Math.min(...depths) : null,
+      maxDepth: depths.length ? Math.max(...depths) : null
+    };
+  }).sort((a, b) =>
+    b.affectedRoutes.length - a.affectedRoutes.length
+    || b.occurrences - a.occurrences
+    || a.symbol.localeCompare(b.symbol)
+    || a.file.localeCompare(b.file)
+    || a.line - b.line
+  );
+}
+
+function aggregateAmbiguousCalls(methods: ControllerMethodAssessment[]): ControllerAmbiguousCallInventoryItem[] {
+  const values = new Map<string, {
+    item: ControllerAmbiguousCallInventoryItem;
+    locations: Map<string, { file: string; line: number }>;
+    methods: Set<string>;
+    argumentCounts: Set<number>;
+    argumentTypes: Map<string, string[]>;
+    candidates: Map<string, { methodId: string; signature: string; score: number }>;
+    routes: Set<string>;
+    handlers: Set<string>;
+  }>();
+  for (const assessment of methods) {
+    const route = `${assessment.method} ${assessment.path}`;
+    for (const call of assessment.ambiguousCalls) {
+      const current = values.get(call.expression) ?? {
+        item: {
+          expression: call.expression,
+          sourceLocations: [],
+          methods: [],
+          argumentCounts: [],
+          argumentTypes: [],
+          candidates: [],
+          occurrences: 0,
+          affectedRoutes: [],
+          affectedHandlers: []
+        },
+        locations: new Map(),
+        methods: new Set(),
+        argumentCounts: new Set(),
+        argumentTypes: new Map(),
+        candidates: new Map(),
+        routes: new Set(),
+        handlers: new Set()
+      };
+      current.item.occurrences += 1;
+      current.locations.set(`${call.file}\0${call.line}`, { file: call.file, line: call.line });
+      current.methods.add(call.method);
+      if (call.argumentCount !== undefined) current.argumentCounts.add(call.argumentCount);
+      current.argumentTypes.set(call.argumentTypes.join("\0"), call.argumentTypes);
+      for (const candidate of call.candidates) {
+        current.candidates.set(`${candidate.methodId}\0${candidate.signature}\0${candidate.score}`, candidate);
+      }
+      current.routes.add(route);
+      current.handlers.add(assessment.handler);
+      values.set(call.expression, current);
+    }
+  }
+  return [...values.values()].map(({ item, locations, methods: callMethods, argumentCounts, argumentTypes, candidates, routes, handlers }) => ({
+    ...item,
+    sourceLocations: [...locations.values()].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line),
+    methods: [...callMethods].sort(),
+    argumentCounts: [...argumentCounts].sort((a, b) => a - b),
+    argumentTypes: [...argumentTypes.values()].sort((a, b) => a.join(",").localeCompare(b.join(","))),
+    candidates: [...candidates.values()].sort(compareCandidates),
+    affectedRoutes: [...routes].sort(),
+    affectedHandlers: [...handlers].sort()
+  })).sort((a, b) =>
+    b.affectedRoutes.length - a.affectedRoutes.length
+    || b.occurrences - a.occurrences
+    || b.candidates.length - a.candidates.length
+    || a.expression.localeCompare(b.expression)
+  );
+}
+
+function aggregateTruncations(methods: ControllerMethodAssessment[]): ControllerTruncationInventoryItem[] {
+  return methods.filter((item) =>
+    item.truncation.edgeCapHit
+    || item.truncation.depthCapHit
+    || item.truncation.perMethodCallCapHit
+    || item.truncation.unexpandedBoundaryNodes.length > 0
+    || item.expansionStatus === "budget-exhausted"
+  ).map((item) => ({
+    route: `${item.method} ${item.path}`,
+    handler: item.handler,
+    nodes: item.nodes,
+    edges: item.edges,
+    expansionStatus: item.expansionStatus,
+    expansionTopology: item.expansionTopology,
+    expansionRounds: item.expansionRounds,
+    ...item.truncation
+  })).sort((a, b) =>
+    b.omittedCalls - a.omittedCalls
+    || b.unexpandedBoundaryNodes.length - a.unexpandedBoundaryNodes.length
+    || b.edges - a.edges
+    || a.route.localeCompare(b.route)
+  );
+}
+
+function aggregateHighFanoutNodes(methods: ControllerMethodAssessment[]): ControllerHighFanoutInventoryItem[] {
+  const groups = new Map<string, ControllerHighFanoutInventoryItem>();
+  for (const method of methods.filter((item) => item.truncation.edgeCapHit)) {
+    const route = `${method.method} ${method.path}`;
+    for (const node of method.truncation.highOutDegreeNodes) {
+      const current = groups.get(node.nodeId) ?? {
+        nodeId: node.nodeId,
+        file: node.file,
+        line: node.line,
+        kind: node.kind,
+        affectedRoutes: [],
+        affectedHandlers: [],
+        minOutDegree: node.outDegree,
+        maxOutDegree: node.outDegree,
+        exclusiveDownstreamEdges: 0,
+        repeatedDownstreamEdges: 0,
+        priorityScore: 0
+      };
+      if (!current.affectedRoutes.includes(route)) current.affectedRoutes.push(route);
+      if (!current.affectedHandlers.includes(method.handler)) current.affectedHandlers.push(method.handler);
+      current.minOutDegree = Math.min(current.minOutDegree, node.outDegree);
+      current.maxOutDegree = Math.max(current.maxOutDegree, node.outDegree);
+      const contribution = method.truncation.fanoutContributions.find((item) => item.nodeId === node.nodeId);
+      current.exclusiveDownstreamEdges += contribution?.exclusiveDownstreamEdges ?? 0;
+      current.repeatedDownstreamEdges += contribution?.repeatedDownstreamEdges ?? 0;
+      groups.set(node.nodeId, current);
+    }
+  }
+  return [...groups.values()].map((item) => ({
+    ...item,
+    affectedRoutes: item.affectedRoutes.sort(),
+    affectedHandlers: item.affectedHandlers.sort(),
+    priorityScore: item.exclusiveDownstreamEdges
+  })).sort((a, b) =>
+    b.priorityScore - a.priorityScore
+    || b.affectedRoutes.length - a.affectedRoutes.length
+    || b.maxOutDegree - a.maxOutDegree
+    || a.nodeId.localeCompare(b.nodeId)
+  );
+}
+
+function aggregateTruncationRouteClusters(methods: ControllerMethodAssessment[]): ControllerTruncationRouteCluster[] {
+  const groups = new Map<string, ControllerTruncationRouteCluster>();
+  for (const method of methods.filter((item) => item.truncation.edgeCapHit)) {
+    const chain = method.truncation.fanoutContributions
+      .slice()
+      .sort((a, b) => b.exclusiveDownstreamEdges - a.exclusiveDownstreamEdges || b.reachableEdges - a.reachableEdges || a.nodeId.localeCompare(b.nodeId))
+      .slice(0, 5)
+      .map((item) => item.nodeId);
+    const signature = sha256(stableStringify(chain)).slice(0, 12);
+    const current = groups.get(signature) ?? {
+      signature,
+      routes: [],
+      handlers: [],
+      commonNodeIds: chain,
+      minimumEdgeReductionToUncap: 0,
+      edgeReductionCertainty: "exact" as const
+    };
+    current.routes.push(`${method.method} ${method.path}`);
+    current.handlers.push(method.handler);
+    current.minimumEdgeReductionToUncap = Math.max(
+      current.minimumEdgeReductionToUncap,
+      method.truncation.minimumEdgeReductionToUncap
+    );
+    if (method.truncation.edgeReductionCertainty === "lower-bound") current.edgeReductionCertainty = "lower-bound";
+    groups.set(signature, current);
+  }
+  return [...groups.values()].map((item) => ({
+    ...item,
+    routes: [...new Set(item.routes)].sort(),
+    handlers: [...new Set(item.handlers)].sort()
+  })).sort((a, b) => b.routes.length - a.routes.length || a.signature.localeCompare(b.signature));
+}
+
+function createTruncationDiagnostic(report: JavaEndpointAnalysisReport): ControllerTruncationDiagnostic {
+  const truncation = report.callGraph.truncation;
+  const perMethodCallCapNodes = [...(truncation.perMethodCallCapNodes ?? [])].sort((a, b) =>
+    b.omittedCalls - a.omittedCalls || a.nodeId.localeCompare(b.nodeId)
+  );
+  const nodes = new Map(report.callGraph.nodes.map((node) => [node.id, node]));
+  const outDegrees = new Map<string, number>();
+  for (const edge of report.callGraph.edges) outDegrees.set(edge.from, (outDegrees.get(edge.from) ?? 0) + 1);
+  const highOutDegreeNodes = [...outDegrees.entries()].filter(([, degree]) => degree >= 20).map(([nodeId, outDegree]) => {
+    const node = nodes.get(nodeId);
+    return { nodeId, file: node?.file ?? "", line: node?.line ?? 0, kind: node?.kind ?? "unknown", outDegree };
+  }).sort((a, b) => b.outDegree - a.outDegree || a.nodeId.localeCompare(b.nodeId));
+  const fanoutContributions = calculateFanoutContributions(report, highOutDegreeNodes.map((item) => item.nodeId));
+  const minimumEdgeReductionToUncap = truncation.edgeCapHit
+    ? Math.max(1, report.callGraph.edges.length - truncation.maxTotalEdges + 1)
+    : 0;
+  return {
+    edgeCapHit: truncation.edgeCapHit,
+    depthCapHit: truncation.depthCapHit,
+    perMethodCallCapHit: Boolean(truncation.perMethodCallCapHit),
+    maxObservedDepth: truncation.maxObservedDepth,
+    maxTotalEdges: truncation.maxTotalEdges,
+    unexpandedBoundaryNodes: [...truncation.unexpandedBoundaryNodes].sort(),
+    perMethodCallCapNodes,
+    omittedCalls: perMethodCallCapNodes.reduce((total, item) => total + item.omittedCalls, 0),
+    highOutDegreeNodes,
+    fanoutContributions,
+    minimumEdgeReductionToUncap,
+    edgeReductionCertainty: truncation.edgeCapHit ? "lower-bound" : "exact"
+  };
+}
+
+function calculateFanoutContributions(
+  report: JavaEndpointAnalysisReport,
+  seedNodeIds: string[]
+): ControllerRouteFanoutContribution[] {
+  const adjacency = new Map<string, number[]>();
+  report.callGraph.edges.forEach((edge, index) => {
+    const current = adjacency.get(edge.from) ?? [];
+    current.push(index);
+    adjacency.set(edge.from, current);
+  });
+  const reachableBySeed = new Map<string, Set<number>>();
+  for (const seed of seedNodeIds) {
+    const reachable = new Set<number>();
+    const visitedNodes = new Set<string>();
+    const queue = [seed];
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      if (visitedNodes.has(nodeId)) continue;
+      visitedNodes.add(nodeId);
+      for (const edgeIndex of adjacency.get(nodeId) ?? []) {
+        reachable.add(edgeIndex);
+        const target = report.callGraph.edges[edgeIndex]?.to;
+        if (target && !visitedNodes.has(target)) queue.push(target);
+      }
+    }
+    reachableBySeed.set(seed, reachable);
+  }
+  const ownerCounts = new Map<number, number>();
+  for (const reachable of reachableBySeed.values()) {
+    for (const edgeIndex of reachable) ownerCounts.set(edgeIndex, (ownerCounts.get(edgeIndex) ?? 0) + 1);
+  }
+  return seedNodeIds.map((nodeId) => {
+    const reachable = reachableBySeed.get(nodeId) ?? new Set<number>();
+    let exclusiveDownstreamEdges = 0;
+    let repeatedDownstreamEdges = 0;
+    for (const edgeIndex of reachable) {
+      if ((ownerCounts.get(edgeIndex) ?? 0) === 1) exclusiveDownstreamEdges += 1;
+      else repeatedDownstreamEdges += 1;
+    }
+    return {
+      nodeId,
+      directEdges: adjacency.get(nodeId)?.length ?? 0,
+      reachableEdges: reachable.size,
+      exclusiveDownstreamEdges,
+      repeatedDownstreamEdges
+    };
+  }).sort((a, b) =>
+    b.exclusiveDownstreamEdges - a.exclusiveDownstreamEdges
+    || b.reachableEdges - a.reachableEdges
+    || a.nodeId.localeCompare(b.nodeId)
+  );
+}
+
+function compareBoundaryOccurrences(a: ControllerUnclassifiedBoundaryOccurrence, b: ControllerUnclassifiedBoundaryOccurrence): number {
+  return a.symbol.localeCompare(b.symbol) || a.file.localeCompare(b.file) || a.line - b.line;
+}
+
+function compareAmbiguousOccurrences(a: ControllerAmbiguousCallOccurrence, b: ControllerAmbiguousCallOccurrence): number {
+  return a.expression.localeCompare(b.expression) || a.file.localeCompare(b.file) || a.line - b.line;
+}
+
+function compareCandidates(
+  a: { methodId: string; signature: string; score: number },
+  b: { methodId: string; signature: string; score: number }
+): number {
+  return b.score - a.score || a.methodId.localeCompare(b.methodId) || a.signature.localeCompare(b.signature);
+}
+
+function formatDepthRange(item: ControllerUnclassifiedBoundaryInventoryItem): string {
+  if (item.minDepth === null || item.maxDepth === null) return "unreachable";
+  return item.minDepth === item.maxDepth ? String(item.minDepth) : `${item.minDepth}-${item.maxDepth}`;
+}
+
+function escapeTable(value: string): string {
+  return value.replace(/\|/g, "\\|");
 }

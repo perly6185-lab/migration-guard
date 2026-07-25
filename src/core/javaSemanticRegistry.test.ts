@@ -157,6 +157,33 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("EngineUsePageServiceImpl.applyChildFormFieldConfig")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("LedgerAnalysisCore.jsSurprise")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("pathSegments.addFirst")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("NlsUsageController.toDTO")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("OcrUsageController.toDTO")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("NlsUsageController.toEpochMillis")?.kind, "context-resolution");
+  assert.equal(classifyJavaSemantic("OcrUsageController.toEpochMillis")?.kind, "context-resolution");
+  assert.equal(classifyJavaSemantic("ViewDynamicUsePageNewCopyServiceImpl.quickCopyKey")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("webSocketACL.sendToAdmin")?.kind, "event-publish");
+  assert.equal(classifyJavaSemantic("aiFieldClassifyACL.classifyFieldOption")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("aiFieldClassifyACL.matchFieldTags")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("aiFieldClassifyACL.summaryFields")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("aiImageAnalyzeACL.imageAnalyze")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("aiInfoExtractACL.extractInfo")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("AnomalyRuleServiceImpl.toggleStatus")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("SensitiveTableServiceImpl.toggleStatus")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("AutomationConfigDataBizServiceImpl.renameAutomationConfig")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("BatchExportAsyncServiceImpl.reexport")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("BatchExportAsyncServiceImpl.resumeTask")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("ctx.validRulesByLeftFieldId")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("rule.leftField")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("rule.operator")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("rule.cellFontColor")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("rule.cellBgColor")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("rule.joinLeftAliases")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("rule.joinKeyToRightValues")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("OtherUsageController.toDTO")?.kind, undefined);
+  assert.equal(classifyJavaSemantic("OtherCopyServiceImpl.quickCopyKey")?.kind, undefined);
+  assert.equal(classifyJavaSemantic("otherWebSocket.sendToAdmin")?.kind, undefined);
+  assert.equal(classifyJavaSemantic("OtherRuleServiceImpl.toggleStatus")?.kind, undefined);
   assert.equal(classifyJavaSemantic("am.max")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("cmp.thenComparing")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("c.reversed")?.kind, "calculation");
@@ -192,6 +219,10 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("hit.compiledJson")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("hit.expired")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("out.putBackground")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("preloaded.billConfigsByFieldId")?.defaultOwnership, "reviewed-exclusion");
+  assert.equal(classifyJavaSemantic("StringUtils.hasText")?.defaultOwnership, "reviewed-exclusion");
+  assert.equal(classifyJavaSemantic("ViewDynamicFieldDataDO.getId")?.defaultOwnership, "reviewed-exclusion");
+  assert.equal(classifyJavaSemantic("idsList.subList")?.defaultOwnership, "reviewed-exclusion");
   assert.equal(classifyJavaSemantic("AiCustomAbilityReqDTO.FieldItem")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("FieldRelationGraphRespVO.CanvasConfig")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("crj.joins")?.kind, "calculation");
@@ -199,10 +230,21 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("baseDir.relativize")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("BillApprovalFieldResultEnum.valueOf")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("PartitionTypeEnum.fromCode")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("SELECT_REF.getTagKey().equals")?.defaultOwnership, "reviewed-exclusion");
   assert.equal(classifyJavaSemantic("ScanOptions.scanOptions().match")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("wrapper.orderByAsc")?.kind, "calculation");
-  assert.equal(classifyJavaSemantic("phaseObserver.accept")?.kind, undefined);
-  assert.equal(classifyJavaSemantic("rowHandler.accept")?.kind, undefined);
+  assert.equal(classifyJavaSemantic("rowHandler.accept")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("nlsSpeechACL.tts")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("systemServerDirectInvoker.callPreferDirect")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("phaseObserver.accept")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("ViewDynamicBillBizDataServiceImpl.billApproval")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("ViewMetaExcelQuickImportApplicationServiceImpl.quickPreviewImportV2")?.kind, "state-read");
+  assert.equal(classifyJavaSemantic("ViewDynamicHorizontalCalcFieldDataServiceImpl.processCalcFieldData")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ViewDynamicPictureRecognitionBizServiceImpl.recognizePicture")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("nlsUsageACL.summary")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("ocrUsageACL.summary")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("viewLayoutActivateApplicationService.activate")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("vo.PartitionRuleExcelVO")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("attrs.lastModifiedTime")?.kind, "external-call");
   assert.equal(classifyJavaSemantic("OperationLogSyncServiceImpl.sliceDetailField")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("ViewMetaExcelImportFieldDraft.applyBasic")?.kind, "state-write");
@@ -234,8 +276,8 @@ test("Java semantic registry narrows helpers, value factories, and application c
 
 test("remaining callbacks and unreviewed dynamic boundaries stay fail-closed", () => {
   for (const symbol of [
-    "phaseObserver.accept",
-    "rowHandler.accept",
+    "unreviewedPhaseObserver.accept",
+    "unreviewedHandler.accept",
     "CrossModuleRefreshServiceImpl.refreshAcrossModules",
     "DynamicPortServiceImpl.resolveRuntimePort",
     "ComplexSynchronizationServiceImpl.synchronizeDependencies"

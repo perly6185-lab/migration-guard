@@ -84,9 +84,94 @@ test("controller Rust assessment adaptively expands truncated call graphs", asyn
     ].join("\n"));
     const fixed = await assessJavaControllersForRust({ root: dir, maxDepth: 2, maxEdges: 2 });
     assert.ok((fixed.summary.findings["RP-GRAPH-EDGE-CAP"] ?? 0) > 0);
+    assert.equal(fixed.summary.truncationInventory.routes, 1);
+    assert.equal(fixed.truncationInventory[0]?.edgeCapHit, true);
+    assert.equal(fixed.truncationInventory[0]?.route, "GET /chain");
     const adaptive = await assessJavaControllersForRust({ root: dir, maxDepth: 2, maxEdges: 2, adaptive: true, maxExpansionDepth: 8, maxExpansionEdges: 20, maxExpansionRounds: 3 });
     assert.equal(adaptive.summary.findings["RP-GRAPH-EDGE-CAP"] ?? 0, 0);
     assert.equal(adaptive.summary.adaptivelyExpanded, 1);
     assert.equal(adaptive.methods[0]?.expansionStatus, "complete");
+    assert.equal(adaptive.truncationInventory.length, 0);
+    assert.deepEqual(adaptive.highFanoutInventory, []);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("controller assessment attributes exclusive and repeated fanout edges and clusters truncated routes", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-fanout-attribution-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    const calls = Array.from({ length: 25 }, (_, index) => `  branch${index}();`);
+    const branches = Array.from({ length: 25 }, (_, index) => ` private void branch${index}() { }`);
+    await writeFile(path.join(dir, "demo", "FanoutController.java"), [
+      "package demo;", "@RestController", "public class FanoutController {",
+      " @GetMapping(\"/fanout\")", " public void run() {", ...calls, " }", ...branches, "}"
+    ].join("\n"));
+    const report = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 20 });
+    assert.equal(report.summary.truncationInventory.edgeCapRoutes, 1);
+    assert.equal(report.methods[0]?.truncation.minimumEdgeReductionToUncap, 1);
+    assert.equal(report.methods[0]?.truncation.edgeReductionCertainty, "lower-bound");
+    assert.equal(report.methods[0]?.truncation.fanoutContributions[0]?.directEdges, 20);
+    assert.equal(report.methods[0]?.truncation.fanoutContributions[0]?.exclusiveDownstreamEdges, 20);
+    assert.equal(report.methods[0]?.truncation.fanoutContributions[0]?.repeatedDownstreamEdges, 0);
+    assert.equal(report.highFanoutInventory[0]?.priorityScore, 20);
+    assert.equal(report.truncationRouteClusters[0]?.routes[0], "GET /fanout");
+    assert.equal(report.truncationRouteClusters[0]?.edgeReductionCertainty, "lower-bound");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("controller assessment inventories and ranks shared unclassified boundaries without changing readiness", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-boundary-inventory-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "SharedService.java"), [
+      "package demo;", "@Service", "public class SharedService {",
+      " public Object opaqueTransform() { return innerOpaque(); }",
+      " private Object innerOpaque() { return null; }", "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "InventoryController.java"), [
+      "package demo;", "@RestController", "public class InventoryController {", " @Resource", " private SharedService service;",
+      " @GetMapping(\"/inventory/one\")", " public Object one() { return service.opaqueTransform(); }",
+      " @GetMapping(\"/inventory/two\")", " public Object two() { return service.opaqueTransform(); }", "}"
+    ].join("\n"));
+
+    const report = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 40 });
+    const shared = report.unclassifiedBoundaryInventory.find((item) => item.symbol === "SharedService.opaqueTransform");
+    const nested = report.unclassifiedBoundaryInventory.find((item) => item.symbol === "SharedService.innerOpaque");
+
+    assert.equal(report.summary.ready, 0);
+    assert.equal(report.summary.blocked, 2);
+    assert.equal(report.summary.unclassifiedBoundaryInventory.affectedRoutes, 2);
+    assert.equal(shared?.affectedRoutes.length, 2);
+    assert.equal(shared?.occurrences, 2);
+    assert.equal(shared?.minDepth, 1);
+    assert.deepEqual(shared?.sourceLocations, [{ file: "demo/SharedService.java", line: 4 }]);
+    assert.equal(nested?.minDepth, 2);
+    assert.equal(report.unclassifiedBoundaryInventory[0]?.symbol, "SharedService.innerOpaque");
+    assert.match(report.reportHash, /^[a-f0-9]{64}$/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("controller assessment inventories ambiguous calls and candidate evidence without resolving them", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-ambiguity-inventory-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "AmbiguousController.java"), [
+      "package demo;", "@RestController", "public class AmbiguousController {",
+      " @GetMapping(\"/ambiguous\")", " public Object run() { return choose(null); }",
+      " private Object choose(Long value) { return null; }",
+      " private Object choose(String value) { return null; }", "}"
+    ].join("\n"));
+
+    const report = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 40 });
+    const call = report.ambiguousCallInventory[0];
+
+    assert.equal(report.summary.ready, 0);
+    assert.equal(report.summary.blocked, 1);
+    assert.equal(report.summary.ambiguousCallInventory.affectedRoutes, 1);
+    assert.equal(call?.expression, "choose(");
+    assert.equal(call?.candidates.length, 2);
+    assert.equal(call?.affectedRoutes[0], "GET /ambiguous");
+    assert.ok(call?.candidates.some((candidate) => /Long value/.test(candidate.signature)));
+    assert.ok(call?.candidates.some((candidate) => /String value/.test(candidate.signature)));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
