@@ -1,7 +1,9 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { writeJsonFile, writeTextFile, toPosixPath } from "./files.js";
+import { sha256 } from "./hash.js";
 import { classifyJavaSemantic } from "./javaSemanticRegistry.js";
+import { stableStringify } from "./normalize.js";
 
 export type JavaEndpointHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD" | "ALL";
 export type JavaEndpointRiskSeverity = "low" | "medium" | "high";
@@ -26,6 +28,7 @@ export interface JavaEndpointAnalyzer {
   analyzeServiceMethodAdaptive(candidate: JavaServiceMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
   analyzeRepositoryMethod(candidate: JavaRepositoryMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
   analyzeRepositoryMethodAdaptive(candidate: JavaRepositoryMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
+  summarizeMethod(candidate: JavaServiceMethodCandidate): JavaMethodSummary;
   cacheStats(): JavaEndpointAnalyzerCacheStats;
 }
 
@@ -176,18 +179,75 @@ export interface JavaCallGraphPredicate {
   negated: boolean;
 }
 
+export type JavaPredicateTruth = "true" | "false" | "unknown";
+
+export interface JavaMethodSummaryCall {
+  id: string;
+  receiver?: string;
+  method: string;
+  expression: string;
+  line: number;
+  argumentCount: number;
+  argumentTypes: string[];
+  argumentIdentifiers: Array<string | undefined>;
+  predicates: JavaCallGraphPredicate[];
+}
+
+export interface JavaMethodSummary {
+  version: 1;
+  methodId: string;
+  qualifiedClassName: string;
+  methodName: string;
+  signature: string;
+  file: string;
+  line: number;
+  sourceHash: string;
+  calls: JavaMethodSummaryCall[];
+  summaryHash: string;
+}
+
+export interface JavaPredicateEvaluation {
+  result: JavaPredicateTruth;
+  predicate: JavaCallGraphPredicate;
+  facts: string[];
+  reason: string;
+}
+
 export function callGraphEdgeMatchesFieldTags(
   edge: JavaEndpointCallGraphEdge,
   fieldTags: Record<string, Iterable<string>>
 ): boolean {
-  return (edge.predicates ?? []).every((predicate) => {
-    if (predicate.kind !== "field-tag") return true;
-    const actual = fieldTags[predicate.parameter];
-    if (!actual) return true;
-    const expected = new Set(predicate.anyOf);
-    const matches = [...actual].some((value) => expected.has(value));
-    return predicate.negated ? !matches : matches;
-  });
+  return (edge.predicates ?? []).every((predicate) => evaluateJavaPredicate(predicate, fieldTags).result !== "false");
+}
+
+export function evaluateJavaPredicate(
+  predicate: JavaCallGraphPredicate,
+  fieldTags: Record<string, Iterable<string>>
+): JavaPredicateEvaluation {
+  const actual = fieldTags[predicate.parameter];
+  if (!actual) {
+    return {
+      result: "unknown",
+      predicate,
+      facts: [],
+      reason: `No field-tag fact is available for ${predicate.parameter}; both paths must remain reachable.`
+    };
+  }
+  const values = [...actual].sort();
+  const expected = new Set(predicate.anyOf);
+  const matched = values.filter((value) => expected.has(value));
+  const unmatched = values.filter((value) => !expected.has(value));
+  const truth = predicate.negated
+    ? matched.length === 0 ? "true" : unmatched.length === 0 ? "false" : "unknown"
+    : unmatched.length === 0 ? "true" : matched.length === 0 ? "false" : "unknown";
+  return {
+    result: truth,
+    predicate,
+    facts: values.map((value) => `${predicate.parameter}=${value}`),
+    reason: truth === "unknown"
+      ? "The known field-tag set spans both matching and non-matching values; both paths must remain reachable."
+      : `All known field-tag values make the predicate ${truth}.`
+  };
 }
 
 export interface JavaEndpointRiskSignal {
@@ -458,12 +518,43 @@ export async function createJavaEndpointAnalyzer(rootValue: string, includeTests
     analyzeServiceMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "service", options),
     analyzeRepositoryMethod: (candidate, options = {}) => analyzeJavaMethodModel(project, routes, candidate, "repository", options),
     analyzeRepositoryMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "repository", options),
+    summarizeMethod: (candidate) => summarizeJavaMethod(project, candidate),
     cacheStats: () => ({
       methodCallEntries: project.methodCallCache.size,
       methodCallHits: project.methodCallCacheHits,
       methodCallMisses: project.methodCallCacheMisses
     })
   };
+}
+
+function summarizeJavaMethod(project: JavaProjectModel, candidate: JavaServiceMethodCandidate): JavaMethodSummary {
+  const type = project.typesByName.get(candidate.qualifiedClassName)?.find((item) => item.file === candidate.file)
+    ?? project.typesByName.get(candidate.className)?.find((item) => item.file === candidate.file);
+  const method = type?.methods.find((item) => item.line === candidate.line && item.name === candidate.methodName);
+  if (!type || !method) throw new Error(`Java method not found for summary: ${candidate.id}`);
+  const calls = cachedMethodCalls(project, method, type).map((call, index): JavaMethodSummaryCall => ({
+    id: `${methodId(type, method)}:call:${index + 1}`,
+    receiver: call.receiver,
+    method: call.method,
+    expression: call.expression,
+    line: call.line,
+    argumentCount: call.argumentCount,
+    argumentTypes: [...call.argumentTypes],
+    argumentIdentifiers: [...(call.argumentIdentifiers ?? [])],
+    predicates: [...(fieldTagPredicatesForLine(project, method, call.line) ?? [])]
+  }));
+  const base = {
+    version: 1 as const,
+    methodId: methodId(type, method),
+    qualifiedClassName: type.qualifiedName,
+    methodName: method.name,
+    signature: method.signature,
+    file: method.file,
+    line: method.line,
+    sourceHash: sha256(method.body.replace(/\r\n/g, "\n")),
+    calls
+  };
+  return { ...base, summaryHash: sha256(stableStringify(base)) };
 }
 
 function analyzeJavaEndpointAdaptive(

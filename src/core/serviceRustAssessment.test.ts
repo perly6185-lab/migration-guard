@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { assessJavaServicesForRust, renderServiceRustAssessment } from "./serviceRustAssessment.js";
-import { callGraphEdgeMatchesFieldTags, createJavaEndpointAnalyzer } from "./javaEndpointAnalysis.js";
+import { callGraphEdgeMatchesFieldTags, createJavaEndpointAnalyzer, evaluateJavaPredicate } from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
 
 test("service Rust assessment includes implemented methods outside controller reachability", async () => {
@@ -422,6 +422,16 @@ test("Java call graph specializes literal-null branches without assuming variabl
       "}"
     ].join("\n"));
     const analyzer = await createJavaEndpointAnalyzer(dir);
+    const typedTextCandidate = analyzer.serviceMethods.find((item) => item.methodName === "typedText")!;
+    const firstSummary = analyzer.summarizeMethod(typedTextCandidate);
+    const secondSummary = analyzer.summarizeMethod(typedTextCandidate);
+    assert.equal(firstSummary.summaryHash, secondSummary.summaryHash);
+    assert.equal(firstSummary.sourceHash, secondSummary.sourceHash);
+    assert.ok(firstSummary.calls.some((call) => call.method === "typedUpdate"));
+    const textPredicate = { kind: "field-tag" as const, parameter: "command", anyOf: ["FieldTagEnum.TEXT"], negated: false };
+    assert.equal(evaluateJavaPredicate(textPredicate, {}).result, "unknown");
+    assert.equal(evaluateJavaPredicate(textPredicate, { command: ["FieldTagEnum.GROUP_REF"] }).result, "false");
+    assert.equal(evaluateJavaPredicate(textPredicate, { command: ["FieldTagEnum.TEXT", "FieldTagEnum.GROUP_REF"] }).result, "unknown");
     const full = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "full")!, { maxDepth: 5, maxEdges: 30 });
     assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
     assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullGuarded"));
