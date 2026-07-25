@@ -326,6 +326,7 @@ interface GraphTraceState {
   knownNonNullParams?: Set<string>;
   knownBooleanParams?: Map<string, boolean>;
   knownEnumParams?: Map<string, string>;
+  knownFieldTagParams?: Map<string, Set<string>>;
 }
 
 type JavaCallGraphBuildResult = JavaEndpointAnalysisReport["callGraph"] & {
@@ -1572,7 +1573,8 @@ function buildCallGraph(
       current.knownNullParams,
       current.knownNonNullParams,
       current.knownBooleanParams,
-      current.knownEnumParams
+      current.knownEnumParams,
+      current.knownFieldTagParams
     );
     const executableCalls = extractedCalls.filter((call) => {
       const kind = summarizedCallKind(project, current.type, call);
@@ -1668,6 +1670,7 @@ function buildCallGraph(
         const knownNonNullParams = new Set<string>();
         const knownBooleanParams = new Map<string, boolean>();
         const knownEnumParams = new Map<string, string>();
+        const knownFieldTagParams = new Map<string, Set<string>>();
         for (const [index, isLiteralNull] of (call.argumentNulls ?? []).entries()) {
           const param = target.method.params[index];
           const sourceParam = call.argumentIdentifiers?.[index];
@@ -1696,6 +1699,34 @@ function buildCallGraph(
             knownEnumParams.set(param.name, value);
           }
         }
+        const callerFieldTags = new Map(current.knownFieldTagParams);
+        const callerValidation = validatedFieldTagPair(current.method);
+        if (callerValidation && callerValidation.line <= call.line) {
+          const values = callerFieldTags.get(callerValidation.setParam)
+            ?? fieldTagConstants(project, current.type, callerValidation.setParam);
+          if (values.size > 0) callerFieldTags.set(callerValidation.commandParam, values);
+        }
+        const fieldTagAliases = constrainedFieldTagAliases(current.method, callerFieldTags);
+        for (const [index, sourceParam] of (call.argumentIdentifiers ?? []).entries()) {
+          const param = target.method.params[index];
+          const inherited = sourceParam ? fieldTagAliases.get(sourceParam) : undefined;
+          if (param && inherited) knownFieldTagParams.set(param.name, new Set(inherited));
+        }
+        const validatedPair = validatedFieldTagPair(target.method);
+        if (validatedPair) {
+          const supportedValues = knownFieldTagParams.get(validatedPair.setParam);
+          if (supportedValues) knownFieldTagParams.set(validatedPair.commandParam, new Set(supportedValues));
+        }
+        for (const [index, sourceParam] of (call.argumentIdentifiers ?? []).entries()) {
+          const param = target.method.params[index];
+          if (!param || !sourceParam || knownFieldTagParams.has(param.name)) continue;
+          const constants = fieldTagConstants(project, current.type, sourceParam);
+          if (constants.size > 0) knownFieldTagParams.set(param.name, constants);
+        }
+        if (validatedPair && !knownFieldTagParams.has(validatedPair.commandParam)) {
+          const supportedValues = knownFieldTagParams.get(validatedPair.setParam);
+          if (supportedValues) knownFieldTagParams.set(validatedPair.commandParam, new Set(supportedValues));
+        }
         for (const [localName, value] of call.lexicalBooleanFacts ?? []) {
           const declaration = new RegExp(
             `\\bboolean\\s+${localName}\\s*=\\s*AsyncSelectRefCalculationContext\\.skipDerivedSideEffects\\s*\\(\\s*\\)\\s*;`
@@ -1711,6 +1742,9 @@ function buildCallGraph(
             : undefined,
           knownEnumParams.size > 0
             ? `enum:${[...knownEnumParams].sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => `${name}=${value}`).join(",")}`
+            : undefined,
+          knownFieldTagParams.size > 0
+            ? `field-tag:${[...knownFieldTagParams].sort(([a], [b]) => a.localeCompare(b)).map(([name, values]) => `${name}=${[...values].sort().join("|")}`).join(",")}`
             : undefined
         ].filter((part): part is string => Boolean(part));
         const desiredVariantId = contextParts.length > 0
@@ -1774,7 +1808,8 @@ function buildCallGraph(
             knownNullParams: targetNode.id === desiredVariantId ? knownNullParams : undefined,
             knownNonNullParams: targetNode.id === desiredVariantId ? knownNonNullParams : undefined,
             knownBooleanParams: targetNode.id === desiredVariantId ? knownBooleanParams : undefined,
-            knownEnumParams: targetNode.id === desiredVariantId ? knownEnumParams : undefined
+            knownEnumParams: targetNode.id === desiredVariantId ? knownEnumParams : undefined,
+            knownFieldTagParams: targetNode.id === desiredVariantId ? knownFieldTagParams : undefined
           });
         }
         if (edges.length >= maxEdges && (targetIndex < targets.length - 1 || callIndex < calls.length - 1 || hasRemainingCalls || queue.length > 0)) {
@@ -2143,9 +2178,10 @@ function filterKnownNullBranches<T extends { line: number }>(
   knownNullParams: Set<string> | undefined,
   knownNonNullParams: Set<string> | undefined,
   knownBooleanParams: Map<string, boolean> | undefined,
-  knownEnumParams: Map<string, string> | undefined
+  knownEnumParams: Map<string, string> | undefined,
+  knownFieldTagParams: Map<string, Set<string>> | undefined
 ): T[] {
-  if (!knownNullParams?.size && !knownNonNullParams?.size && !knownBooleanParams?.size && !knownEnumParams?.size) return calls;
+  if (!knownNullParams?.size && !knownNonNullParams?.size && !knownBooleanParams?.size && !knownEnumParams?.size && !knownFieldTagParams?.size) return calls;
   const body = method.body;
   const excluded: Array<{ startLine: number; endLine: number }> = [];
   for (const param of knownNullParams ?? []) {
@@ -2230,9 +2266,61 @@ function filterKnownNullBranches<T extends { line: number }>(
       }
     }
   }
+  for (const [param, values] of constrainedFieldTagAliases(method, knownFieldTagParams)) {
+    const comparison = new RegExp(
+      `\\bif\\s*\\(\\s*FieldTagEnum\\.([A-Z][A-Z0-9_]*)\\.getTagKey\\s*\\(\\s*\\)\\s*\\.equals\\s*\\(\\s*${param}\\.getFieldTagInnerKey\\s*\\(\\s*\\)\\s*\\)\\s*\\)\\s*\\{`,
+      "g"
+    );
+    for (const match of body.matchAll(comparison)) {
+      const constant = `FieldTagEnum.${match[1]}`;
+      if (!values.has(constant)) excludeKnownBranch(method, body, match, false, excluded);
+      else if (values.size === 1) excludeKnownBranch(method, body, match, true, excluded);
+    }
+  }
   return excluded.length === 0
     ? calls
     : calls.filter((call) => !excluded.some((range) => call.line >= range.startLine && call.line <= range.endLine));
+}
+
+function validatedFieldTagPair(method: JavaMethodInfo): { commandParam: string; setParam: string; line: number } | undefined {
+  const match = /\bvalidateFieldType\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/.exec(method.body);
+  return match ? {
+    commandParam: match[1],
+    setParam: match[2],
+    line: method.bodyStartLine + method.body.slice(0, match.index).split("\n").length - 1
+  } : undefined;
+}
+
+function fieldTagConstants(project: JavaProjectModel, type: JavaTypeInfo, name: string): Set<string> {
+  const source = project.files.find((file) => file.relativePath === type.file || file.absolutePath === type.file)?.content;
+  if (!source) return new Set();
+  const declaration = new RegExp(`\\b${name}\\s*=\\s*tagKeys\\s*\\(`).exec(source);
+  if (!declaration) return new Set();
+  const open = declaration.index + declaration[0].lastIndexOf("(");
+  const close = matchingDelimiterOffset(source, open, "(", ")");
+  if (close < 0) return new Set();
+  return new Set([...source.slice(open + 1, close).matchAll(/\bFieldTagEnum\.([A-Z][A-Z0-9_]*)\b/g)]
+    .map((match) => `FieldTagEnum.${match[1]}`));
+}
+
+function constrainedFieldTagAliases(
+  method: JavaMethodInfo,
+  known: Map<string, Set<string>> | undefined
+): Map<string, Set<string>> {
+  const aliases = new Map<string, Set<string>>([...known ?? []].map(([name, values]) => [name, new Set(values)]));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const match of method.body.matchAll(/\b[A-Z][A-Za-z0-9_.$<>?, ]*\s+([a-zA-Z_][A-Za-z0-9_]*)\s*=\s*([^;]+);/g)) {
+      if (aliases.has(match[1])) continue;
+      const source = [...aliases.entries()].find(([name]) => new RegExp(`\\b${name}\\b`).test(match[2]));
+      if (!source) continue;
+      if (!/\.(?:getReqVO|toExecutionCommand)\s*\(|\bbuildUpdatePlan\s*\(/.test(match[2])) continue;
+      aliases.set(match[1], new Set(source[1]));
+      changed = true;
+    }
+  }
+  return aliases;
 }
 
 function excludeKnownBranch(

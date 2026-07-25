@@ -267,6 +267,7 @@ test("Java call graph specializes literal-null branches without assuming variabl
     await mkdir(path.join(dir, "demo"), { recursive: true });
     await writeFile(path.join(dir, "demo", "NullContextService.java"), [
       "package demo;", "@Service", "public class NullContextService {",
+      " private static final Set<String> TEXT_KEYS = tagKeys(FieldTagEnum.TEXT, FieldTagEnum.TEXT_MULTI);",
       " public void full() { work(null); }",
       " public void incremental(List<Long> ids) { work(ids); }",
       " public void initialized() { List<Long> ids = new ArrayList<>(); work(ids); }",
@@ -284,6 +285,20 @@ test("Java call graph specializes literal-null branches without assuming variabl
       "  }",
       " }",
       " public void unscopedAsync() { syncUpdateCalculateLocalValueWithContext(); }",
+      " public void typedText(Command command) { typedUpdate(command, TEXT_KEYS); }",
+      " public void directTypedText(Command command) { validateFieldType(command, TEXT_KEYS); execute(command); }",
+      " private void typedUpdate(Command command, Set<String> supportedTagKeys) {",
+      "  validateFieldType(command, supportedTagKeys);",
+      "  execute(command);",
+      " }",
+      " private void validateFieldType(Command command, Set<String> supportedTagKeys) { }",
+      " private void execute(Command command) {",
+      "  ReqVO reqVO = command.getReqVO();",
+      "  if (FieldTagEnum.FILL_DIMENSION.getTagKey().equals(reqVO.getFieldTagInnerKey())) { fillOnly(); }",
+      "  if (FieldTagEnum.TEXT.getTagKey().equals(reqVO.getFieldTagInnerKey())) { possibleText(); }",
+      " }",
+      " private void fillOnly() { }",
+      " private void possibleText() { }",
       " private void work(List<Long> ids) {",
       "  boolean fullPanel = ids == null;",
       "  if (fullPanel && ready()) {",
@@ -407,6 +422,14 @@ test("Java call graph specializes literal-null branches without assuming variabl
     const unscopedAsync = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "unscopedAsync")!, { maxDepth: 5, maxEdges: 30 });
     assert.ok(unscopedAsync.callGraph.nodes.some((node) => node.methodName === "scopedOnly"));
     assert.ok(unscopedAsync.callGraph.nodes.some((node) => node.methodName === "unscopedOnly"));
+    const typedText = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "typedText")!, { maxDepth: 5, maxEdges: 30 });
+    assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "fillOnly"), false);
+    assert.ok(typedText.callGraph.nodes.some((node) => node.methodName === "possibleText"));
+    assert.ok(typedText.callGraph.nodes.some((node) => node.methodName === "execute"
+      && node.id.includes("FieldTagEnum.TEXT|FieldTagEnum.TEXT_MULTI")));
+    const directTypedText = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "directTypedText")!, { maxDepth: 5, maxEdges: 30 });
+    assert.equal(directTypedText.callGraph.nodes.some((node) => node.methodName === "fillOnly"), false);
+    assert.ok(directTypedText.callGraph.nodes.some((node) => node.methodName === "possibleText"));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
