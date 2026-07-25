@@ -751,6 +751,21 @@ async function collectJavaProject(root: string, includeTests: boolean): Promise<
     const content = stat.size <= 2 * 1024 * 1024 ? await fs.readFile(absolutePath, "utf8") : "";
     files.push({ absolutePath, relativePath, content, isTest });
   }
+  const fieldTagImport = files
+    .flatMap((file) => [...file.content.matchAll(/\bimport\s+([A-Za-z0-9_.]+\.FieldTagEnum)\s*;/g)])
+    .map((match) => match[1])[0];
+  if (fieldTagImport && !files.some((file) => new RegExp(`\\benum\\s+FieldTagEnum\\b`).test(file.content))) {
+    const dependencyPath = await findImportedJavaSource(root, fieldTagImport);
+    if (dependencyPath) {
+      const content = await fs.readFile(dependencyPath, "utf8");
+      files.push({
+        absolutePath: dependencyPath,
+        relativePath: toPosixPath(path.relative(root, dependencyPath)),
+        content,
+        isTest: false
+      });
+    }
+  }
   const xmlFiles: JavaSourceFile[] = [];
   for (const absolutePath of await walkXmlFiles(root)) {
     const relativePath = toPosixPath(path.relative(root, absolutePath));
@@ -791,6 +806,24 @@ async function collectJavaProject(root: string, includeTests: boolean): Promise<
     pushMap(sqlSourcesByMethodKey, sqlMethodKey(source.ownerClassName, source.ownerMethodName), source);
   }
   return { ...project, sqlSources, sqlSourcesByMethodKey };
+}
+
+async function findImportedJavaSource(root: string, qualifiedName: string): Promise<string | undefined> {
+  const suffix = `${qualifiedName.replace(/\./g, path.sep)}.java`;
+  let searchRoot = path.resolve(root);
+  let foundRepository = false;
+  while (path.dirname(searchRoot) !== searchRoot) {
+    try {
+      await fs.access(path.join(searchRoot, ".git"));
+      foundRepository = true;
+      break;
+    } catch {
+      searchRoot = path.dirname(searchRoot);
+    }
+  }
+  if (!foundRepository) return undefined;
+  const candidates = await walkJavaFiles(searchRoot);
+  return candidates.find((candidate) => candidate.endsWith(suffix));
 }
 
 async function walkJavaFiles(root: string): Promise<string[]> {
@@ -1597,8 +1630,10 @@ function buildCallGraph(
         edgeCapHadRemainingWork = true;
         break;
       }
-      const resolved = resolveCallTargets(project, current.type, call);
-      const targets = resolved.targets;
+      const resolved: ResolvedJavaCall = call.receiverType === "FieldTypeUpdateStrategy" && !current.knownFieldTagParams?.size
+        ? { targets: [], resolution: "external", candidates: [] }
+        : resolveCallTargets(project, current.type, call);
+      const targets = narrowFieldTypeStrategyTargets(project, resolved.targets, current.knownFieldTagParams);
       if (targets.length === 0) {
         const externalSqlSources = sqlSourcesForExternalCall(project, current, call, methodContextSignals);
         if (externalSqlSources.length > 0) {
@@ -2116,7 +2151,7 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   for (const match of scanBody.matchAll(chainPattern)) {
     const openIndex = (match.index ?? 0) + match[0].lastIndexOf("(");
     const parsedArgs = extractCallArguments(body, openIndex);
-    const receiverType = resolveFactoryReturnType(project, type, match[1], match[2]);
+    const receiverType = resolveFactoryReturnType(project, type, match[1], match[2], variableTypes);
     calls.push({ receiver: `${match[1]}.${match[2]}()`, receiverType, method: match[4], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[4])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier), lexicalBooleanFacts: lexicalBooleanFacts(match[4], match.index ?? 0) });
     occupied.add((match.index ?? 0) + match[0].lastIndexOf(match[4]));
   }
@@ -2564,15 +2599,104 @@ function isLowValueCall(methodName: string): boolean {
   return LOW_VALUE_CALLS.has(methodName) || /^(get|set|is)[A-Z]/.test(methodName);
 }
 
-function resolveFactoryReturnType(project: JavaProjectModel, currentType: JavaTypeInfo, receiver: string, factoryMethod: string): string | undefined {
+function resolveFactoryReturnType(
+  project: JavaProjectModel,
+  currentType: JavaTypeInfo,
+  receiver: string,
+  factoryMethod: string,
+  variableTypes?: Map<string, string>
+): string | undefined {
   const field = [currentType, ...parentTypes(project, currentType)].flatMap((type) => [...type.fields, ...type.plainFields]).find((candidate) => candidate.name === receiver);
-  if (!field) return undefined;
-  const factoryType = resolveTypesForField(project, field.typeName, currentType)[0];
-  const returnType = factoryType?.methods.find((method) => method.name === factoryMethod)?.returnType;
+  const receiverTypeName = field?.typeName ?? variableTypes?.get(receiver);
+  if (!receiverTypeName) return undefined;
+  const factoryType = resolveTypesForField(project, receiverTypeName, currentType)[0];
+  const returnType = factoryType?.methods.find((method) => method.name === factoryMethod)?.returnType
+    ?? generatedAccessorReturnType(factoryType, factoryMethod);
   if (!returnType) return undefined;
+  if (!field && simpleTypeName(returnType) !== "FieldTypeUpdateStrategy") return undefined;
   const genericIndex = factoryType.typeParameters.indexOf(simpleTypeName(returnType));
   if (genericIndex < 0) return simpleTypeName(returnType);
-  return genericTypeArguments(field.declaredType)[genericIndex];
+  return genericTypeArguments(field?.declaredType ?? receiverTypeName)[genericIndex];
+}
+
+function generatedAccessorReturnType(type: JavaTypeInfo | undefined, methodName: string): string | undefined {
+  if (!type || !isGeneratedAccessor(type, methodName, 0)) return undefined;
+  const property = methodName.replace(/^(?:get|is)/, "");
+  const fieldName = property ? property[0].toLowerCase() + property.slice(1) : "";
+  return type.plainFields.find((field) => field.name === fieldName)?.declaredType;
+}
+
+function narrowFieldTypeStrategyTargets(
+  project: JavaProjectModel,
+  targets: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>,
+  knownFieldTags: Map<string, Set<string>> | undefined
+): Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> {
+  if (!knownFieldTags?.size || !targets.some((target) =>
+    target.type.name === "FieldTypeUpdateStrategy"
+    || target.type.implements.some((name) => simpleTypeName(name) === "FieldTypeUpdateStrategy")
+  )) return targets;
+  const values = new Set([...knownFieldTags.values()].flatMap((set) => [...set]));
+  const implementations = project.implementationsByInterface.get("FieldTypeUpdateStrategy") ?? [];
+  const supportedByType = new Map(implementations.map((type) => [type.qualifiedName, supportedFieldTagsForStrategy(project, type)]));
+  const matchedValues = new Set<string>();
+  for (const supported of supportedByType.values()) {
+    for (const value of values) if (supported?.has(value)) matchedValues.add(value);
+  }
+  return targets.filter((target) => {
+    if (target.type.name === "FieldTypeUpdateStrategy") return true;
+    if (target.type.name === "DefaultFieldUpdateStrategy") return matchedValues.size < values.size;
+    const supported = supportedByType.get(target.type.qualifiedName);
+    return !supported || [...values].some((value) => supported.has(value));
+  });
+}
+
+function supportedFieldTagsForStrategy(project: JavaProjectModel, type: JavaTypeInfo): Set<string> | undefined {
+  const source = project.files.find((file) => file.relativePath === type.file || file.absolutePath === type.file)?.content;
+  const supports = type.methods.find((method) => method.name === "supports" && method.params.length === 1);
+  if (!source || !supports) return undefined;
+  const setName = supports.body.match(/\b([A-Z][A-Z0-9_]*)\.contains\s*\(/)?.[1];
+  if (setName) {
+    const declaration = new RegExp(`\\b${setName}\\s*=\\s*(?:Set\\.of|Collections\\.unmodifiableSet\\s*\\(\\s*(?:Set\\.of|EnumSet\\.of))\\s*\\(`).exec(source);
+    if (declaration) {
+      const open = declaration.index + declaration[0].lastIndexOf("(");
+      const close = matchingDelimiterOffset(source, open, "(", ")");
+      if (close >= 0) {
+        const initializer = source.slice(open + 1, close);
+        const byTagKey = fieldTagEnumsByTagKey(project);
+        const values = new Set([
+          ...[...initializer.matchAll(/\bFieldTagEnum\.([A-Z][A-Z0-9_]*)\b/g)]
+            .map((match) => `FieldTagEnum.${match[1]}`),
+          ...[...initializer.matchAll(/"([^"]+)"/g)]
+            .map((match) => byTagKey.get(match[1]))
+            .filter((value): value is string => Boolean(value))
+        ]);
+        if (values.size > 0) return values;
+      }
+    }
+  }
+  const predicate = supports.body.match(/\bFieldTagEnum\.(is[A-Za-z0-9_]+)\s*\(/)?.[1];
+  return predicate ? fieldTagPredicateConstants(project, predicate) : undefined;
+}
+
+function fieldTagEnumsByTagKey(project: JavaProjectModel): Map<string, string> {
+  const enumType = project.typesByName.get("FieldTagEnum")?.find((type) => type.kind === "enum");
+  const source = enumType
+    ? project.files.find((file) => file.relativePath === enumType.file || file.absolutePath === enumType.file)?.content
+    : undefined;
+  const values = new Map<string, string>();
+  if (source) {
+    for (const match of source.matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*\(\s*(?:"[^"]*"|null)\s*,\s*"([^"]+)"/gm)) {
+      values.set(match[2], `FieldTagEnum.${match[1]}`);
+    }
+  }
+  for (const file of project.files) {
+    for (const match of file.content.matchAll(/\bFieldTagEnum\.([A-Z][A-Z0-9_]*)\b/g)) {
+      const constant = match[1];
+      const canonicalTagKey = constant.toLowerCase().replace(/_([a-z0-9])/g, (_, character: string) => character.toUpperCase());
+      if (!values.has(canonicalTagKey)) values.set(canonicalTagKey, `FieldTagEnum.${constant}`);
+    }
+  }
+  return values;
 }
 
 function genericTypeArguments(declaredType: string): string[] {
@@ -2609,8 +2733,31 @@ function resolveCallTargets(
   if (call.receiverType) {
     const receiverTypes = project.typesByName.get(simpleTypeName(call.receiverType)) ?? [];
     if (receiverTypes.length === 0) return { targets: [], resolution: "external", candidates: [] };
-    const receiverCandidates = receiverTypes.flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method })));
+    const receiverCandidates = receiverTypes.flatMap((type) => {
+      const implementations = type.name === "FieldTypeUpdateStrategy"
+        ? project.implementationsByInterface.get(type.name) ?? []
+        : [];
+      return [type, ...implementations].flatMap((candidateType) =>
+        candidateType.methods
+          .filter((method) => method.name === call.method && (candidateType.kind !== "interface" || method.hasBody))
+          .map((method) => ({ type: candidateType, method }))
+      );
+    });
     if (receiverCandidates.length === 0 && receiverTypes.some((type) => isGeneratedAccessor(type, call.method, call.argumentCount))) return { targets: [], resolution: "external", candidates: [] };
+    if (receiverTypes.some((type) => type.name === "FieldTypeUpdateStrategy")) {
+      const targets = call.argumentCount < 0
+        ? receiverCandidates
+        : receiverCandidates.filter((candidate) => arityMatches(candidate.method.params, call.argumentCount));
+      return {
+        targets,
+        resolution: targets.length > 0 ? "resolved" : "unresolved",
+        candidates: targets.map((target) => ({
+          methodId: methodId(target.type, target.method),
+          signature: target.method.signature,
+          score: 0
+        }))
+      };
+    }
     return selectOverload(receiverCandidates, call);
   }
   const field = [currentType, ...parentTypes(project, currentType)]

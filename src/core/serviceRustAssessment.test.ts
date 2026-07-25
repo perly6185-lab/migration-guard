@@ -294,6 +294,8 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " private void validateFieldType(Command command, Set<String> supportedTagKeys) { }",
       " private void execute(Command command) {",
       "  ReqVO reqVO = command.getReqVO();",
+      "  Plan plan = buildUpdatePlan(command);",
+      "  plan.getTypeStrategy().apply();",
       "  if (FieldTagEnum.FILL_DIMENSION.getTagKey().equals(reqVO.getFieldTagInnerKey())) { fillOnly(); }",
       "  if (FieldTagEnum.isGroupRefByTagKey(reqVO.getFieldTagInnerKey())) { groupRefOnly(); }",
       "  if (FieldTagEnum.isGroupRefByTagKey(reqVO.getFieldTagInnerKey())",
@@ -307,6 +309,7 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " private void groupedOnly() { }",
       " private void aliasedGroupRefOnly() { }",
       " private void possibleText() { }",
+      " private Plan buildUpdatePlan(Command command) { return null; }",
       " private void work(List<Long> ids) {",
       "  boolean fullPanel = ids == null;",
       "  if (fullPanel && ready()) {",
@@ -383,6 +386,31 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " }",
       "}"
     ].join("\n"));
+    await writeFile(path.join(dir, "demo", "FieldTypeUpdateStrategy.java"), [
+      "package demo;", "public interface FieldTypeUpdateStrategy { void apply(); boolean supports(String key); }"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "TextFieldUpdateStrategy.java"), [
+      "package demo;", "public class TextFieldUpdateStrategy implements FieldTypeUpdateStrategy {",
+      " private static final Set<String> SUPPORTED_KEYS = Set.of(FieldTagEnum.TEXT.getTagKey(), FieldTagEnum.TEXT_MULTI.getTagKey());",
+      " public boolean supports(String key) { return SUPPORTED_KEYS.contains(key); }",
+      " public void apply() { textStrategyOnly(); }",
+      " private void textStrategyOnly() { }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "GroupRefFieldUpdateStrategy.java"), [
+      "package demo;", "public class GroupRefFieldUpdateStrategy implements FieldTypeUpdateStrategy {",
+      " private static final Set<String> SUPPORTED_KEYS = Set.of(FieldTagEnum.GROUP_REF.getTagKey());",
+      " public boolean supports(String key) { return SUPPORTED_KEYS.contains(key); }",
+      " public void apply() { groupStrategyOnly(); }",
+      " private void groupStrategyOnly() { }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "Plan.java"), [
+      "package demo;", "public class Plan {",
+      " private FieldTypeUpdateStrategy typeStrategy;",
+      " public FieldTypeUpdateStrategy getTypeStrategy() { return typeStrategy; }",
+      "}"
+    ].join("\n"));
     const analyzer = await createJavaEndpointAnalyzer(dir);
     const full = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "full")!, { maxDepth: 5, maxEdges: 30 });
     assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
@@ -447,6 +475,8 @@ test("Java call graph specializes literal-null branches without assuming variabl
     assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "groupedOnly"), false);
     assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "aliasedGroupRefOnly"), false);
     assert.ok(typedText.callGraph.nodes.some((node) => node.methodName === "possibleText"));
+    assert.ok(typedText.callGraph.nodes.some((node) => node.methodName === "textStrategyOnly"));
+    assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "groupStrategyOnly"), false);
     assert.ok(typedText.callGraph.nodes.some((node) => node.methodName === "execute"
       && node.id.includes("FieldTagEnum.TEXT|FieldTagEnum.TEXT_MULTI")));
     const directTypedText = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "directTypedText")!, { maxDepth: 5, maxEdges: 30 });
