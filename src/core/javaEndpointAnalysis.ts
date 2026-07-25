@@ -158,6 +158,7 @@ export interface JavaEndpointCallGraphEdge {
   resolution: "field-injection" | "same-class" | "static-or-external" | "ambiguous" | "unresolved";
   resolutionCandidates?: Array<{ methodId: string; signature: string; score: number }>;
   context?: JavaCallGraphContext;
+  predicates?: JavaCallGraphPredicate[];
 }
 
 export interface JavaCallGraphContext {
@@ -166,6 +167,27 @@ export interface JavaCallGraphContext {
   booleanParams?: Record<string, boolean>;
   enumParams?: Record<string, string>;
   fieldTagParams?: Record<string, string[]>;
+}
+
+export interface JavaCallGraphPredicate {
+  kind: "field-tag";
+  parameter: string;
+  anyOf: string[];
+  negated: boolean;
+}
+
+export function callGraphEdgeMatchesFieldTags(
+  edge: JavaEndpointCallGraphEdge,
+  fieldTags: Record<string, Iterable<string>>
+): boolean {
+  return (edge.predicates ?? []).every((predicate) => {
+    if (predicate.kind !== "field-tag") return true;
+    const actual = fieldTags[predicate.parameter];
+    if (!actual) return true;
+    const expected = new Set(predicate.anyOf);
+    const matches = [...actual].some((value) => expected.has(value));
+    return predicate.negated ? !matches : matches;
+  });
 }
 
 export interface JavaEndpointRiskSignal {
@@ -1658,6 +1680,7 @@ function buildCallGraph(
         edgeCapHadRemainingWork = true;
         break;
       }
+      const predicates = fieldTagPredicatesForLine(project, current.method, call.line);
       const resolved: ResolvedJavaCall = call.receiverType === "FieldTypeUpdateStrategy" && !current.knownFieldTagParams?.size
         ? { targets: [], resolution: "external", candidates: [] }
         : resolveCallTargets(project, current.type, call);
@@ -1687,7 +1710,8 @@ function buildCallGraph(
                 argumentTypes: call.argumentTypes
               },
               resolution: "static-or-external",
-              resolutionCandidates: resolved.candidates
+              resolutionCandidates: resolved.candidates,
+              predicates
             });
             edgeSourceDepths.push(current.depth);
           }
@@ -1716,7 +1740,8 @@ function buildCallGraph(
             argumentTypes: call.argumentTypes
           },
           resolution: resolved.resolution === "ambiguous" ? "ambiguous" : resolved.resolution === "external" ? "static-or-external" : "unresolved",
-          resolutionCandidates: resolved.candidates
+          resolutionCandidates: resolved.candidates,
+          predicates
         });
         edgeSourceDepths.push(current.depth);
         if (edges.length >= maxEdges && (callIndex < calls.length - 1 || hasRemainingCalls || queue.length > 0)) {
@@ -1865,6 +1890,7 @@ function buildCallGraph(
           },
           resolution: call.receiver ? "field-injection" : "same-class",
           resolutionCandidates: resolved.candidates,
+          predicates,
           context: callGraphContext(
             knownNullParams,
             knownNonNullParams,
@@ -2286,6 +2312,60 @@ function tryResourceScopes(text: string, resourceCall: string): Array<{ open: nu
     if (blockClose >= 0) scopes.push({ open: blockOpen, close: blockClose });
   }
   return scopes;
+}
+
+function fieldTagPredicatesForLine(
+  project: JavaProjectModel,
+  method: JavaMethodInfo,
+  line: number
+): JavaCallGraphPredicate[] | undefined {
+  const body = method.body;
+  const predicates: JavaCallGraphPredicate[] = [];
+  const addScopedPredicate = (
+    match: RegExpMatchArray,
+    parameter: string,
+    anyOf: Iterable<string>,
+    conditionNegated: boolean
+  ) => {
+    const open = (match.index ?? 0) + match[0].lastIndexOf("{");
+    const close = matchingBraceOffset(body, open);
+    if (close < 0) return;
+    const values = [...new Set(anyOf)].sort();
+    if (values.length === 0) return;
+    const branchLine = offsetLine(method, body, open);
+    const branchEndLine = offsetLine(method, body, close);
+    if (line >= branchLine && line <= branchEndLine) {
+      predicates.push({ kind: "field-tag", parameter, anyOf: values, negated: conditionNegated });
+      return;
+    }
+    const elseMatch = /^\s*else\s*\{/.exec(body.slice(close + 1));
+    if (!elseMatch) return;
+    const elseOpen = close + 1 + (elseMatch.index ?? 0) + elseMatch[0].lastIndexOf("{");
+    const elseClose = matchingBraceOffset(body, elseOpen);
+    if (elseClose < 0) return;
+    if (line >= offsetLine(method, body, elseOpen) && line <= offsetLine(method, body, elseClose)) {
+      predicates.push({ kind: "field-tag", parameter, anyOf: values, negated: !conditionNegated });
+    }
+  };
+  const constantComparison = /\bif\s*\(\s*(!\s*)?FieldTagEnum\.([A-Z][A-Z0-9_]*)\.getTagKey\s*\(\s*\)\s*\.equals\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\.getFieldTagInnerKey\s*\(\s*\)\s*\)\s*\)\s*\{/g;
+  for (const match of body.matchAll(constantComparison)) {
+    addScopedPredicate(match, match[3], [`FieldTagEnum.${match[2]}`], Boolean(match[1]));
+  }
+  const predicateCall = /\bif\s*\(\s*(!\s*)?FieldTagEnum\.(is[A-Za-z0-9_]+)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)(?:\.getFieldTagInnerKey\s*\(\s*\))?\s*\)\s*\)\s*\{/g;
+  for (const match of body.matchAll(predicateCall)) {
+    const accepted = fieldTagPredicateConstants(project, match[2]);
+    if (accepted) addScopedPredicate(match, match[3], accepted, Boolean(match[1]));
+  }
+  if (predicates.length === 0) return undefined;
+  return predicates.sort((a, b) =>
+    a.parameter.localeCompare(b.parameter)
+    || Number(a.negated) - Number(b.negated)
+    || a.anyOf.join("|").localeCompare(b.anyOf.join("|"))
+  );
+}
+
+function offsetLine(method: JavaMethodInfo, body: string, offset: number): number {
+  return method.bodyStartLine + body.slice(0, offset).split("\n").length - 1;
 }
 
 function filterKnownNullBranches<T extends { line: number }>(

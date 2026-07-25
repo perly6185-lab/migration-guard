@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { assessJavaServicesForRust, renderServiceRustAssessment } from "./serviceRustAssessment.js";
-import { createJavaEndpointAnalyzer } from "./javaEndpointAnalysis.js";
+import { callGraphEdgeMatchesFieldTags, createJavaEndpointAnalyzer } from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
 
 test("service Rust assessment includes implemented methods outside controller reachability", async () => {
@@ -286,6 +286,7 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " }",
       " public void unscopedAsync() { syncUpdateCalculateLocalValueWithContext(); }",
       " public void typedText(Command command) { typedUpdate(command, TEXT_KEYS); }",
+      " public void untyped(Command command) { execute(command); }",
       " public void directTypedText(Command command) { validateFieldType(command, TEXT_KEYS); execute(command); }",
       " private void typedUpdate(Command command, Set<String> supportedTagKeys) {",
       "  validateFieldType(command, supportedTagKeys);",
@@ -497,6 +498,21 @@ test("Java call graph specializes literal-null branches without assuming variabl
     const directTypedText = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "directTypedText")!, { maxDepth: 5, maxEdges: 30 });
     assert.equal(directTypedText.callGraph.nodes.some((node) => node.methodName === "fillOnly"), false);
     assert.ok(directTypedText.callGraph.nodes.some((node) => node.methodName === "possibleText"));
+    const untyped = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "untyped")!, { maxDepth: 5, maxEdges: 80 });
+    assert.deepEqual(
+      untyped.callGraph.edges.find((edge) => edge.call.method === "fillOnly")?.predicates,
+      [{ kind: "field-tag", parameter: "reqVO", anyOf: ["FieldTagEnum.FILL_DIMENSION"], negated: false }]
+    );
+    assert.deepEqual(
+      untyped.callGraph.edges.find((edge) => edge.call.method === "groupRefOnly")?.predicates,
+      [{ kind: "field-tag", parameter: "reqVO", anyOf: ["FieldTagEnum.GROUP_REF"], negated: false }]
+    );
+    const textReachableMethods = untyped.callGraph.edges
+      .filter((edge) => callGraphEdgeMatchesFieldTags(edge, { reqVO: ["FieldTagEnum.TEXT"] }))
+      .map((edge) => edge.call.method);
+    assert.ok(textReachableMethods.includes("possibleText"));
+    assert.equal(textReachableMethods.includes("fillOnly"), false);
+    assert.equal(textReachableMethods.includes("groupRefOnly"), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
