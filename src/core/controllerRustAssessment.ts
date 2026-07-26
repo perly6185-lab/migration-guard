@@ -22,6 +22,22 @@ export interface ControllerRustAssessmentOptions {
   maxExpansionDepth?: number;
   maxExpansionEdges?: number;
   maxExpansionRounds?: number;
+  onProgress?: (progress: ControllerAssessmentProgress) => void;
+}
+
+export interface ControllerAssessmentProgress {
+  phase: "started" | "completed";
+  completed: number;
+  total: number;
+  route: string;
+  handler: string;
+  elapsedMs: number;
+  routeElapsedMs: number;
+  cache: {
+    methodCallEntries: number;
+    methodCallHits: number;
+    methodCallMisses: number;
+  };
 }
 
 export interface ControllerMethodAssessment {
@@ -206,7 +222,19 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
   const analyzer = await createJavaEndpointAnalyzer(options.root, Boolean(options.includeTests));
   const sourceIdentity = await captureAssessmentSourceIdentity(analyzer.root);
   const routes = analyzer.routes.slice(0, positiveLimit(options.limit, analyzer.routes.length));
-  const methods = routes.map((route): ControllerMethodAssessment => {
+  const startedAt = Date.now();
+  const methods = routes.map((route, index): ControllerMethodAssessment => {
+    const routeStartedAt = Date.now();
+    options.onProgress?.({
+      phase: "started",
+      completed: index,
+      total: routes.length,
+      route: `${route.method} ${route.path}`,
+      handler: `${route.className}.${route.methodName}`,
+      elapsedMs: routeStartedAt - startedAt,
+      routeElapsedMs: 0,
+      cache: analyzer.cacheStats()
+    });
     const expansion = options.adaptive ? analyzer.analyzeAdaptive({
       endpoint: route.path,
       method: route.method,
@@ -239,7 +267,7 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
     })).sort(compareAmbiguousOccurrences);
     const truncation = createTruncationDiagnostic(source);
     const transactionSelfInvocations = findRiskyTransactionSelfInvocations(source);
-    return {
+    const result: ControllerMethodAssessment = {
       method: route.method,
       path: route.path,
       file: route.file,
@@ -261,6 +289,17 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       transactionSelfInvocations: [...new Set(transactionSelfInvocations.map((item) => `${item.edge} [${item.sourceTransaction} -> ${item.targetTransaction}]`))],
       transactionSelfInvocationReasons: [...new Set(transactionSelfInvocations.map((item) => item.reason))].sort()
     };
+    options.onProgress?.({
+      phase: "completed",
+      completed: index + 1,
+      total: routes.length,
+      route: `${route.method} ${route.path}`,
+      handler: `${route.className}.${route.methodName}`,
+      elapsedMs: Date.now() - startedAt,
+      routeElapsedMs: Date.now() - routeStartedAt,
+      cache: analyzer.cacheStats()
+    });
+    return result;
   });
   const unclassifiedBoundaryInventory = aggregateUnclassifiedBoundaries(methods);
   const ambiguousCallInventory = aggregateAmbiguousCalls(methods);
@@ -272,7 +311,17 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
     createdAt: new Date().toISOString(),
     root: analyzer.root,
     sourceIdentity,
-    assessmentScope: { ...options, root: analyzer.root },
+    assessmentScope: {
+      root: analyzer.root,
+      maxDepth: options.maxDepth,
+      maxEdges: options.maxEdges,
+      limit: options.limit,
+      includeTests: options.includeTests,
+      adaptive: options.adaptive,
+      maxExpansionDepth: options.maxExpansionDepth,
+      maxExpansionEdges: options.maxExpansionEdges,
+      maxExpansionRounds: options.maxExpansionRounds
+    },
     routeCount: analyzer.routes.length,
     assessedCount: methods.length,
     summary: {

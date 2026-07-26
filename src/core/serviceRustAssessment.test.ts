@@ -4,8 +4,73 @@ import os from "node:os";
 import path from "node:path";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { assessJavaServicesForRust, renderServiceRustAssessment } from "./serviceRustAssessment.js";
-import { createJavaEndpointAnalyzer } from "./javaEndpointAnalysis.js";
+import { callGraphEdgeMatchesFieldTags, createJavaEndpointAnalyzer, evaluateJavaPredicate } from "./javaEndpointAnalysis.js";
 import { createEndpointReplacementPlanFromJava } from "./endpointReplacementPlanner.js";
+
+test("tranObjList uses complete projection evidence without pruning unknown projections", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-field-projection-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "EngineTranObjectValueServiceImpl.java"), [
+      "package demo;",
+      "public class EngineTranObjectValueServiceImpl {",
+      " private FieldPercentageValueDataService fieldPercentageValueDataService;",
+      " private FieldDateFormatValueDataService fieldDateFormatValueDataService;",
+      " public Object tranObjList(Object fields, Object rows, Object selected, Object fun, Object total) {",
+      "  return tranObjList(fields, rows, selected, fun, total, true);",
+      " }",
+      " private Object tranObjList(Object fields, Object rows, Object selected, Object fun, Object total, boolean format) {",
+      "  fieldPercentageValueDataService.handleShowFieldValue(fields, rows);",
+      "  fieldDateFormatValueDataService.handleFieldDateFormat(fields, rows);",
+      "  return rows;",
+      " }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "FieldPercentageValueDataService.java"), [
+      "package demo;", "public class FieldPercentageValueDataService {",
+      " public void handleShowFieldValue(Object fields, Object rows) { percentageOnly(); }",
+      " private void percentageOnly() {}", "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "FieldDateFormatValueDataService.java"), [
+      "package demo;", "public class FieldDateFormatValueDataService {",
+      " public void handleFieldDateFormat(Object fields, Object rows) { dateOnly(); }",
+      " private void dateOnly() {}", "}"
+    ].join("\n"));
+    const analyzer = await createJavaEndpointAnalyzer(dir);
+    const candidate = analyzer.serviceMethods.find((item) =>
+      item.className === "EngineTranObjectValueServiceImpl"
+      && item.methodName === "tranObjList"
+      && item.parameterTypes.length === 5)!;
+    const known = analyzer.traverseMethodSymbolically(candidate, {
+      fieldProjection: {
+        panelId: "10",
+        selectedAliases: ["name"],
+        formatterKinds: [],
+        complete: true,
+        reasons: [],
+        evidenceHash: "a".repeat(64)
+      }
+    });
+    assert.ok(known.edges.some((edge) =>
+      edge.targetMethodId?.includes("handleShowFieldValue") && !edge.reachable));
+    assert.ok(known.edges.some((edge) =>
+      edge.targetMethodId?.includes("handleFieldDateFormat") && !edge.reachable));
+    const unknown = analyzer.traverseMethodSymbolically(candidate, {
+      fieldProjection: {
+        panelId: "10",
+        selectedAliases: ["legacy"],
+        formatterKinds: [],
+        complete: false,
+        reasons: ["projection-formatter-classification-missing:legacy"],
+        evidenceHash: "b".repeat(64)
+      }
+    });
+    assert.ok(unknown.edges.some((edge) =>
+      edge.targetMethodId?.includes("handleShowFieldValue") && edge.reachable));
+    assert.ok(unknown.edges.some((edge) =>
+      edge.targetMethodId?.includes("handleFieldDateFormat") && edge.reachable));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
 
 test("service Rust assessment includes implemented methods outside controller reachability", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-service-rust-"));
@@ -277,6 +342,7 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " public void both() { List<Long> ids = new ArrayList<>(); work(null); work(ids); }",
       " public void fullMode() { mode(true, Mode.FULL); }",
       " public void incrementalMode() { mode(false, Mode.INCREMENTAL); }",
+      " public void stringMode() { stringBranch(Constants.LEFT); }",
       " public void fullModeForward() { forwardMode(true, Mode.FULL); }",
       " public void boxedFalse() { boxedMode(Boolean.FALSE); }",
       " public void scopedAsync() {",
@@ -286,6 +352,21 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " }",
       " public void unscopedAsync() { syncUpdateCalculateLocalValueWithContext(); }",
       " public void typedText(Command command) { typedUpdate(command, TEXT_KEYS); }",
+      " public void untyped(Command command) { execute(command); }",
+      " public void recursive() { recursive(); }",
+      " public void noFailure() { conditionalFailure(false); }",
+      " private void conditionalFailure(boolean fail) {",
+      "  if (fail) { throw new IllegalArgumentException(); }",
+      " }",
+      " @Transactional",
+      " @Cacheable",
+      " @Async",
+      " public void behavior() {",
+      "  CompletableFuture.runAsync(task);",
+      "  webSocketMessageSender.sendObject(event);",
+      "  redisTemplate.opsForValue();",
+      "  try { throw new IllegalStateException(); } catch (RuntimeException ex) { }",
+      " }",
       " public void directTypedText(Command command) { validateFieldType(command, TEXT_KEYS); execute(command); }",
       " private void typedUpdate(Command command, Set<String> supportedTagKeys) {",
       "  validateFieldType(command, supportedTagKeys);",
@@ -358,6 +439,11 @@ test("Java call graph specializes literal-null branches without assuming variabl
       " private void boolIncremental() { }",
       " private void enumFull() { }",
       " private void enumIncremental() { }",
+      " private void stringBranch(String mode) {",
+      "  if (Constants.RIGHT.equals(mode)) { stringRight(); } else { stringLeft(); }",
+      " }",
+      " private void stringRight() { }",
+      " private void stringLeft() { }",
       " private void forwardMode(boolean full, Mode mode) { mode(full, mode); }",
       " private void boxedMode(Boolean full) {",
       "  if (full) {",
@@ -421,6 +507,90 @@ test("Java call graph specializes literal-null branches without assuming variabl
       "}"
     ].join("\n"));
     const analyzer = await createJavaEndpointAnalyzer(dir);
+    const typedTextCandidate = analyzer.serviceMethods.find((item) => item.methodName === "typedText")!;
+    const firstSummary = analyzer.summarizeMethod(typedTextCandidate);
+    const secondSummary = analyzer.summarizeMethod(typedTextCandidate);
+    assert.equal(firstSummary.summaryHash, secondSummary.summaryHash);
+    assert.equal(firstSummary.sourceHash, secondSummary.sourceHash);
+    assert.ok(firstSummary.calls.some((call) => call.method === "typedUpdate"));
+    const textPredicate = { kind: "field-tag" as const, parameter: "command", anyOf: ["FieldTagEnum.TEXT"], negated: false };
+    assert.equal(evaluateJavaPredicate(textPredicate, {}).result, "unknown");
+    assert.equal(evaluateJavaPredicate(textPredicate, { command: ["FieldTagEnum.GROUP_REF"] }).result, "false");
+    assert.equal(evaluateJavaPredicate(textPredicate, { command: ["FieldTagEnum.TEXT", "FieldTagEnum.GROUP_REF"] }).result, "unknown");
+    const symbolicText = analyzer.traverseMethodSymbolically(
+      analyzer.serviceMethods.find((item) => item.methodName === "untyped")!,
+      { fieldTags: { command: ["FieldTagEnum.TEXT"] } }
+    );
+    assert.ok(symbolicText.edges.some((edge) => edge.targetMethodId?.includes("possibleText") && edge.reachable));
+    assert.ok(symbolicText.edges.some((edge) => edge.targetMethodId?.includes("fillOnly") && edge.decision === "false"));
+    assert.ok(symbolicText.edges.some((edge) => edge.targetMethodId?.includes("groupRefOnly") && edge.decision === "false"));
+    const symbolicUnknown = analyzer.traverseMethodSymbolically(
+      analyzer.serviceMethods.find((item) => item.methodName === "untyped")!
+    );
+    assert.ok(symbolicUnknown.edges.some((edge) => edge.targetMethodId?.includes("fillOnly")
+      && edge.decision === "unknown" && edge.reachable));
+    assert.equal(
+      symbolicUnknown.traversalHash,
+      analyzer.traverseMethodSymbolically(analyzer.serviceMethods.find((item) => item.methodName === "untyped")!).traversalHash
+    );
+    const symbolicStrategy = analyzer.traverseMethodSymbolically(typedTextCandidate, {
+      fieldTags: { command: ["FieldTagEnum.TEXT"] }
+    });
+    assert.ok(symbolicStrategy.edges.some((edge) => edge.targetMethodId?.includes("TextFieldUpdateStrategy") && edge.reachable));
+    assert.ok(symbolicStrategy.edges.some((edge) => edge.targetMethodId?.includes("GroupRefFieldUpdateStrategy")
+      && edge.decision === "false"));
+    const symbolicRecursive = analyzer.traverseMethodSymbolically(
+      analyzer.serviceMethods.find((item) => item.methodName === "recursive")!
+    );
+    assert.ok(symbolicRecursive.diagnostics.some((item) => item.kind === "state-revisit"));
+    const behaviorCandidate = analyzer.serviceMethods.find((item) => item.methodName === "behavior")!;
+    const behaviorSummary = analyzer.summarizeMethod(behaviorCandidate);
+    assert.deepEqual(
+      [...new Set(behaviorSummary.behaviorBoundaries.map((boundary) => boundary.kind))].sort(),
+      ["async", "cache", "event", "exception", "transaction"]
+    );
+    assert.deepEqual(
+      behaviorSummary.behaviorBoundaries
+        .filter((boundary) => boundary.kind === "exception")
+        .map((boundary) => boundary.operation)
+        .sort(),
+      ["catch", "throw"]
+    );
+    const symbolicBehavior = analyzer.traverseMethodSymbolically(behaviorCandidate);
+    assert.equal(symbolicBehavior.boundaries.filter((boundary) => boundary.reachable).length,
+      behaviorSummary.behaviorBoundaries.length);
+    assert.equal(symbolicBehavior.traversalHash,
+      analyzer.traverseMethodSymbolically(behaviorCandidate).traversalHash);
+    const symbolicNoFailure = analyzer.traverseMethodSymbolically(
+      analyzer.serviceMethods.find((item) => item.methodName === "noFailure")!
+    );
+    assert.ok(symbolicNoFailure.boundaries.some((boundary) =>
+      boundary.kind === "exception" && boundary.decision === "false"));
+    const symbolicInitialized = analyzer.traverseMethodSymbolically(
+      analyzer.serviceMethods.find((item) => item.methodName === "initialized")!
+    );
+    assert.ok(symbolicInitialized.states.some((state) => state.methodId.includes("work")
+      && state.nonNullParams.includes("ids")));
+    assert.ok(symbolicInitialized.edges.some((edge) => edge.targetMethodId?.includes("fullOnly")
+      && edge.decision === "false"));
+    assert.ok(symbolicInitialized.edges.some((edge) => edge.targetMethodId?.includes("incrementalOnly")
+      && edge.reachable));
+    const symbolicMode = analyzer.traverseMethodSymbolically(
+      analyzer.serviceMethods.find((item) => item.methodName === "fullMode")!
+    );
+    assert.ok(symbolicMode.states.some((state) => state.methodId.includes("mode")
+      && state.booleanParams.full === true && state.enumParams.mode === "Mode.FULL"));
+    assert.ok(symbolicMode.edges.some((edge) => edge.targetMethodId?.includes("boolIncremental")
+      && edge.decision === "false"));
+    assert.ok(symbolicMode.edges.some((edge) => edge.targetMethodId?.includes("enumIncremental")
+      && edge.decision === "false"));
+    const symbolicStringMode = analyzer.traverseMethodSymbolically(
+      analyzer.serviceMethods.find((item) => item.methodName === "stringMode")!
+    );
+    assert.ok(symbolicStringMode.edges.some((edge) => edge.targetMethodId?.includes("stringRight")
+      && edge.reachable));
+    assert.ok(symbolicStringMode.edges.some((edge) => edge.targetMethodId?.includes("stringLeft")
+      && edge.reachable));
     const full = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "full")!, { maxDepth: 5, maxEdges: 30 });
     assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullOnly"));
     assert.ok(full.callGraph.nodes.some((node) => node.methodName === "fullGuarded"));
@@ -490,9 +660,30 @@ test("Java call graph specializes literal-null branches without assuming variabl
     assert.equal(typedText.callGraph.nodes.some((node) => node.methodName === "groupStrategyOnly"), false);
     assert.ok(typedText.callGraph.nodes.some((node) => node.methodName === "execute"
       && node.id.includes("FieldTagEnum.TEXT|FieldTagEnum.TEXT_MULTI")));
+    assert.deepEqual(
+      typedText.callGraph.edges.find((edge) => edge.call.method === "execute")?.context?.fieldTagParams,
+      { command: ["FieldTagEnum.TEXT", "FieldTagEnum.TEXT_MULTI"] }
+    );
+    const textStrategyEdge = typedText.callGraph.edges.find((edge) => edge.to?.includes("TextFieldUpdateStrategy.apply"));
+    assert.ok(textStrategyEdge && callGraphEdgeMatchesFieldTags(textStrategyEdge, { $fieldTag: ["FieldTagEnum.TEXT"] }));
     const directTypedText = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "directTypedText")!, { maxDepth: 5, maxEdges: 30 });
     assert.equal(directTypedText.callGraph.nodes.some((node) => node.methodName === "fillOnly"), false);
     assert.ok(directTypedText.callGraph.nodes.some((node) => node.methodName === "possibleText"));
+    const untyped = analyzer.analyzeServiceMethod(analyzer.serviceMethods.find((item) => item.methodName === "untyped")!, { maxDepth: 5, maxEdges: 80 });
+    assert.deepEqual(
+      untyped.callGraph.edges.find((edge) => edge.call.method === "fillOnly")?.predicates,
+      [{ kind: "field-tag", parameter: "reqVO", anyOf: ["FieldTagEnum.FILL_DIMENSION"], negated: false }]
+    );
+    assert.deepEqual(
+      untyped.callGraph.edges.find((edge) => edge.call.method === "groupRefOnly")?.predicates,
+      [{ kind: "field-tag", parameter: "reqVO", anyOf: ["FieldTagEnum.GROUP_REF"], negated: false }]
+    );
+    const textReachableMethods = untyped.callGraph.edges
+      .filter((edge) => callGraphEdgeMatchesFieldTags(edge, { reqVO: ["FieldTagEnum.TEXT"] }))
+      .map((edge) => edge.call.method);
+    assert.ok(textReachableMethods.includes("possibleText"));
+    assert.equal(textReachableMethods.includes("fillOnly"), false);
+    assert.equal(textReachableMethods.includes("groupRefOnly"), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -573,6 +764,15 @@ test("SQL source modeling covers inherited BaseMapper calls with transaction and
     assert.equal(report.sqlSources[0]?.operation, "read");
     assert.equal(report.sqlSources[0]?.transactional, true);
     assert.deepEqual(report.sqlSources[0]?.contextSignals, ["datasource", "tenant", "transaction"]);
+    const runCandidate = analyzer.serviceMethods.find((item) => item.className === "TaskService" && item.methodName === "run")!;
+    const runSummary = analyzer.summarizeMethod(runCandidate);
+    assert.ok(runSummary.behaviorBoundaries.some((boundary) =>
+      boundary.kind === "sql"
+      && boundary.sqlSource?.source === "base-mapper"
+      && boundary.sqlSource.transactional));
+    assert.ok(runSummary.behaviorBoundaries.some((boundary) => boundary.kind === "transaction"));
+    const symbolicRun = analyzer.traverseMethodSymbolically(runCandidate);
+    assert.ok(symbolicRun.boundaries.some((boundary) => boundary.kind === "sql" && boundary.reachable));
     const planned = createEndpointReplacementPlanFromJava(report);
     assert.ok(planned.graph.nodes.some((item) => item.id.startsWith("sql:base-mapper")));
     assert.ok(planned.plan.findings.includes("RP-SQL-BASE-MAPPER-GENERATED"));

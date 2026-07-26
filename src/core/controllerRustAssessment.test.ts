@@ -4,6 +4,137 @@ import os from "node:os";
 import path from "node:path";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { assessJavaControllersForRust } from "./controllerRustAssessment.js";
+import { createJavaEndpointAnalyzer } from "./javaEndpointAnalysis.js";
+import { createJavaFieldConfigSnapshot } from "./javaFieldConfigSnapshot.js";
+
+test("route symbolic shadow applies field projections only to the evidenced tranObjList call", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-projection-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    const files: Record<string, string[]> = {
+      "ProjectionController.java": [
+        "package demo;", "@RestController", "public class ProjectionController {",
+        " private ProjectionService projectionService;", " @GetMapping(\"/projection\")",
+        " public Object run() { return projectionService.run(); }", "}"
+      ],
+      "ProjectionService.java": [
+        "package demo;", "public class ProjectionService {",
+        " private EngineTranObjectValueServiceImpl engineTranObjectValueService;",
+        " public Object run() { return engineTranObjectValueService.tranObjList(null, null, null, null, null); }", "}"
+      ],
+      "EngineTranObjectValueServiceImpl.java": [
+        "package demo;", "public class EngineTranObjectValueServiceImpl {",
+        " private FieldPercentageValueDataService fieldPercentageValueDataService;",
+        " private FieldDateFormatValueDataService fieldDateFormatValueDataService;",
+        " public Object tranObjList(Object fields, Object rows, Object selected, Object fun, Object total) {",
+        "  fieldPercentageValueDataService.handleShowFieldValue(fields, rows);",
+        "  fieldDateFormatValueDataService.handleFieldDateFormat(fields, rows);",
+        "  return rows;", " }", "}"
+      ],
+      "FieldPercentageValueDataService.java": [
+        "package demo;", "public class FieldPercentageValueDataService {",
+        " public void handleShowFieldValue(Object fields, Object rows) {}", "}"
+      ],
+      "FieldDateFormatValueDataService.java": [
+        "package demo;", "public class FieldDateFormatValueDataService {",
+        " public void handleFieldDateFormat(Object fields, Object rows) {}", "}"
+      ]
+    };
+    for (const [name, lines] of Object.entries(files)) {
+      await writeFile(path.join(dir, "demo", name), lines.join("\n"));
+    }
+    const analyzer = await createJavaEndpointAnalyzer(dir);
+    const service = analyzer.serviceMethods.find((item) =>
+      item.className === "ProjectionService" && item.methodName === "run")!;
+    const callId = analyzer.summarizeMethod(service).calls
+      .find((call) => call.method === "tranObjList")!.id;
+    const snapshot = createJavaFieldConfigSnapshot({
+      source: analyzer.sourceIdentity,
+      tenantId: "7",
+      panelIds: ["10"],
+      fields: [{ fieldId: "1", panelId: "10", alias: "name", formatterKinds: [] }]
+    });
+    const report = analyzer.analyzeRouteSymbolicShadow({
+      endpoint: "/projection",
+      method: "GET",
+      maxDepth: 8,
+      maxEdges: 100,
+      fieldConfigSnapshot: snapshot,
+      fieldProjectionSites: [{
+        callId,
+        tenantId: "7",
+        panelId: "10",
+        selectedAliases: ["name"]
+      }]
+    });
+    assert.equal(report.fieldProjectionEvidence?.trustedSnapshot, true);
+    assert.deepEqual(report.fieldProjectionEvidence?.appliedCallIds, [callId]);
+    assert.equal(report.symbolic.methodIds.some((id) => id.includes("handleShowFieldValue")), false);
+    assert.equal(report.symbolic.methodIds.some((id) => id.includes("handleFieldDateFormat")), false);
+
+    const unknown = analyzer.analyzeRouteSymbolicShadow({
+      endpoint: "/projection",
+      method: "GET",
+      maxDepth: 8,
+      maxEdges: 100,
+      fieldConfigSnapshot: snapshot,
+      fieldProjectionSites: [{
+        callId,
+        tenantId: "7",
+        panelId: "10",
+        selectedAliases: ["missing"]
+      }]
+    });
+    assert.deepEqual(unknown.fieldProjectionEvidence?.rejectedCallIds, [callId]);
+    assert.equal(unknown.symbolic.methodIds.some((id) => id.includes("handleShowFieldValue")), true);
+    assert.equal(unknown.symbolic.methodIds.some((id) => id.includes("handleFieldDateFormat")), true);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("route symbolic shadow derives only proven entry facts and compares shared graphs", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-symbolic-shadow-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "ShadowController.java"), [
+      "package demo;", "@RestController", "public class ShadowController {",
+      " @GetMapping(\"/shadow/{id}\")",
+      " public Object run(@PathVariable Long id, @RequestParam(required = false) String query, boolean dryRun) {",
+      "  return handle(id, query, dryRun);",
+      " }",
+      " private Object handle(Long id, String query, boolean dryRun) { return null; }",
+      "}"
+    ].join("\n"));
+    const analyzer = await createJavaEndpointAnalyzer(dir);
+    const first = analyzer.analyzeRouteSymbolicShadow({
+      endpoint: "/shadow/{id}",
+      method: "GET",
+      maxDepth: 8,
+      maxEdges: 100
+    });
+    assert.deepEqual(first.initialFacts.nonNullParams, ["dryRun", "id"]);
+    assert.equal(first.initialFacts.nonNullParams.includes("query"), false);
+    assert.equal(first.verdict, "aligned");
+    assert.equal(first.symbolic.stateCount, 2);
+    assert.deepEqual(first.symbolic.stateVariantHotspots, []);
+    assert.deepEqual(first.symbolic.budgetRejectionSources, []);
+    assert.deepEqual(first.differences.methodsMissingFromSymbolic, []);
+    assert.deepEqual(first.differences.edgesMissingFromSymbolic, []);
+    assert.equal(first.reportHash, analyzer.analyzeRouteSymbolicShadow({
+      endpoint: "/shadow/{id}",
+      method: "GET",
+      maxDepth: 8,
+      maxEdges: 100
+    }).reportHash);
+    const truncated = analyzer.analyzeRouteSymbolicShadow({
+      endpoint: "/shadow/{id}",
+      method: "GET",
+      maxDepth: 1,
+      maxEdges: 100
+    });
+    assert.equal(truncated.legacy.truncated, true);
+    assert.equal(truncated.verdict, "inconclusive");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
 
 test("controller Rust assessment analyzes normalized routes and aggregates strict blockers", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-rust-"));
@@ -87,12 +218,29 @@ test("controller Rust assessment adaptively expands truncated call graphs", asyn
     assert.equal(fixed.summary.truncationInventory.routes, 1);
     assert.equal(fixed.truncationInventory[0]?.edgeCapHit, true);
     assert.equal(fixed.truncationInventory[0]?.route, "GET /chain");
-    const adaptive = await assessJavaControllersForRust({ root: dir, maxDepth: 2, maxEdges: 2, adaptive: true, maxExpansionDepth: 8, maxExpansionEdges: 20, maxExpansionRounds: 3 });
+    const progress: Array<{ completed: number; total: number; cacheHits: number }> = [];
+    const adaptive = await assessJavaControllersForRust({
+      root: dir,
+      maxDepth: 2,
+      maxEdges: 2,
+      adaptive: true,
+      maxExpansionDepth: 8,
+      maxExpansionEdges: 20,
+      maxExpansionRounds: 3,
+      onProgress: (item) => item.phase === "completed" && progress.push({
+        completed: item.completed,
+        total: item.total,
+        cacheHits: item.cache.methodCallHits
+      })
+    });
     assert.equal(adaptive.summary.findings["RP-GRAPH-EDGE-CAP"] ?? 0, 0);
     assert.equal(adaptive.summary.adaptivelyExpanded, 1);
     assert.equal(adaptive.methods[0]?.expansionStatus, "complete");
     assert.equal(adaptive.truncationInventory.length, 0);
     assert.deepEqual(adaptive.highFanoutInventory, []);
+    assert.deepEqual(progress.map((item) => [item.completed, item.total]), [[1, 1]]);
+    assert.ok((progress[0]?.cacheHits ?? 0) > 0);
+    assert.equal("onProgress" in adaptive.assessmentScope, false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

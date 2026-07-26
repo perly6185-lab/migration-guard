@@ -1,7 +1,16 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { writeJsonFile, writeTextFile, toPosixPath } from "./files.js";
+import { sha256 } from "./hash.js";
 import { classifyJavaSemantic } from "./javaSemanticRegistry.js";
+import { stableStringify } from "./normalize.js";
+import { captureAssessmentSourceIdentity, type AssessmentSourceIdentity } from "./assessmentSourceIdentity.js";
+import {
+  deriveJavaFieldProjectionFacts,
+  validateJavaFieldConfigSnapshot,
+  type JavaFieldConfigSnapshot,
+  type JavaFieldProjectionFacts
+} from "./javaFieldConfigSnapshot.js";
 
 export type JavaEndpointHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD" | "ALL";
 export type JavaEndpointRiskSeverity = "low" | "medium" | "high";
@@ -17,6 +26,7 @@ export interface AnalyzeJavaEndpointOptions {
 
 export interface JavaEndpointAnalyzer {
   root: string;
+  sourceIdentity: AssessmentSourceIdentity;
   routes: JavaEndpointRouteCandidate[];
   serviceMethods: JavaServiceMethodCandidate[];
   repositoryMethods: JavaRepositoryMethodCandidate[];
@@ -26,6 +36,39 @@ export interface JavaEndpointAnalyzer {
   analyzeServiceMethodAdaptive(candidate: JavaServiceMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
   analyzeRepositoryMethod(candidate: JavaRepositoryMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
   analyzeRepositoryMethodAdaptive(candidate: JavaRepositoryMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
+  summarizeMethod(candidate: JavaServiceMethodCandidate): JavaMethodSummary;
+  traverseMethodSymbolically(candidate: JavaServiceMethodCandidate, facts?: JavaSymbolicFacts): JavaSymbolicTraversalResult;
+  analyzeRouteSymbolicShadow(options: JavaRouteSymbolicShadowOptions): JavaRouteSymbolicShadowReport;
+  analyzeRouteLegacyTruncation(options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">): JavaRouteLegacyTruncationReport;
+  cacheStats(): JavaEndpointAnalyzerCacheStats;
+}
+
+export interface JavaRouteLegacyTruncationReport {
+  truncated: boolean;
+  reasons: string[];
+  frontierMethodIds: string[];
+  frontierUpstreamEdges: string[];
+  nodeCount: number;
+  edgeCount: number;
+}
+
+export interface JavaRouteSymbolicShadowOptions extends Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests"> {
+  maxSymbolicStates?: number;
+  fieldConfigSnapshot?: JavaFieldConfigSnapshot;
+  fieldProjectionSites?: JavaFieldProjectionSite[];
+}
+
+export interface JavaFieldProjectionSite {
+  callId: string;
+  tenantId: string;
+  panelId: string;
+  selectedAliases: string[];
+}
+
+export interface JavaEndpointAnalyzerCacheStats {
+  methodCallEntries: number;
+  methodCallHits: number;
+  methodCallMisses: number;
 }
 
 export interface AdaptiveJavaAnalysisOptions {
@@ -150,6 +193,232 @@ export interface JavaEndpointCallGraphEdge {
     };
   resolution: "field-injection" | "same-class" | "static-or-external" | "ambiguous" | "unresolved";
   resolutionCandidates?: Array<{ methodId: string; signature: string; score: number }>;
+  context?: JavaCallGraphContext;
+  predicates?: JavaCallGraphPredicate[];
+}
+
+export interface JavaCallGraphContext {
+  nullParams?: string[];
+  nonNullParams?: string[];
+  booleanParams?: Record<string, boolean>;
+  enumParams?: Record<string, string>;
+  fieldTagParams?: Record<string, string[]>;
+}
+
+export interface JavaCallGraphPredicate {
+  kind: "field-tag";
+  parameter: string;
+  anyOf: string[];
+  negated: boolean;
+}
+
+export type JavaPredicateTruth = "true" | "false" | "unknown";
+
+export interface JavaMethodSummaryCall {
+  id: string;
+  receiver?: string;
+  method: string;
+  expression: string;
+  line: number;
+  argumentCount: number;
+  argumentTypes: string[];
+  argumentIdentifiers: Array<string | undefined>;
+  argumentNulls: boolean[];
+  argumentNonNulls: boolean[];
+  argumentBooleans: Array<boolean | undefined>;
+  argumentEnumConstants: Array<string | undefined>;
+  lexicalBooleanFacts: Array<[string, boolean]>;
+  predicates: JavaCallGraphPredicate[];
+  targets: JavaMethodSummaryTarget[];
+  resolution: "resolved" | "ambiguous" | "external" | "unresolved";
+}
+
+export interface JavaMethodSummaryTarget {
+  id: string;
+  methodId: string;
+  qualifiedClassName: string;
+  methodName: string;
+  signature: string;
+  parameterNames: string[];
+  enumParameterIndexes: number[];
+  predicates: JavaCallGraphPredicate[];
+}
+
+export interface JavaMethodSummary {
+  version: 4;
+  methodId: string;
+  qualifiedClassName: string;
+  methodName: string;
+  signature: string;
+  file: string;
+  line: number;
+  sourceHash: string;
+  calls: JavaMethodSummaryCall[];
+  behaviorBoundaries: JavaMethodBehaviorBoundary[];
+  summaryHash: string;
+}
+
+export type JavaMethodBehaviorKind = "sql" | "cache" | "event" | "transaction" | "async" | "exception";
+
+export interface JavaMethodBehaviorBoundary {
+  id: string;
+  kind: JavaMethodBehaviorKind;
+  source: "method" | "call" | "sql";
+  line: number;
+  symbol: string;
+  callId?: string;
+  semanticRuleId?: string;
+  operation?: string;
+  sqlSource?: Pick<JavaSqlSourceInfo, "id" | "source" | "operation" | "dynamic" | "transactional" | "contextSignals" | "tables">;
+  predicates: JavaCallGraphPredicate[];
+}
+
+export interface JavaPredicateEvaluation {
+  result: JavaPredicateTruth;
+  predicate: JavaCallGraphPredicate;
+  facts: string[];
+  reason: string;
+}
+
+export interface JavaSymbolicFacts {
+  nullParams?: Iterable<string>;
+  nonNullParams?: Iterable<string>;
+  booleanParams?: Record<string, boolean>;
+  enumParams?: Record<string, string>;
+  fieldTags?: Record<string, Iterable<string>>;
+  fieldProjection?: JavaFieldProjectionFacts;
+}
+
+export interface JavaSymbolicTraversalState {
+  id: string;
+  methodId: string;
+  summaryHash: string;
+  nullParams: string[];
+  nonNullParams: string[];
+  booleanParams: Record<string, boolean>;
+  enumParams: Record<string, string>;
+  fieldTags: Record<string, string[]>;
+  fieldProjection?: JavaFieldProjectionFacts;
+}
+
+export interface JavaSymbolicTraversalEdge {
+  id: string;
+  fromState: string;
+  toState?: string;
+  callId: string;
+  targetMethodId?: string;
+  resolution: JavaMethodSummaryCall["resolution"];
+  decision: JavaPredicateTruth;
+  reachable: boolean;
+  evidence: JavaPredicateEvaluation[];
+  proofs: string[];
+}
+
+export interface JavaSymbolicTraversalResult {
+  version: 1;
+  entryMethodId: string;
+  entryStateId: string;
+  status: "complete" | "state-budget-exhausted";
+  states: JavaSymbolicTraversalState[];
+  edges: JavaSymbolicTraversalEdge[];
+  boundaries: JavaSymbolicTraversalBoundary[];
+  diagnostics: Array<
+    { kind: "state-revisit"; stateId: string; edgeId: string }
+    | { kind: "contradictory-facts"; stateId: string; parameter: string }
+    | { kind: "state-budget-exhausted"; stateId: string; edgeId: string; maxStates: number }
+  >;
+  traversalHash: string;
+}
+
+export interface JavaSymbolicTraversalBoundary {
+  id: string;
+  stateId: string;
+  boundaryId: string;
+  kind: JavaMethodBehaviorKind;
+  decision: JavaPredicateTruth;
+  reachable: boolean;
+  evidence: JavaPredicateEvaluation[];
+  proofs: string[];
+}
+
+export interface JavaRouteSymbolicShadowReport {
+  version: 1;
+  route: Pick<JavaEndpointRouteCandidate, "method" | "path" | "className" | "methodName" | "file" | "line">;
+  initialFacts: JavaSymbolicTraversalState;
+  legacy: {
+    methodIds: string[];
+    edgeIds: string[];
+    boundaryIds: string[];
+    truncated: boolean;
+    truncationReasons: string[];
+    frontierMethodIds: string[];
+    frontierUpstreamEdges: string[];
+  };
+  symbolic: {
+    methodIds: string[];
+    edgeIds: string[];
+    boundaryIds: string[];
+    stateCount: number;
+    stateVariantHotspots: Array<{ methodId: string; variants: number }>;
+    budgetRejectionSources: Array<{ methodId: string; rejectedStates: number }>;
+    unknownEdges: number;
+    complete: boolean;
+    diagnostics: JavaSymbolicTraversalResult["diagnostics"];
+  };
+  differences: {
+    methodsMissingFromSymbolic: string[];
+    methodsOnlyInSymbolic: string[];
+    edgesMissingFromSymbolic: string[];
+    edgesOnlyInSymbolic: string[];
+    boundariesMissingFromSymbolic: string[];
+    boundariesOnlyInSymbolic: string[];
+  };
+  verdict: "aligned" | "different" | "inconclusive";
+  fieldProjectionEvidence?: {
+    trustedSnapshot: boolean;
+    snapshotHash?: string;
+    reasons: string[];
+    appliedCallIds: string[];
+    rejectedCallIds: string[];
+  };
+  reportHash: string;
+}
+
+export function callGraphEdgeMatchesFieldTags(
+  edge: JavaEndpointCallGraphEdge,
+  fieldTags: Record<string, Iterable<string>>
+): boolean {
+  return (edge.predicates ?? []).every((predicate) => evaluateJavaPredicate(predicate, fieldTags).result !== "false");
+}
+
+export function evaluateJavaPredicate(
+  predicate: JavaCallGraphPredicate,
+  fieldTags: Record<string, Iterable<string>>
+): JavaPredicateEvaluation {
+  const actual = fieldTags[predicate.parameter];
+  if (!actual) {
+    return {
+      result: "unknown",
+      predicate,
+      facts: [],
+      reason: `No field-tag fact is available for ${predicate.parameter}; both paths must remain reachable.`
+    };
+  }
+  const values = [...actual].sort();
+  const expected = new Set(predicate.anyOf);
+  const matched = values.filter((value) => expected.has(value));
+  const unmatched = values.filter((value) => !expected.has(value));
+  const truth = predicate.negated
+    ? matched.length === 0 ? "true" : unmatched.length === 0 ? "false" : "unknown"
+    : unmatched.length === 0 ? "true" : matched.length === 0 ? "false" : "unknown";
+  return {
+    result: truth,
+    predicate,
+    facts: values.map((value) => `${predicate.parameter}=${value}`),
+    reason: truth === "unknown"
+      ? "The known field-tag set spans both matching and non-matching values; both paths must remain reachable."
+      : `All known field-tag values make the predicate ${truth}.`
+  };
 }
 
 export interface JavaEndpointRiskSignal {
@@ -254,6 +523,9 @@ interface JavaProjectModel {
   implementationsByInterface: Map<string, JavaTypeInfo[]>;
   sqlSources: JavaSqlSourceInfo[];
   sqlSourcesByMethodKey: Map<string, JavaSqlSourceInfo[]>;
+  methodCallCache: Map<string, ReturnType<typeof extractMethodCalls>>;
+  methodCallCacheHits: number;
+  methodCallCacheMisses: number;
 }
 
 const GENERATED_ACCESSOR_SOURCE_CACHE = new WeakMap<JavaProjectModel, Map<string, string[]>>();
@@ -312,6 +584,7 @@ interface JavaParamInfo {
   typeName: string;
   declaredType: string;
   varargs: boolean;
+  annotations: string[];
 }
 
 interface GraphTraceState {
@@ -402,12 +675,16 @@ export type JavaTypeRole = "controller" | "application-service" | "domain-servic
 
 export async function createJavaEndpointAnalyzer(rootValue: string, includeTests = false): Promise<JavaEndpointAnalyzer> {
   const root = path.resolve(rootValue);
-  const project = await collectJavaProject(root, includeTests);
+  const [project, sourceIdentity] = await Promise.all([
+    collectJavaProject(root, includeTests),
+    captureAssessmentSourceIdentity(root)
+  ]);
   const routes = extractSpringRoutes(project);
   const serviceMethods = extractServiceMethods(project);
   const repositoryMethods = extractRepositoryMethods(project);
   return {
     root,
+    sourceIdentity,
     routes,
     serviceMethods,
     repositoryMethods,
@@ -416,8 +693,800 @@ export async function createJavaEndpointAnalyzer(rootValue: string, includeTests
     analyzeServiceMethod: (candidate, options = {}) => analyzeJavaServiceMethodModel(project, routes, candidate, options),
     analyzeServiceMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "service", options),
     analyzeRepositoryMethod: (candidate, options = {}) => analyzeJavaMethodModel(project, routes, candidate, "repository", options),
-    analyzeRepositoryMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "repository", options)
+    analyzeRepositoryMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "repository", options),
+    summarizeMethod: (candidate) => summarizeJavaMethod(project, candidate),
+    traverseMethodSymbolically: (candidate, facts = {}) => traverseJavaMethodSymbolically(project, candidate, facts),
+    analyzeRouteSymbolicShadow: (options) => analyzeJavaRouteSymbolicShadow(project, routes, sourceIdentity, options),
+    analyzeRouteLegacyTruncation: (options) => analyzeJavaRouteLegacyTruncation(project, routes, options),
+    cacheStats: () => ({
+      methodCallEntries: project.methodCallCache.size,
+      methodCallHits: project.methodCallCacheHits,
+      methodCallMisses: project.methodCallCacheMisses
+    })
   };
+}
+
+function analyzeJavaRouteSymbolicShadow(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  sourceIdentity: AssessmentSourceIdentity,
+  options: JavaRouteSymbolicShadowOptions
+): JavaRouteSymbolicShadowReport {
+  const method = normalizeHttpMethod(options.method ?? "POST");
+  const endpoint = normalizeRoutePath(options.endpoint);
+  const route = selectRoute(findRouteMatches(routes, method, endpoint));
+  if (!route) throw new Error(`Java route not found for symbolic shadow: ${method} ${endpoint}`);
+  const type = findType(project, route.className, route.file);
+  const routeMethod = type?.methods.find((candidate) => candidate.name === route.methodName && candidate.line === route.line);
+  if (!type || !routeMethod) throw new Error(`Java route method not found for symbolic shadow: ${route.className}.${route.methodName}`);
+  const candidate: JavaServiceMethodCandidate = {
+    id: methodId(type, routeMethod),
+    className: type.name,
+    qualifiedClassName: type.qualifiedName,
+    methodName: routeMethod.name,
+    signature: routeMethod.signature,
+    returnType: routeMethod.returnType,
+    parameterTypes: routeMethod.params.map((param) => param.declaredType),
+    annotations: [...type.annotations, ...routeMethod.annotations],
+    file: routeMethod.file,
+    line: routeMethod.line
+  };
+  const initial = routeInitialSymbolicFacts(routeMethod);
+  const fieldProjectionEvidence = resolveFieldProjectionEvidence(sourceIdentity, options);
+  const symbolicTraversal = traverseJavaMethodSymbolically(
+    project,
+    candidate,
+    initial,
+    options.maxSymbolicStates,
+    fieldProjectionEvidence.projections
+  );
+  const legacyReport = analyzeJavaEndpointModel(project, routes, options, route);
+  const baseMethodId = (id: string): string => id.replace(/\[(?:null|nonnull|bool|enum|field-tag):[\s\S]*$/, "");
+  const legacyMethodIds = [...new Set(legacyReport.callGraph.nodes
+    .filter((node) => !node.id.startsWith("sql:") && !node.id.startsWith("external:"))
+    .map((node) => baseMethodId(node.id)))].sort();
+  const symbolicMethodIds = [...new Set(symbolicTraversal.states.map((state) => state.methodId))].sort();
+  const legacyEdgeIds = [...new Set(legacyReport.callGraph.edges
+    .filter((edge) => edge.to
+      && !edge.from.startsWith("external:")
+      && !edge.to.startsWith("sql:")
+      && !edge.to.startsWith("external:"))
+    .map((edge) => `${baseMethodId(edge.from)}->${baseMethodId(edge.to as string)}`))].sort();
+  const symbolicEdgeIds = [...new Set(symbolicTraversal.edges
+    .filter((edge) => edge.reachable && edge.toState && edge.targetMethodId)
+    .map((edge) => `${symbolicTraversal.states.find((state) => state.id === edge.fromState)?.methodId}->${edge.targetMethodId}`))].sort();
+  const legacyBoundaryIds = legacyShadowBoundaryIds(legacyReport);
+  const summaryByBoundary = new Map<string, JavaMethodBehaviorBoundary>();
+  const projectMethods = new Map(project.types.flatMap((candidateType) =>
+    candidateType.methods.map((candidateMethod) => [
+      methodId(candidateType, candidateMethod),
+      { type: candidateType, method: candidateMethod }
+    ] as const)
+  ));
+  for (const state of symbolicTraversal.states) {
+    const methodCandidate = projectMethods.get(state.methodId);
+    if (!methodCandidate) continue;
+    const summary = summarizeJavaMethod(project, {
+      id: state.methodId,
+      className: methodCandidate.type.name,
+      qualifiedClassName: methodCandidate.type.qualifiedName,
+      methodName: methodCandidate.method.name,
+      signature: methodCandidate.method.signature,
+      returnType: methodCandidate.method.returnType,
+      parameterTypes: methodCandidate.method.params.map((param) => param.declaredType),
+      annotations: [...methodCandidate.type.annotations, ...methodCandidate.method.annotations],
+      file: methodCandidate.method.file,
+      line: methodCandidate.method.line
+    });
+    for (const boundary of summary.behaviorBoundaries) summaryByBoundary.set(boundary.id, boundary);
+  }
+  const symbolicBoundaryIds = [...new Set(symbolicTraversal.boundaries
+    .filter((boundary) => boundary.reachable)
+    .map((boundary) => {
+      const detail = summaryByBoundary.get(boundary.boundaryId);
+      return detail ? shadowBoundaryKey(detail) : `${boundary.kind}:${boundary.boundaryId}`;
+    }))].sort();
+  const variantCounts = new Map<string, number>();
+  for (const state of symbolicTraversal.states) {
+    variantCounts.set(state.methodId, (variantCounts.get(state.methodId) ?? 0) + 1);
+  }
+  const stateVariantHotspots = [...variantCounts]
+    .filter(([, variants]) => variants > 1)
+    .map(([methodId, variants]) => ({ methodId, variants }))
+    .sort((a, b) => b.variants - a.variants || a.methodId.localeCompare(b.methodId))
+    .slice(0, 50);
+  const rejectionCounts = new Map<string, number>();
+  for (const diagnostic of symbolicTraversal.diagnostics) {
+    if (diagnostic.kind !== "state-budget-exhausted") continue;
+    const methodId = symbolicTraversal.edges.find((edge) => edge.id === diagnostic.edgeId)?.fromState;
+    const sourceMethodId = methodId
+      ? symbolicTraversal.states.find((state) => state.id === methodId)?.methodId
+      : undefined;
+    if (sourceMethodId) rejectionCounts.set(sourceMethodId, (rejectionCounts.get(sourceMethodId) ?? 0) + 1);
+  }
+  const budgetRejectionSources = [...rejectionCounts]
+    .map(([methodId, rejectedStates]) => ({ methodId, rejectedStates }))
+    .sort((a, b) => b.rejectedStates - a.rejectedStates || a.methodId.localeCompare(b.methodId))
+    .slice(0, 50);
+  const difference = (left: string[], right: string[]): string[] => {
+    const rightSet = new Set(right);
+    return left.filter((value) => !rightSet.has(value));
+  };
+  const differences = {
+    methodsMissingFromSymbolic: difference(legacyMethodIds, symbolicMethodIds),
+    methodsOnlyInSymbolic: difference(symbolicMethodIds, legacyMethodIds),
+    edgesMissingFromSymbolic: difference(legacyEdgeIds, symbolicEdgeIds),
+    edgesOnlyInSymbolic: difference(symbolicEdgeIds, legacyEdgeIds),
+    boundariesMissingFromSymbolic: difference(legacyBoundaryIds, symbolicBoundaryIds),
+    boundariesOnlyInSymbolic: difference(symbolicBoundaryIds, legacyBoundaryIds)
+  };
+  const truncated = legacyReport.callGraph.truncation.edgeCapHit
+    || legacyReport.callGraph.truncation.depthCapHit
+    || Boolean(legacyReport.callGraph.truncation.perMethodCallCapHit)
+    || legacyReport.callGraph.truncation.unexpandedBoundaryNodes.length > 0;
+  const explicitFrontierMethodIds = [...new Set([
+    ...legacyReport.callGraph.truncation.unexpandedBoundaryNodes,
+    ...(legacyReport.callGraph.truncation.perMethodCallCapNodes ?? []).map((item) => item.nodeId)
+  ].map(baseMethodId))].sort();
+  const edgeCapTailMethodIds = legacyReport.callGraph.truncation.edgeCapHit && explicitFrontierMethodIds.length === 0
+    ? legacyReport.callGraph.edges.slice(-100).map((edge) => baseMethodId(edge.from))
+    : [];
+  const frontierMethodIds = [...new Set([...explicitFrontierMethodIds, ...edgeCapTailMethodIds])].sort();
+  const frontierSet = new Set(frontierMethodIds);
+  const frontierUpstreamEdges = [...new Set(legacyReport.callGraph.edges
+    .filter((edge) => edge.to && frontierSet.has(baseMethodId(edge.to)))
+    .map((edge) => `${baseMethodId(edge.from)}->${baseMethodId(edge.to as string)}`))].sort();
+  const truncationReasons = [
+    legacyReport.callGraph.truncation.edgeCapHit ? "edge-cap" : undefined,
+    legacyReport.callGraph.truncation.depthCapHit ? "depth-cap" : undefined,
+    legacyReport.callGraph.truncation.perMethodCallCapHit ? "per-method-call-cap" : undefined,
+    legacyReport.callGraph.truncation.unexpandedBoundaryNodes.length > 0 ? "unexpanded-boundary" : undefined
+  ].filter((value): value is string => Boolean(value));
+  const hasDifferences = Object.values(differences).some((values) => values.length > 0);
+  const base = {
+    version: 1 as const,
+    route: {
+      method: route.method,
+      path: route.path,
+      className: route.className,
+      methodName: route.methodName,
+      file: route.file,
+      line: route.line
+    },
+    initialFacts: symbolicTraversal.states.find((state) => state.id === symbolicTraversal.entryStateId) as JavaSymbolicTraversalState,
+    legacy: {
+      methodIds: legacyMethodIds,
+      edgeIds: legacyEdgeIds,
+      boundaryIds: legacyBoundaryIds,
+      truncated,
+      truncationReasons,
+      frontierMethodIds,
+      frontierUpstreamEdges
+    },
+    symbolic: {
+      methodIds: symbolicMethodIds,
+      edgeIds: symbolicEdgeIds,
+      boundaryIds: symbolicBoundaryIds,
+      stateCount: symbolicTraversal.states.length,
+      stateVariantHotspots,
+      budgetRejectionSources,
+      unknownEdges: symbolicTraversal.edges.filter((edge) => edge.reachable && edge.decision === "unknown").length,
+      complete: symbolicTraversal.status === "complete",
+      diagnostics: symbolicTraversal.diagnostics
+    },
+    differences,
+    verdict: truncated || symbolicTraversal.status !== "complete"
+      ? "inconclusive" as const
+      : hasDifferences ? "different" as const : "aligned" as const,
+    ...(options.fieldConfigSnapshot || options.fieldProjectionSites?.length
+      ? { fieldProjectionEvidence: fieldProjectionEvidence.report }
+      : {})
+  };
+  return { ...base, reportHash: sha256(stableStringify(base)) };
+}
+
+function resolveFieldProjectionEvidence(
+  sourceIdentity: AssessmentSourceIdentity,
+  options: JavaRouteSymbolicShadowOptions
+): {
+  projections: Map<string, JavaFieldProjectionFacts>;
+  report: NonNullable<JavaRouteSymbolicShadowReport["fieldProjectionEvidence"]>;
+} {
+  const projections = new Map<string, JavaFieldProjectionFacts>();
+  const sites = options.fieldProjectionSites ?? [];
+  const tenantIds = [...new Set(sites.map((site) => site.tenantId))];
+  const panelIds = [...new Set(sites.map((site) => site.panelId))];
+  const validation = options.fieldConfigSnapshot && tenantIds.length === 1
+    ? validateJavaFieldConfigSnapshot(options.fieldConfigSnapshot, {
+      source: sourceIdentity,
+      tenantId: tenantIds[0],
+      panelIds
+    })
+    : {
+      trusted: false,
+      reasons: [
+        ...(!options.fieldConfigSnapshot ? ["field-config-snapshot-missing"] : []),
+        ...(tenantIds.length > 1 ? ["field-config-projection-tenant-conflict"] : []),
+        ...(sites.length === 0 ? ["field-config-projection-sites-missing"] : [])
+      ]
+    };
+  const reasons = [...validation.reasons];
+  const rejectedCallIds: string[] = [];
+  if (validation.trusted && validation.snapshot) {
+    for (const site of sites) {
+      const facts = deriveJavaFieldProjectionFacts(validation.snapshot, site.panelId, site.selectedAliases);
+      if (facts.complete) {
+        projections.set(site.callId, facts);
+      } else {
+        rejectedCallIds.push(site.callId);
+        reasons.push(...facts.reasons.map((reason) => `${site.callId}:${reason}`));
+      }
+    }
+  } else {
+    rejectedCallIds.push(...sites.map((site) => site.callId));
+  }
+  return {
+    projections,
+    report: {
+      trustedSnapshot: validation.trusted,
+      ...(validation.snapshot ? { snapshotHash: validation.snapshot.snapshotHash } : {}),
+      reasons: [...new Set(reasons)].sort(),
+      appliedCallIds: [...projections.keys()].sort(),
+      rejectedCallIds: [...new Set(rejectedCallIds)].sort()
+    }
+  };
+}
+
+function analyzeJavaRouteLegacyTruncation(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">
+): JavaRouteLegacyTruncationReport {
+  const report = analyzeJavaEndpointModel(project, routes, options);
+  const baseMethodId = (id: string): string => id.replace(/\[(?:null|nonnull|bool|enum|field-tag):[\s\S]*$/, "");
+  const explicitFrontierMethodIds = [...new Set([
+    ...report.callGraph.truncation.unexpandedBoundaryNodes,
+    ...(report.callGraph.truncation.perMethodCallCapNodes ?? []).map((item) => item.nodeId)
+  ].map(baseMethodId))].sort();
+  const edgeCapTailMethodIds = report.callGraph.truncation.edgeCapHit && explicitFrontierMethodIds.length === 0
+    ? report.callGraph.edges.slice(-100).map((edge) => baseMethodId(edge.from))
+    : [];
+  const frontierMethodIds = [...new Set([...explicitFrontierMethodIds, ...edgeCapTailMethodIds])].sort();
+  const frontierSet = new Set(frontierMethodIds);
+  const frontierUpstreamEdges = [...new Set(report.callGraph.edges
+    .filter((edge) => edge.to && frontierSet.has(baseMethodId(edge.to)))
+    .map((edge) => `${baseMethodId(edge.from)}->${baseMethodId(edge.to as string)}`))].sort();
+  const reasons = [
+    report.callGraph.truncation.edgeCapHit ? "edge-cap" : undefined,
+    report.callGraph.truncation.depthCapHit ? "depth-cap" : undefined,
+    report.callGraph.truncation.perMethodCallCapHit ? "per-method-call-cap" : undefined,
+    report.callGraph.truncation.unexpandedBoundaryNodes.length > 0 ? "unexpanded-boundary" : undefined
+  ].filter((value): value is string => Boolean(value));
+  return {
+    truncated: reasons.length > 0,
+    reasons,
+    frontierMethodIds,
+    frontierUpstreamEdges,
+    nodeCount: report.callGraph.nodes.length,
+    edgeCount: report.callGraph.edges.length
+  };
+}
+
+function routeInitialSymbolicFacts(method: JavaMethodInfo): JavaSymbolicFacts {
+  const primitiveTypes = new Set(["boolean", "byte", "char", "double", "float", "int", "long", "short"]);
+  const nonNullParams = method.params
+    .filter((param) => primitiveTypes.has(param.declaredType)
+      || param.annotations.some((annotation) =>
+        /@(?:NonNull|NotNull)\b/.test(annotation)
+        || /@(?:PathVariable|RequestBody)\b/.test(annotation) && !/required\s*=\s*false/.test(annotation)
+        || /@RequestParam\b/.test(annotation) && !/required\s*=\s*false/.test(annotation)
+      ))
+    .map((param) => param.name);
+  return { nonNullParams };
+}
+
+function shadowBoundaryKey(boundary: JavaMethodBehaviorBoundary): string {
+  return `${boundary.kind}:${boundary.symbol}:${boundary.operation ?? ""}`;
+}
+
+function legacyShadowBoundaryIds(report: JavaEndpointAnalysisReport): string[] {
+  const values = new Set<string>();
+  for (const source of report.sqlSources) values.add(`sql:${source.ownerQualifiedClassName}.${source.ownerMethodName}:${source.operation}`);
+  for (const edge of report.callGraph.edges) {
+    const symbol = edge.call.receiver ? `${edge.call.receiver}.${edge.call.method}` : edge.call.expression;
+    const semantic = classifyJavaSemantic(symbol);
+    const kind = semantic?.kind === "async-boundary"
+      ? "async"
+      : semantic?.kind === "event-publish" || /\b(?:publishEvent|sendObject|sendToAdmin|pushResult)\b/.test(symbol)
+        ? "event"
+        : semantic?.id === "redis" || /cache/i.test(symbol) ? "cache" : undefined;
+    if (kind) values.add(`${kind}:${symbol}:${semantic?.kind ?? ""}`);
+  }
+  return [...values].sort();
+}
+
+function summarizeJavaMethod(project: JavaProjectModel, candidate: JavaServiceMethodCandidate): JavaMethodSummary {
+  const type = project.typesByName.get(candidate.qualifiedClassName)?.find((item) => item.file === candidate.file)
+    ?? project.typesByName.get(candidate.className)?.find((item) => item.file === candidate.file);
+  const method = type?.methods.find((item) => item.line === candidate.line && item.name === candidate.methodName);
+  if (!type || !method) throw new Error(`Java method not found for summary: ${candidate.id}`);
+  const calls = cachedMethodCalls(project, method, type).map((call, index): JavaMethodSummaryCall => {
+    const callId = `${methodId(type, method)}:call:${index + 1}`;
+    const resolved = resolveCallTargets(project, type, call);
+    const targets = resolved.targets
+      .map(({ type: targetType, method: targetMethod }): JavaMethodSummaryTarget => ({
+        id: `${callId}->${methodId(targetType, targetMethod)}`,
+        methodId: methodId(targetType, targetMethod),
+        qualifiedClassName: targetType.qualifiedName,
+        methodName: targetMethod.name,
+        signature: targetMethod.signature,
+        parameterNames: targetMethod.params.map((param) => param.name),
+        enumParameterIndexes: targetMethod.params.flatMap((param, index) =>
+          resolveTypesForField(project, param.declaredType, targetType).some((candidateType) => candidateType.kind === "enum")
+            ? [index]
+            : []
+        ),
+        predicates: [...(fieldTypeStrategyPredicates(project, targetType) ?? [])]
+      }))
+      .sort((a, b) => a.methodId.localeCompare(b.methodId));
+    return {
+      id: callId,
+      receiver: call.receiver,
+      method: call.method,
+      expression: call.expression,
+      line: call.line,
+      argumentCount: call.argumentCount,
+      argumentTypes: [...call.argumentTypes],
+      argumentIdentifiers: [...(call.argumentIdentifiers ?? [])],
+      argumentNulls: [...(call.argumentNulls ?? [])],
+      argumentNonNulls: [...(call.argumentNonNulls ?? [])],
+      argumentBooleans: [...(call.argumentBooleans ?? [])],
+      argumentEnumConstants: [...(call.argumentEnumConstants ?? [])],
+      lexicalBooleanFacts: [...(call.lexicalBooleanFacts ?? [])],
+      predicates: [...(fieldTagPredicatesForLine(project, method, call.line) ?? [])],
+      targets,
+      resolution: resolved.resolution
+    };
+  });
+  const behaviorBoundaries = summarizeJavaMethodBehavior(project, type, method, calls);
+  const base = {
+    version: 4 as const,
+    methodId: methodId(type, method),
+    qualifiedClassName: type.qualifiedName,
+    methodName: method.name,
+    signature: method.signature,
+    file: method.file,
+    line: method.line,
+    sourceHash: sha256(method.body.replace(/\r\n/g, "\n")),
+    calls,
+    behaviorBoundaries
+  };
+  return { ...base, summaryHash: sha256(stableStringify(base)) };
+}
+
+function summarizeJavaMethodBehavior(
+  project: JavaProjectModel,
+  type: JavaTypeInfo,
+  method: JavaMethodInfo,
+  calls: JavaMethodSummaryCall[]
+): JavaMethodBehaviorBoundary[] {
+  const boundaries: JavaMethodBehaviorBoundary[] = [];
+  const identityCounts = new Map<string, number>();
+  const add = (boundary: Omit<JavaMethodBehaviorBoundary, "id">): void => {
+    const identity = stableStringify(boundary);
+    const occurrence = (identityCounts.get(identity) ?? 0) + 1;
+    identityCounts.set(identity, occurrence);
+    boundaries.push({
+      ...boundary,
+      id: `${methodId(type, method)}:behavior:${sha256(identity).slice(0, 16)}:${occurrence}`
+    });
+  };
+  if (hasTransactionBoundary(type, method)) {
+    add({
+      kind: "transaction",
+      source: "method",
+      line: method.line,
+      symbol: `${type.qualifiedName}.${method.name}`,
+      operation: "boundary",
+      predicates: []
+    });
+  }
+  if ([...type.annotations, ...method.annotations].some((value) => /@Async\b/.test(value))) {
+    add({
+      kind: "async",
+      source: "method",
+      line: method.line,
+      symbol: `${type.qualifiedName}.${method.name}`,
+      operation: "annotation",
+      predicates: []
+    });
+  }
+  const cacheAnnotation = [...type.annotations, ...method.annotations].find((value) =>
+    /@Cacheable|@CachePut|@CacheEvict|@Caching\b/.test(value));
+  if (cacheAnnotation) {
+    add({
+      kind: "cache",
+      source: "method",
+      line: method.line,
+      symbol: cacheAnnotation,
+      operation: "annotation",
+      predicates: []
+    });
+  }
+  const traceState: GraphTraceState = {
+    node: nodeFor(type, method),
+    type,
+    method,
+    depth: 0,
+    transactional: hasTransactionBoundary(type, method),
+    contextSignals: contextSignalsForText(`${type.annotations.join(" ")} ${method.annotations.join(" ")} ${method.body}`)
+  };
+  const sqlSources = [
+    ...sqlSourcesForMethod(project, traceState, traceState.contextSignals),
+    ...calls.flatMap((summaryCall) => {
+      const extracted = cachedMethodCalls(project, method, type)
+        .find((call) => call.line === summaryCall.line && call.method === summaryCall.method);
+      return extracted
+        ? sqlSourcesForExternalCall(project, traceState, extracted, traceState.contextSignals)
+        : [];
+    })
+  ];
+  for (const source of uniqueSqlSources(sqlSources)) {
+    const call = calls.find((candidateCall) =>
+      candidateCall.method === source.ownerMethodName || candidateCall.line === source.line);
+    add({
+      kind: "sql",
+      source: "sql",
+      line: call?.line ?? method.line,
+      symbol: `${source.ownerQualifiedClassName}.${source.ownerMethodName}`,
+      callId: call?.id,
+      operation: source.operation,
+      sqlSource: {
+        id: source.id,
+        source: source.source,
+        operation: source.operation,
+        dynamic: source.dynamic,
+        transactional: source.transactional,
+        contextSignals: [...source.contextSignals],
+        tables: [...source.tables]
+      },
+      predicates: call?.predicates ?? []
+    });
+  }
+  for (const call of calls) {
+    const symbol = call.receiver ? `${call.receiver}.${call.method}` : call.expression;
+    const semantic = classifyJavaSemantic(symbol);
+    const kind: JavaMethodBehaviorKind | undefined = semantic?.kind === "async-boundary"
+      ? "async"
+      : semantic?.kind === "event-publish"
+        ? "event"
+        : /\b(?:publishEvent|sendObject|sendToAdmin|pushResult)\b/.test(symbol)
+          ? "event"
+        : semantic?.id === "redis" || /cache/i.test(symbol)
+          ? "cache"
+          : undefined;
+    if (!kind) continue;
+    add({
+      kind,
+      source: "call",
+      line: call.line,
+      symbol,
+      callId: call.id,
+      semanticRuleId: semantic?.id,
+      operation: semantic?.kind,
+      predicates: call.predicates
+    });
+  }
+  const exceptionPatterns: Array<{ operation: string; pattern: RegExp }> = [
+    { operation: "throw", pattern: /\bthrow\s+(?:new\s+)?([A-Za-z_$][A-Za-z0-9_$.]*)/g },
+    { operation: "catch", pattern: /\bcatch\s*\(\s*([A-Za-z_$][A-Za-z0-9_$.]*)/g }
+  ];
+  for (const { operation, pattern } of exceptionPatterns) {
+    for (const match of method.body.matchAll(pattern)) {
+      const offset = match.index ?? 0;
+      const line = method.bodyStartLine + method.body.slice(0, offset).split("\n").length - 1;
+      add({
+        kind: "exception",
+        source: "method",
+        line,
+        symbol: match[1],
+        operation,
+        predicates: [...(fieldTagPredicatesForLine(project, method, line) ?? [])]
+      });
+    }
+  }
+  const declaredThrows = method.signature.match(/\bthrows\s+(.+)$/)?.[1];
+  for (const exceptionType of declaredThrows?.split(",").map((value) => value.trim()).filter(Boolean) ?? []) {
+    add({
+      kind: "exception",
+      source: "method",
+      line: method.line,
+      symbol: exceptionType,
+      operation: "declares",
+      predicates: []
+    });
+  }
+  return boundaries.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function traverseJavaMethodSymbolically(
+  project: JavaProjectModel,
+  candidate: JavaServiceMethodCandidate,
+  initialFacts: JavaSymbolicFacts,
+  maxStatesValue?: number,
+  fieldProjectionsByCallId: ReadonlyMap<string, JavaFieldProjectionFacts> = new Map()
+): JavaSymbolicTraversalResult {
+  const maxStates = maxStatesValue && maxStatesValue > 0 ? Math.floor(maxStatesValue) : Number.POSITIVE_INFINITY;
+  const summaries = new Map<string, JavaMethodSummary>();
+  const methods = new Map<string, JavaServiceMethodCandidate>();
+  const methodInfos = new Map<string, JavaMethodInfo>();
+  for (const type of project.types) {
+    for (const method of type.methods) {
+      const id = methodId(type, method);
+      methodInfos.set(id, method);
+      methods.set(id, {
+        id,
+        className: type.name,
+        qualifiedClassName: type.qualifiedName,
+        methodName: method.name,
+        signature: method.signature,
+        returnType: method.returnType,
+        parameterTypes: method.params.map((param) => param.declaredType),
+        annotations: [...method.annotations],
+        file: method.file,
+        line: method.line
+      });
+    }
+  }
+  const summaryFor = (methodCandidate: JavaServiceMethodCandidate): JavaMethodSummary => {
+    const cached = summaries.get(methodCandidate.id);
+    if (cached) return cached;
+    const summary = summarizeJavaMethod(project, methodCandidate);
+    summaries.set(summary.methodId, summary);
+    return summary;
+  };
+  const normalizeFacts = (facts: JavaSymbolicFacts["fieldTags"]): Record<string, string[]> =>
+    Object.fromEntries(Object.entries(facts ?? {})
+      .map(([name, values]) => [name, [...new Set(values)].sort()] as const)
+      .filter(([, values]) => values.length > 0)
+      .sort(([a], [b]) => a.localeCompare(b)));
+  const normalizeScalarFacts = <T>(facts: Record<string, T> | undefined): Record<string, T> =>
+    Object.fromEntries(Object.entries(facts ?? {}).sort(([a], [b]) => a.localeCompare(b)));
+  const normalizeSymbolicFacts = (facts: JavaSymbolicFacts): Omit<JavaSymbolicTraversalState, "id" | "methodId" | "summaryHash"> => {
+    const nullParams = [...new Set(facts.nullParams ?? [])].sort();
+    const nonNullParams = [...new Set(facts.nonNullParams ?? [])].sort();
+    return {
+      nullParams,
+      nonNullParams,
+      booleanParams: normalizeScalarFacts(facts.booleanParams),
+      enumParams: normalizeScalarFacts(facts.enumParams),
+      fieldTags: normalizeFacts(facts.fieldTags),
+      ...(facts.fieldProjection ? { fieldProjection: normalizeFieldProjection(facts.fieldProjection) } : {})
+    };
+  };
+  const stateFor = (summary: JavaMethodSummary, facts: JavaSymbolicFacts): JavaSymbolicTraversalState => {
+    const normalized = normalizeSymbolicFacts(facts);
+    return {
+      id: `${summary.methodId}@${sha256(stableStringify(normalized)).slice(0, 16)}`,
+      methodId: summary.methodId,
+      summaryHash: summary.summaryHash,
+      ...normalized
+    };
+  };
+  const entrySummary = summaryFor(candidate);
+  const entry = stateFor(entrySummary, initialFacts);
+  const states = new Map([[entry.id, entry]]);
+  const edges: JavaSymbolicTraversalEdge[] = [];
+  const boundaries: JavaSymbolicTraversalBoundary[] = [];
+  const diagnostics: JavaSymbolicTraversalResult["diagnostics"] = [];
+  const queue = [entry];
+  const expanded = new Set<string>();
+  let stateBudgetExhausted = false;
+  while (queue.length > 0) {
+    const state = queue.shift() as JavaSymbolicTraversalState;
+    if (expanded.has(state.id)) continue;
+    expanded.add(state.id);
+    for (const parameter of state.nullParams.filter((name) => state.nonNullParams.includes(name))) {
+      diagnostics.push({ kind: "contradictory-facts", stateId: state.id, parameter });
+    }
+    const summary = summaries.get(state.methodId) ?? summaryFor(methods.get(state.methodId) as JavaServiceMethodCandidate);
+    const effectiveFieldTags = new Map(Object.entries(state.fieldTags)
+      .map(([name, values]) => [name, new Set(values)] as const));
+    const methodInfo = methodInfos.get(state.methodId);
+    if (methodInfo) {
+      for (const [name, values] of constrainedFieldTagAliases(methodInfo, effectiveFieldTags)) {
+        effectiveFieldTags.set(name, new Set(values));
+      }
+    }
+    const evaluationFieldTags = normalizeFacts(Object.fromEntries(effectiveFieldTags));
+    const knownNullParams = new Set(state.nullParams);
+    const knownNonNullParams = new Set(state.nonNullParams);
+    for (const parameter of state.nullParams.filter((name) => knownNonNullParams.has(name))) {
+      knownNullParams.delete(parameter);
+      knownNonNullParams.delete(parameter);
+    }
+    const retainedCalls = new Set(filterKnownNullBranches(
+      project,
+      methodInfo as JavaMethodInfo,
+      summary.calls,
+      knownNullParams,
+      knownNonNullParams,
+      new Map(Object.entries(state.booleanParams)),
+      new Map(Object.entries(state.enumParams)),
+      effectiveFieldTags
+    ).map((call) => call.id));
+    const retainedBoundaries = new Set(filterKnownNullBranches(
+      project,
+      methodInfo as JavaMethodInfo,
+      summary.behaviorBoundaries,
+      knownNullParams,
+      knownNonNullParams,
+      new Map(Object.entries(state.booleanParams)),
+      new Map(Object.entries(state.enumParams)),
+      effectiveFieldTags
+    ).map((boundary) => boundary.id));
+    for (const boundary of summary.behaviorBoundaries) {
+      const evidence = boundary.predicates.map((predicate) => evaluateJavaPredicate(predicate, evaluationFieldTags));
+      const excludedByContext = !retainedBoundaries.has(boundary.id)
+        || Boolean(boundary.callId && !retainedCalls.has(boundary.callId));
+      const decision: JavaPredicateTruth = excludedByContext || evidence.some((item) => item.result === "false")
+        ? "false"
+        : evidence.some((item) => item.result === "unknown") ? "unknown" : "true";
+      boundaries.push({
+        id: `${state.id}:${boundary.id}`,
+        stateId: state.id,
+        boundaryId: boundary.id,
+        kind: boundary.kind,
+        decision,
+        reachable: decision !== "false",
+        evidence,
+        proofs: excludedByContext
+          ? [`Behavior boundary ${boundary.id} is unreachable under the normalized null/boolean/enum facts.`]
+          : []
+      });
+    }
+    for (const call of summary.calls) {
+      const callEvidence = call.predicates.map((predicate) => evaluateJavaPredicate(predicate, evaluationFieldTags));
+      const projectionExclusion = formatterCallExcludedByProjection(summary, call, state.fieldProjection);
+      const excludedByContext = !retainedCalls.has(call.id) || Boolean(projectionExclusion);
+      const callDecision: JavaPredicateTruth = excludedByContext || callEvidence.some((item) => item.result === "false")
+        ? "false"
+        : callEvidence.some((item) => item.result === "unknown") ? "unknown" : "true";
+      const callProofs = excludedByContext
+        ? [projectionExclusion
+          ? `Call ${call.id} is excluded by complete field projection evidence ${projectionExclusion.evidenceHash}.`
+          : `Call ${call.id} is unreachable under the normalized null/boolean/enum facts.`]
+        : [];
+      if (call.targets.length === 0) {
+        edges.push({
+          id: `${state.id}:${call.id}:unresolved`,
+          fromState: state.id,
+          callId: call.id,
+          resolution: call.resolution,
+          decision: callDecision,
+          reachable: callDecision !== "false",
+          evidence: callEvidence,
+          proofs: callProofs
+        });
+      }
+      for (const target of call.targets) {
+        const strategyFacts = Object.values(evaluationFieldTags).flat();
+        const evaluationFacts = strategyFacts.length > 0
+          ? { ...evaluationFieldTags, $fieldTag: [...new Set(strategyFacts)].sort() }
+          : evaluationFieldTags;
+        const evidence = [
+          ...callEvidence,
+          ...target.predicates.map((predicate) => evaluateJavaPredicate(predicate, evaluationFacts))
+        ];
+        const decision: JavaPredicateTruth = evidence.some((item) => item.result === "false")
+          || excludedByContext ? "false"
+          : evidence.some((item) => item.result === "unknown") ? "unknown" : "true";
+        const propagated: JavaSymbolicFacts = {
+          nullParams: [],
+          nonNullParams: [],
+          booleanParams: {},
+          enumParams: {},
+          fieldTags: {}
+        };
+        const callProjection = fieldProjectionsByCallId.get(call.id);
+        if (callProjection && target.methodName === "tranObjList") {
+          propagated.fieldProjection = callProjection;
+        }
+        if (state.fieldProjection
+          && summary.methodName === "tranObjList"
+          && target.methodName === "tranObjList"
+          && summary.qualifiedClassName === target.qualifiedClassName) {
+          propagated.fieldProjection = state.fieldProjection;
+        }
+        for (const [index, parameter] of target.parameterNames.entries()) {
+          const source = call.argumentIdentifiers[index];
+          if (call.argumentNulls[index] || (source && state.nullParams.includes(source))) {
+            (propagated.nullParams as string[]).push(parameter);
+          } else if (call.argumentNonNulls[index] || (source && state.nonNullParams.includes(source))) {
+            (propagated.nonNullParams as string[]).push(parameter);
+          }
+          const booleanValue = call.argumentBooleans[index] ?? (source ? state.booleanParams[source] : undefined);
+          if (booleanValue !== undefined) (propagated.booleanParams as Record<string, boolean>)[parameter] = booleanValue;
+          const enumValue = call.argumentEnumConstants[index] ?? (source ? state.enumParams[source] : undefined);
+          if (enumValue && target.enumParameterIndexes.includes(index)) {
+            (propagated.enumParams as Record<string, string>)[parameter] = enumValue;
+          }
+          if (source && evaluationFieldTags[source]) {
+            (propagated.fieldTags as Record<string, string[]>)[parameter] = evaluationFieldTags[source];
+          }
+        }
+        for (const [localName, value] of call.lexicalBooleanFacts) {
+          if (methodInfos.get(target.methodId)?.body.includes(`boolean ${localName}`)) {
+            (propagated.booleanParams as Record<string, boolean>)[localName] = value;
+          }
+        }
+        const targetCandidate = methods.get(target.methodId);
+        const targetSummary = targetCandidate ? summaryFor(targetCandidate) : undefined;
+        const next = decision !== "false" && targetSummary ? stateFor(targetSummary, propagated) : undefined;
+        const edgeId = `${state.id}:${target.id}`;
+        edges.push({
+          id: edgeId,
+          fromState: state.id,
+          toState: next?.id,
+          callId: call.id,
+          targetMethodId: target.methodId,
+          resolution: call.resolution,
+          decision,
+          reachable: decision !== "false",
+          evidence,
+          proofs: callProofs
+        });
+        if (!next) continue;
+        if (states.has(next.id)) {
+          diagnostics.push({ kind: "state-revisit", stateId: next.id, edgeId });
+        } else if (states.size >= maxStates) {
+          stateBudgetExhausted = true;
+          diagnostics.push({ kind: "state-budget-exhausted", stateId: next.id, edgeId, maxStates });
+        } else {
+          states.set(next.id, next);
+          queue.push(next);
+        }
+      }
+    }
+  }
+  const base = {
+    version: 1 as const,
+    entryMethodId: entrySummary.methodId,
+    entryStateId: entry.id,
+    status: stateBudgetExhausted ? "state-budget-exhausted" as const : "complete" as const,
+    states: [...states.values()].sort((a, b) => a.id.localeCompare(b.id)),
+    edges: edges.sort((a, b) => a.id.localeCompare(b.id)),
+    boundaries: boundaries.sort((a, b) => a.id.localeCompare(b.id)),
+    diagnostics: diagnostics.sort((a, b) =>
+      a.stateId.localeCompare(b.stateId)
+      || ("edgeId" in a ? a.edgeId : a.parameter).localeCompare("edgeId" in b ? b.edgeId : b.parameter)
+    )
+  };
+  return { ...base, traversalHash: sha256(stableStringify(base)) };
+}
+
+function normalizeFieldProjection(facts: JavaFieldProjectionFacts): JavaFieldProjectionFacts {
+  return {
+    panelId: facts.panelId,
+    selectedAliases: [...new Set(facts.selectedAliases)].sort(),
+    formatterKinds: [...new Set(facts.formatterKinds)].sort(),
+    complete: facts.complete,
+    reasons: [...new Set(facts.reasons)].sort(),
+    evidenceHash: facts.evidenceHash
+  };
+}
+
+function formatterCallExcludedByProjection(
+  summary: JavaMethodSummary,
+  call: JavaMethodSummaryCall,
+  projection: JavaFieldProjectionFacts | undefined
+): JavaFieldProjectionFacts | undefined {
+  if (!projection?.complete || summary.methodName !== "tranObjList"
+    || !summary.qualifiedClassName.endsWith(".EngineTranObjectValueServiceImpl")) return undefined;
+  const required = call.method === "handleShowFieldValue"
+    ? "percentage"
+    : call.method === "handleFieldDateFormat" ? "date" : undefined;
+  return required && !projection.formatterKinds.includes(required) ? projection : undefined;
 }
 
 function analyzeJavaEndpointAdaptive(
@@ -797,7 +1866,10 @@ async function collectJavaProject(root: string, includeTests: boolean): Promise<
     typesByName,
     implementationsByInterface,
     sqlSources: [],
-    sqlSourcesByMethodKey: new Map()
+    sqlSourcesByMethodKey: new Map(),
+    methodCallCache: new Map(),
+    methodCallCacheHits: 0,
+    methodCallCacheMisses: 0
   };
   const sqlSources = collectProjectSqlSources(project);
   const sqlSourcesByMethodKey = new Map<string, JavaSqlSourceInfo[]>();
@@ -1562,6 +2634,7 @@ function buildCallGraph(
     return emptyCallGraph(maxDepth, maxEdges);
   }
   const nodes = new Map<string, JavaEndpointCallGraphNode>();
+  const variantNodeIdsByBase = new Map<string, Set<string>>();
   const nodeDepths = new Map<string, number>();
   const edges: JavaEndpointCallGraphEdge[] = [];
   const edgeSourceDepths: number[] = [];
@@ -1603,7 +2676,7 @@ function buildCallGraph(
     const extractedCalls = filterKnownNullBranches(
       project,
       current.method,
-      extractMethodCalls(project, current.method, current.type),
+      cachedMethodCalls(project, current.method, current.type),
       current.knownNullParams,
       current.knownNonNullParams,
       current.knownBooleanParams,
@@ -1630,6 +2703,7 @@ function buildCallGraph(
         edgeCapHadRemainingWork = true;
         break;
       }
+      const predicates = fieldTagPredicatesForLine(project, current.method, call.line);
       const resolved: ResolvedJavaCall = call.receiverType === "FieldTypeUpdateStrategy" && !current.knownFieldTagParams?.size
         ? { targets: [], resolution: "external", candidates: [] }
         : resolveCallTargets(project, current.type, call);
@@ -1659,7 +2733,8 @@ function buildCallGraph(
                 argumentTypes: call.argumentTypes
               },
               resolution: "static-or-external",
-              resolutionCandidates: resolved.candidates
+              resolutionCandidates: resolved.candidates,
+              predicates
             });
             edgeSourceDepths.push(current.depth);
           }
@@ -1688,7 +2763,8 @@ function buildCallGraph(
             argumentTypes: call.argumentTypes
           },
           resolution: resolved.resolution === "ambiguous" ? "ambiguous" : resolved.resolution === "external" ? "static-or-external" : "unresolved",
-          resolutionCandidates: resolved.candidates
+          resolutionCandidates: resolved.candidates,
+          predicates
         });
         edgeSourceDepths.push(current.depth);
         if (edges.length >= maxEdges && (callIndex < calls.length - 1 || hasRemainingCalls || queue.length > 0)) {
@@ -1786,7 +2862,7 @@ function buildCallGraph(
         const desiredVariantId = contextParts.length > 0
           ? `${baseTargetNode.id}${contextParts.map((part) => `[${part}]`).join("")}`
           : undefined;
-        const variants = [...nodes.keys()].filter((id) => id.startsWith(`${baseTargetNode.id}[`));
+        const variants = [...(variantNodeIdsByBase.get(baseTargetNode.id) ?? [])];
         const hasOppositeVariant = variants.some((id) => id !== desiredVariantId);
         if (contextParts.length === 0 || nodes.has(baseTargetNode.id) || hasOppositeVariant) {
           if (variants.length > 0) {
@@ -1804,6 +2880,7 @@ function buildCallGraph(
               nodes.delete(id);
               nodeDepths.delete(id);
             }
+            variantNodeIdsByBase.delete(baseTargetNode.id);
             for (let index = queue.length - 1; index >= 0; index -= 1) {
               if (variantSet.has(queue[index].node.id)) queue.splice(index, 1);
             }
@@ -1814,6 +2891,11 @@ function buildCallGraph(
           : baseTargetNode;
         const alreadyVisited = nodes.has(targetNode.id);
         nodes.set(targetNode.id, targetNode);
+        if (targetNode.id !== baseTargetNode.id) {
+          const variantIds = variantNodeIdsByBase.get(baseTargetNode.id) ?? new Set<string>();
+          variantIds.add(targetNode.id);
+          variantNodeIdsByBase.set(baseTargetNode.id, variantIds);
+        }
         if (!alreadyVisited) {
           nodeDepths.set(targetNode.id, current.depth + 1);
         }
@@ -1830,7 +2912,15 @@ function buildCallGraph(
             argumentTypes: call.argumentTypes
           },
           resolution: call.receiver ? "field-injection" : "same-class",
-          resolutionCandidates: resolved.candidates
+          resolutionCandidates: resolved.candidates,
+          predicates: mergeCallGraphPredicates(predicates, fieldTypeStrategyPredicates(project, target.type)),
+          context: callGraphContext(
+            knownNullParams,
+            knownNonNullParams,
+            knownBooleanParams,
+            knownEnumParams,
+            knownFieldTagParams
+          )
         });
         edgeSourceDepths.push(current.depth);
         if (!alreadyVisited) {
@@ -2074,6 +3164,45 @@ function formatDepthCounts(counts: Record<string, number>): string {
   return entries.length > 0 ? entries.map(([depth, count]) => `d${depth}=${count}`).join(", ") : "none";
 }
 
+function callGraphContext(
+  nullParams: Set<string>,
+  nonNullParams: Set<string>,
+  booleanParams: Map<string, boolean>,
+  enumParams: Map<string, string>,
+  fieldTagParams: Map<string, Set<string>>
+): JavaCallGraphContext | undefined {
+  const context: JavaCallGraphContext = {};
+  if (nullParams.size > 0) context.nullParams = [...nullParams].sort();
+  if (nonNullParams.size > 0) context.nonNullParams = [...nonNullParams].sort();
+  if (booleanParams.size > 0) context.booleanParams = Object.fromEntries([...booleanParams].sort(([a], [b]) => a.localeCompare(b)));
+  if (enumParams.size > 0) context.enumParams = Object.fromEntries([...enumParams].sort(([a], [b]) => a.localeCompare(b)));
+  if (fieldTagParams.size > 0) {
+    context.fieldTagParams = Object.fromEntries(
+      [...fieldTagParams]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, values]) => [name, [...values].sort()])
+    );
+  }
+  return Object.keys(context).length > 0 ? context : undefined;
+}
+
+function cachedMethodCalls(
+  project: JavaProjectModel,
+  method: JavaMethodInfo,
+  type: JavaTypeInfo
+): ReturnType<typeof extractMethodCalls> {
+  const key = methodId(type, method);
+  const cached = project.methodCallCache.get(key);
+  if (cached) {
+    project.methodCallCacheHits += 1;
+    return cached;
+  }
+  const calls = extractMethodCalls(project, method, type);
+  project.methodCallCache.set(key, calls);
+  project.methodCallCacheMisses += 1;
+  return calls;
+}
+
 function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, type: JavaTypeInfo): Array<{
   receiver?: string;
   method: string;
@@ -2206,6 +3335,60 @@ function tryResourceScopes(text: string, resourceCall: string): Array<{ open: nu
     if (blockClose >= 0) scopes.push({ open: blockOpen, close: blockClose });
   }
   return scopes;
+}
+
+function fieldTagPredicatesForLine(
+  project: JavaProjectModel,
+  method: JavaMethodInfo,
+  line: number
+): JavaCallGraphPredicate[] | undefined {
+  const body = method.body;
+  const predicates: JavaCallGraphPredicate[] = [];
+  const addScopedPredicate = (
+    match: RegExpMatchArray,
+    parameter: string,
+    anyOf: Iterable<string>,
+    conditionNegated: boolean
+  ) => {
+    const open = (match.index ?? 0) + match[0].lastIndexOf("{");
+    const close = matchingBraceOffset(body, open);
+    if (close < 0) return;
+    const values = [...new Set(anyOf)].sort();
+    if (values.length === 0) return;
+    const branchLine = offsetLine(method, body, open);
+    const branchEndLine = offsetLine(method, body, close);
+    if (line >= branchLine && line <= branchEndLine) {
+      predicates.push({ kind: "field-tag", parameter, anyOf: values, negated: conditionNegated });
+      return;
+    }
+    const elseMatch = /^\s*else\s*\{/.exec(body.slice(close + 1));
+    if (!elseMatch) return;
+    const elseOpen = close + 1 + (elseMatch.index ?? 0) + elseMatch[0].lastIndexOf("{");
+    const elseClose = matchingBraceOffset(body, elseOpen);
+    if (elseClose < 0) return;
+    if (line >= offsetLine(method, body, elseOpen) && line <= offsetLine(method, body, elseClose)) {
+      predicates.push({ kind: "field-tag", parameter, anyOf: values, negated: !conditionNegated });
+    }
+  };
+  const constantComparison = /\bif\s*\(\s*(!\s*)?FieldTagEnum\.([A-Z][A-Z0-9_]*)\.getTagKey\s*\(\s*\)\s*\.equals\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\.getFieldTagInnerKey\s*\(\s*\)\s*\)\s*\)\s*\{/g;
+  for (const match of body.matchAll(constantComparison)) {
+    addScopedPredicate(match, match[3], [`FieldTagEnum.${match[2]}`], Boolean(match[1]));
+  }
+  const predicateCall = /\bif\s*\(\s*(!\s*)?FieldTagEnum\.(is[A-Za-z0-9_]+)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)(?:\.getFieldTagInnerKey\s*\(\s*\))?\s*\)\s*\)\s*\{/g;
+  for (const match of body.matchAll(predicateCall)) {
+    const accepted = fieldTagPredicateConstants(project, match[2]);
+    if (accepted) addScopedPredicate(match, match[3], accepted, Boolean(match[1]));
+  }
+  if (predicates.length === 0) return undefined;
+  return predicates.sort((a, b) =>
+    a.parameter.localeCompare(b.parameter)
+    || Number(a.negated) - Number(b.negated)
+    || a.anyOf.join("|").localeCompare(b.anyOf.join("|"))
+  );
+}
+
+function offsetLine(method: JavaMethodInfo, body: string, offset: number): number {
+  return method.bodyStartLine + body.slice(0, offset).split("\n").length - 1;
 }
 
 function filterKnownNullBranches<T extends { line: number }>(
@@ -2652,6 +3835,42 @@ function narrowFieldTypeStrategyTargets(
     const supported = supportedByType.get(target.type.qualifiedName);
     return !supported || [...values].some((value) => supported.has(value));
   });
+}
+
+function fieldTypeStrategyPredicates(
+  project: JavaProjectModel,
+  type: JavaTypeInfo
+): JavaCallGraphPredicate[] | undefined {
+  if (!type.implements.some((name) => simpleTypeName(name) === "FieldTypeUpdateStrategy")) return undefined;
+  if (type.name === "DefaultFieldUpdateStrategy") {
+    const known = (project.implementationsByInterface.get("FieldTypeUpdateStrategy") ?? [])
+      .filter((candidate) => candidate.name !== "DefaultFieldUpdateStrategy")
+      .flatMap((candidate) => [...(supportedFieldTagsForStrategy(project, candidate) ?? [])]);
+    return known.length > 0
+      ? [{ kind: "field-tag", parameter: "$fieldTag", anyOf: [...new Set(known)].sort(), negated: true }]
+      : undefined;
+  }
+  const supported = supportedFieldTagsForStrategy(project, type);
+  return supported?.size
+    ? [{ kind: "field-tag", parameter: "$fieldTag", anyOf: [...supported].sort(), negated: false }]
+    : undefined;
+}
+
+function mergeCallGraphPredicates(
+  ...groups: Array<JavaCallGraphPredicate[] | undefined>
+): JavaCallGraphPredicate[] | undefined {
+  const byKey = new Map<string, JavaCallGraphPredicate>();
+  for (const predicate of groups.flatMap((group) => group ?? [])) {
+    const normalized = { ...predicate, anyOf: [...predicate.anyOf].sort() };
+    byKey.set(`${normalized.kind}:${normalized.parameter}:${normalized.negated}:${normalized.anyOf.join("|")}`, normalized);
+  }
+  return byKey.size > 0
+    ? [...byKey.values()].sort((a, b) =>
+      a.parameter.localeCompare(b.parameter)
+      || Number(a.negated) - Number(b.negated)
+      || a.anyOf.join("|").localeCompare(b.anyOf.join("|"))
+    )
+    : undefined;
 }
 
 function supportedFieldTagsForStrategy(project: JavaProjectModel, type: JavaTypeInfo): Set<string> | undefined {
@@ -3975,13 +5194,20 @@ function parseDeclaredTypes(value: string | undefined): string[] {
 
 function parseParams(value: string): JavaParamInfo[] {
   return splitJavaArgs(value).map((rawParam) => {
+    const annotations = [...rawParam.matchAll(/@\w+(?:\([^)]*\))?/g)].map((match) => match[0]);
     const clean = rawParam.replace(/@\w+(?:\([^)]*\))?\s*/g, "").replace(/\bfinal\s+/g, "").trim();
     if (!clean) return undefined;
     const parts = clean.split(/\s+/);
     if (parts.length < 2) return undefined;
     const name = parts[parts.length - 1].replace(/\[\]$/, "");
     const declaredType = parts.slice(0, -1).join(" ");
-    return { name, typeName: simpleTypeName(declaredType.replace(/\.\.\./g, "")), declaredType: declaredType.replace(/\.\.\./g, ""), varargs: /\.\.\./.test(declaredType) };
+    return {
+      name,
+      typeName: simpleTypeName(declaredType.replace(/\.\.\./g, "")),
+      declaredType: declaredType.replace(/\.\.\./g, ""),
+      varargs: /\.\.\./.test(declaredType),
+      annotations
+    };
   }).filter((param): param is JavaParamInfo => Boolean(param));
 }
 
