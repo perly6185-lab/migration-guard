@@ -3,6 +3,7 @@ import { appendFile } from "node:fs/promises";
 import { readFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { classifyTestFile, discoverTestFiles } from "./test-discovery.mjs";
+import { parseTapDurations, parseTapTestCount } from "./tap-summary.mjs";
 
 const workspace = process.cwd();
 const manifest = JSON.parse(await readFile(new URL("./test-manifest.json", import.meta.url), "utf8"));
@@ -50,22 +51,4 @@ if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SU
 if (process.env.MG_TEST_SUMMARY === "1") process.stdout.write(`\n${summary}\n`);
 process.exitCode = effectiveExitCode;
 
-function parseTapDurations(output) {
-  const lines = output.split(/\r?\n/);
-  const stack = [];
-  const results = [];
-  for (const line of lines) {
-    const subtest = line.match(/^# Subtest: (.+)$/);
-    if (subtest) { stack.push(subtest[1]); continue; }
-    const duration = line.match(/^\s*duration_ms:\s*([\d.]+)/);
-    if (duration && stack.length > 0) results.push({ name: stack.shift(), durationMs: Number(duration[1]) });
-  }
-  return results;
-}
-
 function escapeTable(value) { return value.replace(/\|/g, "\\|"); }
-
-function parseTapTestCount(output) {
-  const matches = [...output.matchAll(/^# tests (\d+)$/gm)];
-  return Number(matches.at(-1)?.[1] ?? 0);
-}
