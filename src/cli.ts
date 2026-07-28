@@ -235,6 +235,17 @@ import {
   prepareJavaRuntimeAuthoring,
   promoteJavaRuntimeFixture
 } from "./core/javaRuntimeAuthoring.js";
+import { JAVA_SEMANTIC_RULE_PACKAGE } from "./core/javaSemanticRegistry.js";
+import {
+  createSemanticRulePackageLock,
+  diffSemanticRulePackageLocks,
+  evaluateSemanticRulePackage,
+  semanticSamplesFromJavaAnalysis,
+  validateSemanticRulePackage,
+  type SemanticEvaluationSample,
+  type SemanticRulePackage,
+  type SemanticRulePackageLock
+} from "./core/semanticRulePackage.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -277,7 +288,8 @@ async function main(argv: string[]): Promise<void> {
     "one-shot": commandOneShot, checkpoint: commandCheckpoint, resume: commandResume, rollback: commandRollback,
     task: commandTask, action: commandAction, proposal: commandProposal, "method-extraction": commandMethodExtraction, "sync-issues": commandSyncIssues,
     "issue-control": commandIssueControl, "self-refactor": commandSelfRefactor, "java-endpoint": commandJavaEndpoint, "full-replacement": commandFullReplacement, migrate: commandMigrate, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
-    preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff, policy: commandPolicy, vmp: commandVmp
+    preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff, policy: commandPolicy, vmp: commandVmp,
+    semantics: commandSemantics
   };
   validateCliCommandRegistry(handlers);
   if (!await dispatchCliCommand(args, handlers)) {
@@ -807,6 +819,117 @@ async function commandVmp(args: ParsedArgs): Promise<void> {
     return;
   }
   throw new Error(`Unknown vmp command: ${action}`);
+}
+
+async function commandSemantics(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "list";
+  const pkg = await loadSemanticPackage(args);
+  if (action === "list") {
+    const validation = validateSemanticRulePackage(pkg);
+    console.log(JSON.stringify([{
+      id: pkg.id,
+      version: pkg.version,
+      language: pkg.language,
+      mode: pkg.compatibility?.mode ?? "invalid",
+      frameworks: pkg.scope?.frameworks ?? [],
+      projects: pkg.scope?.projects ?? [],
+      ruleCount: validation.ruleCount,
+      packageHash: validation.packageHash,
+      valid: validation.valid
+    }], null, 2));
+    return;
+  }
+  if (action === "validate") {
+    const validation = validateSemanticRulePackage(pkg);
+    console.log(JSON.stringify(validation, null, 2));
+    if (!validation.valid) process.exitCode = 1;
+    return;
+  }
+  if (action === "lock") {
+    const lock = createSemanticRulePackageLock(pkg);
+    const output = path.resolve(stringOption(args, "output")
+      ?? path.join(".migration-guard", "semantic-rules", `${pkg.id}.lock.json`));
+    await writeJsonFile(output, lock);
+    console.log(JSON.stringify({ ...lock, output }, null, 2));
+    return;
+  }
+  if (action === "diff") {
+    const fromPath = path.resolve(requiredStringOption(args, "from", "semantics diff"));
+    const toPath = path.resolve(requiredStringOption(args, "to", "semantics diff"));
+    const from = await readSemanticLock(fromPath);
+    const to = await readSemanticLock(toPath);
+    console.log(JSON.stringify(diffSemanticRulePackageLocks(from, to), null, 2));
+    return;
+  }
+  if (action === "evaluate") {
+    const samples = await loadSemanticEvaluationSamples(args);
+    const report = evaluateSemanticRulePackage(pkg, samples);
+    const outputOption = stringOption(args, "output");
+    if (outputOption) await writeJsonFile(path.resolve(outputOption), report);
+    console.log(JSON.stringify(outputOption ? { ...report, output: path.resolve(outputOption) } : report, null, 2));
+    if (report.status === "blocked") process.exitCode = 1;
+    return;
+  }
+  throw new Error(`Unknown semantics command: ${action}`);
+}
+
+async function loadSemanticPackage(args: ParsedArgs): Promise<SemanticRulePackage> {
+  const packagePath = stringOption(args, "package");
+  return packagePath
+    ? readJsonFile<SemanticRulePackage>(path.resolve(packagePath))
+    : JAVA_SEMANTIC_RULE_PACKAGE;
+}
+
+async function readSemanticLock(filePath: string): Promise<SemanticRulePackageLock> {
+  const value = await readJsonFile<SemanticRulePackageLock | SemanticRulePackage>(filePath);
+  return "packageHash" in value
+    ? value
+    : createSemanticRulePackageLock(value);
+}
+
+async function loadSemanticEvaluationSamples(args: ParsedArgs): Promise<SemanticEvaluationSample[]> {
+  const analysisOption = stringOption(args, "analysis");
+  const samplesOption = stringOption(args, "samples");
+  const projectOption = stringOption(args, "project");
+  const sources = [analysisOption, samplesOption, projectOption].filter(Boolean);
+  if (sources.length !== 1) {
+    throw new Error("semantics evaluate requires exactly one of --analysis, --samples or --project.");
+  }
+  if (analysisOption) {
+    return semanticSamplesFromJavaAnalysis(await readJsonFile<unknown>(path.resolve(analysisOption)));
+  }
+  if (samplesOption) {
+    const value = await readJsonFile<SemanticEvaluationSample[] | { samples: SemanticEvaluationSample[] }>(path.resolve(samplesOption));
+    return Array.isArray(value) ? value : value.samples;
+  }
+  const project = projectOption!;
+  const direct = path.resolve(project);
+  const caseDir = await pathExists(direct)
+    ? direct
+    : path.resolve(stringOption(args, "cases-root") ?? "cases", project);
+  const analysisFiles = await listFilesNamed(path.join(caseDir, "evidence", "analysis"), "java-analysis.json");
+  if (analysisFiles.length === 0) {
+    throw new Error(`No java-analysis.json artifacts found for semantic evaluation: ${caseDir}.`);
+  }
+  const samples: SemanticEvaluationSample[] = [];
+  for (const file of analysisFiles) {
+    const relative = path.relative(caseDir, file).replace(/\\/g, "/");
+    for (const sample of semanticSamplesFromJavaAnalysis(await readJsonFile<unknown>(file))) {
+      samples.push({ ...sample, id: `${relative}:${sample.id}` });
+    }
+  }
+  return samples;
+}
+
+async function listFilesNamed(root: string, basename: string): Promise<string[]> {
+  const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
+  const files: string[] = [];
+  for (const entry of entries) {
+    const child = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...await listFilesNamed(child, basename));
+    else if (entry.isFile() && entry.name === basename) files.push(child);
+  }
+  return files.sort();
 }
 
 async function commandHandoff(args: ParsedArgs): Promise<void> {
@@ -2871,6 +2994,11 @@ Usage:
   migration-guard vmp fixtures [--input <json>]
   migration-guard vmp evidence --input <evidence.json>
   migration-guard vmp contract [--root <path>]
+  migration-guard semantics list [--package <semantic-package.json>]
+  migration-guard semantics validate [--package <semantic-package.json>]
+  migration-guard semantics evaluate (--analysis <java-analysis.json>|--samples <samples.json>|--project <id|case-dir>) [--package <semantic-package.json>] [--output <report.json>]
+  migration-guard semantics lock [--package <semantic-package.json>] [--output <lock.json>]
+  migration-guard semantics diff --from <lock-or-package.json> --to <lock-or-package.json>
   migration-guard migrate init --project <id> [--source <path>] [--endpoint <path>] [--method POST] [--target-root <path>] [--service-name <name>] [--cases-root <path>] [--force]
   migration-guard migrate analyze (--project <id> [--cases-root <path>]|--case-dir <path>) [--max-depth <n>] [--max-edges <n>] [--include-tests] [--strict]
   migration-guard migrate scaffold (--project <id> [--cases-root <path>]|--case-dir <path>) --target rust [--force]

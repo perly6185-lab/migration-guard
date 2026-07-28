@@ -1,4 +1,8 @@
 import type { BehaviorKind } from "./endpointReplacementModel.js";
+import type {
+  SemanticRuleOrigin,
+  SemanticRulePackage
+} from "./semanticRulePackage.js";
 
 export interface JavaSemanticRule {
   id: string;
@@ -189,6 +193,60 @@ export const JAVA_SEMANTIC_RULES: JavaSemanticRule[] = [
   { id: "progress-report", pattern: /reporter\.reportStage|reportProgress/i, kind: "observability", reason: "progress reporting", defaultOwnership: "target-owned" }
 ];
 
+export const JAVA_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
+  schemaVersion: 1,
+  id: "builtin-java-zboss-compatibility",
+  version: "1.0.0",
+  language: "java",
+  description: "The existing ordered Java semantic registry, versioned without changing classification behavior.",
+  compatibility: {
+    engineSchemaVersion: 1,
+    mode: "builtin-compatibility"
+  },
+  scope: {
+    frameworks: ["spring", "mybatis", "mybatis-plus", "spring-data"],
+    projects: ["zboss-*", "*"]
+  },
+  rules: JAVA_SEMANTIC_RULES.map((rule) => ({
+    id: rule.id,
+    pattern: rule.pattern.source,
+    flags: rule.pattern.flags,
+    behavior: rule.kind,
+    reason: rule.reason,
+    defaultOwnership: rule.defaultOwnership,
+    origin: semanticRuleOrigin(rule)
+  }))
+};
+
+export interface JavaSemanticClassificationTrace {
+  packageId: string;
+  packageVersion: string;
+  ruleId: string;
+  ruleIndex: number;
+  origin: SemanticRuleOrigin;
+  rule: JavaSemanticRule;
+}
+
 export function classifyJavaSemantic(text: string): JavaSemanticRule | undefined {
   return JAVA_SEMANTIC_RULES.find((rule) => rule.pattern.test(text));
+}
+
+export function classifyJavaSemanticWithTrace(text: string): JavaSemanticClassificationTrace | undefined {
+  const ruleIndex = JAVA_SEMANTIC_RULES.findIndex((rule) => rule.pattern.test(text));
+  if (ruleIndex < 0) return undefined;
+  const rule = JAVA_SEMANTIC_RULES[ruleIndex];
+  return {
+    packageId: JAVA_SEMANTIC_RULE_PACKAGE.id,
+    packageVersion: JAVA_SEMANTIC_RULE_PACKAGE.version,
+    ruleId: rule.id,
+    ruleIndex,
+    origin: JAVA_SEMANTIC_RULE_PACKAGE.rules[ruleIndex].origin,
+    rule
+  };
+}
+
+function semanticRuleOrigin(rule: JavaSemanticRule): SemanticRuleOrigin {
+  return rule.id.startsWith("reviewed-")
+    ? "reviewed-compatibility"
+    : "generic-builtin";
 }

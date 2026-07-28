@@ -95,6 +95,29 @@ plumbing; synthetic provenance is always rejected by `runtime-gate` and
 The built-in source adapter currently supports Java/Spring HTTP routes. Other
 frameworks and service-method entrypoints require a registered source adapter.
 
+### Versioned semantic rule packages
+
+The ordered built-in Java registry is exposed as the compatibility package
+`builtin-java-zboss-compatibility@1.0.0`. Packaging does not move, remove or
+reorder existing rules, so classification behavior remains unchanged. The
+package manifest records serializable patterns, behavior kinds, ownership
+defaults, rule origins and a deterministic package hash.
+
+```powershell
+node dist/cli.js semantics list
+node dist/cli.js semantics validate
+node dist/cli.js semantics lock --output .migration-guard/semantic-rules/java.lock.json
+node dist/cli.js semantics evaluate --project zboss-query --output .migration-guard/semantic-rules/zboss-query.json
+node dist/cli.js semantics diff --from previous.lock.json --to current.lock.json
+```
+
+`evaluate` accepts one Java analysis artifact, a sample corpus, or every
+`java-analysis.json` artifact in a migration case. Reports include direct rule
+coverage, generic versus reviewed compatibility hits, ordered-rule conflicts,
+expected classification drift, unused rules, package version and package hash.
+External package JSON uses the same fail-closed schema and can be selected with
+`--package`.
+
 Phase 146-150 health semantics, normalization, workspace scanning, persistence hardening and RC results are documented in
 [docs/PHASE_150_REPORT.md](docs/PHASE_150_REPORT.md). Release gates are tracked in
 [docs/RELEASE_CHECKLIST_0.2.0.md](docs/RELEASE_CHECKLIST_0.2.0.md).

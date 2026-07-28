@@ -1,6 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyJavaSemantic } from "./javaSemanticRegistry.js";
+import {
+  classifyJavaSemantic,
+  classifyJavaSemanticWithTrace,
+  JAVA_SEMANTIC_RULE_PACKAGE,
+  JAVA_SEMANTIC_RULES
+} from "./javaSemanticRegistry.js";
+import {
+  createSemanticRulePackageLock,
+  validateSemanticRulePackage
+} from "./semanticRulePackage.js";
+
+test("Java semantic registry is exposed as a versioned compatibility package without reordering", () => {
+  const validation = validateSemanticRulePackage(JAVA_SEMANTIC_RULE_PACKAGE);
+  assert.equal(validation.valid, true);
+  assert.equal(JAVA_SEMANTIC_RULE_PACKAGE.rules.length, JAVA_SEMANTIC_RULES.length);
+  assert.deepEqual(
+    JAVA_SEMANTIC_RULE_PACKAGE.rules.map((rule) => rule.id),
+    JAVA_SEMANTIC_RULES.map((rule) => rule.id)
+  );
+  assert.equal(createSemanticRulePackageLock(JAVA_SEMANTIC_RULE_PACKAGE).ruleCount, JAVA_SEMANTIC_RULES.length);
+  const trace = classifyJavaSemanticWithTrace("Instant.now");
+  assert.equal(trace?.packageId, "builtin-java-zboss-compatibility");
+  assert.equal(trace?.packageVersion, "1.0.0");
+  assert.equal(trace?.ruleId, classifyJavaSemantic("Instant.now")?.id);
+});
 
 test("Java semantic registry classifies deterministic JDK value operations", () => {
   for (const symbol of [
