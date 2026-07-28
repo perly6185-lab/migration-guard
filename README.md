@@ -99,7 +99,7 @@ frameworks and service-method entrypoints require a registered source adapter.
 
 The built-in Java registry is exposed as two ordered packages:
 
-- `builtin-java-zboss-compatibility@1.2.0` preserves the existing reviewed
+- `builtin-java-zboss-compatibility@1.3.0` preserves the existing reviewed
   compatibility rules without moving, removing or reordering them, and is
   scoped to `zboss-*` migration projects.
 - `builtin-java-core@1.1.0` contains the portable `generic-builtin` Java

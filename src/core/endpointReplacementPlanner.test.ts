@@ -98,7 +98,7 @@ test("classification provenance reports sources and blocks unexplained high-risk
   assert.equal(repository?.classification?.ruleId, "state-mutation-keyword");
   assert.equal(clock?.classification?.source, "semantic-package");
   assert.equal(clock?.classification?.packageId, "builtin-java-zboss-compatibility");
-  assert.equal(clock?.classification?.packageVersion, "1.2.0");
+  assert.equal(clock?.classification?.packageVersion, "1.3.0");
   assert.equal(clock?.classification?.ruleId, "clock");
   assert.equal(producer?.classification?.source, "unresolved");
   assert.equal(producer?.classification?.highRisk, true);
@@ -115,6 +115,29 @@ test("classification provenance reports sources and blocks unexplained high-risk
   ));
   assert.ok(graph.completeness.findings.includes("RP-GRAPH-HIGH-RISK-UNCLASSIFIED"));
   assert.ok(plan.findings.includes("RP-GRAPH-HIGH-RISK-UNCLASSIFIED"));
+});
+
+test("reviewed page-ref helpers eliminate the duplicated high-risk heuristic tail", () => {
+  const report = endpointReport("POST", "/page", "page", "page-query", [
+    node("Controller.page", "controller", "Controller", "page"),
+    node("SyncExecutor.hasText", "unknown", "ViewMetaPageRefValueSyncExecutor", "hasText"),
+    node("SyncExecutor.isSafeSqlIdentifier", "unknown", "ViewMetaPageRefValueSyncExecutor", "isSafeSqlIdentifier"),
+    node("SyncExecutor.normalizeColorText", "unknown", "ViewMetaPageRefValueSyncExecutor", "normalizeColorText"),
+    node("SyncExecutor.shallowCopyRowData", "unknown", "ViewMetaPageRefValueSyncExecutor", "shallowCopyRowData")
+  ]);
+  const graph = createBehaviorGraphFromJava(report, [], [
+    "builtin-java-zboss-compatibility",
+    "builtin-java-core"
+  ]);
+  const reviewed = graph.nodes.filter((item) => item.id.startsWith("SyncExecutor."));
+  assert.equal(reviewed.length, 4);
+  assert.ok(reviewed.every((item) =>
+    item.classification?.packageId === "builtin-java-zboss-compatibility"
+    && item.classification.ruleOrigin === "reviewed-compatibility"
+    && item.classification.strength === "authoritative"
+  ));
+  assert.equal(graph.classificationCoverage?.highRiskAuthoritativePercent, 100);
+  assert.equal(graph.classificationCoverage?.highRiskUnknownNodeIds.length, 0);
 });
 
 test("scenario synthesis is data driven across query, query-with-effects, command and sync workloads", () => {

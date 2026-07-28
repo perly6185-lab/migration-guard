@@ -69,6 +69,20 @@
       "kind": "java-method",
       "expectedBehavior": "calculation",
       "expectedRuleId": "query-builder"
+    },
+    {
+      "id": "reviewed-page-ref-predicate",
+      "text": "ViewMetaPageRefValueSyncExecutor.isSafeSqlIdentifier",
+      "kind": "java-method",
+      "expectedBehavior": "decision",
+      "expectedRuleId": "reviewed-page-ref-value-predicate"
+    },
+    {
+      "id": "reviewed-page-ref-transform",
+      "text": "ViewMetaPageRefValueSyncExecutor.shallowCopyRowData",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "reviewed-page-ref-value-transform"
     }
   ]
 }

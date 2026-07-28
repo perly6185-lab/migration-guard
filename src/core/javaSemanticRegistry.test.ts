@@ -22,7 +22,7 @@ test("Java semantic registry is exposed as a versioned compatibility package wit
   assert.equal(createSemanticRulePackageLock(JAVA_SEMANTIC_RULE_PACKAGE).ruleCount, JAVA_SEMANTIC_RULES.length);
   const trace = classifyJavaSemanticWithTrace("Instant.now");
   assert.equal(trace?.packageId, "builtin-java-zboss-compatibility");
-  assert.equal(trace?.packageVersion, "1.2.0");
+  assert.equal(trace?.packageVersion, "1.3.0");
   assert.equal(trace?.ruleId, classifyJavaSemantic("Instant.now")?.id);
 });
 
@@ -370,5 +370,26 @@ test("remaining callbacks and unreviewed dynamic boundaries stay fail-closed", (
     "ComplexSynchronizationServiceImpl.synchronizeDependencies"
   ]) {
     assert.equal(classifyJavaSemantic(symbol)?.kind, undefined, `${symbol} must remain fail-closed`);
+  }
+});
+
+test("reviewed page-ref helpers preserve their pure decision and calculation semantics", () => {
+  for (const symbol of [
+    "ViewMetaPageRefValueSyncExecutor.hasText",
+    "ViewMetaPageRefValueSyncExecutor.isSafeSqlIdentifier"
+  ]) {
+    const trace = classifyJavaSemanticWithTrace(symbol);
+    assert.equal(trace?.rule.kind, "decision", symbol);
+    assert.equal(trace?.origin, "reviewed-compatibility", symbol);
+    assert.equal(trace?.ruleId, "reviewed-page-ref-value-predicate", symbol);
+  }
+  for (const symbol of [
+    "ViewMetaPageRefValueSyncExecutor.normalizeColorText",
+    "ViewMetaPageRefValueSyncExecutor.shallowCopyRowData"
+  ]) {
+    const trace = classifyJavaSemanticWithTrace(symbol);
+    assert.equal(trace?.rule.kind, "calculation", symbol);
+    assert.equal(trace?.origin, "reviewed-compatibility", symbol);
+    assert.equal(trace?.ruleId, "reviewed-page-ref-value-transform", symbol);
   }
 });
