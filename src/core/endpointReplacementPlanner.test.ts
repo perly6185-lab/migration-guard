@@ -81,6 +81,32 @@ test("replacement plan fails closed on unclassified ownership boundaries", () =>
   assert.ok(plan.findings.includes("RP-BOUNDARY-UNRESOLVED:unclassified"));
 });
 
+test("classification provenance reports sources and blocks unexplained high-risk nodes", () => {
+  const report = endpointReport("POST", "/payments", "run", "mutation-command", [
+    node("Controller.run", "controller", "Controller", "run"),
+    node("Repository.save", "repository", "Repository", "save"),
+    node("LocalDateTime.now", "unknown", "LocalDateTime", "now"),
+    node("PaymentProducer.perform", "service", "PaymentProducer", "perform")
+  ]);
+  const { graph, plan } = createEndpointReplacementPlanFromJava(report);
+  const repository = graph.nodes.find((item) => item.id === "Repository.save");
+  const clock = graph.nodes.find((item) => item.id === "LocalDateTime.now");
+  const producer = graph.nodes.find((item) => item.id === "PaymentProducer.perform");
+  assert.equal(repository?.classification?.source, "generic-heuristic");
+  assert.equal(repository?.classification?.ruleId, "state-mutation-keyword");
+  assert.equal(clock?.classification?.source, "semantic-package");
+  assert.equal(clock?.classification?.packageId, "builtin-java-zboss-compatibility");
+  assert.equal(clock?.classification?.packageVersion, "1.1.0");
+  assert.equal(clock?.classification?.ruleId, "clock");
+  assert.equal(producer?.classification?.source, "unresolved");
+  assert.equal(producer?.classification?.highRisk, true);
+  assert.equal(graph.classificationCoverage?.highRiskExplainablePercent, 66.67);
+  assert.equal(graph.classificationCoverage?.highRiskAuthoritativePercent, 33.33);
+  assert.deepEqual(graph.classificationCoverage?.highRiskUnknownNodeIds, ["PaymentProducer.perform"]);
+  assert.ok(graph.completeness.findings.includes("RP-GRAPH-HIGH-RISK-UNCLASSIFIED"));
+  assert.ok(plan.findings.includes("RP-GRAPH-HIGH-RISK-UNCLASSIFIED"));
+});
+
 test("scenario synthesis is data driven across query, query-with-effects, command and sync workloads", () => {
   const query = createEndpointReplacementPlanFromJava(endpointReport("GET", "/search", "search", "page-query", [
     node("Controller.search", "controller", "Controller", "search"),
@@ -222,6 +248,9 @@ test("project semantic rules override core heuristics without hardcoded project 
   const projectNode = graph.nodes.find((item) => item.evidence.symbol === "ProjectWorkflow.perform");
   assert.equal(projectNode?.kind, "state-write");
   assert.ok(projectNode?.reasons.includes("project semantic rule project-write"));
+  assert.equal(projectNode?.classification?.source, "project-rule");
+  assert.equal(projectNode?.classification?.ruleOrigin, "project");
+  assert.equal(projectNode?.classification?.strength, "authoritative");
 });
 
 test("generic behavior classification recognizes conversions and predicate filters", () => {
@@ -348,6 +377,45 @@ test("full-replacement CLI plans an endpoint and pilot fails closed without a ta
         assert.equal(failure.code, 1);
         const report = JSON.parse(failure.stdout ?? "{}") as { blockers?: string[] };
         assert.deepEqual(report.blockers, ["RP-PILOT-TARGET-ROOT-MISSING"]);
+        return true;
+      }
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("semantics coverage CLI reports provenance and fails on unexplained high-risk nodes", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-semantic-coverage-cli-"));
+  try {
+    const readyGraph = createBehaviorGraphFromJava(endpointReport("POST", "/records", "save", "mutation-command", [
+      node("Controller.save", "controller", "Controller", "save"),
+      node("Repository.save", "repository", "Repository", "save")
+    ]));
+    const readyPath = path.join(dir, "ready-graph.json");
+    await writeFile(readyPath, JSON.stringify(readyGraph));
+    const cli = path.resolve(import.meta.dirname, "../cli.js");
+    const ready = await execFileAsync(process.execPath, [cli, "semantics", "coverage", "--graph", readyPath]);
+    const readyReport = JSON.parse(ready.stdout) as {
+      status: string;
+      coverage: { highRiskExplainablePercent: number };
+    };
+    assert.equal(readyReport.status, "passed");
+    assert.equal(readyReport.coverage.highRiskExplainablePercent, 100);
+
+    const blockedGraph = createBehaviorGraphFromJava(endpointReport("POST", "/records", "run", "mutation-command", [
+      node("Controller.run", "controller", "Controller", "run"),
+      node("PaymentProducer.perform", "service", "PaymentProducer", "perform")
+    ]));
+    const blockedPath = path.join(dir, "blocked-graph.json");
+    await writeFile(blockedPath, JSON.stringify(blockedGraph));
+    await assert.rejects(
+      execFileAsync(process.execPath, [cli, "semantics", "coverage", "--graph", blockedPath]),
+      (error: unknown) => {
+        const failure = error as { code?: number; stdout?: string };
+        assert.equal(failure.code, 1);
+        const report = JSON.parse(failure.stdout ?? "{}") as { findings?: string[] };
+        assert.deepEqual(report.findings, ["SEMANTIC-COVERAGE-HIGH-RISK-UNEXPLAINED"]);
         return true;
       }
     );

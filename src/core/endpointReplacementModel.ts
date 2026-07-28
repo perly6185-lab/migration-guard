@@ -33,6 +33,25 @@ export interface BehaviorEvidence {
   detail?: string;
 }
 
+export type BehaviorClassificationSource =
+  | "entrypoint"
+  | "project-rule"
+  | "semantic-package"
+  | "generic-heuristic"
+  | "role-inference"
+  | "unresolved";
+
+export interface BehaviorClassificationTrace {
+  source: BehaviorClassificationSource;
+  strength: "authoritative" | "heuristic" | "inferred" | "unresolved";
+  explainable: boolean;
+  highRisk: boolean;
+  ruleId?: string;
+  ruleOrigin?: "generic-builtin" | "reviewed-compatibility" | "project";
+  packageId?: string;
+  packageVersion?: string;
+}
+
 export interface BehaviorNode {
   id: string;
   kind: BehaviorKind;
@@ -43,6 +62,7 @@ export interface BehaviorNode {
   sideEffecting: boolean;
   confidence: "low" | "medium" | "high";
   reasons: string[];
+  classification?: BehaviorClassificationTrace;
 }
 
 export interface BehaviorEdge {
@@ -61,6 +81,43 @@ export interface BehaviorGraphCompleteness {
   findings: string[];
 }
 
+export interface BehaviorClassificationCoverage {
+  version: 1;
+  totalNodes: number;
+  explainableNodes: number;
+  explainablePercent: number;
+  authoritativeNodes: number;
+  authoritativePercent: number;
+  highRiskNodes: number;
+  highRiskExplainableNodes: number;
+  highRiskExplainablePercent: number;
+  highRiskAuthoritativeNodes: number;
+  highRiskAuthoritativePercent: number;
+  unknownNodeIds: string[];
+  highRiskUnknownNodeIds: string[];
+  bySource: Array<{
+    source: BehaviorClassificationSource;
+    nodes: number;
+    highRiskNodes: number;
+  }>;
+  byStrength: Array<{
+    strength: BehaviorClassificationTrace["strength"];
+    nodes: number;
+    highRiskNodes: number;
+  }>;
+  byBehavior: Array<{
+    behavior: BehaviorKind;
+    nodes: number;
+    highRiskNodes: number;
+  }>;
+  bySourceKind: Array<{
+    sourceKind: string;
+    nodes: number;
+    highRiskNodes: number;
+    unknownNodes: number;
+  }>;
+}
+
 export interface BehaviorGraph {
   version: 1;
   createdAt: string;
@@ -69,6 +126,7 @@ export interface BehaviorGraph {
   nodes: BehaviorNode[];
   edges: BehaviorEdge[];
   completeness: BehaviorGraphCompleteness;
+  classificationCoverage?: BehaviorClassificationCoverage;
   graphHash: string;
 }
 

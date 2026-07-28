@@ -5,6 +5,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { pathExists, readJsonFile, writeJsonFile } from "./files.js";
+import type { BehaviorGraph } from "./endpointReplacementModel.js";
 import { initMigrationProject } from "./migrationProject.js";
 import {
   analyzeMigrationProject,
@@ -106,6 +107,9 @@ test("project workflow analyzes Spring, scaffolds Rust and keeps both gates fail
     assert.match(analysis.semanticRulePackages?.[0]?.packageVersion ?? "", /^\d+\.\d+\.\d+$/);
     assert.equal(await pathExists(analysis.entries[0]!.graphPath), true);
     assert.equal(await pathExists(analysis.entries[0]!.planPath), true);
+    const behaviorGraph = await readJsonFile<BehaviorGraph>(analysis.entries[0]!.graphPath);
+    assert.equal(behaviorGraph.classificationCoverage?.highRiskExplainablePercent, 100);
+    assert.equal(behaviorGraph.nodes[0]?.classification?.source, "entrypoint");
     assert.equal(execFileSync("git", ["status", "--porcelain=v1"], { cwd: sourceRoot, encoding: "utf8" }), sourceStatusBefore);
 
     const analysisIndexPath = path.join(pkg.evidenceDir, "analysis", "index.json");

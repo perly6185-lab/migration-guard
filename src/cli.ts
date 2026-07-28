@@ -196,7 +196,12 @@ import {
   type EndpointReplacementPlanOptions
 } from "./core/endpointReplacementPlanner.js";
 import { runEndpointRuntimeDriver, type EndpointRuntimeDriverConfig } from "./core/endpointReplacementRuntime.js";
-import type { EndpointReplacementEvidence, EndpointReplacementPlan, ReplacementScenario } from "./core/endpointReplacementModel.js";
+import type {
+  BehaviorGraph,
+  EndpointReplacementEvidence,
+  EndpointReplacementPlan,
+  ReplacementScenario
+} from "./core/endpointReplacementModel.js";
 import { assessJavaControllersForRust, renderControllerRustAssessment } from "./core/controllerRustAssessment.js";
 import { assessJavaServicesForRust, renderServiceRustAssessment } from "./core/serviceRustAssessment.js";
 import { assessJavaRepositoriesForRust, renderRepositoryRustAssessment, type RepositoryRustAssessmentReport } from "./core/repositoryRustAssessment.js";
@@ -824,6 +829,30 @@ async function commandVmp(args: ParsedArgs): Promise<void> {
 
 async function commandSemantics(args: ParsedArgs): Promise<void> {
   const action = args.positionals[0] ?? "list";
+  if (action === "coverage") {
+    const graphPath = path.resolve(requiredStringOption(args, "graph", "semantics coverage"));
+    const graph = await readJsonFile<BehaviorGraph>(graphPath);
+    if (!graph.classificationCoverage) {
+      throw new Error(`Behavior graph has no classification coverage: ${graphPath}. Regenerate it with migrate analyze.`);
+    }
+    const findings = graph.classificationCoverage.highRiskUnknownNodeIds.length > 0
+      ? ["SEMANTIC-COVERAGE-HIGH-RISK-UNEXPLAINED"]
+      : [];
+    const report = {
+      version: 1,
+      graphPath,
+      graphHash: graph.graphHash,
+      endpoint: graph.endpoint,
+      status: findings.length === 0 ? "passed" : "blocked",
+      coverage: graph.classificationCoverage,
+      findings
+    };
+    const outputOption = stringOption(args, "output");
+    if (outputOption) await writeJsonFile(path.resolve(outputOption), report);
+    console.log(JSON.stringify(outputOption ? { ...report, output: path.resolve(outputOption) } : report, null, 2));
+    if (findings.length > 0) process.exitCode = 1;
+    return;
+  }
   const pkg = await loadSemanticPackage(args);
   if (action === "list") {
     const validation = validateSemanticRulePackage(pkg);
@@ -3024,6 +3053,7 @@ Usage:
   migration-guard vmp contract [--root <path>]
   migration-guard semantics list [--package <semantic-package.json>]
   migration-guard semantics validate [--package <semantic-package.json>]
+  migration-guard semantics coverage --graph <behavior-graph.json> [--output <report.json>]
   migration-guard semantics evaluate (--analysis <java-analysis.json>|--samples <samples.json>|--project <id|case-dir>) [--package <semantic-package.json>] [--min-coverage <0-100>] [--max-conflicts <n>] [--max-mismatches <n>] [--output <report.json>]
   migration-guard semantics lock [--package <semantic-package.json>] [--output <lock.json>]
   migration-guard semantics diff --from <lock-or-package.json> --to <lock-or-package.json>

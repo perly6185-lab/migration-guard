@@ -107,6 +107,7 @@ defaults, rule origins and a deterministic package hash.
 node dist/cli.js semantics list
 node dist/cli.js semantics validate
 node dist/cli.js semantics lock --output .migration-guard/semantic-rules/java.lock.json
+node dist/cli.js semantics coverage --graph cases/<project>/evidence/analysis/<entry>/behavior-graph.json
 node dist/cli.js semantics evaluate --project zboss-query --output .migration-guard/semantic-rules/zboss-query.json
 node dist/cli.js semantics evaluate --samples fixtures/semantic/java-golden.json --min-coverage 100 --max-conflicts 0 --max-mismatches 0
 node dist/cli.js semantics diff --from previous.lock.json --to current.lock.json
@@ -125,6 +126,14 @@ The package can declare reviewed first-match precedence without changing rule
 order. CI runs the checked-in golden corpus with explicit coverage, conflict and
 mismatch thresholds. Malformed external packages and sample corpora fail closed;
 external package JSON can be selected with `--package`.
+
+New behavior graphs also record classification provenance for every node:
+selected entrypoint, project rule, versioned semantic package, generic heuristic,
+role inference, or unresolved. `semantics coverage` reports explainability by
+classification source, evidence strength, behavior kind and source kind. It
+distinguishes fully explainable coverage from authoritative package/rule
+coverage, and fails when a potentially high-risk node has no explainable
+classification.
 
 Phase 146-150 health semantics, normalization, workspace scanning, persistence hardening and RC results are documented in
 [docs/PHASE_150_REPORT.md](docs/PHASE_150_REPORT.md). Release gates are tracked in
