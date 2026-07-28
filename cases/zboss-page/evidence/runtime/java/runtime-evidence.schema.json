@@ -1,0 +1,629 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Migration Guard Java Runtime Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "provenance",
+    "entries",
+    "bundleHash"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "generatedBy",
+        "createdAt",
+        "projectId",
+        "projectHash",
+        "sourceIdentity",
+        "runtimeContractHash"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "synthetic",
+            "real"
+          ]
+        },
+        "generatedBy": {
+          "const": "migration-guard"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "sourceIdentity": {
+          "type": "object",
+          "required": [
+            "revision",
+            "dirty",
+            "dirtyFingerprint",
+            "identity"
+          ],
+          "properties": {
+            "revision": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dirty": {
+              "type": "boolean"
+            },
+            "dirtyFingerprint": {
+              "$ref": "#/$defs/hash"
+            },
+            "identity": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "runtimeContractHash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "entries": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "readiness",
+          "scenarios"
+        ],
+        "properties": {
+          "readiness": {
+            "type": "object"
+          },
+          "scenarios": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "$ref": "#/$defs/scenarioEvidence"
+            }
+          }
+        }
+      }
+    },
+    "bundleHash": {
+      "$ref": "#/$defs/hash"
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "collectorEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "collector",
+        "status",
+        "capturedAt",
+        "specHash",
+        "payload",
+        "payloadHash",
+        "findings",
+        "evidenceHash"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "collector": {
+          "enum": [
+            "mysql",
+            "redis",
+            "events",
+            "sql-trace"
+          ]
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "blocked"
+          ]
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "specHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "payload": {},
+        "payloadHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidenceHash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "batchEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plan",
+        "committed",
+        "undoRows",
+        "progress",
+        "lockRecords",
+        "chunkAcceptance"
+      ],
+      "properties": {
+        "plan": {
+          "type": "object",
+          "required": [
+            "requested",
+            "valid",
+            "failed",
+            "inserts",
+            "updates"
+          ],
+          "properties": {
+            "requested": {
+              "$ref": "#/$defs/indexes"
+            },
+            "valid": {
+              "$ref": "#/$defs/indexes"
+            },
+            "failed": {
+              "$ref": "#/$defs/indexes"
+            },
+            "inserts": {
+              "$ref": "#/$defs/indexes"
+            },
+            "updates": {
+              "$ref": "#/$defs/indexes"
+            }
+          }
+        },
+        "committed": {
+          "$ref": "#/$defs/indexes"
+        },
+        "undoRows": {
+          "$ref": "#/$defs/indexes"
+        },
+        "progress": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "stage",
+              "processed",
+              "failed",
+              "total"
+            ]
+          }
+        },
+        "lockRecords": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "event",
+              "resource",
+              "ownerToken",
+              "at"
+            ]
+          }
+        },
+        "chunkAcceptance": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "accepted",
+              "replayed",
+              "conflict",
+              "out-of-order"
+            ]
+          }
+        },
+        "transactions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "transactionId",
+              "event",
+              "sequence"
+            ]
+          }
+        }
+      }
+    },
+    "pageEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "response"
+      ],
+      "properties": {
+        "response": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "pageNumber",
+            "pageSize",
+            "total",
+            "returnedRows",
+            "rowKeys",
+            "rowsHash"
+          ],
+          "properties": {
+            "status": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            },
+            "pageNumber": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "pageSize": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "returnedRows": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "rowKeys": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "rowsHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "orderHash": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "whereFields",
+            "havingFields",
+            "aggregateFields"
+          ],
+          "properties": {
+            "whereFields": {
+              "$ref": "#/$defs/fieldNames"
+            },
+            "havingFields": {
+              "$ref": "#/$defs/fieldNames"
+            },
+            "aggregateFields": {
+              "$ref": "#/$defs/fieldNames"
+            },
+            "groupByFields": {
+              "$ref": "#/$defs/fieldNames"
+            },
+            "orderByFields": {
+              "$ref": "#/$defs/fieldNames"
+            },
+            "distinct": {
+              "type": "boolean"
+            },
+            "dataFilterHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "totalFilterHash": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "horizontal": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "pageKeys",
+            "cellRowKeys",
+            "distinctTotal"
+          ],
+          "properties": {
+            "pageKeys": {
+              "$ref": "#/$defs/keys"
+            },
+            "cellRowKeys": {
+              "$ref": "#/$defs/keys"
+            },
+            "distinctTotal": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "pivotKeys": {
+              "$ref": "#/$defs/keys"
+            }
+          }
+        },
+        "refresh": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "syncSucceeded",
+            "effects"
+          ],
+          "properties": {
+            "mode": {
+              "enum": [
+                "manual",
+                "auto",
+                "column"
+              ]
+            },
+            "syncSucceeded": {
+              "type": "boolean"
+            },
+            "querySucceeded": {
+              "type": "boolean"
+            },
+            "effects": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "sync",
+                  "timestamp",
+                  "undo-clear",
+                  "reconcile",
+                  "query",
+                  "terminal-event",
+                  "unlock"
+                ]
+              }
+            },
+            "lock": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "resource",
+                "ownerFingerprint",
+                "acquired",
+                "released"
+              ],
+              "properties": {
+                "resource": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "ownerFingerprint": {
+                  "$ref": "#/$defs/hash"
+                },
+                "acquired": {
+                  "type": "boolean"
+                },
+                "released": {
+                  "type": "boolean"
+                },
+                "releaseOwnerFingerprint": {
+                  "$ref": "#/$defs/hash"
+                }
+              }
+            },
+            "terminalEvent": {
+              "enum": [
+                "completed",
+                "failed",
+                "rejected"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "indexes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "fieldNames": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "keys": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "scenarioEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenarioId",
+        "origin",
+        "status",
+        "protocol",
+        "fixtureKind",
+        "fixtureHash",
+        "driverResultHash",
+        "observationHash",
+        "dimensions",
+        "collectors",
+        "semantics",
+        "findings"
+      ],
+      "properties": {
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "enum": [
+            "endpoint-runtime-driver",
+            "synthetic-self-test"
+          ]
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "blocked"
+          ]
+        },
+        "protocol": {
+          "const": "migration-guard.runtime-observation/v1"
+        },
+        "fixtureKind": {
+          "enum": [
+            "template",
+            "synthetic",
+            "real-runtime"
+          ]
+        },
+        "fixtureHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "driverResultHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "observationHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "dimensions": {
+          "type": "object"
+        },
+        "collectors": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mysql": {
+              "$ref": "#/$defs/collectorEvidence"
+            },
+            "redis": {
+              "$ref": "#/$defs/collectorEvidence"
+            },
+            "events": {
+              "$ref": "#/$defs/collectorEvidence"
+            },
+            "sql-trace": {
+              "$ref": "#/$defs/collectorEvidence"
+            }
+          }
+        },
+        "correlation": {
+          "$ref": "#/$defs/correlationTrace"
+        },
+        "semantics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "batch": {
+              "$ref": "#/$defs/batchEvidence"
+            },
+            "page": {
+              "$ref": "#/$defs/pageEvidence"
+            }
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "correlationTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "scenarioId",
+        "requestFingerprint",
+        "sources",
+        "traceHash"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestFingerprint": {
+          "$ref": "#/$defs/hash"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source",
+              "scenarioId",
+              "requestFingerprint"
+            ],
+            "properties": {
+              "source": {
+                "enum": [
+                  "http",
+                  "mysql",
+                  "redis",
+                  "events",
+                  "sql-trace"
+                ]
+              },
+              "scenarioId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "requestFingerprint": {
+                "$ref": "#/$defs/hash"
+              }
+            }
+          }
+        },
+        "traceHash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    }
+  }
+}

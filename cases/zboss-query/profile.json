@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "projectId": "zboss-query",
+  "source": {
+    "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
+    "access": "read-only",
+    "directories": [
+      "src/main/java",
+      "src/main/resources"
+    ],
+    "language": "java",
+    "framework": "spring",
+    "adapter": "java-spring"
+  },
+  "data": {
+    "dialect": "mysql",
+    "adapters": [
+      "mybatis"
+    ]
+  },
+  "entrypoints": [
+    {
+      "id": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+      "kind": "http-route",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/query"
+    }
+  ],
+  "contexts": {
+    "tenant": "required",
+    "user": "required",
+    "request": "required",
+    "datasource": "required",
+    "custom": []
+  },
+  "infrastructure": {
+    "caches": [],
+    "locks": [],
+    "events": [],
+    "externalServices": []
+  },
+  "target": {
+    "language": "rust",
+    "root": "D:\\learn\\migration-guard\\out-of-scope\\zboss-query",
+    "serviceName": "zboss-query-migration"
+  },
+  "compatibility": {
+    "strict": true,
+    "approvalRequired": true,
+    "approvedCorrectionIds": []
+  }
+}

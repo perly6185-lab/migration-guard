@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "status": "unconfigured",
+  "protocol": "endpoint-runtime-v1",
+  "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
+  "requiredEnvironment": [
+    "MG_JAVA_BASE_URL",
+    "MG_JAVA_DATABASE_URL",
+    "MG_JAVA_DEVICE_ID",
+    "MG_JAVA_DRIVER_CLEANUP_COMMAND",
+    "MG_JAVA_DRIVER_COLLECT_COMMAND",
+    "MG_JAVA_DRIVER_HEALTH_COMMAND",
+    "MG_JAVA_DRIVER_INJECT_FAULT_COMMAND",
+    "MG_JAVA_DRIVER_INVOKE_COMMAND",
+    "MG_JAVA_DRIVER_SEED_COMMAND",
+    "MG_JAVA_DRIVER_SETUP_COMMAND",
+    "MG_JAVA_DRIVER_SNAPSHOT_COMMAND",
+    "MG_JAVA_DRIVER_START_COMMAND",
+    "MG_JAVA_DRIVER_STOP_COMMAND",
+    "MG_JAVA_REDIS_URL",
+    "MG_JAVA_REQUEST_ID",
+    "MG_JAVA_TENANT_ID",
+    "MG_JAVA_TOKEN",
+    "MG_JAVA_USER_ID"
+  ],
+  "operations": {
+    "setup": {
+      "required": true,
+      "commandVariable": "MG_JAVA_DRIVER_SETUP_COMMAND",
+      "output": "operation-evidence"
+    },
+    "start": {
+      "required": true,
+      "commandVariable": "MG_JAVA_DRIVER_START_COMMAND",
+      "output": "operation-evidence"
+    },
+    "health": {
+      "required": true,
+      "commandVariable": "MG_JAVA_DRIVER_HEALTH_COMMAND",
+      "output": "operation-evidence"
+    },
+    "seed": {
+      "required": true,
+      "commandVariable": "MG_JAVA_DRIVER_SEED_COMMAND",
+      "output": "operation-evidence"
+    },
+    "invoke": {
+      "required": true,
+      "commandVariable": "MG_JAVA_DRIVER_INVOKE_COMMAND",
+      "output": "operation-evidence"
+    },
+    "inject-fault": {
+      "required": false,
+      "commandVariable": "MG_JAVA_DRIVER_INJECT_FAULT_COMMAND",
+      "output": "operation-evidence"
+    },
+    "snapshot": {
+      "required": true,
+      "commandVariable": "MG_JAVA_DRIVER_SNAPSHOT_COMMAND",
+      "output": "operation-evidence"
+    },
+    "collect": {
+      "required": true,
+      "commandVariable": "MG_JAVA_DRIVER_COLLECT_COMMAND",
+      "output": "runtime-observation"
+    },
+    "cleanup": {
+      "required": true,
+      "commandVariable": "MG_JAVA_DRIVER_CLEANUP_COMMAND",
+      "output": "operation-evidence"
+    },
+    "stop": {
+      "required": true,
+      "commandVariable": "MG_JAVA_DRIVER_STOP_COMMAND",
+      "output": "operation-evidence"
+    }
+  }
+}

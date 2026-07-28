@@ -1,0 +1,217 @@
+{
+  "schemaVersion": 1,
+  "ownershipPolicy": {
+    "version": 1,
+    "rules": []
+  },
+  "classifications": [
+    {
+      "id": "batch-number-comparison-normalization",
+      "symbolPattern": "ExpValueFieldDataServiceImpl\\.toNumberComparisonValue",
+      "behavior": "calculation",
+      "reason": "Normalizes comparison input and delegates deterministic numeric formatting."
+    },
+    {
+      "id": "batch-color-filter-record-access",
+      "symbolPattern": "rule\\.filterConditions",
+      "behavior": "calculation",
+      "reason": "Record accessor used by deterministic row color evaluation."
+    },
+    {
+      "id": "batch-in-flight-coordination",
+      "symbolPattern": "BatchUpdateInFlightRegistry\\.",
+      "behavior": "coordination",
+      "reason": "Batch/refresh exclusion is a coordination boundary even when the reference implementation is process-local."
+    },
+    {
+      "id": "batch-progress-events",
+      "symbolPattern": "BatchUpdateProgressManager\\.",
+      "behavior": "event-publish",
+      "reason": "Progress state changes are externally observable event semantics."
+    },
+    {
+      "id": "batch-undo-compensation",
+      "symbolPattern": "(?:UndoService|UndoPendingRegistry|undoService|undoPendingRegistry)",
+      "behavior": "compensation",
+      "reason": "Undo snapshots and pending markers form the compensation contract."
+    },
+    {
+      "id": "batch-cascade-events",
+      "symbolPattern": "(?:CrossRowCascadeEvent|publishExternalSelectRefRecalc|publishEvent)",
+      "behavior": "event-publish",
+      "reason": "Cascade publication is an observable downstream event boundary."
+    },
+    {
+      "id": "batch-async-boundaries",
+      "symbolPattern": "(?:CompletableFuture\\.|supplyAsync|undoOperationExecutor\\.execute)",
+      "behavior": "async-boundary",
+      "reason": "Worker and undo execution cross thread and transaction context boundaries."
+    }
+  ],
+  "runtimeGates": [
+    {
+      "id": "batch-runtime-baseline",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "scenarioPattern": ".*",
+      "collectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "gates": {
+        "batch": {
+          "requireUndoCorrespondence": false,
+          "requireProgressTerminal": true,
+          "requireSharedLock": false,
+          "requireChunkIdempotency": false,
+          "requireTransactionTerminalOrdering": true,
+          "requireRowLimitContract": false,
+          "requireCompleteRowClassification": true,
+          "requireReaderWriterLease": false,
+          "requireUndoDurability": false,
+          "requireProgressTerminalIdentity": false
+        }
+      },
+      "decisionIds": []
+    },
+    {
+      "id": "batch-row-limit-contract",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "scenarioPattern": "^batch-row-limit-rejected$",
+      "collectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "gates": {
+        "batch": {
+          "requireUndoCorrespondence": false,
+          "requireProgressTerminal": false,
+          "requireSharedLock": false,
+          "requireChunkIdempotency": false,
+          "requireTransactionTerminalOrdering": false,
+          "requireRowLimitContract": true,
+          "requireCompleteRowClassification": false,
+          "requireReaderWriterLease": false,
+          "requireUndoDurability": false,
+          "requireProgressTerminalIdentity": false
+        }
+      },
+      "decisionIds": [
+        "BUP-DEC-ROW-LIMIT"
+      ]
+    },
+    {
+      "id": "batch-partial-commit-contract",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "scenarioPattern": "^(?:batch-partial-failure|transaction-failure|undo-excludes-failed-rows|validation-failure)$",
+      "collectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "gates": {
+        "batch": {
+          "requireCompleteRowClassification": true
+        }
+      },
+      "decisionIds": [
+        "BUP-DEC-PARTIAL-COMMIT"
+      ]
+    },
+    {
+      "id": "batch-chunk-idempotency-contract",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "scenarioPattern": "^chunked-paste-progress$",
+      "collectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "gates": {
+        "batch": {
+          "requireChunkIdempotency": true
+        }
+      },
+      "decisionIds": [
+        "BUP-DEC-CHUNK-IDEMPOTENCY"
+      ]
+    },
+    {
+      "id": "batch-refresh-lease-contract",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "scenarioPattern": "^concurrent-write$",
+      "collectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "gates": {
+        "batch": {
+          "requireSharedLock": false,
+          "requireReaderWriterLease": true
+        }
+      },
+      "decisionIds": [
+        "BUP-DEC-BATCH-REFRESH-LEASE"
+      ]
+    },
+    {
+      "id": "batch-undo-durability-contract",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "scenarioPattern": "^(?:batch-partial-failure|batch-update-success|transaction-failure|undo-excludes-failed-rows)$",
+      "collectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "gates": {
+        "batch": {
+          "requireUndoCorrespondence": false,
+          "requireUndoDurability": true
+        }
+      },
+      "decisionIds": [
+        "BUP-DEC-UNDO-DURABILITY"
+      ]
+    },
+    {
+      "id": "batch-progress-terminal-contract",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "scenarioPattern": "^(?:batch-partial-failure|batch-update-success|chunked-paste-progress|dependency-failure|progress-event-shape|transaction-failure)$",
+      "collectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "gates": {
+        "batch": {
+          "requireProgressTerminal": true,
+          "requireTransactionTerminalOrdering": true,
+          "requireProgressTerminalIdentity": true
+        }
+      },
+      "decisionIds": [
+        "BUP-DEC-PROGRESS-TERMINAL"
+      ]
+    },
+    {
+      "id": "batch-validation-no-transaction-contract",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "scenarioPattern": "^validation-failure$",
+      "collectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "gates": {
+        "batch": {
+          "requireTransactionTerminalOrdering": false
+        }
+      },
+      "decisionIds": [
+        "BUP-DEC-PARTIAL-COMMIT"
+      ]
+    }
+  ]
+}

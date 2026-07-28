@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "collector": "sql-trace",
+  "status": "template",
+  "file": "evidence/runtime/java/sql-traces/replace-with-scenario.jsonl",
+  "correlationEnv": "MG_JAVA_REQUEST_ID",
+  "correlationFields": [
+    "requestId",
+    "correlationId"
+  ]
+}

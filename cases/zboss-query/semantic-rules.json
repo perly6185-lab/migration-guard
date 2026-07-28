@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "ownershipPolicy": {
+    "version": 1,
+    "rules": []
+  },
+  "classifications": [],
+  "runtimeGates": [
+    {
+      "id": "query-page-baseline",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+      "scenarioPattern": ".*",
+      "collectors": [
+        "mysql",
+        "sql-trace"
+      ],
+      "gates": {
+        "page": {
+          "expectedStatus": 200,
+          "requirePagination": true,
+          "preserveRowOrder": true
+        }
+      }
+    },
+    {
+      "id": "query-cache-isolation",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+      "scenarioPattern": "^query-cache-isolation$",
+      "collectors": [
+        "mysql",
+        "sql-trace"
+      ],
+      "gates": {
+        "query": {
+          "requireCacheIsolation": true
+        }
+      }
+    },
+    {
+      "id": "query-timeout-quiescence",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+      "scenarioPattern": "^query-timeout-quiescence$",
+      "collectors": [
+        "mysql",
+        "events",
+        "sql-trace"
+      ],
+      "gates": {
+        "query": {
+          "requireAsyncQuiescence": true
+        }
+      }
+    },
+    {
+      "id": "query-effect-atomicity",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+      "scenarioPattern": "^query-effect-atomicity$",
+      "collectors": [
+        "mysql",
+        "sql-trace"
+      ],
+      "gates": {
+        "query": {
+          "requireEffectAtomicity": true,
+          "requireIdempotency": true
+        }
+      }
+    },
+    {
+      "id": "query-entrypoint-parity",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+      "scenarioPattern": "^entrypoint-parity$",
+      "collectors": [
+        "mysql",
+        "sql-trace"
+      ],
+      "gates": {
+        "query": {
+          "requireEntrypointParity": true
+        }
+      }
+    },
+    {
+      "id": "query-request-semantic-parity",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+      "scenarioPattern": "^request-semantic-parity$",
+      "collectors": [
+        "mysql",
+        "sql-trace"
+      ],
+      "gates": {
+        "query": {
+          "requireRequestSemanticParity": true
+        }
+      }
+    }
+  ]
+}

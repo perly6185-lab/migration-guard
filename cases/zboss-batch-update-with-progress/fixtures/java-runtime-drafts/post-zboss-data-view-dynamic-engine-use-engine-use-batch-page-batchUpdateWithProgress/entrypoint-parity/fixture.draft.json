@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "status": "draft",
+  "fixtureKind": "draft-runtime",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "9ebcfe8959343908d6b33e736eec350244864703d702d7da24c90aecce93fb49",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+  "scenarioId": "entrypoint-parity",
+  "category": "compatibility",
+  "request": {
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-tenant-id": "<tenant-id>"
+    },
+    "body": {
+      "reqId": "<case-id>",
+      "domain": "<domain>",
+      "usePageId": "<usePageId>",
+      "pageId": "<pageId>",
+      "panelId": "<panelId>",
+      "interId": "<interId>",
+      "clientSessionId": "<client-session-id>",
+      "enableProgress": true,
+      "expectedTotalRows": 2,
+      "isLastChunk": true,
+      "undo": true,
+      "operationKind": "<operation-kind>",
+      "operationLabel": "<operation-label>",
+      "batchPkFieldValue": "<pk-field>",
+      "batchHeaderValueList": [],
+      "batchPostValueList": [],
+      "headerValues": {},
+      "postValues": {},
+      "qualityValues": {},
+      "horizontalId": "<horizontal-id>",
+      "_scenario": "entrypoint-parity"
+    }
+  },
+  "requestFocus": [],
+  "expectedComparison": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "collectorSpecs": {
+    "events": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/entrypoint-parity/collectors/events.draft.json",
+      "hash": "f93fd2f0520e3b5022c07c52855de1f2c44c9dac27d35d9d7c95fcae9c94595e"
+    },
+    "mysql": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/entrypoint-parity/collectors/mysql.draft.json",
+      "hash": "4b213cba2e1345a9ba201c7466614c931ae61af91b23410b34872c13c068cbe1"
+    },
+    "redis": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/entrypoint-parity/collectors/redis.draft.json",
+      "hash": "f5953888bc6bca7a954a08f4959211cf618e65755e77af32a7f4fb060a7109c8"
+    }
+  },
+  "expectations": {
+    "batch": {
+      "requireUndoCorrespondence": false,
+      "requireProgressTerminal": true,
+      "requireSharedLock": false,
+      "requireChunkIdempotency": false,
+      "requireTransactionTerminalOrdering": true,
+      "requireRowLimitContract": false,
+      "requireCompleteRowClassification": true,
+      "requireReaderWriterLease": false,
+      "requireUndoDurability": false,
+      "requireProgressTerminalIdentity": false
+    }
+  },
+  "environmentBindings": [
+    {
+      "path": "request.headers.authorization",
+      "environment": "MG_JAVA_TOKEN"
+    }
+  ],
+  "authoring": {
+    "reviewed": false,
+    "instructions": "Replace request and collector placeholders, set collector specs to ready, then run runtime-fixture-promote."
+  },
+  "compatibilityDecisionIds": []
+}

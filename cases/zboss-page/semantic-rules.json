@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "ownershipPolicy": {
+    "version": 1,
+    "rules": []
+  },
+  "classifications": [
+    {
+      "id": "page-number-comparison-normalization",
+      "symbolPattern": "ExpValueFieldDataServiceImpl\\.toNumberComparisonValue",
+      "behavior": "calculation",
+      "reason": "Normalizes comparison input and delegates deterministic numeric formatting."
+    },
+    {
+      "id": "page-color-filter-record-access",
+      "symbolPattern": "rule\\.filterConditions",
+      "behavior": "calculation",
+      "reason": "Record accessor used by deterministic row color evaluation."
+    },
+    {
+      "id": "page-refresh-lease",
+      "symbolPattern": "(?:RedisViewMetaPageRefreshLockPortAdapter|ViewMetaPageRefreshLockPort)\\.",
+      "behavior": "coordination",
+      "reason": "Owner-token Redis lease acquisition and release are concurrency semantics."
+    },
+    {
+      "id": "page-refresh-progress",
+      "symbolPattern": "(?:ViewMetaRefreshSyncProgressService|ViewMetaRefreshSyncProgressPort)\\.",
+      "behavior": "event-publish",
+      "reason": "Refresh progress frames are externally observable event semantics."
+    }
+  ],
+  "runtimeGates": [
+    {
+      "id": "page-pagination-baseline",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioPattern": ".*",
+      "collectors": [],
+      "gates": {
+        "page": {
+          "expectedStatus": 200,
+          "requirePagination": true,
+          "preserveRowOrder": true
+        }
+      },
+      "decisionIds": []
+    },
+    {
+      "id": "page-quality-query-shape",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioPattern": "^quality-",
+      "collectors": [
+        "sql-trace"
+      ],
+      "gates": {
+        "page": {
+          "requireTotalFilterParity": true
+        }
+      },
+      "decisionIds": [
+        "PAGE-DEC-QUALITY-AGGREGATE-ROUTING"
+      ]
+    },
+    {
+      "id": "page-horizontal-consistency",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioPattern": "^horizontal-",
+      "collectors": [
+        "sql-trace"
+      ],
+      "gates": {
+        "page": {
+          "requireTotalFilterParity": true,
+          "requireHorizontalConsistency": true
+        }
+      },
+      "decisionIds": [
+        "PAGE-DEC-HORIZONTAL-HAVING"
+      ]
+    },
+    {
+      "id": "page-refresh-trace",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioPattern": "^(?:refresh-.*|branch-coverage|dependency-failure|transaction-failure|concurrent-write)$",
+      "collectors": [
+        "events",
+        "mysql",
+        "redis",
+        "sql-trace"
+      ],
+      "gates": {
+        "page": {
+          "requireRefreshTrace": true,
+          "requireRefreshTerminal": true,
+          "requireRefreshLock": true
+        }
+      },
+      "decisionIds": [
+        "PAGE-DEC-REFRESH-EFFECT-ORDER"
+      ]
+    },
+    {
+      "id": "page-transaction-self-call",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioPattern": "^transaction-failure$",
+      "collectors": [
+        "mysql"
+      ],
+      "gates": {
+        "page": {
+          "requireTotalFilterParity": true
+        }
+      },
+      "decisionIds": [
+        "PAGE-DEC-REQUIRES-NEW-SELF-CALL"
+      ]
+    }
+  ]
+}

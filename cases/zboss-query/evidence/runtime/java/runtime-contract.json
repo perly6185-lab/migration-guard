@@ -1,0 +1,495 @@
+{
+  "version": 1,
+  "generatedAt": "2026-07-27T23:37:01.146Z",
+  "projectId": "zboss-query",
+  "projectHash": "940efde43cbbbd3f57c581db290e81358121c11d7faffbafbb867258b91d1331",
+  "sourceIdentity": {
+    "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+    "dirty": true,
+    "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+    "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+  },
+  "entries": [
+    {
+      "id": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/query",
+      "workload": "query-with-effects",
+      "requiredCollectors": [
+        "events",
+        "mysql",
+        "sql-trace"
+      ],
+      "analysisHash": "cce9cb437e9fad0e6b56ed5ff18370aa6cca3d45502a9ec045d99312f0d27116",
+      "planHash": "384c37412a6c0a02c613508e02d64b30f82ae9779741fe77f40fdcbede9a8a76",
+      "scenarios": [
+        {
+          "id": "branch-coverage",
+          "title": "Decision branch coverage",
+          "category": "branch",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/branch-coverage.template.json",
+            "hash": "e298f4ccca4188ddc5d9b90613e597eb67edae722695c7ef808d73e2fe6be4b4"
+          }
+        },
+        {
+          "id": "concurrent-write",
+          "title": "Concurrent state mutation",
+          "category": "concurrency",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/concurrent-write.template.json",
+            "hash": "a9e4e5a046f8af9003b98a475459efd20e210352b610849494bd3bb606285e27"
+          }
+        },
+        {
+          "id": "context-isolation",
+          "title": "Runtime context isolation",
+          "category": "context",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/context-isolation.template.json",
+            "hash": "005b43ba589a5f5ba26d2fdb1968f51428405a2a072bbe0fcb1263bbcfcfb7de"
+          }
+        },
+        {
+          "id": "dependency-failure",
+          "title": "External dependency failure",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/dependency-failure.template.json",
+            "hash": "e3128c2fe72328342ccec5e902aeb063dc81af14843a22f3f218fb54aa547341"
+          }
+        },
+        {
+          "id": "entrypoint-parity",
+          "title": "Web/RPC entrypoint parity",
+          "category": "compatibility",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page",
+            "query"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/entrypoint-parity.template.json",
+            "hash": "dba41630a5c7e96291954e918e66e21c37a9a0d90bce1f957ab482ee031e3429"
+          }
+        },
+        {
+          "id": "horizontal-page",
+          "title": "Horizontal or pivoted page query",
+          "category": "scale",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/horizontal-page.template.json",
+            "hash": "ea5e142304f6e70f9134ab889663127757069f2b11394b4dd69caa2266528e80"
+          }
+        },
+        {
+          "id": "primary-success",
+          "title": "Primary successful execution",
+          "category": "success",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/primary-success.template.json",
+            "hash": "16fa319f100021859d461a79fa622801401ef064667244d57c418bf21849d5f8"
+          }
+        },
+        {
+          "id": "query-cache-isolation",
+          "title": "Query cache response isolation",
+          "category": "compatibility",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page",
+            "query"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/query-cache-isolation.template.json",
+            "hash": "55880b343f8c60d4d6627ac16fee573447821c3f3e63259cfa74b2c6c4175a90"
+          }
+        },
+        {
+          "id": "query-effect-atomicity",
+          "title": "Query-side effect atomicity and replay",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page",
+            "query"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/query-effect-atomicity.template.json",
+            "hash": "a94b1afce33f1e3e8d2f653f086db5a56140479bf56bb3f51e3e47a0823adfa3"
+          }
+        },
+        {
+          "id": "query-timeout-quiescence",
+          "title": "Query timeout task quiescence",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page",
+            "query"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/query-timeout-quiescence.template.json",
+            "hash": "4a74dd08b9ac9cab9d21e7aa536e4b51ba17013ec36789a2b57cb8427e4b3ab1"
+          }
+        },
+        {
+          "id": "request-semantic-parity",
+          "title": "Request semantic override parity",
+          "category": "compatibility",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page",
+            "query"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/request-semantic-parity.template.json",
+            "hash": "3d0d53ebc11c369d27097ad6ed03aa77d971a502a6408e2be3c6c0f122a2230f"
+          }
+        },
+        {
+          "id": "scale-boundary",
+          "title": "Scale and performance boundary",
+          "category": "scale",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures",
+            "performance"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/scale-boundary.template.json",
+            "hash": "9b9dd51a92505ed7de326d159419ae18e687dd0009ea4e0b0c70c8810434fe51"
+          }
+        },
+        {
+          "id": "standard-page",
+          "title": "Standard first-page query",
+          "category": "scale",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/standard-page.template.json",
+            "hash": "5d3623a0522269c2241d0392dc1d337c7fdfd55dc350f289b5c888425badb170"
+          }
+        },
+        {
+          "id": "tenant-auth-context",
+          "title": "Tenant/auth scoped page query",
+          "category": "context",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/tenant-auth-context.template.json",
+            "hash": "0f2e95434ed219e28deac9263ba2afc98970b8432b15d6e94fc4e7d3ad34d49b"
+          }
+        },
+        {
+          "id": "transaction-failure",
+          "title": "Transaction failure and rollback",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/transaction-failure.template.json",
+            "hash": "f481ee2eae1c1f96b19fb9ee1df31dd4a6275ad5e9e02f1472fe7f2a797a7b2b"
+          }
+        },
+        {
+          "id": "validation-failure",
+          "title": "Validation rejection",
+          "category": "validation",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/validation-failure.template.json",
+            "hash": "9d062e5963d64d8b489493e847a6f447ba35dd3f642ae9c18c40a69cfadb889f"
+          }
+        }
+      ]
+    }
+  ],
+  "requiredEnvironment": [
+    "MG_JAVA_BASE_URL",
+    "MG_JAVA_DATABASE_URL",
+    "MG_JAVA_DEVICE_ID",
+    "MG_JAVA_DRIVER_CLEANUP_COMMAND",
+    "MG_JAVA_DRIVER_COLLECT_COMMAND",
+    "MG_JAVA_DRIVER_HEALTH_COMMAND",
+    "MG_JAVA_DRIVER_INJECT_FAULT_COMMAND",
+    "MG_JAVA_DRIVER_INVOKE_COMMAND",
+    "MG_JAVA_DRIVER_SEED_COMMAND",
+    "MG_JAVA_DRIVER_SETUP_COMMAND",
+    "MG_JAVA_DRIVER_SNAPSHOT_COMMAND",
+    "MG_JAVA_DRIVER_START_COMMAND",
+    "MG_JAVA_DRIVER_STOP_COMMAND",
+    "MG_JAVA_REDIS_URL",
+    "MG_JAVA_REQUEST_ID",
+    "MG_JAVA_TENANT_ID",
+    "MG_JAVA_TOKEN",
+    "MG_JAVA_USER_ID"
+  ],
+  "driverTemplate": {
+    "path": "evidence/runtime/java/driver.template.json",
+    "hash": "4ca971078eea3598d0b9c722f58f3531e57d2f8cdd4d94b3bff69df52393bebf"
+  },
+  "evidenceSchema": {
+    "path": "evidence/runtime/java/runtime-evidence.schema.json",
+    "hash": "b004030bef09393435796232786910e9f83fc4405bbdf1f48917517baab2b046"
+  },
+  "collectorTemplates": {
+    "events": {
+      "path": "evidence/runtime/java/collectors/events.template.json",
+      "hash": "c173b1701ce2a7ac267fa06ea96defc5e82b803e70909959211e52b36df3caf6"
+    },
+    "mysql": {
+      "path": "evidence/runtime/java/collectors/mysql.template.json",
+      "hash": "41a43d6ef084346cdff7c554ab70034e512daa783acb0f141ead338d1ffc283c"
+    },
+    "sql-trace": {
+      "path": "evidence/runtime/java/collectors/sql-trace.template.json",
+      "hash": "ae60f81676bce2da1f19a1069e8e9947100892061ac46c6c51df289f167139bb"
+    }
+  },
+  "contractHash": "84da3dea8f1ebffa9d1eafa1f58a8e004036e4926f47a24b7081bb2622d60b12"
+}

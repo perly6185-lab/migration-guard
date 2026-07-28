@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "collector": "events",
+  "status": "template",
+  "file": "evidence/runtime/java/events/replace-with-scenario.jsonl",
+  "correlationFields": [
+    "scenarioId",
+    "requestId",
+    "batchId"
+  ],
+  "includeFields": [
+    "scenarioId",
+    "requestId",
+    "batchId",
+    "type",
+    "stage",
+    "sequence"
+  ]
+}

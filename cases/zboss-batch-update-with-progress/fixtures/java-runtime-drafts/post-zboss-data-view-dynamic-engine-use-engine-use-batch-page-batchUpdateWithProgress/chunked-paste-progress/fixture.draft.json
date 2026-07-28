@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "status": "draft",
+  "fixtureKind": "draft-runtime",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "9ebcfe8959343908d6b33e736eec350244864703d702d7da24c90aecce93fb49",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+  "scenarioId": "chunked-paste-progress",
+  "category": "success",
+  "request": {
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-tenant-id": "<tenant-id>"
+    },
+    "body": {
+      "reqId": "<case-id>",
+      "domain": "<domain>",
+      "usePageId": "<usePageId>",
+      "pageId": "<pageId>",
+      "panelId": "<panelId>",
+      "interId": "<interId>",
+      "clientSessionId": "<client-session-id>",
+      "enableProgress": true,
+      "expectedTotalRows": 2,
+      "isLastChunk": true,
+      "undo": true,
+      "operationKind": "<operation-kind>",
+      "operationLabel": "<operation-label>",
+      "batchPkFieldValue": "<pk-field>",
+      "batchHeaderValueList": [],
+      "batchPostValueList": [],
+      "headerValues": {},
+      "postValues": {},
+      "qualityValues": {},
+      "horizontalId": "<horizontal-id>",
+      "_scenario": "chunked-paste-progress"
+    }
+  },
+  "requestFocus": [
+    "clientSessionId",
+    "isLastChunk",
+    "expectedTotalRows",
+    "enableProgress"
+  ],
+  "expectedComparison": [
+    "chunk order",
+    "accepted row totals",
+    "final row totals",
+    "batch id",
+    "progress completion"
+  ],
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "collectorSpecs": {
+    "events": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/chunked-paste-progress/collectors/events.draft.json",
+      "hash": "8d1aff730925517348af3cfe062553715895d23bab1c9876078fb69e1f06bafd"
+    },
+    "mysql": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/chunked-paste-progress/collectors/mysql.draft.json",
+      "hash": "4b213cba2e1345a9ba201c7466614c931ae61af91b23410b34872c13c068cbe1"
+    },
+    "redis": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/chunked-paste-progress/collectors/redis.draft.json",
+      "hash": "f5953888bc6bca7a954a08f4959211cf618e65755e77af32a7f4fb060a7109c8"
+    }
+  },
+  "expectations": {
+    "batch": {
+      "requireUndoCorrespondence": false,
+      "requireProgressTerminal": true,
+      "requireSharedLock": false,
+      "requireChunkIdempotency": true,
+      "requireTransactionTerminalOrdering": true,
+      "requireRowLimitContract": false,
+      "requireCompleteRowClassification": true,
+      "requireReaderWriterLease": false,
+      "requireUndoDurability": false,
+      "requireProgressTerminalIdentity": true
+    }
+  },
+  "environmentBindings": [
+    {
+      "path": "request.headers.authorization",
+      "environment": "MG_JAVA_TOKEN"
+    }
+  ],
+  "authoring": {
+    "reviewed": false,
+    "instructions": "Replace request and collector placeholders, set collector specs to ready, then run runtime-fixture-promote."
+  },
+  "compatibilityDecisionIds": [
+    "BUP-DEC-CHUNK-IDEMPOTENCY",
+    "BUP-DEC-PROGRESS-TERMINAL"
+  ]
+}

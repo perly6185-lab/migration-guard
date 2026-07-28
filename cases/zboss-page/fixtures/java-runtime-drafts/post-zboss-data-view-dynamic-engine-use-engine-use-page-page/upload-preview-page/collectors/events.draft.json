@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "collector": "events",
+  "status": "draft",
+  "file": "evidence/runtime/java/events/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/upload-preview-page.jsonl",
+  "correlationFields": [
+    "scenarioId",
+    "requestId",
+    "batchId"
+  ],
+  "includeFields": [
+    "scenarioId",
+    "requestId",
+    "batchId",
+    "type",
+    "stage",
+    "sequence"
+  ],
+  "scenarioId": "upload-preview-page"
+}

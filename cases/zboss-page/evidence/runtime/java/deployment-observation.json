@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.runtime-environment-observation/v1",
+  "observedAt": "2026-07-27T09:45:00.000Z",
+  "status": "authoring-ready",
+  "service": {
+    "host": "10.10.10.177",
+    "application": "zboss-global-data-server",
+    "artifact": "/data/zbossServer/zbossGlobalData/zboss-global-data-service.jar",
+    "artifactSha256": "f3c7e07e360df0ab9a5b7e80f9f882b51533a59b35922f57434a17b633b7f049",
+    "profile": "test",
+    "port": 22882,
+    "baseUrl": "http://10.10.10.177:22882",
+    "route": "/zboss/data/view/dynamic/engine/use/engine-use-page/page",
+    "unauthenticatedRouteResult": {
+      "httpStatus": 200,
+      "applicationCode": 401,
+      "message": "账号未登录"
+    },
+    "health": {
+      "status": "UP",
+      "mysql": "UP",
+      "redis": "UP",
+      "redisVersion": "7.4.9",
+      "discovery": "UP"
+    }
+  },
+  "infrastructure": {
+    "host": "10.10.10.14",
+    "mysql": {
+      "port": 3306,
+      "database": "zz_boss_test"
+    },
+    "redis": {
+      "port": 6379,
+      "database": 1
+    },
+    "nacos": {
+      "port": 8848,
+      "namespace": "test",
+      "configDataId": "zboss-global-data-server-test.yaml"
+    }
+  },
+  "eventEvidence": {
+    "existingStructuredJsonlFound": false,
+    "requiredStrategy": "runtime driver writes refresh and query events as scenario-correlated JSONL"
+  },
+  "redactionComplete": true,
+  "remainingBindings": [
+    "application token",
+    "tenant, user and device identifiers",
+    "MySQL and Redis collector credentials",
+    "page, panel, field and datasource fixture values",
+    "runtime lifecycle commands"
+  ]
+}

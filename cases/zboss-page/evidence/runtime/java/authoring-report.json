@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "generatedAt": "2026-07-27T13:43:26.217Z",
+  "projectId": "zboss-page",
+  "projectHash": "56aa35908691d3260c90a8d7a1023252ac931dc1b786dcb2f5c34eac20d3229b",
+  "contractHash": "3ea6a36f0018299305b46255dbdeb860736005f507215717f8e33d40a69dc718",
+  "scenarioCount": 16,
+  "draftCount": 16,
+  "authoringReady": true,
+  "environmentContract": "evidence/runtime/java/environment-contract.json",
+  "environmentExample": "evidence/runtime/java/.env.example",
+  "deploymentObservation": {
+    "path": "evidence/runtime/java/deployment-observation.json",
+    "hash": "1e6fd98354d73480a222c3d49fb070a9e7c380f73fbcc1977c142fed7c15d9d0"
+  },
+  "scenarios": [
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "branch-coverage",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/branch-coverage/fixture.draft.json",
+      "requiredCollectors": [
+        "events",
+        "mysql",
+        "redis",
+        "sql-trace"
+      ],
+      "collectorSpecs": {
+        "events": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/branch-coverage/collectors/events.draft.json",
+        "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/branch-coverage/collectors/mysql.draft.json",
+        "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/branch-coverage/collectors/redis.draft.json",
+        "sql-trace": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/branch-coverage/collectors/sql-trace.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
+        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
+        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "child-form-page",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/child-form-page/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "concurrent-write",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/concurrent-write/fixture.draft.json",
+      "requiredCollectors": [
+        "events",
+        "mysql",
+        "redis",
+        "sql-trace"
+      ],
+      "collectorSpecs": {
+        "events": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/concurrent-write/collectors/events.draft.json",
+        "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/concurrent-write/collectors/mysql.draft.json",
+        "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/concurrent-write/collectors/redis.draft.json",
+        "sql-trace": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/concurrent-write/collectors/sql-trace.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
+        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
+        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "context-isolation",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/context-isolation/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "dependency-failure",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/dependency-failure/fixture.draft.json",
+      "requiredCollectors": [
+        "events",
+        "mysql",
+        "redis",
+        "sql-trace"
+      ],
+      "collectorSpecs": {
+        "events": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/dependency-failure/collectors/events.draft.json",
+        "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/dependency-failure/collectors/mysql.draft.json",
+        "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/dependency-failure/collectors/redis.draft.json",
+        "sql-trace": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/dependency-failure/collectors/sql-trace.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
+        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
+        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "entrypoint-parity",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/entrypoint-parity/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "horizontal-page",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/horizontal-page/fixture.draft.json",
+      "requiredCollectors": [
+        "sql-trace"
+      ],
+      "collectorSpecs": {
+        "sql-trace": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/horizontal-page/collectors/sql-trace.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "primary-success",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/primary-success/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "quality-text-filter",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/quality-text-filter/fixture.draft.json",
+      "requiredCollectors": [
+        "sql-trace"
+      ],
+      "collectorSpecs": {
+        "sql-trace": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/quality-text-filter/collectors/sql-trace.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "refresh-operator",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/refresh-operator/fixture.draft.json",
+      "requiredCollectors": [
+        "events",
+        "mysql",
+        "redis",
+        "sql-trace"
+      ],
+      "collectorSpecs": {
+        "events": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/refresh-operator/collectors/events.draft.json",
+        "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/refresh-operator/collectors/mysql.draft.json",
+        "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/refresh-operator/collectors/redis.draft.json",
+        "sql-trace": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/refresh-operator/collectors/sql-trace.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
+        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
+        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "scale-boundary",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/scale-boundary/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "standard-page",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/standard-page/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "tenant-auth-context",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/tenant-auth-context/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "transaction-failure",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/transaction-failure/fixture.draft.json",
+      "requiredCollectors": [
+        "events",
+        "mysql",
+        "redis",
+        "sql-trace"
+      ],
+      "collectorSpecs": {
+        "events": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/transaction-failure/collectors/events.draft.json",
+        "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/transaction-failure/collectors/mysql.draft.json",
+        "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/transaction-failure/collectors/redis.draft.json",
+        "sql-trace": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/transaction-failure/collectors/sql-trace.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
+        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
+        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "upload-preview-page",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/upload-preview-page/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "validation-failure",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/validation-failure/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    }
+  ],
+  "findings": []
+}

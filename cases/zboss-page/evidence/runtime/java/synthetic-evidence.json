@@ -1,0 +1,729 @@
+{
+  "version": 1,
+  "provenance": {
+    "kind": "synthetic",
+    "generatedBy": "migration-guard",
+    "createdAt": "2026-07-27T12:15:33.104Z",
+    "projectId": "zboss-page",
+    "projectHash": "f0d832ca4dbd8d7aff9b18925373e2509c8a72d7be1f43a2ea2dbf9eac5a1ba2",
+    "sourceIdentity": {
+      "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+      "dirty": true,
+      "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+      "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+    },
+    "runtimeContractHash": "2e9ee924208febbe51d0ca8dfb92d9617420591dc67038b2b2b9dce939ddb894"
+  },
+  "entries": {
+    "post-zboss-data-view-dynamic-engine-use-engine-use-page-page": {
+      "readiness": {
+        "graphComplete": true,
+        "contractsComplete": true,
+        "ownershipComplete": true,
+        "replayPassed": true,
+        "concurrencyPassed": true,
+        "faultPassed": true,
+        "performancePassed": true,
+        "sourceOffPassed": true,
+        "rollbackPassed": true,
+        "evidenceCreatedAt": "2026-07-27T12:15:33.103Z",
+        "maxEvidenceAgeMs": 86400000
+      },
+      "scenarios": {
+        "branch-coverage": {
+          "scenarioId": "branch-coverage",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "a3854d7d6cb8e3fc538495572f0a20d55b59c930657a2fc89de8bed1b3b584d9",
+          "driverResultHash": "855beae8fe2b9bd5e821f9b281470530c42f9659e7e83ce62a219e501620f3b7",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "child-form-page": {
+          "scenarioId": "child-form-page",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "6786cb43075174302dcf9422c4dca414b26f64b195ea716bed185510d63472e3",
+          "driverResultHash": "de9bdaccb9035d6ee405004a7e5ecc0a0c7bf236970acf52956254b1c94c4a9b",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "concurrent-write": {
+          "scenarioId": "concurrent-write",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "c081cb43ab24e115ff9a253bd2f9db28c4295209f721e5c5c4b60763b60102ec",
+          "driverResultHash": "265e6e7d530da855309c22c0dab5e8c54cc16d65cafc95dc2846cbb0c49de812",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "context-isolation": {
+          "scenarioId": "context-isolation",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "f94d7a43e81e94057173502a2afc3797b32bf95a9219259e699cbc3ca80a5602",
+          "driverResultHash": "c34c40f76132b585270c3d93b802535f391adecfb3cb6a01053f3ceb62e41c9f",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "dependency-failure": {
+          "scenarioId": "dependency-failure",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "28a26207f0c55ea7895397286beb59c56dbd1f876b0bd6b2270a7cebed351d18",
+          "driverResultHash": "a507ee0fb976154259f2f8581afec54b02709a6aa8d07002d8b8f743c0a96528",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "entrypoint-parity": {
+          "scenarioId": "entrypoint-parity",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "c559c8ccd8c74788fb3a980e4508bdc4aee59ac5f540efe7094b773750db3704",
+          "driverResultHash": "a1e47646c3024a42fdc4d15a81bd132e48a3a85a734eebff2715ba2b3fa9931d",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "horizontal-page": {
+          "scenarioId": "horizontal-page",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "d433a2df9e4d5de2c15186aa9533e346476aca05c5236c17cc1d13bf5200eddd",
+          "driverResultHash": "a15bfaabe77b9faa17297f00d92993dc38ca8d56876913f8cb763ed42e2308a4",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "primary-success": {
+          "scenarioId": "primary-success",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "e8dd1e16bf7634fc3bbe9c5048bb26ca85dc285bded993b9c743b411bb7308cf",
+          "driverResultHash": "3882208076c5726b194b59c3d6bf5185d599d376de2e717421520e4554306b1d",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "quality-text-filter": {
+          "scenarioId": "quality-text-filter",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "4bc3540626b9bd7a6232d5e8a05fd464190ad347ab1d0924b7f207c0865302d7",
+          "driverResultHash": "29ccd2f07f0ba5db3c0c10c70a3611ea2c25701c98f3426cefddaecb23ffe56c",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "refresh-operator": {
+          "scenarioId": "refresh-operator",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "546ae21b6eb8955da4e75ae3ee9442b6352df40e7a10c6582677c3b557c0e4d9",
+          "driverResultHash": "35f727c208fadc62fbe1320caf1c51b5017b28d817294bd5d1de3f318771ff8f",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "scale-boundary": {
+          "scenarioId": "scale-boundary",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "bb6c309cbb1b6a04960a8914f2017db664ba0204b8272a2df13e114b940b677c",
+          "driverResultHash": "21cea0a9173e020d1717782a435d792c12c9c322fd7251861f19956746faa413",
+          "observationHash": "420736a92db0620ceef3c2427568e52b65aeb5292bc6a51ad66db09d1831a2b6",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "performance": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "standard-page": {
+          "scenarioId": "standard-page",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "30aab668250a34076bbb97fa5c17e822642f516b8fe9de14437c034c940405a4",
+          "driverResultHash": "8a5c21751624411bebc471c6a63e22ef50c8850325d055ddc3a67714a7157e30",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "tenant-auth-context": {
+          "scenarioId": "tenant-auth-context",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "d2d1a2f4c89ac211fa84710b02b950ac4d5ea31523d4a69c2c2dfd34e2bcf0b8",
+          "driverResultHash": "9ae26dc47c0bde81fe36f4eb7fab6902742adc65f2bc4e7424648cc3fc37db6b",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "transaction-failure": {
+          "scenarioId": "transaction-failure",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "35cc78733a2620ebcf93876ec9e1938d4dac5bd6cc9859ab9313b7965d5b4602",
+          "driverResultHash": "03d195cfb6ab2208ceceb9ecf85afb64e79cbeabeab9ba4615fd6af79c5fba69",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "upload-preview-page": {
+          "scenarioId": "upload-preview-page",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "6f5ae28c6937186bbb335d5bc99c550c1161f5a50eb98ea78c01163bf8024992",
+          "driverResultHash": "46d08caa45f782ba9742a459aebb1692012f520b891c04b06b523db559fe10b1",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        },
+        "validation-failure": {
+          "scenarioId": "validation-failure",
+          "origin": "synthetic-self-test",
+          "status": "passed",
+          "protocol": "migration-guard.runtime-observation/v1",
+          "fixtureKind": "synthetic",
+          "fixtureHash": "c4c6e3118a462a1fe117404c156211ce074e13181a0c4c363001280c7f33fbcd",
+          "driverResultHash": "5367b1cc998489481fb5debe12005e0aca7d29b70bc0e563d78902cf7762e027",
+          "observationHash": "24ed5898bcb66ce1ef6fe82eff5ee0348f7f2d6028cc76126a1499f0ca2a5619",
+          "dimensions": {
+            "http": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "context": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "decisions": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "effects": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "state": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "events": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            },
+            "failures": {
+              "synthetic": true,
+              "note": "schema and evidence-pipeline self-test only"
+            }
+          },
+          "collectors": {},
+          "semantics": {},
+          "findings": []
+        }
+      }
+    }
+  },
+  "bundleHash": "4b0992074daaf126a6f83eab769605ad3f06736526c4bb67572dbd1051cf5e84"
+}

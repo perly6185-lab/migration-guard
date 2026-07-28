@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "gate": "offline",
+  "projectId": "zboss-query",
+  "projectHash": "940efde43cbbbd3f57c581db290e81358121c11d7faffbafbb867258b91d1331",
+  "status": "blocked",
+  "findings": [
+    "MG-OFFLINE-PLAN-BLOCKED:post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+    "MG-OFFLINE-SPEC-FIXTURES-MISSING"
+  ],
+  "evidence": [
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\analysis\\index.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-page-query\\behavior-graph.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-page-query\\endpoint-replacement-plan.json"
+  ]
+}

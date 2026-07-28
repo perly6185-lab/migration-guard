@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "gate": "real",
+  "projectId": "zboss-page",
+  "projectHash": "f0d832ca4dbd8d7aff9b18925373e2509c8a72d7be1f43a2ea2dbf9eac5a1ba2",
+  "status": "blocked",
+  "findings": [
+    "MG-REAL-EVIDENCE-MISSING",
+    "MG-REAL-OFFLINE-GATE-BLOCKED"
+  ],
+  "evidence": [
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\gates\\offline-gate.json"
+  ]
+}
