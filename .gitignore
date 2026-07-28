@@ -1,5 +1,7 @@
 node_modules/
 dist/
 release/
+target/
+tmp/
 .migration-guard/
 npm-debug.log*

@@ -41,6 +41,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: VMP offline gate
+        run: npm run vmp:gate
+
       - name: UI smoke
         run: npm run ui:smoke
 

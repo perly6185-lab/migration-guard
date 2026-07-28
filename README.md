@@ -48,6 +48,53 @@ node dist/cli.js proposal repair --run <run-id> --proposal <failed-proposal-id> 
 node dist/cli.js proposal accept --run <run-id> --proposal <retry-proposal-id> --notes "verified repair"
 ```
 
+## Project-based Java to Rust migration
+
+The `migrate` workflow packages project-specific semantics and evidence under
+`cases/<project-id>` while keeping the behavior graph, replacement planner and
+gates project-neutral:
+
+```bash
+migration-guard migrate init --project orders --source ../orders-java --endpoint /api/orders --method GET --target-root ../orders-rust
+migration-guard migrate analyze --project orders --strict
+migration-guard migrate runtime-prepare --project orders
+migration-guard migrate runtime-authoring-prepare --project orders
+migration-guard migrate runtime-preflight --project orders
+migration-guard migrate runtime-self-test --project orders
+migration-guard migrate runtime-collector-dry-run --project orders --spec <collector.draft.json>
+migration-guard migrate runtime-fixture-promote --project orders --entrypoint <id> --scenario <id> --reviewed-by <identity>
+migration-guard migrate runtime-collect --project orders --spec cases/orders/collectors/mysql.json --output cases/orders/evidence/runtime/mysql.json
+migration-guard migrate runtime-run --project orders
+migration-guard migrate runtime-gate --project orders
+migration-guard migrate scaffold --project orders --target rust
+migration-guard migrate offline-gate --project orders
+migration-guard migrate real-gate --project orders --evidence cases/orders/evidence/runtime/java/real-evidence.json
+```
+
+`init` creates `profile.json`, `semantic-rules.json`,
+`compatibility-decisions.json`, `fixtures/` and `evidence/`. Project semantic
+classification rules are evaluated before core Java heuristics. The Rust output
+is deliberately marked `scaffold-only`; it is not considered migrated until
+offline fixtures and fresh RP1-RP6 real evidence pass.
+
+`runtime-prepare` generates typed Java fixture templates, the complete lifecycle
+driver protocol, a deep runtime evidence schema, and required MySQL/Redis/event
+collector templates without starting any service. Real batch evidence is checked
+for row-set/undo correspondence, progress conservation, lock ownership,
+idempotency decisions and commit-before-terminal ordering.
+`runtime-authoring-prepare` then materializes one redacted, editable draft and
+scenario-bound collector specs per runtime case, plus an environment contract,
+`.env.example` and coverage matrix. Drafts are never real evidence. Promotion
+requires all placeholders to be replaced, collector specs to be read-only and
+`ready`, and an explicit reviewer identity; promoted specs are frozen beside the
+real fixture with new hashes.
+`runtime-self-test` creates synthetic evidence to verify hashing and gate
+plumbing; synthetic provenance is always rejected by `runtime-gate` and
+`real-gate`. Real fixtures and credentials remain outside generated artifacts.
+
+The built-in source adapter currently supports Java/Spring HTTP routes. Other
+frameworks and service-method entrypoints require a registered source adapter.
+
 Phase 146-150 health semantics, normalization, workspace scanning, persistence hardening and RC results are documented in
 [docs/PHASE_150_REPORT.md](docs/PHASE_150_REPORT.md). Release gates are tracked in
 [docs/RELEASE_CHECKLIST_0.2.0.md](docs/RELEASE_CHECKLIST_0.2.0.md).

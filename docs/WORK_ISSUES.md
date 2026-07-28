@@ -6,6 +6,36 @@ This list tracks the work required to move the current `0.3.0-beta.1`
 workspace from locally validated development changes to a reviewable release
 candidate. Remote publication, Git tags and GitHub mutation remain manual.
 
+## MG-202 through MG-208: Java page runtime evidence gate
+
+- Priority: P0
+- Status: MG-202 through MG-205 completed; MG-206 through MG-208 planned.
+- Remote tracking: pending creation because the local GitHub credential is
+  currently invalid. Local issue IDs remain authoritative until remote sync.
+- Safety boundary: only migration-guard may be modified. The zboss source
+  repository is read-only reference material, credentials remain environment-only,
+  and synthetic evidence can never satisfy the real gate.
+- MG-202 (P0, completed): add the generic `PageEvidenceInput`,
+  `PageGateRequirements`, `semantics.page`, `expectations.page`, schema and
+  fail-closed validation.
+- MG-203 (P0, completed, depends on MG-202): add project-configurable runtime
+  semantic-gate bindings and move required collectors from entry scope to
+  scenario scope.
+- MG-204 (P0, completed, depends on MG-202/MG-203): implement pagination,
+  quality WHERE/HAVING and horizontal page-key/pivot/total gates.
+- MG-205 (P0, completed, depends on MG-203): add a redacted SQL-trace collector,
+  scenario correlation and cross-collector trace assembly.
+- MG-206 (P0, planned, depends on MG-204/MG-205): gate REFRESH effect ordering,
+  owner-fingerprint lock release, terminal events, compensation and transaction
+  self-invocation evidence.
+- MG-207 (P1, planned, depends on MG-202 through MG-206): generate and author
+  the 16 page runtime fixtures and implement the environment-only page driver.
+- MG-208 (P0, planned, depends on MG-207): review and freeze the four page
+  compatibility decisions, execute real evidence and require the final Java
+  runtime gate.
+- Detailed plan:
+  [cases/zboss-page/DEVELOPMENT-PLAN.md](../cases/zboss-page/DEVELOPMENT-PLAN.md).
+
 ## MG-191 through MG-201: Full Java-to-Rust endpoint replacement
 
 - Priority: P0
