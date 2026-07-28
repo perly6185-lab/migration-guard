@@ -1,7 +1,11 @@
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
 import type { JavaEndpointAnalysisReport } from "./javaEndpointAnalysis.js";
-import { createBehaviorGraphFromJava, deriveReplacementContracts } from "./behaviorGraph.js";
+import {
+  createBehaviorGraphFromJava,
+  deriveReplacementContracts,
+  type BehaviorClassificationRule
+} from "./behaviorGraph.js";
 import type {
   BehaviorGraph,
   EndpointReplacementEvidence,
@@ -17,6 +21,7 @@ import type {
 export interface EndpointReplacementPlanOptions {
   ownership?: Record<string, ReplacementOwnership>;
   ownershipPolicy?: ReviewedOwnershipPolicy;
+  classifications?: BehaviorClassificationRule[];
 }
 
 export interface EndpointPilotPlan {
@@ -43,10 +48,18 @@ export function createEndpointReplacementPlan(
   const boundaries = createBoundaries(graph, { ...(options.ownership ?? {}), ...policy.ownership });
   const scenarios = synthesizeReplacementScenarios(graph, sourceReport);
   const waves = createImplementationWaves(boundaries, contracts.contexts.length > 0);
+  const semanticFindings = sourceReport
+    ? [
+      ...entrypointSemanticFindings(sourceReport),
+      ...querySemanticFindings(graph, sourceReport),
+      ...commandSemanticFindings(graph, sourceReport)
+    ]
+    : [];
   const findings = [...new Set([
     ...graph.completeness.findings,
     ...boundaries.flatMap((boundary) => boundary.blockers),
     ...policy.findings,
+    ...semanticFindings,
     ...(contracts.effects.some((effect) => effect.kind === "unknown") ? ["RP-CONTRACT-UNKNOWN-EFFECT"] : []),
     ...(contracts.effects.some((effect) => effect.failurePolicy === "unknown") ? ["RP-CONTRACT-EFFECT-POLICY-UNKNOWN"] : [])
   ])].sort();
@@ -121,7 +134,7 @@ export function createEndpointReplacementPlanFromJava(
   report: JavaEndpointAnalysisReport,
   options: EndpointReplacementPlanOptions = {}
 ): { graph: BehaviorGraph; plan: EndpointReplacementPlan } {
-  const graph = createBehaviorGraphFromJava(report);
+  const graph = createBehaviorGraphFromJava(report, options.classifications);
   return { graph, plan: createEndpointReplacementPlan(graph, options, report) };
 }
 
@@ -155,8 +168,74 @@ export function synthesizeReplacementScenarios(graph: BehaviorGraph, report?: Ja
   }
   if (graph.nodes.some((node) => node.kind === "external-call" || node.kind === "event-publish")) addGeneratedScenario(scenarios, graph, "dependency-failure", "External dependency failure", "fault", "Dependency failure policy must be replayed.");
   if (report && report.matches.length > 1) addGeneratedScenario(scenarios, graph, "entrypoint-parity", "Parallel entrypoint parity", "compatibility", "Equivalent entrypoints require compatible results.");
+  const riskIds = new Set(report?.riskSignals.map((risk) => risk.id) ?? []);
+  if (riskIds.has("mutable-cache-response-alias")) {
+    addGeneratedScenario(scenarios, graph, "query-cache-isolation", "Query cache response isolation", "compatibility", "Per-request response enrichment must not mutate cached baseline objects.");
+  }
+  if (riskIds.has("async-effect-after-timeout")) {
+    addGeneratedScenario(scenarios, graph, "query-timeout-quiescence", "Query timeout task quiescence", "fault", "Timed-out query work must not produce effects after the response returns.");
+  }
+  if (riskIds.has("query-effect-contract-missing")) {
+    addGeneratedScenario(scenarios, graph, "query-effect-atomicity", "Query-side effect atomicity and replay", "fault", "Query-time writes require rollback and idempotent replay evidence.");
+  }
+  if (riskIds.has("request-semantic-override")) {
+    addGeneratedScenario(scenarios, graph, "request-semantic-parity", "Request semantic override parity", "compatibility", "Request overrides must preserve or explicitly approve the legacy fixed semantic.");
+  }
+  if (riskIds.has("parallel-entrypoints")) {
+    addGeneratedScenario(scenarios, graph, "entrypoint-parity", "Parallel entrypoint parity", "compatibility", "Equivalent Web/RPC entrypoints require compatible results and effects.");
+  }
+  if (riskIds.has("route-implementation-unresolved") || riskIds.has("route-implementation-ambiguous")) {
+    addGeneratedScenario(scenarios, graph, "entrypoint-binding", "API declaration and controller implementation binding", "compatibility", "The mapped API contract must resolve to one concrete controller implementation before migration.");
+  }
+  if (riskIds.has("disabled-authorization-guard")) {
+    addGeneratedScenario(scenarios, graph, "authorization-denied", "Mutation authorization rejection", "validation", "Unauthorized mutation requests must be rejected before effects.");
+  }
+  if (riskIds.has("destructive-retry") || riskIds.has("transactional-ddl-boundary") || riskIds.has("dynamic-ddl-construction")) {
+    addGeneratedScenario(scenarios, graph, "schema-transition-failure", "Schema transition failure", "fault", "DDL failure must preserve data according to an explicitly approved compatibility decision.");
+  }
+  if (riskIds.has("idempotency-ordering-risk")) {
+    addGeneratedScenario(scenarios, graph, "idempotency-key-stability", "Idempotency key stability", "compatibility", "Duplicate detection must use the intended request identity before any key-changing normalization.");
+  }
+  if (riskIds.has("after-commit-effect-risk")) {
+    addGeneratedScenario(scenarios, graph, "post-commit-effect-failure", "Post-commit effect durability", "fault", "A committed mutation with a failed downstream effect requires observable durable recovery.");
+  }
   addGeneratedScenario(scenarios, graph, "scale-boundary", "Scale and performance boundary", "scale", "Target execution must meet an explicit resource budget.", ["performance"]);
   return [...scenarios.values()].map((item) => ({ ...item, sourceNodes: [...new Set(item.sourceNodes)].sort() })).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function querySemanticFindings(graph: BehaviorGraph, report: JavaEndpointAnalysisReport): string[] {
+  if (graph.workload !== "query" && graph.workload !== "query-with-effects") return [];
+  const riskIds = new Set(report.riskSignals.map((risk) => risk.id));
+  return [
+    ...(riskIds.has("mutable-cache-response-alias") ? ["RP-QUERY-MUTABLE-CACHE-ALIAS"] : []),
+    ...(riskIds.has("async-effect-after-timeout") ? ["RP-QUERY-ASYNC-EFFECT-AFTER-RETURN"] : []),
+    ...(riskIds.has("query-effect-contract-missing") ? ["RP-QUERY-EFFECT-CONTRACT-MISSING"] : []),
+    ...(riskIds.has("parallel-entrypoints") ? ["RP-QUERY-ENTRYPOINT-PARITY-UNPROVEN"] : []),
+    ...(riskIds.has("request-semantic-override") ? ["RP-QUERY-REQUEST-SEMANTIC-DRIFT"] : [])
+  ];
+}
+
+function entrypointSemanticFindings(report: JavaEndpointAnalysisReport): string[] {
+  const riskIds = new Set(report.riskSignals.map((risk) => risk.id));
+  return [
+    ...(riskIds.has("route-implementation-unresolved") ? ["RP-ENTRYPOINT-IMPLEMENTATION-UNRESOLVED"] : []),
+    ...(riskIds.has("route-implementation-ambiguous") ? ["RP-ENTRYPOINT-IMPLEMENTATION-AMBIGUOUS"] : [])
+  ];
+}
+
+function commandSemanticFindings(graph: BehaviorGraph, report: JavaEndpointAnalysisReport): string[] {
+  if (!["command", "idempotent-command", "batch", "sync"].includes(graph.workload)) return [];
+  const riskIds = new Set(report.riskSignals.map((risk) => risk.id));
+  return [
+    ...(riskIds.has("disabled-authorization-guard") ? ["RP-COMMAND-AUTHORIZATION-GUARD-DISABLED"] : []),
+    ...(riskIds.has("request-constraint-coverage-unresolved") ? ["RP-COMMAND-REQUEST-CONSTRAINTS-UNRESOLVED"] : []),
+    ...(riskIds.has("destructive-retry") ? ["RP-COMMAND-DESTRUCTIVE-RETRY"] : []),
+    ...(riskIds.has("dynamic-ddl-construction") ? ["RP-COMMAND-DYNAMIC-DDL"] : []),
+    ...(riskIds.has("transactional-ddl-boundary") ? ["RP-COMMAND-TRANSACTIONAL-DDL"] : []),
+    ...(riskIds.has("lost-update-guard-unresolved") ? ["RP-COMMAND-LOST-UPDATE-GUARD-UNRESOLVED"] : []),
+    ...(riskIds.has("idempotency-ordering-risk") ? ["RP-COMMAND-IDEMPOTENCY-ORDERING"] : []),
+    ...(riskIds.has("after-commit-effect-risk") ? ["RP-COMMAND-AFTER-COMMIT-DURABILITY"] : [])
+  ];
 }
 
 export function evaluateEndpointReplacementReadiness(evidence: EndpointReplacementEvidence, now = Date.now()): EndpointReplacementReadiness {

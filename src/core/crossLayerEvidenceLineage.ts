@@ -55,7 +55,7 @@ export async function assessCrossLayerEvidenceLineage(options: CrossLayerEvidenc
   const analyzer = await createJavaEndpointAnalyzer(options.root, Boolean(options.includeTests));
   const selected = analyzer.routes.slice(0, positiveLimit(options.limit, analyzer.routes.length));
   const routes = selected.map((route): CrossLayerRouteLineage => {
-    const analysis = analyzer.analyze({ endpoint: route.path, method: route.method, maxDepth: options.maxDepth, maxEdges: options.maxEdges });
+    const analysis = analyzer.analyzeRoute(route, { maxDepth: options.maxDepth, maxEdges: options.maxEdges });
     const { graph, plan } = createEndpointReplacementPlanFromJava(analysis);
     const controllerNodeId = analysis.callGraph.nodes.find((node) => node.kind === "controller")?.id;
     const serviceNodeIds = ids(analysis.callGraph.nodes.filter((node) => node.kind === "service").map((node) => node.id));

@@ -311,7 +311,6 @@ test("java endpoint analysis uses batch-command golden cases for batch update en
       "batch-update-success",
       "batch-partial-failure",
       "batch-row-limit-rejected",
-      "batch-insert-header-defaults",
       "horizontal-batch-upsert",
       "chunked-paste-progress",
       "web-rpc-entrypoint-parity",
@@ -447,6 +446,74 @@ test("java endpoint analysis uses sync-command golden cases for refresh sync end
   }
 });
 
+test("java endpoint analysis models update routes as mutation commands and applies command risks", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-mutation-"));
+  try {
+    const sourceDir = path.join(dir, "src", "main", "java", "demo");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "FieldController.java"), [
+      "package demo;",
+      "@RestController",
+      "@RequestMapping(\"/api/fields\")",
+      "public class FieldController {",
+      "  private FieldService fieldService;",
+      "  // @PreAuthorize(\"hasAuthority('field:update')\")",
+      "",
+      "  @PutMapping(\"/update\")",
+      "  public Object update(FieldUpdateReqVO reqVO) {",
+      "    return fieldService.update(reqVO);",
+      "  }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "FieldService.java"), [
+      "package demo;",
+      "public class FieldService {",
+      "  @Transactional",
+      "  public Object update(FieldUpdateReqVO reqVO) {",
+      "    reqVO.setName(generateUniqueName(reqVO.getName()));",
+      "    repository.findByName(reqVO.getName());",
+      "    repository.updateById(reqVO);",
+      "    return reqVO;",
+      "  }",
+      "  private String generateUniqueName(String value) { return value; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "FieldUpdateReqVO.java"), [
+      "package demo;",
+      "public class FieldUpdateReqVO {",
+      "  private Long id;",
+      "  private Long panelId;",
+      "  private String name;",
+      "  private String type;",
+      "  public String getName() { return name; }",
+      "  public void setName(String value) { name = value; }",
+      "}"
+    ].join("\n"));
+
+    const report = await analyzeJavaEndpoint({
+      root: dir,
+      method: "PUT",
+      endpoint: "/api/fields/update",
+      maxDepth: 5
+    });
+    const riskIds = new Set(report.riskSignals.map((signal) => signal.id));
+
+    assert.equal(report.goldenCasePlan.model, "mutation-command");
+    assert.ok(report.goldenCasePlan.cases.some((item) => item.id === "concurrent-write"));
+    assert.equal(report.goldenCasePlan.cases.some((item) => item.id === "standard-page"), false);
+    assert.equal(riskIds.has("refresh-operator-unresolved"), false);
+    assert.equal(riskIds.has("query-side-effects"), false);
+    const detectedRisks = [...riskIds].sort().join(",");
+    assert.equal(riskIds.has("disabled-authorization-guard"), true, detectedRisks);
+    assert.equal(riskIds.has("request-constraint-coverage-unresolved"), true, detectedRisks);
+    assert.equal(riskIds.has("lost-update-guard-unresolved"), true, detectedRisks);
+    assert.equal(riskIds.has("idempotency-ordering-risk"), true, detectedRisks);
+    assert.match(renderJavaEndpointAnalysisReport(report), /Golden case model: mutation-command/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("java endpoint analysis reports endpoint-not-found when no route matches", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-missing-"));
 
@@ -541,6 +608,83 @@ test("java endpoint analysis parses multiline controller signatures and explicit
     const upload = await analyzeJavaEndpoint({ root: dir, endpoint: "/api/files/upload", method: "POST" });
     assert.ok(upload.callGraph.nodes.some((item) => item.id.startsWith("external:") && item.methodName === "upload"));
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("java endpoint analysis resolves local value accessors and project static helpers", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-local-types-"));
+  try {
+    const sourceDir = path.join(dir, "src", "main", "java", "demo");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "LocalTypeController.java"), [
+      "package demo;",
+      "@RestController",
+      "public class LocalTypeController {",
+      " @GetMapping(\"/local-types\")",
+      " public String read() {",
+      "  View view = new View(\" value \");",
+      "  return Helpers.normalize(view.name());",
+      " }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "View.java"), "package demo; public record View(String name) {}\n");
+    await writeFile(path.join(sourceDir, "Helpers.java"), [
+      "package demo;",
+      "public final class Helpers {",
+      " public static String normalize(String value) { return value.trim(); }",
+      "}"
+    ].join("\n"));
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/local-types" });
+    assert.ok(report.callGraph.nodes.some((node) => node.className === "Helpers" && node.methodName === "normalize"));
+    assert.ok(report.callGraph.nodes.some((node) =>
+      node.kind === "dto"
+      && node.className === "View"
+      && node.methodName === "name"
+      && node.signature?.includes("[generated-value-accessor]")
+    ));
+    assert.equal(report.callGraph.edges.some((edge) => edge.unresolvedTarget === "view.name" && edge.resolution === "unresolved"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("java endpoint analysis uses enum method return types to resolve overloads", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-enum-overload-"));
+  try {
+    const sourceDir = path.join(dir, "src", "main", "java", "demo");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "EnumController.java"), [
+      "package demo;",
+      "import jakarta.annotation.Resource;",
+      "@RestController",
+      "public class EnumController {",
+      " @Resource",
+      " private CatalogService catalogService;",
+      " @GetMapping(\"/enum-overload\")",
+      " public Object read() { return catalogService.find(Category.PRIMARY.getCode()); }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "CatalogService.java"), [
+      "package demo;",
+      "public class CatalogService {",
+      " public Object find(Integer code) { return code; }",
+      " public Object find(java.util.List<String> names) { return names; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "Category.java"), [
+      "package demo;",
+      "public enum Category {",
+      " PRIMARY;",
+      " public Integer getCode() { return 1; }",
+      "}"
+    ].join("\n"));
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/enum-overload" });
+    const edge = report.callGraph.edges.find((candidate) => candidate.call.receiver === "catalogService" && candidate.call.method === "find");
+    assert.equal(edge?.resolution, "field-injection");
+    assert.deepEqual(edge?.call.argumentTypes, ["Integer"]);
+    assert.ok(edge?.to?.includes("CatalogService.find"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("java endpoint analysis reports edge-cap truncation and honors max-edges", async () => {

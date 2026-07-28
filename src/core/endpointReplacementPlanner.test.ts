@@ -98,17 +98,69 @@ test("scenario synthesis is data driven across query, query-with-effects, comman
     node("Service.loadPermissions", "service", "Service", "loadPermissions"),
     node("Repository.updateLastAccess", "repository", "Repository", "updateLastAccess")
   ])).plan;
+  const refreshablePage = createEndpointReplacementPlanFromJava(endpointReport("POST", "/reports/page", "page", "page-query", [
+    node("Controller.page", "controller", "Controller", "page"),
+    node("Repository.query", "repository", "Repository", "query"),
+    node("Repository.updateRefreshState", "repository", "Repository", "updateRefreshState"),
+    node("Service.compensateRefresh", "service", "Service", "compensateRefresh")
+  ])).plan;
   const sync = createEndpointReplacementPlanFromJava(endpointReport("POST", "/sync", "synchronize", "sync-command", [
     node("Controller.synchronize", "controller", "Controller", "synchronize"),
     node("Publisher.publishProgress", "service", "Publisher", "publishProgress")
   ])).plan;
   assert.equal(query.workload, "query");
   assert.equal(mixedQuery.workload, "query-with-effects");
+  assert.equal(refreshablePage.workload, "query-with-effects");
   assert.equal(command.workload, "command");
   assert.equal(sync.workload, "sync");
   assert.equal(query.scenarios.some((item) => item.id === "concurrent-write"), false);
   assert.equal(command.scenarios.some((item) => item.id === "transaction-failure"), true);
   assert.equal(sync.scenarios.some((item) => item.id === "dependency-failure"), true);
+});
+
+test("event-publish and compensation behaviors produce concrete effect contracts", () => {
+  const report = endpointReport("POST", "/stream", "stream", "page-query", [
+    node("Controller.stream", "controller", "Controller", "stream"),
+    node("emitter.send", "unknown", "emitter", "send"),
+    node("Service.compensateWrite", "service", "Service", "compensateWrite")
+  ]);
+  const { plan } = createEndpointReplacementPlanFromJava(report);
+  assert.ok(plan.contracts.effects.some((effect) => effect.kind === "event"));
+  assert.ok(plan.contracts.effects.some((effect) => effect.kind === "undo"));
+  assert.equal(plan.findings.includes("RP-CONTRACT-UNKNOWN-EFFECT"), false);
+});
+
+test("query semantic risks fail closed and create focused replay scenarios", () => {
+  const report = endpointReport("POST", "/reports/query", "query", "page-query", [
+    node("Controller.query", "controller", "Controller", "query"),
+    node("Repository.query", "repository", "Repository", "query"),
+    node("Repository.updateRepairState", "repository", "Repository", "updateRepairState")
+  ]);
+  report.riskSignals = [
+    risk("mutable-cache-response-alias", "high"),
+    risk("async-effect-after-timeout", "high"),
+    risk("query-effect-contract-missing", "high"),
+    risk("parallel-entrypoints", "medium"),
+    risk("request-semantic-override", "medium")
+  ];
+  const { plan } = createEndpointReplacementPlanFromJava(report);
+  assert.equal(plan.status, "blocked");
+  assert.deepEqual(plan.findings.filter((finding) => finding.startsWith("RP-QUERY-")), [
+    "RP-QUERY-ASYNC-EFFECT-AFTER-RETURN",
+    "RP-QUERY-EFFECT-CONTRACT-MISSING",
+    "RP-QUERY-ENTRYPOINT-PARITY-UNPROVEN",
+    "RP-QUERY-MUTABLE-CACHE-ALIAS",
+    "RP-QUERY-REQUEST-SEMANTIC-DRIFT"
+  ]);
+  for (const scenario of [
+    "query-cache-isolation",
+    "query-timeout-quiescence",
+    "query-effect-atomicity",
+    "entrypoint-parity",
+    "request-semantic-parity"
+  ]) {
+    assert.ok(plan.scenarios.some((item) => item.id === scenario), scenario);
+  }
 });
 
 test("planner classifies generic async, upload, export, and idempotent command workloads", () => {
@@ -152,6 +204,64 @@ test("semantic registry classifies utilities, logging, clocks, and Redis coordin
   ]);
   const { graph } = createEndpointReplacementPlanFromJava(report);
   assert.deepEqual(graph.nodes.filter((item) => item.kind !== "entrypoint").map((item) => item.kind).sort(), ["calculation", "calculation", "calculation", "calculation", "clock-read", "coordination", "observability"]);
+});
+
+test("project semantic rules override core heuristics without hardcoded project classes", () => {
+  const report = endpointReport("POST", "/semantic", "run", "page-query", [
+    node("Controller.run", "controller", "Controller", "run"),
+    node("ProjectWorkflow.perform", "unknown", "ProjectWorkflow", "perform")
+  ]);
+  const { graph } = createEndpointReplacementPlanFromJava(report, {
+    classifications: [{
+      id: "project-write",
+      symbolPattern: "ProjectWorkflow\\.perform",
+      behavior: "state-write",
+      reason: "project semantic package declares a durable mutation"
+    }]
+  });
+  const projectNode = graph.nodes.find((item) => item.evidence.symbol === "ProjectWorkflow.perform");
+  assert.equal(projectNode?.kind, "state-write");
+  assert.ok(projectNode?.reasons.includes("project semantic rule project-write"));
+});
+
+test("generic behavior classification recognizes conversions and predicate filters", () => {
+  const report = endpointReport("POST", "/fields/update", "update", "mutation-command", [
+    node("Controller.update", "controller", "Controller", "update"),
+    node("ExpValueFieldDataServiceImpl.toNumberComparisonValue", "unknown", "ExpValueFieldDataServiceImpl", "toNumberComparisonValue"),
+    node("rule.filterConditions", "unknown", "rule", "filterConditions")
+  ]);
+  const { graph, plan } = createEndpointReplacementPlanFromJava(report);
+  assert.equal(graph.nodes.find((item) => item.evidence.symbol.endsWith(".toNumberComparisonValue"))?.kind, "calculation");
+  assert.equal(graph.nodes.find((item) => item.evidence.symbol === "rule.filterConditions")?.kind, "decision");
+  assert.equal(plan.findings.includes("RP-BOUNDARY-UNRESOLVED:unclassified"), false);
+});
+
+test("mutation command risks fail closed and create focused replay scenarios", () => {
+  const report = endpointReport("POST", "/fields/update", "update", "mutation-command", [
+    node("Controller.update", "controller", "Controller", "update"),
+    node("Repository.updateById", "repository", "Repository", "updateById")
+  ]);
+  report.riskSignals = [
+    risk("disabled-authorization-guard", "high"),
+    risk("request-constraint-coverage-unresolved", "medium"),
+    risk("destructive-retry", "high"),
+    risk("dynamic-ddl-construction", "high"),
+    risk("transactional-ddl-boundary", "high"),
+    risk("lost-update-guard-unresolved", "high"),
+    risk("idempotency-ordering-risk", "high"),
+    risk("after-commit-effect-risk", "high")
+  ];
+  const { plan } = createEndpointReplacementPlanFromJava(report);
+  assert.equal(plan.status, "blocked");
+  assert.equal(plan.findings.filter((finding) => finding.startsWith("RP-COMMAND-")).length, 8);
+  for (const scenario of [
+    "authorization-denied",
+    "schema-transition-failure",
+    "idempotency-key-stability",
+    "post-commit-effect-failure"
+  ]) {
+    assert.ok(plan.scenarios.some((item) => item.id === scenario), scenario);
+  }
 });
 
 test("reviewed ownership policy applies narrow safe exclusions and blocks unsafe rules", () => {
@@ -299,4 +409,8 @@ function endpointReport(
 
 function node(id: string, kind: JavaEndpointAnalysisReport["callGraph"]["nodes"][number]["kind"], className: string, methodName: string) {
   return { id, kind, className, methodName, file: `${className}.java`, line: 10, signature: `Object ${methodName}()` };
+}
+
+function risk(id: string, severity: "low" | "medium" | "high"): JavaEndpointAnalysisReport["riskSignals"][number] {
+  return { id, severity, title: id, summary: id, evidence: [id] };
 }

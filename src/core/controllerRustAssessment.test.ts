@@ -155,6 +155,134 @@ test("controller Rust assessment analyzes normalized routes and aggregates stric
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test("controller assessment binds interface and locally implemented Feign routes while excluding outbound-only clients", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-interface-route-"));
+  try {
+    await mkdir(path.join(dir, "demo"), { recursive: true });
+    await writeFile(path.join(dir, "demo", "OrderAdminApi.java"), [
+      "package demo;",
+      "@RestController",
+      "@RequestMapping(\"/api/orders\")",
+      "public interface OrderAdminApi {",
+      " @GetMapping(\"/get\")",
+      " Object getOrder(Long id);",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "OrderController.java"), [
+      "package demo;",
+      "@RestController",
+      "@RequestMapping(\"/api/orders\")",
+      "public class OrderController implements OrderAdminApi {",
+      " @Resource",
+      " private OrderService orderService;",
+      " @Override",
+      " @GetMapping(\"/get\")",
+      " public Object getOrder(Long id) { return orderService.getOrder(id); }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "OrderService.java"), [
+      "package demo;",
+      "public class OrderService {",
+      " @Resource",
+      " private OrderRepository orderRepository;",
+      " public Object getOrder(Long id) { return orderRepository.findById(id); }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "OrderRepository.java"), [
+      "package demo;",
+      "public class OrderRepository {",
+      " public Object findById(Long id) { return null; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "RemoteOrderClient.java"), [
+      "package demo;",
+      "@FeignClient(name = \"remote-orders\")",
+      "public interface RemoteOrderClient {",
+      " @GetMapping(\"/remote/orders/get\")",
+      " Object getOrder(Long id);",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "LocalAuditApi.java"), [
+      "package demo;",
+      "@FeignClient(name = \"local-audit\")",
+      "public interface LocalAuditApi {",
+      " @PostMapping(\"/rpc-api/audit/create\")",
+      " Object createAudit(String value);",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "LocalAuditApiImpl.java"), [
+      "package demo;",
+      "@RestController",
+      "public class LocalAuditApiImpl implements LocalAuditApi {",
+      " @Override",
+      " public Object createAudit(String value) { return value; }",
+      "}"
+    ].join("\n"));
+
+    const analyzer = await createJavaEndpointAnalyzer(dir);
+    assert.equal(analyzer.routes.length, 2);
+    const orderRoute = analyzer.routes.find((route) => route.className === "OrderController");
+    assert.equal(orderRoute?.implementationResolution, "bound");
+    assert.equal(orderRoute?.declaration?.className, "OrderAdminApi");
+    const rpcRoute = analyzer.routes.find((route) => route.className === "LocalAuditApiImpl");
+    assert.equal(rpcRoute?.path, "/rpc-api/audit/create");
+    assert.equal(rpcRoute?.implementationResolution, "bound");
+    assert.equal(rpcRoute?.declaration?.className, "LocalAuditApi");
+    assert.equal(analyzer.routes.some((route) => route.className === "RemoteOrderClient"), false);
+
+    const report = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 100 });
+    assert.equal(report.routeCount, 2);
+    const orderAssessment = report.methods.find((method) => method.handler === "OrderController.getOrder");
+    assert.ok((orderAssessment?.nodes ?? 0) >= 3);
+    assert.equal(orderAssessment?.findings.includes("RP-ENTRYPOINT-IMPLEMENTATION-UNRESOLVED"), false);
+    assert.equal(report.methods.some((method) => method.handler === "LocalAuditApiImpl.createAudit"), true);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("controller assessment fails closed for unresolved or ambiguous interface route implementations", async () => {
+  const unresolvedDir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-interface-unresolved-"));
+  const ambiguousDir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-interface-ambiguous-"));
+  try {
+    await mkdir(path.join(unresolvedDir, "demo"), { recursive: true });
+    await writeFile(path.join(unresolvedDir, "demo", "MissingApi.java"), [
+      "package demo;",
+      "@RestController",
+      "public interface MissingApi {",
+      " @GetMapping(\"/missing\")",
+      " Object get();",
+      "}"
+    ].join("\n"));
+    const unresolved = await assessJavaControllersForRust({ root: unresolvedDir, maxDepth: 4, maxEdges: 20 });
+    assert.equal(unresolved.methods[0]?.status, "blocked");
+    assert.ok(unresolved.methods[0]?.findings.includes("RP-ENTRYPOINT-IMPLEMENTATION-UNRESOLVED"));
+
+    await mkdir(path.join(ambiguousDir, "demo"), { recursive: true });
+    await writeFile(path.join(ambiguousDir, "demo", "SharedApi.java"), [
+      "package demo;",
+      "@RestController",
+      "public interface SharedApi {",
+      " @GetMapping(\"/shared\")",
+      " Object get();",
+      "}"
+    ].join("\n"));
+    for (const name of ["FirstController", "SecondController"]) {
+      await writeFile(path.join(ambiguousDir, "demo", `${name}.java`), [
+        "package demo;",
+        "@RestController",
+        `public class ${name} implements SharedApi {`,
+        " public Object get() { return null; }",
+        "}"
+      ].join("\n"));
+    }
+    const ambiguous = await assessJavaControllersForRust({ root: ambiguousDir, maxDepth: 4, maxEdges: 20 });
+    assert.equal(ambiguous.methods[0]?.status, "blocked");
+    assert.ok(ambiguous.methods[0]?.findings.includes("RP-ENTRYPOINT-IMPLEMENTATION-AMBIGUOUS"));
+  } finally {
+    await rm(unresolvedDir, { recursive: true, force: true });
+    await rm(ambiguousDir, { recursive: true, force: true });
+  }
+});
+
 test("controller assessment reports deduplicated transaction self-invocation evidence", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-controller-transaction-"));
   try {
@@ -185,13 +313,23 @@ test("controller assessment accepts only exact reviewed equivalent transaction s
       "package demo;", "@RestController", "public class ReviewedController {", " @Resource", " private AiEmpowerConfigBizServiceImpl service;",
       " @GetMapping(\"/reviewed\")", " public Object run() { return service.saveAiEmpowerConfig(); }", "}"
     ].join("\n"));
+    await writeFile(path.join(dir, "demo", "ViewDynamicFieldCountIndexDataServiceImpl.java"), [
+      "package demo;", "public class ViewDynamicFieldCountIndexDataServiceImpl {",
+      " @Transactional(propagation = Propagation.REQUIRES_NEW)", " public Object ensureIndexRecord() { return createViewDynamicFieldCountIndexData(); }",
+      " @Transactional(propagation = Propagation.REQUIRES_NEW)", " public Object createViewDynamicFieldCountIndexData() { return null; }", "}"
+    ].join("\n"));
+    await writeFile(path.join(dir, "demo", "RequiresNewReviewedController.java"), [
+      "package demo;", "@RestController", "public class RequiresNewReviewedController {", " @Resource",
+      " private ViewDynamicFieldCountIndexDataServiceImpl service;",
+      " @GetMapping(\"/reviewed-requires-new\")", " public Object run() { return service.ensureIndexRecord(); }", "}"
+    ].join("\n"));
     const reviewed = await assessJavaControllersForRust({ root: dir, maxDepth: 8, maxEdges: 20 });
     assert.equal(reviewed.summary.findings["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] ?? 0, 0);
 
     await writeFile(path.join(dir, "demo", "OtherService.java"), [
       "package demo;", "public class OtherService {",
-      " @Transactional(rollbackFor = Exception.class)", " public Object saveAiEmpowerConfig() { return deleteByFieldId(); }",
-      " @Transactional(rollbackFor = Exception.class)", " public Object deleteByFieldId() { return null; }", "}"
+      " @Transactional(propagation = Propagation.REQUIRES_NEW)", " public Object saveAiEmpowerConfig() { return deleteByFieldId(); }",
+      " @Transactional(propagation = Propagation.REQUIRES_NEW)", " public Object deleteByFieldId() { return null; }", "}"
     ].join("\n"));
     await writeFile(path.join(dir, "demo", "OtherController.java"), [
       "package demo;", "@RestController", "public class OtherController {", " @Resource", " private OtherService service;",

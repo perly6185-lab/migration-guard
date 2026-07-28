@@ -84,6 +84,66 @@ test("Java semantic registry preserves synchronization and diagnostic effects", 
   assert.equal(classifyJavaSemantic("backupCompareExecutor.shutdownNow")?.kind, "async-boundary");
   assert.equal(classifyJavaSemantic("bfsQueue.poll")?.kind, "coordination");
   assert.equal(classifyJavaSemantic("service.handle")?.kind, undefined);
+  assert.equal(classifyJavaSemantic("ViewDynamicEventDataServiceImpl.selectListByTenantIdAndPanelId")?.kind, "state-read");
+  assert.equal(classifyJavaSemantic("ViewDynamicHttpDataServiceImpl.selectListByTenantAndPanelId")?.kind, "state-read");
+  assert.equal(classifyJavaSemantic("ViewDynamicEventEngineServiceImpl.initEventServer")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ViewDynamicHttpEngineServiceImpl.initHttpServer")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ViewDynamicEventDataCacheImpl.selectListByPanelId")?.kind, "state-read");
+  assert.equal(classifyJavaSemantic("ViewDynamicHttpDataCacheImpl.selectCacheByPanelId")?.kind, "state-read");
+  assert.equal(classifyJavaSemantic("ViewDynamicEventDataCacheImpl.copyList")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ViewDynamicHttpDataCacheImpl.getCacheKey")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ViewDynamicHttpDataServiceImpl.prefetchCacheByPanelIdList")?.kind, "coordination");
+  assert.equal(classifyJavaSemantic("ViewDynamicHttpParamDataServiceImpl.toParamDataByList")?.kind, "calculation");
+});
+
+test("Java semantic registry classifies AI, reactive, SSE, and WebSocket boundaries", () => {
+  for (const symbol of [
+    "requestSpec.call",
+    "requestSpec.stream",
+    "dashscopeChatModel.call",
+    "embeddingModel.embedForResponse",
+    "ProxyAiChatModel.invokeLocalToolCallback"
+  ]) {
+    assert.equal(classifyJavaSemantic(symbol)?.kind, "external-call", symbol);
+  }
+  for (const symbol of ["vectorStore.similaritySearch", "jedis.ftSearch"]) {
+    assert.equal(classifyJavaSemantic(symbol)?.kind, "state-read", symbol);
+  }
+  assert.equal(classifyJavaSemantic("vectorStore.add")?.kind, "state-write");
+  assert.equal(classifyJavaSemantic("fieldsFuture.thenApplyAsync")?.kind, "async-boundary");
+  assert.equal(classifyJavaSemantic("Schedulers.boundedElastic")?.kind, "async-boundary");
+  for (const symbol of ["Flux.just", "Flux.concat", "Mono.fromCallable", "stream.doOnNext", "stream.onErrorResume"]) {
+    assert.equal(classifyJavaSemantic(symbol)?.kind, "calculation", symbol);
+  }
+  for (const symbol of ["emitter.send", "bridge.complete", "session.sendMessage"]) {
+    assert.equal(classifyJavaSemantic(symbol)?.kind, "event-publish", symbol);
+  }
+  assert.equal(classifyJavaSemantic("session.close")?.kind, "coordination");
+  assert.equal(classifyJavaSemantic("LedgerTaskWebSocketHandler.closeSessionsByTaskId")?.kind, "coordination");
+  for (const symbol of [
+    "QwenChatMessage.system",
+    "RedisVectorStore.MetadataField",
+    "MenuSearchStreamRespVO.ofDone",
+    "PromptSanitizer.defangStructuralMarkers"
+  ]) {
+    assert.equal(classifyJavaSemantic(symbol)?.kind, "calculation", symbol);
+  }
+  assert.equal(classifyJavaSemantic("SessionContext.of")?.kind, "context-resolution");
+  assert.equal(classifyJavaSemantic("target.call")?.kind, undefined, "generic call remains fail-closed");
+  assert.equal(classifyJavaSemantic("AiCommandSuggestModule.callAiWithTimeout")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("AiImageAnalyzeModule.analyze")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("AiFieldRecommendModule.cfgInt")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ColumnManagementTool.errMissing")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("LedgerTool.errJsonWithHint")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("CurrentWeather.temperature")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("currentUnits().windSpeedUnit")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("ConnectedComponent.addPoint")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("Runnable.run")?.kind, "async-boundary");
+  assert.equal(classifyJavaSemantic("URL.openConnection")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("Random.nextInt")?.kind, "external-call");
+  assert.equal(classifyJavaSemantic("steps().size")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("stream().limit")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("UNKNOWN.name")?.kind, "calculation");
 });
 
 test("Java semantic registry narrows helpers, value factories, and application contexts", () => {
@@ -254,6 +314,9 @@ test("Java semantic registry narrows helpers, value factories, and application c
   assert.equal(classifyJavaSemantic("signal.drainPermits")?.kind, "coordination");
   assert.equal(classifyJavaSemantic("wrapper.last")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("YearMonth.from")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("CompositeKey.from")?.kind, "calculation");
+  assert.equal(classifyJavaSemantic("CompositeKey.from")?.defaultOwnership, "target-owned");
+  assert.equal(classifyJavaSemantic("RuntimeKey.resolve")?.kind, undefined);
   assert.equal(classifyJavaSemantic("source.copy")?.kind, "calculation");
   assert.equal(classifyJavaSemantic("batch.assignIdentity")?.kind, "state-write");
   assert.equal(classifyJavaSemantic("ViewMetaExcelImportAnalyzeApplicationServiceImpl.generateAnalyzeToken")?.kind, "external-call");

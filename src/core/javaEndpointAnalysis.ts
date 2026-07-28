@@ -29,11 +29,18 @@ export interface JavaEndpointAnalyzer {
   sourceIdentity: AssessmentSourceIdentity;
   routes: JavaEndpointRouteCandidate[];
   serviceMethods: JavaServiceMethodCandidate[];
+  mcpToolMethods: JavaMcpToolMethodCandidate[];
+  mcpToolProviders: JavaMcpToolProviderRegistration[];
+  feignClients: JavaFeignClientContract[];
   repositoryMethods: JavaRepositoryMethodCandidate[];
   analyze(options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests">): JavaEndpointAnalysisReport;
   analyzeAdaptive(options: Omit<AnalyzeJavaEndpointOptions, "root" | "includeTests"> & AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
+  analyzeRoute(route: JavaEndpointRouteCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
+  analyzeRouteAdaptive(route: JavaEndpointRouteCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
   analyzeServiceMethod(candidate: JavaServiceMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
   analyzeServiceMethodAdaptive(candidate: JavaServiceMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
+  analyzeMcpToolMethod(candidate: JavaMcpToolMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
+  analyzeMcpToolMethodAdaptive(candidate: JavaMcpToolMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
   analyzeRepositoryMethod(candidate: JavaRepositoryMethodCandidate, options?: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">): JavaEndpointAnalysisReport;
   analyzeRepositoryMethodAdaptive(candidate: JavaRepositoryMethodCandidate, options?: AdaptiveJavaAnalysisOptions): AdaptiveJavaAnalysisResult;
   summarizeMethod(candidate: JavaServiceMethodCandidate): JavaMethodSummary;
@@ -163,7 +170,74 @@ export interface JavaEndpointRouteCandidate {
   framework: "Spring";
   confidence: "low" | "medium" | "high";
   annotations?: string[];
-  entryKind?: "controller" | "service" | "repository";
+  entryKind?: "controller" | "service" | "repository" | "mcp-tool";
+  implementationResolution?: "declared" | "bound" | "unresolved" | "ambiguous";
+  declaration?: {
+    file: string;
+    line: number;
+    className: string;
+    methodName: string;
+    signature: string;
+  };
+  implementationCandidates?: Array<{
+    file: string;
+    line: number;
+    className: string;
+    methodName: string;
+    signature: string;
+  }>;
+}
+
+export type JavaMcpIdentityKind = "tenant" | "authorization" | "conversation";
+
+export interface JavaMcpToolParameterSchema {
+  name: string;
+  javaType: string;
+  jsonType: "string" | "integer" | "number" | "boolean" | "array" | "object";
+  required: boolean;
+  description?: string;
+  identity?: JavaMcpIdentityKind;
+}
+
+export interface JavaMcpToolProviderRegistration {
+  providerBean: string;
+  providerClassName: string;
+  toolClassName: string;
+  file: string;
+  line: number;
+  mechanism: "MethodToolCallbackProvider";
+}
+
+export interface JavaMcpToolMethodCandidate extends JavaServiceMethodCandidate {
+  toolName: string;
+  description?: string;
+  parameters: JavaMcpToolParameterSchema[];
+  registration: "registered" | "annotated-only";
+  providers: JavaMcpToolProviderRegistration[];
+  schemaHash: string;
+}
+
+export interface JavaFeignMethodContract {
+  methodName: string;
+  httpMethod?: JavaEndpointHttpMethod;
+  path?: string;
+  line: number;
+  headers: Array<{
+    parameter: string;
+    parameterIndex: number;
+    header: string;
+    identity?: JavaMcpIdentityKind;
+  }>;
+}
+
+export interface JavaFeignClientContract {
+  className: string;
+  qualifiedClassName: string;
+  file: string;
+  line: number;
+  fallbackClassName?: string;
+  fallbackCompatible: boolean | "unresolved" | "not-declared";
+  methods: JavaFeignMethodContract[];
 }
 
 export interface JavaEndpointCallGraphNode {
@@ -217,6 +291,7 @@ export type JavaPredicateTruth = "true" | "false" | "unknown";
 export interface JavaMethodSummaryCall {
   id: string;
   receiver?: string;
+  receiverType?: string;
   method: string;
   expression: string;
   line: number;
@@ -239,6 +314,11 @@ export interface JavaMethodSummaryTarget {
   qualifiedClassName: string;
   methodName: string;
   signature: string;
+  file: string;
+  line: number;
+  returnType?: string;
+  parameterTypes: string[];
+  annotations: string[];
   parameterNames: string[];
   enumParameterIndexes: number[];
   predicates: JavaCallGraphPredicate[];
@@ -440,7 +520,7 @@ export interface JavaEndpointGoldenCase {
 
 export interface JavaEndpointGoldenCasePlan {
   version: 1;
-  model: "page-query" | "batch-command" | "sync-command";
+  model: "page-query" | "batch-command" | "sync-command" | "mutation-command";
   endpoint: {
     method: JavaEndpointHttpMethod;
     path: string;
@@ -562,6 +642,7 @@ interface JavaPlainFieldInfo {
   name: string;
   typeName: string;
   declaredType: string;
+  annotations: string[];
   line: number;
 }
 
@@ -681,17 +762,31 @@ export async function createJavaEndpointAnalyzer(rootValue: string, includeTests
   ]);
   const routes = extractSpringRoutes(project);
   const serviceMethods = extractServiceMethods(project);
+  const mcpToolProviders = extractMcpToolProviders(project);
+  const mcpToolMethods = extractMcpToolMethods(project, mcpToolProviders);
+  const feignClients = extractFeignClientContracts(project);
   const repositoryMethods = extractRepositoryMethods(project);
   return {
     root,
     sourceIdentity,
     routes,
     serviceMethods,
+    mcpToolMethods,
+    mcpToolProviders,
+    feignClients,
     repositoryMethods,
     analyze: (options) => analyzeJavaEndpointModel(project, routes, options),
     analyzeAdaptive: (options) => analyzeJavaEndpointAdaptive(project, routes, options),
+    analyzeRoute: (route, options = {}) => analyzeJavaEndpointModel(project, routes, {
+      endpoint: route.path,
+      method: route.method,
+      ...options
+    }, route),
+    analyzeRouteAdaptive: (route, options = {}) => analyzeJavaEndpointRouteAdaptive(project, routes, route, options),
     analyzeServiceMethod: (candidate, options = {}) => analyzeJavaServiceMethodModel(project, routes, candidate, options),
     analyzeServiceMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "service", options),
+    analyzeMcpToolMethod: (candidate, options = {}) => analyzeJavaMethodModel(project, routes, candidate, "mcp-tool", options),
+    analyzeMcpToolMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "mcp-tool", options),
     analyzeRepositoryMethod: (candidate, options = {}) => analyzeJavaMethodModel(project, routes, candidate, "repository", options),
     analyzeRepositoryMethodAdaptive: (candidate, options = {}) => analyzeJavaMethodAdaptive(project, routes, candidate, "repository", options),
     summarizeMethod: (candidate) => summarizeJavaMethod(project, candidate),
@@ -1020,6 +1115,11 @@ function summarizeJavaMethod(project: JavaProjectModel, candidate: JavaServiceMe
         qualifiedClassName: targetType.qualifiedName,
         methodName: targetMethod.name,
         signature: targetMethod.signature,
+        file: targetMethod.file,
+        line: targetMethod.line,
+        returnType: targetMethod.returnType,
+        parameterTypes: targetMethod.params.map((param) => param.typeName),
+        annotations: [...targetType.annotations, ...targetMethod.annotations],
         parameterNames: targetMethod.params.map((param) => param.name),
         enumParameterIndexes: targetMethod.params.flatMap((param, index) =>
           resolveTypesForField(project, param.declaredType, targetType).some((candidateType) => candidateType.kind === "enum")
@@ -1032,6 +1132,7 @@ function summarizeJavaMethod(project: JavaProjectModel, candidate: JavaServiceMe
     return {
       id: callId,
       receiver: call.receiver,
+      receiverType: call.receiverType,
       method: call.method,
       expression: call.expression,
       line: call.line,
@@ -1500,6 +1601,23 @@ function analyzeJavaEndpointAdaptive(
   );
 }
 
+function analyzeJavaEndpointRouteAdaptive(
+  project: JavaProjectModel,
+  routes: JavaEndpointRouteCandidate[],
+  route: JavaEndpointRouteCandidate,
+  options: AdaptiveJavaAnalysisOptions
+): AdaptiveJavaAnalysisResult {
+  return analyzeJavaAdaptive(
+    (maxDepth, maxEdges) => analyzeJavaEndpointModel(project, routes, {
+      endpoint: route.path,
+      method: route.method,
+      maxDepth,
+      maxEdges
+    }, route),
+    options
+  );
+}
+
 function analyzeJavaServiceMethodAdaptive(
   project: JavaProjectModel,
   routes: JavaEndpointRouteCandidate[],
@@ -1513,7 +1631,7 @@ function analyzeJavaMethodAdaptive(
   project: JavaProjectModel,
   routes: JavaEndpointRouteCandidate[],
   candidate: JavaServiceMethodCandidate,
-  entryKind: "service" | "repository",
+  entryKind: "service" | "repository" | "mcp-tool",
   options: AdaptiveJavaAnalysisOptions
 ): AdaptiveJavaAnalysisResult {
   return analyzeJavaAdaptive(
@@ -1629,6 +1747,201 @@ function extractServiceMethods(project: JavaProjectModel): JavaServiceMethodCand
     .sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.id.localeCompare(b.id));
 }
 
+function extractMcpToolProviders(project: JavaProjectModel): JavaMcpToolProviderRegistration[] {
+  const registrations: JavaMcpToolProviderRegistration[] = [];
+  for (const type of project.types.filter((candidate) => candidate.kind === "class")) {
+    for (const method of type.methods) {
+      if (!method.annotations.some((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?Bean\b/.test(annotation))) continue;
+      if (!/\bMethodToolCallbackProvider\b/.test(method.body) || !/\.toolObjects\s*\(/.test(method.body)) continue;
+      const parameterTypes = new Map(method.params.map((parameter) => [parameter.name, parameter.typeName]));
+      const fieldTypes = new Map(type.plainFields.map((field) => [field.name, field.typeName]));
+      for (const match of method.body.matchAll(/\.toolObjects\s*\(([\s\S]*?)\)\s*\.build\s*\(/g)) {
+        for (const object of splitJavaArgs(match[1]).map((value) => value.trim()).filter((value) => /^[A-Za-z_$][\w$]*$/.test(value))) {
+          const toolClassName = parameterTypes.get(object) ?? fieldTypes.get(object);
+          if (!toolClassName) continue;
+          registrations.push({
+            providerBean: method.name,
+            providerClassName: type.qualifiedName,
+            toolClassName,
+            file: method.file,
+            line: method.line,
+            mechanism: "MethodToolCallbackProvider"
+          });
+        }
+      }
+    }
+  }
+  return uniqueBy(registrations, (item) =>
+    `${item.providerClassName}.${item.providerBean}:${item.toolClassName}:${item.line}`)
+    .sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line || left.toolClassName.localeCompare(right.toolClassName));
+}
+
+function extractMcpToolMethods(
+  project: JavaProjectModel,
+  providers: JavaMcpToolProviderRegistration[]
+): JavaMcpToolMethodCandidate[] {
+  const providersByTool = new Map<string, JavaMcpToolProviderRegistration[]>();
+  for (const provider of providers) pushMap(providersByTool, provider.toolClassName, provider);
+  return project.types.flatMap((type) => type.methods.flatMap((method): JavaMcpToolMethodCandidate[] => {
+    const toolAnnotation = method.annotations.find((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?Tool(?:\s*\(|\b)/.test(annotation));
+    if (!toolAnnotation || !method.hasBody) return [];
+    const named = annotationNamedArguments(toolAnnotation, type.constants);
+    const methodProviders = providersByTool.get(type.name) ?? providersByTool.get(type.qualifiedName) ?? [];
+    const parameters = method.params.map((parameter): JavaMcpToolParameterSchema => {
+      const toolParam = parameter.annotations.find((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?ToolParam(?:\s*\(|\b)/.test(annotation));
+      const values = toolParam ? annotationNamedArguments(toolParam, type.constants) : {};
+      return {
+        name: parameter.name,
+        javaType: parameter.declaredType,
+        jsonType: javaJsonSchemaType(parameter.declaredType),
+        required: values.required !== "false",
+        ...(values.description ? { description: values.description } : {}),
+        ...(mcpIdentityKind(parameter.name, values.description) ? { identity: mcpIdentityKind(parameter.name, values.description) } : {})
+      };
+    });
+    const base = {
+      id: methodId(type, method),
+      className: type.name,
+      qualifiedClassName: type.qualifiedName,
+      methodName: method.name,
+      signature: method.signature,
+      returnType: method.returnType,
+      parameterTypes: method.params.map((parameter) => parameter.typeName),
+      annotations: [...type.annotations, ...method.annotations],
+      file: method.file,
+      line: method.line,
+      toolName: named.name || method.name,
+      ...(named.description ? { description: named.description } : {}),
+      parameters,
+      registration: methodProviders.length ? "registered" as const : "annotated-only" as const,
+      providers: methodProviders
+    };
+    return [{
+      ...base,
+      schemaHash: sha256(stableStringify({
+        toolName: base.toolName,
+        description: base.description,
+        parameters: base.parameters,
+        returnType: base.returnType
+      }))
+    }];
+  })).sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
+}
+
+function extractFeignClientContracts(project: JavaProjectModel): JavaFeignClientContract[] {
+  return project.types.flatMap((type): JavaFeignClientContract[] => {
+    const annotation = type.annotations.find((candidate) => /@(?:[A-Za-z0-9_$.]+\.)?FeignClient\b/.test(candidate));
+    if (!annotation) return [];
+    const named = annotationNamedArguments(annotation, type.constants);
+    const fallbackClassName = named.fallback?.replace(/\.class$/, "").trim();
+    let fallbackCompatible: JavaFeignClientContract["fallbackCompatible"] = "not-declared";
+    if (fallbackClassName) {
+      const fallbacks = project.typesByName.get(simpleTypeName(fallbackClassName)) ?? [];
+      fallbackCompatible = fallbacks.length === 0
+        ? "unresolved"
+        : fallbacks.some((fallback) =>
+          fallback.implements.some((implemented) => simpleTypeName(implemented) === type.name)
+          || fallback.extends.some((extended) => simpleTypeName(extended) === type.name));
+    }
+    const classRoute = routePathFromAnnotations(type.annotations, type.constants)?.path;
+    const methods = type.methods.map((method): JavaFeignMethodContract => {
+      const mapping = routePathFromAnnotations(method.annotations, type.constants);
+      return {
+        methodName: method.name,
+        ...(mapping ? { httpMethod: mapping.method, path: joinRoutes(classRoute, mapping.path) } : {}),
+        line: method.line,
+        headers: method.params.flatMap((parameter, parameterIndex) => {
+          const requestHeader = parameter.annotations.find((candidate) => /@(?:[A-Za-z0-9_$.]+\.)?RequestHeader(?:\s*\(|\b)/.test(candidate));
+          if (!requestHeader) return [];
+          const values = annotationNamedArguments(requestHeader, type.constants);
+          const header = values.value || values.name || annotationPositionalString(requestHeader, type.constants);
+          if (!header) return [];
+          return [{
+            parameter: parameter.name,
+            parameterIndex,
+            header,
+            ...(mcpIdentityKind(parameter.name, header) ? { identity: mcpIdentityKind(parameter.name, header) } : {})
+          }];
+        })
+      };
+    });
+    return [{
+      className: type.name,
+      qualifiedClassName: type.qualifiedName,
+      file: type.file,
+      line: type.line,
+      ...(fallbackClassName ? { fallbackClassName } : {}),
+      fallbackCompatible,
+      methods
+    }];
+  }).sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
+}
+
+function annotationNamedArguments(
+  annotation: string,
+  constants: Map<string, string>
+): Record<string, string> {
+  const open = annotation.indexOf("(");
+  const close = annotation.lastIndexOf(")");
+  if (open < 0 || close <= open) return {};
+  const values: Record<string, string> = {};
+  for (const argument of splitJavaArgs(annotation.slice(open + 1, close))) {
+    const equals = topLevelJavaEquals(argument);
+    if (equals < 0) continue;
+    const name = argument.slice(0, equals).trim();
+    const expression = argument.slice(equals + 1).trim();
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) continue;
+    values[name] = evaluateJavaStringExpression(expression, constants)
+      ?? expression.replace(/\s+/g, " ").trim();
+  }
+  return values;
+}
+
+function annotationPositionalString(annotation: string, constants: Map<string, string>): string | undefined {
+  const open = annotation.indexOf("(");
+  const close = annotation.lastIndexOf(")");
+  if (open < 0 || close <= open) return undefined;
+  const first = splitJavaArgs(annotation.slice(open + 1, close))[0]?.trim();
+  if (!first || topLevelJavaEquals(first) >= 0) return undefined;
+  return evaluateJavaStringExpression(first, constants) ?? first.replace(/^["']|["']$/g, "");
+}
+
+function topLevelJavaEquals(value: string): number {
+  const state = createJavaLexicalState();
+  let depth = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const consumed = consumeJavaLexical(value, index, state);
+    if (consumed > index) {
+      index = consumed;
+      continue;
+    }
+    if (state.mode !== "code") continue;
+    const char = value[index];
+    if ("(<[{".includes(char)) depth += 1;
+    else if (")>]}".includes(char)) depth -= 1;
+    else if (char === "=" && depth === 0) return index;
+  }
+  return -1;
+}
+
+function javaJsonSchemaType(javaType: string): JavaMcpToolParameterSchema["jsonType"] {
+  const simple = simpleTypeName(javaType);
+  if (/^(?:byte|short|int|long|Byte|Short|Integer|Long|BigInteger)$/.test(simple)) return "integer";
+  if (/^(?:float|double|Float|Double|BigDecimal)$/.test(simple)) return "number";
+  if (/^(?:boolean|Boolean)$/.test(simple)) return "boolean";
+  if (/\[\]$/.test(javaType) || /^(?:List|Set|Collection|Iterable)\s*</.test(javaType.trim())) return "array";
+  if (/^(?:String|char|Character|UUID|LocalDate|LocalDateTime|Instant|OffsetDateTime|ZonedDateTime)$/.test(simple)) return "string";
+  return "object";
+}
+
+function mcpIdentityKind(name: string, description?: string): JavaMcpIdentityKind | undefined {
+  const value = `${name} ${description ?? ""}`;
+  if (/tenant[-_\s]?id|租户/i.test(value)) return "tenant";
+  if (/authorization|auth(?:orization)?\s*token|授权\s*token/i.test(value)) return "authorization";
+  if (/conversation[-_\s]?id|会话\s*id/i.test(value)) return "conversation";
+  return undefined;
+}
+
 function analyzeJavaServiceMethodModel(
   project: JavaProjectModel,
   routes: JavaEndpointRouteCandidate[],
@@ -1642,7 +1955,7 @@ function analyzeJavaMethodModel(
   project: JavaProjectModel,
   routes: JavaEndpointRouteCandidate[],
   candidate: JavaServiceMethodCandidate,
-  entryKind: "service" | "repository",
+  entryKind: "service" | "repository" | "mcp-tool",
   options: Pick<AnalyzeJavaEndpointOptions, "maxDepth" | "maxEdges">
 ): JavaEndpointAnalysisReport {
   const endpoint = normalizeRoutePath(`/__${entryKind}/${candidate.qualifiedClassName}/${candidate.methodName}/${candidate.line}`);
@@ -1850,12 +2163,16 @@ async function collectJavaProject(root: string, includeTests: boolean): Promise<
   const types = files.flatMap((file) => parseJavaTypes(file));
   const typesByName = new Map<string, JavaTypeInfo[]>();
   const implementationsByInterface = new Map<string, JavaTypeInfo[]>();
+  const qualifiedTypeNames = new Set(types.map((type) => type.qualifiedName));
   for (const type of types) {
     pushMap(typesByName, type.name, type);
     pushMap(typesByName, type.qualifiedName, type);
     for (const implemented of type.implements) {
       pushMap(implementationsByInterface, simpleTypeName(implemented), type);
       pushMap(implementationsByInterface, implemented, type);
+      for (const qualified of qualifyDeclaredTypes(type, implemented, qualifiedTypeNames)) {
+        pushMap(implementationsByInterface, qualified, type);
+      }
     }
   }
   const project: JavaProjectModel = {
@@ -1951,8 +2268,11 @@ function parseJavaTypes(file: JavaSourceFile): JavaTypeInfo[] {
       typeParameters: parseTypeParameters(header, typeName),
       staticImports: [...content.matchAll(/^\s*import\s+static\s+([A-Za-z0-9_.$]+)\.([A-Za-z_*][A-Za-z0-9_*]*)\s*;/gm)]
         .map((item) => ({ typeName: item[1], methodName: item[2] })),
-      imports: [...content.matchAll(/^\s*import\s+(?!static\s)([A-Za-z0-9_.$]+)\s*;/gm)]
-        .map((item) => ({ qualifiedName: item[1], simpleName: simpleTypeName(item[1]) })),
+      imports: [...content.matchAll(/^\s*import\s+(?!static\s)([A-Za-z0-9_.$]+(?:\.\*)?)\s*;/gm)]
+        .map((item) => ({
+          qualifiedName: item[1].endsWith(".*") ? item[1].slice(0, -2) : item[1],
+          simpleName: item[1].endsWith(".*") ? "*" : simpleTypeName(item[1])
+        })),
       file: file.relativePath,
       line: index + 1,
       annotations,
@@ -1976,6 +2296,10 @@ function parseTypeBody(lines: string[], startLine: number, endLine: number, file
   for (let index = startLine + 1; index < endLine; index += 1) {
     const line = lines[index];
     const annotations = collectLeadingAnnotations(lines, index);
+    if (/^\s*(?:(?:public|protected|private|static|final|abstract)\s+)*(?:class|interface|enum|record)\s+[A-Za-z_][A-Za-z0-9_]*\b/.test(line)) {
+      index = findBraceRange(lines, index).end;
+      continue;
+    }
     if (/^\s*(?:static\s*)?\{/.test(line)) {
       index = findBraceRange(lines, index).end;
       continue;
@@ -2003,6 +2327,7 @@ function parseTypeBody(lines: string[], startLine: number, endLine: number, file
         name: field[2],
         typeName: fieldTypeName as string,
         declaredType: declaredFieldType as string,
+        annotations,
         line: index + 1
       });
     }
@@ -2040,12 +2365,13 @@ function parseMethodAt(
   const signatureLines: string[] = [];
   let cursor = index;
   let foundTerminator = false;
+  const signatureState = createJavaLexicalState();
   while (cursor < typeEndLine && cursor < index + 64) {
     const trimmed = lines[cursor].trim();
     if (!trimmed || trimmed.startsWith("//") || (cursor === index && trimmed.startsWith("@"))) {
       return undefined;
     }
-    const braceIndex = trimmed.indexOf("{");
+    const braceIndex = findJavaStructuralChar(trimmed, "{", signatureState);
     signatureLines.push(braceIndex >= 0 ? trimmed.slice(0, braceIndex + 1) : trimmed);
     if (braceIndex >= 0 || /;\s*$/.test(trimmed)) {
       foundTerminator = true;
@@ -2104,16 +2430,28 @@ function parseMethodAt(
 }
 
 function findAnnotationEndLine(lines: string[], startLine: number): number {
-  const first = lines[startLine].trim();
-  if (!first.includes("(")) return startLine;
+  if (!lines[startLine].includes("(")) return startLine;
+  const state = createJavaLexicalState();
   let depth = 0;
+  let started = false;
   for (let index = startLine; index < lines.length; index += 1) {
     const line = lines[index];
-    for (const char of line) {
-      if (char === "(") depth += 1;
-      if (char === ")") depth -= 1;
+    for (let offset = 0; offset < line.length; offset += 1) {
+      const consumed = consumeJavaLexical(line, offset, state);
+      if (consumed > offset) {
+        offset = consumed;
+        continue;
+      }
+      if (state.mode !== "code") continue;
+      if (line[offset] === "(") {
+        depth += 1;
+        started = true;
+      } else if (line[offset] === ")") {
+        depth -= 1;
+      }
     }
-    if (depth <= 0) return index;
+    if (state.mode === "line-comment") state.mode = "code";
+    if (started && depth <= 0) return index;
   }
   return startLine;
 }
@@ -2141,6 +2479,11 @@ async function walkXmlFiles(root: string): Promise<string[]> {
 function extractSpringRoutes(project: JavaProjectModel): JavaEndpointRouteCandidate[] {
   const routes: JavaEndpointRouteCandidate[] = [];
   for (const type of project.types) {
+    const feignDeclaration = type.annotations.some((annotation) =>
+      /@(?:[A-Za-z0-9_$.]+\.)?FeignClient\b/.test(annotation));
+    if (feignDeclaration && type.kind !== "interface") {
+      continue;
+    }
     const classRoute = routePathFromAnnotations(type.annotations, type.constants)?.path;
     for (const method of type.methods) {
       const methodMapping = routePathFromAnnotations(method.annotations, type.constants);
@@ -2149,7 +2492,7 @@ function extractSpringRoutes(project: JavaProjectModel): JavaEndpointRouteCandid
       }
       const routeMethod = methodMapping.method;
       const routePath = joinRoutes(classRoute, methodMapping.path);
-      routes.push({
+      const declaration: JavaEndpointRouteCandidate = {
         method: routeMethod,
         path: routePath,
         file: type.file,
@@ -2161,11 +2504,155 @@ function extractSpringRoutes(project: JavaProjectModel): JavaEndpointRouteCandid
         methodRoute: methodMapping.path,
         framework: "Spring",
         confidence: routeMethod === "ALL" ? "medium" : "high",
-        annotations: [...type.annotations, ...method.annotations]
-      });
+        annotations: [...type.annotations, ...method.annotations],
+        implementationResolution: type.kind === "interface" ? "unresolved" : "declared"
+      };
+      const resolved = type.kind === "interface"
+        ? bindInterfaceRouteToImplementation(project, type, method, declaration)
+        : declaration;
+      // A Feign declaration is normally an outbound client and must not become a
+      // local HTTP entrypoint. It is a local route only when source code contains
+      // a concrete controller implementation of that interface.
+      if (feignDeclaration && !hasSourceControllerImplementation(project, resolved)) {
+        continue;
+      }
+      routes.push(resolved);
     }
   }
-  return routes.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+  return deduplicateBoundRoutes(routes)
+    .sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+}
+
+function hasSourceControllerImplementation(
+  project: JavaProjectModel,
+  route: JavaEndpointRouteCandidate
+): boolean {
+  return (route.implementationCandidates ?? []).some((candidate) => {
+    const types = project.typesByName.get(candidate.className) ?? [];
+    return types.some((type) => type.file === candidate.file && (
+      /Controller$/.test(type.name)
+      || type.annotations.some((annotation) =>
+        /@(?:[A-Za-z0-9_$.]+\.)?RestController\b/.test(annotation))
+    ));
+  });
+}
+
+function bindInterfaceRouteToImplementation(
+  project: JavaProjectModel,
+  declarationType: JavaTypeInfo,
+  declarationMethod: JavaMethodInfo,
+  route: JavaEndpointRouteCandidate
+): JavaEndpointRouteCandidate {
+  const qualifiedImplementations = project.implementationsByInterface.get(declarationType.qualifiedName) ?? [];
+  const implementations = qualifiedImplementations.length > 0
+    ? qualifiedImplementations
+    : project.implementationsByInterface.get(declarationType.name) ?? [];
+  const candidates = uniqueMethodTargets(
+    implementations
+      .flatMap((type) => type.methods
+        .filter((method) => routeImplementationMethodMatches(declarationMethod, method))
+        .map((method) => ({ type, method })))
+  );
+  const controllerCandidates = candidates.filter(({ type }) =>
+    /Controller$/.test(type.name)
+    || type.annotations.some((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?RestController\b/.test(annotation)));
+  const preferred = controllerCandidates.length > 0 ? controllerCandidates : candidates;
+  const declaration = {
+    file: declarationMethod.file,
+    line: declarationMethod.line,
+    className: declarationType.name,
+    methodName: declarationMethod.name,
+    signature: declarationMethod.signature
+  };
+  const implementationCandidates = preferred.map(({ type, method }) => ({
+    file: method.file,
+    line: method.line,
+    className: type.name,
+    methodName: method.name,
+    signature: method.signature
+  }));
+  if (preferred.length !== 1) {
+    return {
+      ...route,
+      implementationResolution: preferred.length === 0 ? "unresolved" : "ambiguous",
+      declaration,
+      implementationCandidates
+    };
+  }
+  const [{ type, method }] = preferred;
+  return {
+    ...route,
+    file: method.file,
+    line: method.line,
+    className: type.name,
+    methodName: method.name,
+    signature: method.signature,
+    annotations: [
+      ...(route.annotations ?? []),
+      ...type.annotations,
+      ...method.annotations
+    ],
+    confidence: route.confidence === "low" ? "low" : "high",
+    implementationResolution: "bound",
+    declaration,
+    implementationCandidates
+  };
+}
+
+function routeImplementationMethodMatches(
+  declaration: JavaMethodInfo,
+  implementation: JavaMethodInfo
+): boolean {
+  if (declaration.name !== implementation.name || declaration.params.length !== implementation.params.length) {
+    return false;
+  }
+  return declaration.params.every((param, index) => {
+    const target = implementation.params[index];
+    return target
+      ? simpleTypeName(param.typeName) === simpleTypeName(target.typeName)
+      : false;
+  });
+}
+
+function uniqueMethodTargets(
+  values: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>
+): Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> {
+  return values.filter((value, index, all) =>
+    all.findIndex((other) => methodId(other.type, other.method) === methodId(value.type, value.method)) === index);
+}
+
+function deduplicateBoundRoutes(routes: JavaEndpointRouteCandidate[]): JavaEndpointRouteCandidate[] {
+  const values = new Map<string, JavaEndpointRouteCandidate>();
+  for (const route of routes) {
+    const key = [
+      route.method,
+      normalizeRoutePath(route.path),
+      route.className,
+      route.methodName,
+      route.file,
+      route.line
+    ].join("\u001f");
+    const existing = values.get(key);
+    if (!existing) {
+      values.set(key, route);
+      continue;
+    }
+    values.set(key, {
+      ...existing,
+      annotations: [...new Set([...(existing.annotations ?? []), ...(route.annotations ?? [])])],
+      declaration: existing.declaration ?? route.declaration,
+      implementationCandidates: [
+        ...new Map([
+          ...(existing.implementationCandidates ?? []),
+          ...(route.implementationCandidates ?? [])
+        ].map((candidate) => [
+          `${candidate.file}:${candidate.line}:${candidate.className}.${candidate.methodName}`,
+          candidate
+        ])).values()
+      ]
+    });
+  }
+  return [...values.values()];
 }
 
 function routePathFromAnnotations(
@@ -2747,7 +3234,10 @@ function buildCallGraph(
           }
           continue;
         }
-        const externalNode = call.receiver && resolved.resolution === "external" ? externalNodeFor(current.method, call) : undefined;
+        const generatedValueAccessor = isGeneratedValueOperationCall(project, current.type, call);
+        const externalNode = call.receiver && resolved.resolution === "external"
+          ? externalNodeFor(current.method, call, generatedValueAccessor)
+          : undefined;
         if (externalNode) nodes.set(externalNode.id, externalNode);
         edges.push({
           from: current.node.id,
@@ -3078,18 +3568,22 @@ function sqlNodeFor(source: JavaSqlSourceInfo): JavaEndpointCallGraphNode {
 
 function externalNodeFor(
   source: JavaMethodInfo,
-  call: { receiver?: string; method: string; line: number; expression?: string; feature?: "lambda" | "method-reference" }
+  call: { receiver?: string; receiverType?: string; method: string; line: number; expression?: string; feature?: "lambda" | "method-reference" },
+  generatedValueAccessor = false
 ): JavaEndpointCallGraphNode {
   const receiver = call.receiver as string;
+  const boundaryName = simpleTypeName(call.receiverType ?? receiver);
   return {
     id: `external:${source.file}:${receiver}.${call.method}:${call.line}`,
-    kind: /mapper|repository|dao/i.test(receiver) ? "repository" : "unknown",
-    role: /mapper/i.test(receiver) ? "mapper" : /repository|dao/i.test(receiver) ? "repository" : /client|gateway|api/i.test(receiver) ? "infrastructure-client" : /manager|registry/i.test(receiver) ? "coordinator" : /support|helper|util/i.test(receiver) ? "support" : "unknown",
-    className: receiver,
+    kind: generatedValueAccessor ? "dto" : /mapper|repository|dao/i.test(receiver) ? "repository" : "unknown",
+    role: generatedValueAccessor ? "assembler" : /mapper/i.test(boundaryName) ? "mapper" : /repository|dao/i.test(boundaryName) ? "repository" : /client|gateway|api/i.test(boundaryName) ? "infrastructure-client" : /manager|registry/i.test(boundaryName) ? "coordinator" : /guard|policy|rule|validator/i.test(boundaryName) ? "policy" : /support|helper|util/i.test(boundaryName) ? "support" : "unknown",
+    className: boundaryName,
     methodName: call.method,
     file: source.file,
     line: call.line,
-    signature: call.feature ? `${call.feature}: ${call.expression ?? `${receiver}.${call.method}`}` : `${receiver}.${call.method}(...)`
+    signature: generatedValueAccessor
+      ? `[generated-value-accessor] ${simpleTypeName(call.receiverType ?? receiver)}.${call.method}()`
+      : call.feature ? `${call.feature}: ${call.expression ?? `${receiver}.${call.method}`}` : `${receiver}.${call.method}(...)`
   };
 }
 
@@ -3287,8 +3781,13 @@ function extractMethodCalls(project: JavaProjectModel, method: JavaMethodInfo, t
   for (const match of scanBody.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodOffset = (match.index ?? 0) + match[0].lastIndexOf(match[2]);
     if (occupied.has(methodOffset) || !injectedFields.has(match[1]) && isLowValueCall(match[2])) continue;
+    if (/\bnew\s+(?:[A-Za-z_][A-Za-z0-9_]*\.)*$/.test(
+      scanBody.slice(Math.max(0, (match.index ?? 0) - 160), match.index ?? 0)
+    )) continue;
     const parsedArgs = extractCallArguments(body, (match.index ?? 0) + match[0].lastIndexOf("("));
-    calls.push({ receiver: match[1], method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[2])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier), lexicalBooleanFacts: lexicalBooleanFacts(match[2], match.index ?? 0) });
+    const receiverType = variableTypes.get(match[1])
+      ?? (match[1][0] === match[1][0].toUpperCase() ? match[1] : undefined);
+    calls.push({ receiver: match[1], receiverType, method: match[2], expression: match[0], line: lineAt(match.index ?? 0), argumentCount: parsedArgs.complete ? parsedArgs.args.length : -1, argumentTypes: parsedArgs.args.map((argument) => inferArgumentType(project, type, argument, variableTypes, match[2])), argumentNulls: parsedArgs.args.map((argument) => argument.trim() === "null"), argumentNonNulls: parsedArgs.args.map((argument) => nonNullArgument(argument, match.index ?? 0)), argumentBooleans: parsedArgs.args.map(literalBoolean), argumentEnumConstants: parsedArgs.args.map(literalEnumConstant), argumentIdentifiers: parsedArgs.args.map(simpleIdentifier), lexicalBooleanFacts: lexicalBooleanFacts(match[2], match.index ?? 0) });
   }
   for (const match of scanBody.matchAll(/(?:^|[^\w.])([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
     const methodName = match[1];
@@ -3937,7 +4436,7 @@ function resolveCallTargets(
       .filter((item) => item.method.name === call.method)
       .map((item) => item);
     if (selfCandidates.length > 0) {
-      const selected = selectOverload(selfCandidates, call);
+      const selected = selectOverload(project, selfCandidates, call);
       if (selected.resolution !== "unresolved" || !baseMapperOperation(currentType, call.method)) return selected;
       return { targets: [], resolution: "external", candidates: selected.candidates };
     }
@@ -3947,10 +4446,17 @@ function resolveCallTargets(
       .flatMap((item) => project.typesByName.get(simpleTypeName(item.typeName)) ?? []);
     const importedCandidates = importedTypes.flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method })));
     if (importedCandidates.length === 0 && currentType.staticImports.some((item) => item.methodName === call.method || item.methodName === "*")) return { targets: [], resolution: "external", candidates: [] };
-    return selectOverload(importedCandidates, call);
+    return selectOverload(project, importedCandidates, call);
   }
 
-  if (call.receiver === "super") return selectOverload(parentTypes(project, currentType).flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method }))), call);
+  if (call.receiver === "super") {
+    const parentCandidates = parentTypes(project, currentType)
+      .flatMap((type) => type.methods.filter((method) => method.name === call.method).map((method) => ({ type, method })));
+    if (!parentCandidates.length && call.method === "clone" && call.argumentCount === 0) {
+      return { targets: [], resolution: "external", candidates: [] };
+    }
+    return selectOverload(project, parentCandidates, call);
+  }
   if (call.receiver === "$lambda") return { targets: [], resolution: "external", candidates: [] };
 
   if (call.receiverType) {
@@ -3966,7 +4472,11 @@ function resolveCallTargets(
           .map((method) => ({ type: candidateType, method }))
       );
     });
-    if (receiverCandidates.length === 0 && receiverTypes.some((type) => isGeneratedAccessor(type, call.method, call.argumentCount))) return { targets: [], resolution: "external", candidates: [] };
+    if (receiverCandidates.length === 0 && isGeneratedValueOperationCall(project, currentType, call)) return { targets: [], resolution: "external", candidates: [] };
+    if (receiverCandidates.length === 0
+      && receiverTypes.some((type) => type.kind === "interface" && type.methods.some((method) => method.name === call.method))) {
+      return { targets: [], resolution: "external", candidates: [] };
+    }
     if (receiverTypes.some((type) => type.name === "FieldTypeUpdateStrategy")) {
       const targets = call.argumentCount < 0
         ? receiverCandidates
@@ -3981,7 +4491,7 @@ function resolveCallTargets(
         }))
       };
     }
-    return selectOverload(receiverCandidates, call);
+    return selectOverload(project, receiverCandidates, call);
   }
   const field = [currentType, ...parentTypes(project, currentType)]
     .flatMap((type) => [...type.fields, ...type.plainFields])
@@ -4015,10 +4525,14 @@ function resolveCallTargets(
       }
     }
   }
-  if (targets.length === 0 && candidateTypes.some((type) => isGeneratedAccessor(type, call.method, call.argumentCount))) return { targets: [], resolution: "external", candidates: [] };
+  if (targets.length === 0 && (
+    candidateTypes.some((type) => isGeneratedAccessor(type, call.method, call.argumentCount))
+    || call.argumentCount === 0 && generatedAccessorReturnTypesFromSources(project, field.declaredType, call.method).length > 0
+    || candidateTypes.some((type) => isPersistenceType(type) && baseMapperOperation(type, call.method))
+  )) return { targets: [], resolution: "external", candidates: [] };
   const uniqueTargets = targets.filter((target, index, all) => all.findIndex((other) => methodId(other.type, other.method) === methodId(target.type, target.method)) === index);
   const narrowedTargets = candidateTypes.some((type) => type.kind === "interface") ? narrowSpringTargets(uniqueTargets, field.name) : uniqueTargets;
-  return selectOverload(collapseOverriddenTargets(narrowedTargets), call);
+  return selectOverload(project, collapseOverriddenTargets(narrowedTargets), call);
 }
 
 function collapseOverriddenTargets(targets: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>): Array<{ type: JavaTypeInfo; method: JavaMethodInfo }> {
@@ -4071,12 +4585,13 @@ interface ResolvedJavaCall {
 }
 
 function selectOverload(
+  project: JavaProjectModel,
   candidates: Array<{ type: JavaTypeInfo; method: JavaMethodInfo }>,
   call: { argumentCount: number; argumentTypes: string[] }
 ): ResolvedJavaCall {
   const matchingArity = call.argumentCount < 0 ? candidates : candidates.filter((candidate) => arityMatches(candidate.method.params, call.argumentCount));
   if (!matchingArity.length) return { targets: [], resolution: "unresolved", candidates: candidates.map((candidate) => ({ methodId: methodId(candidate.type, candidate.method), signature: candidate.method.signature, score: -100 })) };
-  const scored = matchingArity.map((candidate) => ({ candidate, score: overloadScore(candidate.method.params, call.argumentTypes) }));
+  const scored = matchingArity.map((candidate) => ({ candidate, score: overloadScore(project, candidate.method.params, call.argumentTypes) }));
   const bestScore = Math.max(...scored.map((item) => item.score));
   const best = scored.filter((item) => item.score === bestScore).map((item) => item.candidate);
   const evidence = scored.map((item) => ({ methodId: methodId(item.candidate.type, item.candidate.method), signature: item.candidate.method.signature, score: item.score })).sort((a, b) => b.score - a.score || a.methodId.localeCompare(b.methodId));
@@ -4101,7 +4616,7 @@ function methodsInHierarchy(project: JavaProjectModel, type: JavaTypeInfo): Arra
 
 function lowerCamel(value: string): string { return value ? value[0].toLowerCase() + value.slice(1) : value; }
 
-function overloadScore(params: JavaParamInfo[], argumentTypes: string[]): number {
+function overloadScore(project: JavaProjectModel, params: JavaParamInfo[], argumentTypes: string[]): number {
   return argumentTypes.reduce((score, argumentType, index) => {
     const param = params[Math.min(index, params.length - 1)];
     if (!param) return score - 10;
@@ -4109,6 +4624,7 @@ function overloadScore(params: JavaParamInfo[], argumentTypes: string[]): number
     const expected = simpleTypeName(param.typeName);
     if (actual === "unknown" || actual === "null") return score + 1;
     if (actual === expected) return score + 5;
+    if (isProjectAssignable(project, actual, expected)) return score + 4;
     if (/^(?:ArrayList|LinkedList|CopyOnWriteArrayList)$/.test(actual) && expected === "List") return score + 4;
     if (/^(?:HashMap|LinkedHashMap|TreeMap|ConcurrentHashMap)$/.test(actual) && expected === "Map") return score + 4;
     if (/^(?:HashSet|LinkedHashSet|TreeSet|CopyOnWriteArraySet)$/.test(actual) && expected === "Set") return score + 4;
@@ -4118,6 +4634,37 @@ function overloadScore(params: JavaParamInfo[], argumentTypes: string[]): number
     if (expected === "Object" || expected === "Number" && /^(Byte|Short|Integer|Long|Float|Double)$/.test(actual)) return score + 2;
     return score - 5;
   }, 0);
+}
+
+function isGeneratedValueOperationCall(
+  project: JavaProjectModel,
+  currentType: JavaTypeInfo,
+  call: { receiver?: string; receiverType?: string; method: string; argumentCount: number }
+): boolean {
+  if (call.argumentCount !== 0) return false;
+  const receiverType = call.receiverType
+    ?? [currentType, ...parentTypes(project, currentType)]
+      .flatMap((type) => [...type.fields, ...type.plainFields])
+      .find((field) => field.name === call.receiver)?.declaredType;
+  if (!receiverType) return false;
+  const receiverTypes = resolveTypesForField(project, receiverType, currentType);
+  return receiverTypes.some((type) => isGeneratedAccessor(type, call.method, 0))
+    || receiverTypes.some((type) =>
+      type.kind === "enum" && /^(?:name|ordinal|toString)$/.test(call.method)
+      || call.method === "builder" && type.annotations.some((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?Builder\b/.test(annotation))
+    )
+    || generatedAccessorReturnTypesFromSources(project, receiverType, call.method).length > 0;
+}
+
+function isProjectAssignable(project: JavaProjectModel, actual: string, expected: string, visited = new Set<string>()): boolean {
+  if (actual === expected) return true;
+  if (visited.has(actual)) return false;
+  visited.add(actual);
+  return (project.typesByName.get(simpleTypeName(actual)) ?? []).some((type) =>
+    type.declaredSupertypes.some((supertype) => {
+      const parent = simpleTypeName(supertype);
+      return parent === expected || isProjectAssignable(project, parent, expected, visited);
+    }));
 }
 
 function arityMatches(params: JavaParamInfo[], argumentCount: number): boolean {
@@ -4200,6 +4747,17 @@ function inferArgumentType(
     const fieldTypes = resolveTypesForField(project, staticField[1], currentType)
       .flatMap((type) => type.plainFields.filter((field) => field.name === staticField[2]).map((field) => simpleTypeName(field.declaredType)));
     if (new Set(fieldTypes).size === 1) return fieldTypes[0] as string;
+  }
+  const enumConstantCall = trimmed.match(/^([A-Z][A-Za-z0-9_.$]*)\.([A-Z][A-Z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+  if (enumConstantCall) {
+    const returnTypes = [
+      ...resolveTypesForField(project, enumConstantCall[1], currentType)
+      .flatMap((type) => type.methods
+        .filter((method) => method.name === enumConstantCall[3] && method.returnType)
+        .map((method) => simpleTypeName(method.returnType as string))),
+      ...generatedAccessorReturnTypesFromSources(project, enumConstantCall[1], enumConstantCall[3])
+    ];
+    if (new Set(returnTypes).size === 1) return returnTypes[0] as string;
   }
   if (/^IdWorker\.getId\s*\(/.test(trimmed)) return "Long";
   const numericParse = trimmed.match(/^(Byte|Short|Integer|Long|Float|Double)\.(?:parse[A-Za-z]+|valueOf)\s*\(/);
@@ -4339,7 +4897,7 @@ function generatedAccessorReturnTypesFromSources(project: JavaProjectModel, decl
     for (const file of project.files) {
       const lines = stripBlockComments(file.content).split(/\r?\n/);
       for (let index = 0; index < lines.length; index += 1) {
-        const declaration = lines[index].match(/\b(?:class|interface|record)\s+([A-Za-z_][A-Za-z0-9_]*)\b/);
+        const declaration = lines[index].match(/\b(?:class|interface|enum|record)\s+([A-Za-z_][A-Za-z0-9_]*)\b/);
         if (!declaration) continue;
         const annotations = collectLeadingAnnotations(lines, index).join(" ");
         const recordDeclaration = /\brecord\s+/.test(lines[index]);
@@ -4394,7 +4952,7 @@ function nodeFor(
 
 function inferTypeRole(type: JavaTypeInfo, route?: JavaEndpointRouteCandidate): JavaTypeRole {
   const text = `${type.qualifiedName} ${type.annotations.join(" ")}`;
-  if (route?.entryKind !== "service" && (route || /Controller$|@(?:RestController|Controller)\b/.test(text))) return "controller";
+  if (!["service", "mcp-tool"].includes(route?.entryKind ?? "") && (route || /Controller$|@(?:RestController|Controller)\b/.test(text))) return "controller";
   if (/ApplicationService(?:Impl)?$/.test(type.name) || /\.application\./i.test(text)) return "application-service";
   if (/DomainService(?:Impl)?$/.test(type.name) || /\.domain\./i.test(text)) return "domain-service";
   if (/Repository|Dao/i.test(type.name)) return "repository";
@@ -4412,7 +4970,7 @@ function inferTypeRole(type: JavaTypeInfo, route?: JavaEndpointRouteCandidate): 
 }
 
 function nodeKind(type: JavaTypeInfo, route?: JavaEndpointRouteCandidate): JavaEndpointCallGraphNode["kind"] {
-  if (route?.entryKind !== "service" && (route || type.annotations.some((annotation) => /@(RestController|Controller)\b/.test(annotation)) || /Controller$/.test(type.name))) {
+  if (!["service", "mcp-tool"].includes(route?.entryKind ?? "") && (route || type.annotations.some((annotation) => /@(RestController|Controller)\b/.test(annotation)) || /Controller$/.test(type.name))) {
     return "controller";
   }
   if (/Mapper$/.test(type.name)) {
@@ -4456,7 +5014,7 @@ function detectRiskSignals(
   project: JavaProjectModel,
   routes: JavaEndpointRouteCandidate[],
   selectedRoute: JavaEndpointRouteCandidate | undefined,
-  graph: JavaEndpointAnalysisReport["callGraph"],
+  graph: JavaCallGraphBuildResult,
   requestModel: JavaEndpointAnalysisReport["requestModel"] | undefined
 ): JavaEndpointRiskSignal[] {
   const signals: JavaEndpointRiskSignal[] = [];
@@ -4472,6 +5030,23 @@ function detectRiskSignals(
   }
 
   const batchCommandEndpoint = isBatchCommandEndpoint(selectedRoute.method, selectedRoute.path, selectedRoute, requestModel);
+  if (selectedRoute.implementationResolution === "unresolved"
+    || selectedRoute.implementationResolution === "ambiguous") {
+    const ambiguous = selectedRoute.implementationResolution === "ambiguous";
+    signals.push({
+      id: ambiguous ? "route-implementation-ambiguous" : "route-implementation-unresolved",
+      title: ambiguous ? "Route implementation is ambiguous" : "Route implementation is unresolved",
+      severity: "high",
+      summary: ambiguous
+        ? "the HTTP mapping is declared on an interface with multiple possible implementation methods"
+        : "the HTTP mapping is declared on an interface but no implementation method was resolved",
+      evidence: [
+        `${selectedRoute.className}.${selectedRoute.methodName} ${selectedRoute.file}:${selectedRoute.line}`,
+        ...(selectedRoute.implementationCandidates ?? []).map((candidate) =>
+          `${candidate.className}.${candidate.methodName} ${candidate.file}:${candidate.line}`)
+      ]
+    });
+  }
   const exactDuplicates = routes.filter((route) => route.path === selectedRoute.path && route.method === selectedRoute.method);
   if (exactDuplicates.length > 1) {
     signals.push({
@@ -4484,6 +5059,203 @@ function detectRiskSignals(
   }
 
   const graphText = reachableMethodText(project, graph);
+  const queryContractEndpoint = /(?:^|\/)(?:page|list|query|search|find|get)(?:$|\/)/i.test(selectedRoute.path)
+    || /^(?:page|list|query|search|find|get)/i.test(selectedRoute.methodName);
+  const mutationCommandEndpoint = isMutationCommandEndpoint(
+    selectedRoute.method,
+    selectedRoute.path,
+    selectedRoute
+  ) || isBatchCommandEndpoint(selectedRoute.method, selectedRoute.path, selectedRoute, requestModel)
+    || isSyncCommandEndpoint(selectedRoute.method, selectedRoute.path, selectedRoute, requestModel);
+  const reachableWrites = graph.sqlSources.filter((source) =>
+    source.operation === "write" || source.operation === "delete" || source.operation === "ddl");
+  const hasExplicitTransaction = graph.nodes.some((node) => /@Transactional\b/.test(node.signature ?? ""))
+    || reachableWrites.some((source) => source.transactional);
+  const hasIdempotencyGuard = /\bidempot(?:ent|ency)|dedup(?:licate|lication)?|requestHash|operationId|uniqueRequest|insertOrUpdate|upsert\b/i.test(graphText);
+
+  if (queryContractEndpoint && reachableWrites.length > 0 && (!hasExplicitTransaction || !hasIdempotencyGuard)) {
+    signals.push({
+      id: "query-effect-contract-missing",
+      title: "Query effect contract is incomplete",
+      severity: "high",
+      summary: "query execution reaches durable writes without proving both an explicit transaction boundary and replay idempotency",
+      evidence: [
+        ...(!hasExplicitTransaction ? ["explicit transaction boundary not found"] : []),
+        ...(!hasIdempotencyGuard ? ["idempotency or de-duplication guard not found"] : []),
+        ...reachableWrites.slice(0, 5).map((source) =>
+          `${source.operation} ${source.ownerClassName}.${source.ownerMethodName} ${source.file}:${source.line}`)
+      ]
+    });
+  }
+
+  const readsCachedObject = /\bgetIfPresent\s*\(|\bcache\w*\.get\s*\(/i.test(graphText);
+  const storesCachedObject = /\b(?:cache\w*|[A-Za-z0-9_.]*Cache)\.put\s*\(/i.test(graphText);
+  const mutatesResponse = /\b(?:attach|enrich|decorate|populate)\w*\s*\([^)]*(?:Resp|Response)|\b\w*(?:Resp|Response)\w*\.set[A-Z]\w*\s*\(/i.test(graphText);
+  const provesDefensiveCopy = /\b(?:cached|response|resp)[A-Za-z0-9_]*\s*=\s*(?:deepCopy|defensiveCopy|copyOf|cloneResponse|cloneResp|serializeAndCopy)\s*\(/i.test(graphText)
+    || /\b(?:copyCachedResponse|copyCachedResp|defensiveCopyResponse)\s*\(/i.test(graphText);
+  if (queryContractEndpoint && readsCachedObject && storesCachedObject && mutatesResponse && !provesDefensiveCopy) {
+    signals.push({
+      id: "mutable-cache-response-alias",
+      title: "Mutable cached response alias",
+      severity: "high",
+      summary: "a cached response object can reach response enrichment or mutation without a visible defensive copy",
+      evidence: [
+        "reachable cache read: getIfPresent/cache.get",
+        "reachable cache write: cache.put",
+        "reachable response mutation/enrichment",
+        "no defensive-copy operation detected"
+      ]
+    });
+  }
+
+  const hasAsyncWork = /\bCompletableFuture\b|\bsupplyAsync\s*\(|\brunAsync\s*\(/.test(graphText);
+  const hasBoundedWait = /\bjoinAllWithTimeout\s*\(|\borTimeout\s*\(|\bcompleteOnTimeout\s*\(|\.get\s*\([^)]*TimeUnit/i.test(graphText);
+  const hasReachableEffect = reachableWrites.length > 0 || SIDE_EFFECT_SIGNALS.some((signal) => graphText.includes(signal));
+  const provesAsyncQuiescence = /\bawaitTermination\s*\(|\bjoinAllAndAwaitCancellation\s*\(|\bawaitQuiescence\s*\(/i.test(graphText);
+  if (queryContractEndpoint && hasAsyncWork && hasBoundedWait && hasReachableEffect && !provesAsyncQuiescence) {
+    signals.push({
+      id: "async-effect-after-timeout",
+      title: "Async effects may outlive the query",
+      severity: "high",
+      summary: "bounded async waiting is combined with reachable effects, but post-timeout task quiescence is not proven",
+      evidence: [
+        "reachable asynchronous task creation",
+        "reachable bounded wait or timeout",
+        "reachable durable or application side effect",
+        "no await-quiescence contract detected"
+      ]
+    });
+  }
+
+  if (queryContractEndpoint && detectsConditionalRequestOverride(graphText)) {
+    signals.push({
+      id: "request-semantic-override",
+      title: "Request can override a fixed query semantic",
+      severity: "medium",
+      summary: "a query default is conditionally replaced by a request getter and requires compatibility approval or parity evidence",
+      evidence: ["default assignment followed by a conditional request-derived override"]
+    });
+  }
+
+  const declarationRoute = selectedRoute.declaration
+    ? {
+      ...selectedRoute,
+      ...selectedRoute.declaration
+    }
+    : undefined;
+  const routeSource = [
+    routeSourceWindow(project, selectedRoute),
+    ...(declarationRoute ? [routeSourceWindow(project, declarationRoute)] : [])
+  ].join("\n");
+  const routeAnnotations = (selectedRoute.annotations ?? []).join(" ");
+  if (mutationCommandEndpoint
+    && /\/\/\s*@PreAuthorize\b/.test(routeSource)
+    && !/@PreAuthorize\b/.test(routeAnnotations)) {
+    signals.push({
+      id: "disabled-authorization-guard",
+      title: "Authorization guard is commented out",
+      severity: "high",
+      summary: "the mutation route contains a disabled method authorization annotation",
+      evidence: [
+        `${selectedRoute.file}:${selectedRoute.line}`,
+        "commented @PreAuthorize found",
+        "active @PreAuthorize not found on selected route"
+      ]
+    });
+  }
+
+  if (mutationCommandEndpoint && requestModel) {
+    const requestType = findType(project, requestModel.className, requestModel.file);
+    const criticalNames = /^(?:id|.*Id|name|type|.*Type|.*Key)$/;
+    const criticalFields = (requestType?.plainFields ?? []).filter((field) => criticalNames.test(field.name));
+    const constrainedFields = criticalFields.filter((field) =>
+      field.annotations.some((annotation) =>
+        /@(?:NotNull|NotBlank|NotEmpty|Positive|PositiveOrZero|Size|Length|Pattern|Min|Max)\b/.test(annotation)));
+    if (criticalFields.length > 0 && constrainedFields.length === 0) {
+      signals.push({
+        id: "request-constraint-coverage-unresolved",
+        title: "Request constraint coverage is unresolved",
+        severity: "medium",
+        summary: "the mutation request exposes identity/name/type fields without field-level validation annotations",
+        evidence: criticalFields.slice(0, 12).map((field) =>
+          `${requestModel.className}.${field.name} ${requestModel.file}:${field.line}`)
+      });
+    }
+  }
+
+  if (mutationCommandEndpoint
+    && /catch\s*\([^)]*\)\s*\{[\s\S]{0,1600}\bset\b[\s\S]{0,240}=\s*null[\s\S]{0,1000}(?:alter\s+table|updateBySql\s*\()/i.test(graphText)) {
+    signals.push({
+      id: "destructive-retry",
+      title: "Destructive retry after failure",
+      severity: "high",
+      summary: "a failure path clears persisted data before retrying a schema or SQL operation",
+      evidence: ["catch block", "SET column = NULL", "subsequent ALTER/updateBySql retry"]
+    });
+  }
+
+  const ddlSources = reachableWrites.filter((source) => source.operation === "ddl");
+  const concatenatedDdl = /["']\s*alter\s+table\b[^;\n]*["']\s*\+/i.test(graphText)
+    || /\bALTER\s+TABLE\b[\s\S]{0,240}\+\s*[A-Za-z_]/.test(graphText);
+  if (mutationCommandEndpoint && concatenatedDdl) {
+    signals.push({
+      id: "dynamic-ddl-construction",
+      title: "Dynamic DDL construction",
+      severity: "high",
+      summary: "reachable code concatenates identifiers or literals into ALTER TABLE SQL",
+      evidence: [
+        "ALTER TABLE string concatenation",
+        ...(ddlSources.slice(0, 5).map((source) => `${source.file}:${source.line}`))
+      ]
+    });
+  }
+  if (mutationCommandEndpoint && ddlSources.length > 0 && hasExplicitTransaction) {
+    signals.push({
+      id: "transactional-ddl-boundary",
+      title: "Transactional DDL boundary",
+      severity: "high",
+      summary: "DDL is reachable from an explicit transaction even though the database may implicitly commit it",
+      evidence: [
+        "explicit transaction boundary found",
+        ...ddlSources.slice(0, 5).map((source) => `${source.file}:${source.line}`)
+      ]
+    });
+  }
+
+  if (mutationCommandEndpoint
+    && /\bupdateById\s*\(/.test(graphText)
+    && !/@Version\b|\bFOR\s+UPDATE\b|\btryLock\s*\(|\bcompareAndSet\b/i.test(graphText)) {
+    signals.push({
+      id: "lost-update-guard-unresolved",
+      title: "Lost-update guard is unresolved",
+      severity: "high",
+      summary: "the mutation performs updateById without a visible version predicate, row lock, or distributed lock",
+      evidence: ["updateById reachable", "no @Version/FOR UPDATE/tryLock/compare-and-set evidence"]
+    });
+  }
+
+  if (mutationCommandEndpoint && detectsIdempotencyOrderingRisk(project, graph)) {
+    signals.push({
+      id: "idempotency-ordering-risk",
+      title: "Idempotency check follows request mutation",
+      severity: "high",
+      summary: "a candidate idempotency key is transformed before the duplicate lookup",
+      evidence: ["generateUniqueName occurs before idempotent lookup in the same reachable method"]
+    });
+  }
+
+  if (mutationCommandEndpoint
+    && /\bafterCommit\b|TransactionSynchronizationManager\.registerSynchronization/.test(graphText)
+    && /\bcatch\s*\([^)]*\)[\s\S]{0,500}\b(?:warn|error)\s*\(/.test(graphText)) {
+    signals.push({
+      id: "after-commit-effect-risk",
+      title: "Post-commit effect failure is not durable",
+      severity: "high",
+      summary: "post-commit work catches and logs failures without a visible durable retry/outbox contract",
+      evidence: ["after-commit callback", "caught/logged exception", "no durable retry evidence"]
+    });
+  }
+
   const contextHits = CONTEXT_SIGNALS.filter((signal) => graphText.includes(signal));
   if (contextHits.length > 0) {
     signals.push({
@@ -4498,15 +5270,17 @@ function detectRiskSignals(
   const sideEffectHits = SIDE_EFFECT_SIGNALS.filter((signal) => graphText.includes(signal));
   if (sideEffectHits.length > 0) {
     signals.push({
-      id: "query-side-effects",
-      title: "Endpoint side effects",
-      severity: "high",
-      summary: "reachable code appears to update sync state, locks, preferences, progress, or undo data during endpoint handling",
+      id: queryContractEndpoint ? "query-side-effects" : "command-side-effects",
+      title: queryContractEndpoint ? "Query side effects" : "Command side-effect inventory",
+      severity: queryContractEndpoint ? "high" : "medium",
+      summary: queryContractEndpoint
+        ? "reachable query code updates sync state, locks, preferences, progress, or undo data"
+        : "the command has observable state, lock, progress, cache, or undo effects that require parity evidence",
       evidence: sideEffectHits
     });
   }
 
-  if (!batchCommandEndpoint && (requestModel?.fields.includes("operator") || graphText.includes("getOperator")) && !/OperatorEnum\.REFRESH|tryLock|syncBeforePage/.test(graphText)) {
+  if (queryContractEndpoint && (requestModel?.fields.includes("operator") || graphText.includes("getOperator")) && !/OperatorEnum\.REFRESH|tryLock|syncBeforePage/.test(graphText)) {
     signals.push({
       id: "refresh-operator-unresolved",
       title: "REFRESH operator semantics unresolved",
@@ -4519,8 +5293,8 @@ function detectRiskSignals(
   const dynamicSqlHits = DYNAMIC_SQL_SIGNALS.filter((signal) => graphText.includes(signal));
   if (dynamicSqlHits.length > 0) {
     signals.push({
-      id: "dynamic-query-execution",
-      title: "Dynamic query execution",
+      id: queryContractEndpoint ? "dynamic-query-execution" : "dynamic-sql-execution",
+      title: queryContractEndpoint ? "Dynamic query execution" : "Dynamic SQL execution",
       severity: "medium",
       summary: "reachable code builds or executes dynamic SQL, so golden cases must compare SQL-sensitive dimensions",
       evidence: dynamicSqlHits
@@ -4572,6 +5346,19 @@ function detectRiskSignals(
   return signals;
 }
 
+function detectsConditionalRequestOverride(text: string): boolean {
+  const assignment = /\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[^;\n]*(?:Enum|Constants?|\bDEFAULT\b)[^;\n]*;/g;
+  for (const match of text.matchAll(assignment)) {
+    const variable = match[1]!;
+    const tail = text.slice((match.index ?? 0) + match[0].length, (match.index ?? 0) + match[0].length + 1200);
+    const escaped = variable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`if\\s*\\([^)]*\\bget[A-Z][A-Za-z0-9_]*\\s*\\(\\)[^)]*\\)[\\s\\S]{0,300}\\b${escaped}\\s*=\\s*[^;]*\\bget[A-Z][A-Za-z0-9_]*\\s*\\(`).test(tail)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function createJavaEndpointGoldenCasePlan(
   method: JavaEndpointHttpMethod,
   endpointPath: string,
@@ -4584,6 +5371,9 @@ function createJavaEndpointGoldenCasePlan(
   }
   if (isBatchCommandEndpoint(method, endpointPath, selectedRoute, requestModel)) {
     return createBatchCommandGoldenCasePlan(method, endpointPath);
+  }
+  if (isMutationCommandEndpoint(method, endpointPath, selectedRoute)) {
+    return createMutationCommandGoldenCasePlan(method, endpointPath, riskSignals);
   }
 
   const fields = new Set(requestModel?.fields ?? []);
@@ -4647,6 +5437,120 @@ function createJavaEndpointGoldenCasePlan(
       "system fields and permission-filtered fields",
       "null/empty value shape",
       "side-effect evidence for refresh/sync paths"
+    ]
+  };
+}
+
+function createMutationCommandGoldenCasePlan(
+  method: JavaEndpointHttpMethod,
+  endpointPath: string,
+  riskSignals: JavaEndpointRiskSignal[]
+): JavaEndpointGoldenCasePlan {
+  const riskIds = new Set(riskSignals.map((risk) => risk.id));
+  const cases: JavaEndpointGoldenCase[] = [
+    goldenCase(
+      "primary-success",
+      "Primary mutation succeeds",
+      ["valid command body", "existing resource id or create marker", "tenant/user context"],
+      "captures the authoritative response, persisted state, and ordered effects",
+      ["HTTP status and response", "primary row before/after", "related rows", "DDL/DML sequence", "events and cache effects"]
+    ),
+    goldenCase(
+      "validation-failure",
+      "Invalid command is rejected before effects",
+      ["missing required ids", "blank/invalid business fields", "oversized values"],
+      "guards request validation and the no-side-effect rejection boundary",
+      ["HTTP error shape", "validation message", "no database writes", "no DDL", "no events or cache mutation"]
+    ),
+    goldenCase(
+      "transaction-failure",
+      "Mutation failure preserves transaction and compensation semantics",
+      ["persistence failure", "DDL/type conversion failure", "downstream failure"],
+      "captures rollback, partial-commit, and compensation behavior explicitly",
+      ["HTTP error shape", "primary and related state", "DDL state", "undo/compensation state", "events and cache effects"]
+    ),
+    goldenCase(
+      "duplicate-request",
+      "Duplicate request replay",
+      ["same payload and request identity submitted twice", "retry after ambiguous response"],
+      "proves whether the command is idempotent, deduplicated, or intentionally repeatable",
+      ["response parity", "write count", "created identifiers", "DDL count", "event count"]
+    ),
+    goldenCase(
+      "concurrent-write",
+      "Concurrent mutation of the same aggregate",
+      ["two users update the same id", "concurrent create in the same scope"],
+      "guards lost-update, duplicate-name, lock, and conflict semantics",
+      ["winner/loser responses", "final persisted state", "lock evidence", "write ordering", "duplicate side effects"]
+    )
+  ];
+  if (riskIds.has("implicit-runtime-context")) {
+    cases.push(goldenCase(
+      "context-isolation",
+      "Tenant and user context isolation",
+      ["same identifiers under different tenants/users", "missing context"],
+      "guards ambient context capture and cross-tenant isolation",
+      ["authorization result", "tenant-scoped state", "datasource selection", "events and cache keys"]
+    ));
+  }
+  if (riskIds.has("parallel-entrypoints")) {
+    cases.push(goldenCase(
+      "entrypoint-parity",
+      "Web/RPC command parity",
+      ["same normalized command through every compatible entrypoint"],
+      "guards response and effect parity across compatibility routes",
+      ["normalized request", "response/error shape", "persisted state", "DDL/DML sequence", "events"]
+    ));
+  }
+  if (riskIds.has("transactional-ddl-boundary") || riskIds.has("destructive-retry")) {
+    cases.push(goldenCase(
+      "schema-transition-failure",
+      "Schema transition failure",
+      ["incompatible type change", "DDL execution failure", "existing non-null data"],
+      "makes non-transactional DDL and destructive fallback behavior reviewable",
+      ["HTTP error", "column definition", "column data preservation", "metadata state", "retry count"]
+    ));
+  }
+  if (riskIds.has("after-commit-effect-risk")) {
+    cases.push(goldenCase(
+      "post-commit-effect-failure",
+      "Post-commit effect failure",
+      ["primary transaction succeeds", "async/cache/event/permission effect fails"],
+      "captures success-response versus incomplete post-commit effects",
+      ["response timing", "committed state", "failed effect", "retry/status evidence", "eventual consistency"]
+    ));
+  }
+
+  return {
+    version: 1,
+    model: "mutation-command",
+    endpoint: { method, path: endpointPath },
+    cases,
+    fixtureTemplate: {
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        "x-tenant-id": "<tenant-id>",
+        "x-request-id": "<request-id>",
+        authorization: "Bearer <token>"
+      },
+      body: {
+        id: "<resource-id-or-create-marker>",
+        panelId: "<aggregate-scope-id>",
+        usePageId: "<application-scope-id>",
+        name: "<business-name>",
+        fieldTagInnerKey: "<business-type>",
+        commandPayload: "<complete-endpoint-specific-body>"
+      }
+    },
+    comparisonDimensions: [
+      "HTTP status, response payload, and error envelope",
+      "request validation and authorization result",
+      "primary and related database state before and after",
+      "DDL/DML statements, ordering, transaction, and compensation boundaries",
+      "duplicate-request and concurrent-write outcomes",
+      "cache, lock, event, progress, undo, and asynchronous effects",
+      "tenant, user, datasource, and request context isolation"
     ]
   };
 }
@@ -4794,22 +5698,19 @@ function createBatchCommandGoldenCasePlan(
     ),
     goldenCase(
       "batch-row-limit-rejected",
-      "More than 10000 rows are rejected",
-      ["batchPostValueList length > 10000", "batchHeaderValueList length > 10000"],
-      "guards the Java controller limit contract before moving high-volume handling out of process",
+      "Update row limit and unsupported headers are enforced before effects",
+      [
+        "batchPostValueList length = 10001 is rejected",
+        "batchPostValueList length = 10000 is accepted",
+        "any non-empty batchHeaderValueList is rejected"
+      ],
+      "guards the approved update-only row boundary and unsupported-header contract before moving high-volume handling out of process",
       ["HTTP status", "error code", "error message", "no persisted rows", "no progress side effects"]
-    ),
-    goldenCase(
-      "batch-insert-header-defaults",
-      "Insert rows receive headerValues defaults",
-      ["rows without id", "headerValues", "postValues"],
-      "guards backend default propagation for inserted rows",
-      ["inserted row count", "defaulted field values", "generated ids", "response rows", "persisted rows"]
     ),
     goldenCase(
       "horizontal-batch-upsert",
       "Horizontal batch upsert",
-      ["horizontalId", "horizontalValues", "batchPostValueList", "batchHeaderValueList"],
+      ["horizontalId", "horizontalValues", "batchPostValueList", "batchHeaderValueList=[]"],
       "guards pivot/horizontal table resolution and flattened row write semantics",
       ["horizontal table target", "upsert keys", "insert/update split", "persisted horizontal rows", "failed horizontal rows"]
     ),
@@ -4951,6 +5852,19 @@ function isBatchCommandEndpoint(
   return fieldHits.length >= 2 || /\bbatch(?:Update|Create|Delete|Save|Upsert)?\b|batchUpdate|WithProgress|BatchReqVO/i.test(routeText);
 }
 
+function isMutationCommandEndpoint(
+  method: JavaEndpointHttpMethod,
+  endpointPath: string,
+  selectedRoute: JavaEndpointRouteCandidate | undefined
+): boolean {
+  if (["PUT", "PATCH", "DELETE"].includes(method)) return true;
+  if (method !== "POST") return false;
+  const routeText = `${endpointPath} ${selectedRoute?.methodName ?? ""}`;
+  if (/(?:^|[\/._\s-])(?:page|list|search|query|find|select|get)(?:$|[\/._\s-])/i.test(routeText)) return false;
+  return /(?:^|[\/._\s-])(?:create|update|save|delete|remove|modify|change|set|submit|execute|run)(?:$|[\/._\s-])/i.test(routeText)
+    || /^(?:create|update|save|delete|remove|modify|change|set|submit|execute|run)(?:$|[A-Z_])/.test(selectedRoute?.methodName ?? "");
+}
+
 function goldenCase(
   id: string,
   title: string,
@@ -4993,7 +5907,7 @@ function recommendedNextActions(
     if (ids.has("parallel-entrypoints")) {
       actions.unshift("Run Web/RPC entrypoint parity golden cases before moving shared batch behavior.");
     }
-    if (ids.has("query-side-effects")) {
+    if (ids.has("query-side-effects") || ids.has("command-side-effects")) {
       actions.unshift("Keep progress, undo, registry, and persistence side effects in Java until their golden evidence is stable.");
     }
     if (ids.has("implicit-runtime-context")) {
@@ -5007,11 +5921,25 @@ function recommendedNextActions(
       "Keep routing, context capture, progress publishing, de-duplication, timestamp updates, undo clearing, and reconcile side effects in Java first.",
       "Define a Rust boundary around pure refresh planning/calculation: changed row discovery, derived-field recomputation, and cell patch/result generation."
     ];
-    if (ids.has("query-side-effects")) {
+    if (ids.has("query-side-effects") || ids.has("command-side-effects")) {
       actions.unshift("Make post-refresh side effects explicit and prove them with golden evidence before moving computation out of process.");
     }
     if (ids.has("implicit-runtime-context")) {
       actions.unshift("Replace ThreadLocal/framework context reads with explicit fixture fields before cross-runtime replay.");
+    }
+    return actions;
+  }
+  if (goldenCasePlan.model === "mutation-command") {
+    const actions = [
+      "Capture mutation-command fixtures for success, validation, failure, duplicate replay, and concurrent writes.",
+      "Make transaction, DDL/DML ordering, compensation, and post-commit effects explicit before moving behavior.",
+      "Record dangerous legacy behavior as an approved compatibility correction instead of silently changing it."
+    ];
+    if (ids.has("parallel-entrypoints")) {
+      actions.unshift("Prove Web/RPC command response and side-effect parity.");
+    }
+    if (ids.has("implicit-runtime-context")) {
+      actions.unshift("Capture tenant, user, datasource, and request identity explicitly in every command fixture.");
     }
     return actions;
   }
@@ -5042,6 +5970,39 @@ function reachableMethodText(project: JavaProjectModel, graph: JavaEndpointAnaly
     }
   }
   return parts.join("\n");
+}
+
+function routeSourceWindow(
+  project: JavaProjectModel,
+  route: JavaEndpointRouteCandidate
+): string {
+  const routeFile = route.file.replaceAll("\\", "/").toLowerCase();
+  const file = project.files.find((candidate) =>
+    candidate.relativePath.replaceAll("\\", "/").toLowerCase() === routeFile)
+    ?? project.files.find((candidate) =>
+      candidate.relativePath.replaceAll("\\", "/").toLowerCase().endsWith(`/${routeFile}`));
+  if (!file) return "";
+  const lines = file.content.split(/\r?\n/);
+  const routeIndex = Math.max(0, route.line - 1);
+  const window = lines.slice(Math.max(0, routeIndex - 24), Math.min(lines.length, routeIndex + 8)).join("\n");
+  return window || file.content;
+}
+
+function detectsIdempotencyOrderingRisk(
+  project: JavaProjectModel,
+  graph: JavaEndpointAnalysisReport["callGraph"]
+): boolean {
+  const mutationPattern = /\b(?:generateUniqueName|normalize(?:Name|Key)|rewrite(?:Name|Key)|set(?:Name|Key))\s*\(/i;
+  const duplicateLookupPattern = /\b(?:idempot\w*|dedup\w*|exists\w*|selectOne|getOne|find\w*(?:By|Name|Key)|query\w*(?:By|Name|Key))\s*\(/i;
+  for (const node of graph.nodes) {
+    const type = findType(project, node.className, node.file);
+    const method = type?.methods.find((candidate) => candidate.name === node.methodName && candidate.line === node.line);
+    if (!method) continue;
+    const mutationIndex = method.body.search(mutationPattern);
+    const lookupIndex = method.body.search(duplicateLookupPattern);
+    if (mutationIndex >= 0 && lookupIndex > mutationIndex) return true;
+  }
+  return false;
 }
 
 function findType(project: JavaProjectModel, className: string, file?: string): JavaTypeInfo | undefined {
@@ -5158,20 +6119,27 @@ function collectMultilineAnnotationBlock(
 function findBraceRange(lines: string[], startLine: number): { start: number; end: number } {
   let depth = 0;
   let started = false;
+  const state = createJavaLexicalState();
   for (let index = startLine; index < lines.length; index += 1) {
-    const withoutLiterals = lines[index].replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, "");
-    const line = stripLineComment(withoutLiterals);
-    for (const char of line) {
-      if (char === "{") {
+    const line = lines[index];
+    for (let offset = 0; offset < line.length; offset += 1) {
+      const consumed = consumeJavaLexical(line, offset, state);
+      if (consumed > offset) {
+        offset = consumed;
+        continue;
+      }
+      if (state.mode !== "code") continue;
+      if (line[offset] === "{") {
         depth += 1;
         started = true;
-      } else if (char === "}") {
+      } else if (line[offset] === "}") {
         depth -= 1;
         if (started && depth === 0) {
           return { start: startLine, end: index };
         }
       }
     }
+    if (state.mode === "line-comment") state.mode = "code";
   }
   return { start: startLine, end: lines.length - 1 };
 }
@@ -5194,8 +6162,9 @@ function parseDeclaredTypes(value: string | undefined): string[] {
 
 function parseParams(value: string): JavaParamInfo[] {
   return splitJavaArgs(value).map((rawParam) => {
-    const annotations = [...rawParam.matchAll(/@\w+(?:\([^)]*\))?/g)].map((match) => match[0]);
-    const clean = rawParam.replace(/@\w+(?:\([^)]*\))?\s*/g, "").replace(/\bfinal\s+/g, "").trim();
+    const extracted = extractJavaAnnotations(rawParam);
+    const annotations = extracted.annotations;
+    const clean = extracted.clean.replace(/\bfinal\s+/g, "").trim();
     if (!clean) return undefined;
     const parts = clean.split(/\s+/);
     if (parts.length < 2) return undefined;
@@ -5215,10 +6184,18 @@ function splitJavaArgs(value: string): string[] {
   const args: string[] = [];
   let current = "";
   let depth = 0;
-  for (const char of value) {
-    if (char === "<" || char === "(" || char === "[") depth += 1;
-    if (char === ">" || char === ")" || char === "]") depth -= 1;
-    if (char === "," && depth === 0) {
+  const state = createJavaLexicalState();
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    const consumed = consumeJavaLexical(value, index, state);
+    if (consumed > index) {
+      current += value.slice(index, consumed + 1);
+      index = consumed;
+      continue;
+    }
+    if (state.mode === "code" && (char === "<" || char === "(" || char === "[" || char === "{")) depth += 1;
+    if (state.mode === "code" && (char === ">" || char === ")" || char === "]" || char === "}")) depth -= 1;
+    if (state.mode === "code" && char === "," && depth === 0) {
       args.push(current);
       current = "";
     } else {
@@ -5231,10 +6208,130 @@ function splitJavaArgs(value: string): string[] {
   return args;
 }
 
+interface JavaLexicalState {
+  mode: "code" | "string" | "char" | "text-block" | "line-comment" | "block-comment";
+}
+
+function createJavaLexicalState(): JavaLexicalState {
+  return { mode: "code" };
+}
+
+function consumeJavaLexical(value: string, index: number, state: JavaLexicalState): number {
+  const char = value[index];
+  const next = value[index + 1];
+  const third = value[index + 2];
+  if (state.mode === "line-comment") {
+    if (char === "\n" || char === "\r") state.mode = "code";
+    return index;
+  }
+  if (state.mode === "block-comment") {
+    if (char === "*" && next === "/") {
+      state.mode = "code";
+      return index + 1;
+    }
+    return index;
+  }
+  if (state.mode === "text-block") {
+    if (char === '"' && next === '"' && third === '"') {
+      state.mode = "code";
+      return index + 2;
+    }
+    if (char === "\\" && next !== undefined) return index + 1;
+    return index;
+  }
+  if (state.mode === "string" || state.mode === "char") {
+    if (char === "\\" && next !== undefined) return index + 1;
+    if (char === (state.mode === "string" ? '"' : "'")) state.mode = "code";
+    return index;
+  }
+  if (char === "/" && next === "/") {
+    state.mode = "line-comment";
+    return index + 1;
+  }
+  if (char === "/" && next === "*") {
+    state.mode = "block-comment";
+    return index + 1;
+  }
+  if (char === '"' && next === '"' && third === '"') {
+    state.mode = "text-block";
+    return index + 2;
+  }
+  if (char === '"') state.mode = "string";
+  else if (char === "'") state.mode = "char";
+  return index;
+}
+
+function extractJavaAnnotations(value: string): { annotations: string[]; clean: string } {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const annotations: string[] = [];
+  const state = createJavaLexicalState();
+  for (let index = 0; index < value.length; index += 1) {
+    const consumed = consumeJavaLexical(value, index, state);
+    if (consumed > index) {
+      index = consumed;
+      continue;
+    }
+    if (state.mode !== "code" || value[index] !== "@") continue;
+    const name = /^@[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/.exec(value.slice(index))?.[0];
+    if (!name) continue;
+    let end = index + name.length - 1;
+    let cursor = end + 1;
+    while (/\s/.test(value[cursor] ?? "")) cursor += 1;
+    if (value[cursor] === "(") end = findBalancedJavaDelimiter(value, cursor, "(", ")");
+    annotations.push(value.slice(index, end + 1).replace(/\s+/g, " ").trim());
+    ranges.push({ start: index, end });
+    index = end;
+  }
+  let clean = value;
+  for (const range of ranges.reverse()) {
+    clean = `${clean.slice(0, range.start)}${" ".repeat(range.end - range.start + 1)}${clean.slice(range.end + 1)}`;
+  }
+  return { annotations, clean };
+}
+
+function findBalancedJavaDelimiter(value: string, start: number, open: string, close: string): number {
+  const state = createJavaLexicalState();
+  let depth = 0;
+  for (let index = start; index < value.length; index += 1) {
+    const consumed = consumeJavaLexical(value, index, state);
+    if (consumed > index) {
+      index = consumed;
+      continue;
+    }
+    if (state.mode !== "code") continue;
+    if (value[index] === open) depth += 1;
+    else if (value[index] === close && --depth === 0) return index;
+  }
+  return value.length - 1;
+}
+
+function findJavaStructuralChar(value: string, target: string, state = createJavaLexicalState()): number {
+  for (let index = 0; index < value.length; index += 1) {
+    const consumed = consumeJavaLexical(value, index, state);
+    if (consumed > index) {
+      index = consumed;
+      continue;
+    }
+    if (state.mode === "code" && value[index] === target) return index;
+  }
+  if (state.mode === "line-comment") state.mode = "code";
+  return -1;
+}
+
 function pushMap<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   const values = map.get(key) ?? [];
   values.push(value);
   map.set(key, values);
+}
+
+function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const identity = key(value);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
 }
 
 function simpleTypeName(typeName: string): string {
@@ -5245,6 +6342,24 @@ function simpleTypeName(typeName: string): string {
     .split(".")
     .pop()
     ?.trim() ?? typeName.trim();
+}
+
+function qualifyDeclaredTypes(
+  type: JavaTypeInfo,
+  declaredType: string,
+  knownQualifiedNames: Set<string>
+): string[] {
+  const simple = simpleTypeName(declaredType);
+  if (!simple) return [];
+  const imported = type.imports.find((item) => item.simpleName === simple);
+  if (imported) return [imported.qualifiedName];
+  const samePackage = type.packageName ? `${type.packageName}.${simple}` : simple;
+  if (knownQualifiedNames.has(samePackage)) return [samePackage];
+  const wildcardMatches = type.imports
+    .filter((item) => item.simpleName === "*")
+    .map((item) => `${item.qualifiedName}.${simple}`)
+    .filter((candidate) => knownQualifiedNames.has(candidate));
+  return wildcardMatches.length > 0 ? [...new Set(wildcardMatches)] : [samePackage];
 }
 
 function normalizeHttpMethod(method: string): JavaEndpointHttpMethod {
