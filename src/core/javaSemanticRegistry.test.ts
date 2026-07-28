@@ -22,7 +22,7 @@ test("Java semantic registry is exposed as a versioned compatibility package wit
   assert.equal(createSemanticRulePackageLock(JAVA_SEMANTIC_RULE_PACKAGE).ruleCount, JAVA_SEMANTIC_RULES.length);
   const trace = classifyJavaSemanticWithTrace("Instant.now");
   assert.equal(trace?.packageId, "builtin-java-zboss-compatibility");
-  assert.equal(trace?.packageVersion, "1.0.0");
+  assert.equal(trace?.packageVersion, "1.1.0");
   assert.equal(trace?.ruleId, classifyJavaSemantic("Instant.now")?.id);
 });
 

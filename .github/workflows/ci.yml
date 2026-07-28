@@ -44,6 +44,9 @@ jobs:
       - name: VMP offline gate
         run: npm run vmp:gate
 
+      - name: Semantic rule package gate
+        run: npm run semantic:gate
+
       - name: UI smoke
         run: npm run ui:smoke
 

@@ -98,7 +98,7 @@ frameworks and service-method entrypoints require a registered source adapter.
 ### Versioned semantic rule packages
 
 The ordered built-in Java registry is exposed as the compatibility package
-`builtin-java-zboss-compatibility@1.0.0`. Packaging does not move, remove or
+`builtin-java-zboss-compatibility@1.1.0`. Packaging does not move, remove or
 reorder existing rules, so classification behavior remains unchanged. The
 package manifest records serializable patterns, behavior kinds, ownership
 defaults, rule origins and a deterministic package hash.
@@ -108,15 +108,23 @@ node dist/cli.js semantics list
 node dist/cli.js semantics validate
 node dist/cli.js semantics lock --output .migration-guard/semantic-rules/java.lock.json
 node dist/cli.js semantics evaluate --project zboss-query --output .migration-guard/semantic-rules/zboss-query.json
+node dist/cli.js semantics evaluate --samples fixtures/semantic/java-golden.json --min-coverage 100 --max-conflicts 0 --max-mismatches 0
 node dist/cli.js semantics diff --from previous.lock.json --to current.lock.json
+npm run semantic:gate
 ```
 
 `evaluate` accepts one Java analysis artifact, a sample corpus, or every
-`java-analysis.json` artifact in a migration case. Reports include direct rule
-coverage, generic versus reviewed compatibility hits, ordered-rule conflicts,
-expected classification drift, unused rules, package version and package hash.
-External package JSON uses the same fail-closed schema and can be selected with
-`--package`.
+`java-analysis.json` artifact in a migration case. Java methods and external
+boundaries are evaluated as applicable package inputs; SQL source nodes and
+generated abstract declarations are reported separately instead of diluting
+direct-rule coverage. Reports include per-kind coverage, generic versus reviewed
+compatibility hits, reviewed and unreviewed ordered-rule conflicts, expected
+behavior/rule drift, unused rules, package version and package hash.
+
+The package can declare reviewed first-match precedence without changing rule
+order. CI runs the checked-in golden corpus with explicit coverage, conflict and
+mismatch thresholds. Malformed external packages and sample corpora fail closed;
+external package JSON can be selected with `--package`.
 
 Phase 146-150 health semantics, normalization, workspace scanning, persistence hardening and RC results are documented in
 [docs/PHASE_150_REPORT.md](docs/PHASE_150_REPORT.md). Release gates are tracked in

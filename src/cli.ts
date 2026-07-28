@@ -242,6 +242,7 @@ import {
   evaluateSemanticRulePackage,
   semanticSamplesFromJavaAnalysis,
   validateSemanticRulePackage,
+  type SemanticEvaluationPolicy,
   type SemanticEvaluationSample,
   type SemanticRulePackage,
   type SemanticRulePackageLock
@@ -863,7 +864,7 @@ async function commandSemantics(args: ParsedArgs): Promise<void> {
   }
   if (action === "evaluate") {
     const samples = await loadSemanticEvaluationSamples(args);
-    const report = evaluateSemanticRulePackage(pkg, samples);
+    const report = evaluateSemanticRulePackage(pkg, samples, semanticEvaluationPolicy(args));
     const outputOption = stringOption(args, "output");
     if (outputOption) await writeJsonFile(path.resolve(outputOption), report);
     console.log(JSON.stringify(outputOption ? { ...report, output: path.resolve(outputOption) } : report, null, 2));
@@ -873,18 +874,37 @@ async function commandSemantics(args: ParsedArgs): Promise<void> {
   throw new Error(`Unknown semantics command: ${action}`);
 }
 
+function semanticEvaluationPolicy(args: ParsedArgs): SemanticEvaluationPolicy {
+  const minimumCoveragePercent = numberOption(args, "min-coverage");
+  if (minimumCoveragePercent !== undefined
+    && (minimumCoveragePercent < 0 || minimumCoveragePercent > 100)) {
+    throw new Error(`Invalid --min-coverage: ${minimumCoveragePercent}. Expected a number from 0 to 100.`);
+  }
+  return {
+    minimumCoveragePercent,
+    maximumUnreviewedConflicts: nonNegativeIntegerOption(args, "max-conflicts"),
+    maximumExpectedMismatches: nonNegativeIntegerOption(args, "max-mismatches")
+  };
+}
+
 async function loadSemanticPackage(args: ParsedArgs): Promise<SemanticRulePackage> {
   const packagePath = stringOption(args, "package");
-  return packagePath
-    ? readJsonFile<SemanticRulePackage>(path.resolve(packagePath))
-    : JAVA_SEMANTIC_RULE_PACKAGE;
+  if (!packagePath) return JAVA_SEMANTIC_RULE_PACKAGE;
+  const value = await readJsonFile<unknown>(path.resolve(packagePath));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Invalid semantic package JSON root: ${packagePath}. Expected an object.`);
+  }
+  return value as SemanticRulePackage;
 }
 
 async function readSemanticLock(filePath: string): Promise<SemanticRulePackageLock> {
-  const value = await readJsonFile<SemanticRulePackageLock | SemanticRulePackage>(filePath);
+  const value = await readJsonFile<unknown>(filePath);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Invalid semantic lock or package JSON root: ${filePath}. Expected an object.`);
+  }
   return "packageHash" in value
-    ? value
-    : createSemanticRulePackageLock(value);
+    ? value as unknown as SemanticRulePackageLock
+    : createSemanticRulePackageLock(value as SemanticRulePackage);
 }
 
 async function loadSemanticEvaluationSamples(args: ParsedArgs): Promise<SemanticEvaluationSample[]> {
@@ -899,8 +919,16 @@ async function loadSemanticEvaluationSamples(args: ParsedArgs): Promise<Semantic
     return semanticSamplesFromJavaAnalysis(await readJsonFile<unknown>(path.resolve(analysisOption)));
   }
   if (samplesOption) {
-    const value = await readJsonFile<SemanticEvaluationSample[] | { samples: SemanticEvaluationSample[] }>(path.resolve(samplesOption));
-    return Array.isArray(value) ? value : value.samples;
+    const value = await readJsonFile<unknown>(path.resolve(samplesOption));
+    const samples = Array.isArray(value)
+      ? value
+      : value && typeof value === "object" && "samples" in value
+        ? (value as { samples?: unknown }).samples
+        : undefined;
+    if (!Array.isArray(samples)) {
+      throw new Error(`Invalid semantic sample corpus: ${samplesOption}. Expected an array or an object with a samples array.`);
+    }
+    return samples as SemanticEvaluationSample[];
   }
   const project = projectOption!;
   const direct = path.resolve(project);
@@ -2996,7 +3024,7 @@ Usage:
   migration-guard vmp contract [--root <path>]
   migration-guard semantics list [--package <semantic-package.json>]
   migration-guard semantics validate [--package <semantic-package.json>]
-  migration-guard semantics evaluate (--analysis <java-analysis.json>|--samples <samples.json>|--project <id|case-dir>) [--package <semantic-package.json>] [--output <report.json>]
+  migration-guard semantics evaluate (--analysis <java-analysis.json>|--samples <samples.json>|--project <id|case-dir>) [--package <semantic-package.json>] [--min-coverage <0-100>] [--max-conflicts <n>] [--max-mismatches <n>] [--output <report.json>]
   migration-guard semantics lock [--package <semantic-package.json>] [--output <lock.json>]
   migration-guard semantics diff --from <lock-or-package.json> --to <lock-or-package.json>
   migration-guard migrate init --project <id> [--source <path>] [--endpoint <path>] [--method POST] [--target-root <path>] [--service-name <name>] [--cases-root <path>] [--force]

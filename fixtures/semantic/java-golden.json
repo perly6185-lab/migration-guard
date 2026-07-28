@@ -1,0 +1,74 @@
+{
+  "samples": [
+    {
+      "id": "clock-instant-now",
+      "text": "Instant.now",
+      "kind": "java-method",
+      "expectedBehavior": "clock-read",
+      "expectedRuleId": "clock"
+    },
+    {
+      "id": "logging-info",
+      "text": "logger.info",
+      "kind": "java-method",
+      "expectedBehavior": "observability",
+      "expectedRuleId": "logging"
+    },
+    {
+      "id": "runtime-uuid",
+      "text": "UUID.randomUUID",
+      "kind": "java-method",
+      "expectedBehavior": "external-call",
+      "expectedRuleId": "runtime-entropy"
+    },
+    {
+      "id": "runtime-zone",
+      "text": "ZoneId.systemDefault",
+      "kind": "java-method",
+      "expectedBehavior": "context-resolution",
+      "expectedRuleId": "runtime-environment"
+    },
+    {
+      "id": "ai-model-call",
+      "text": "requestSpec.call",
+      "kind": "external-boundary",
+      "expectedBehavior": "external-call",
+      "expectedRuleId": "ai-model-invocation"
+    },
+    {
+      "id": "vector-state-read",
+      "text": "vectorStore.similaritySearch",
+      "kind": "external-boundary",
+      "expectedBehavior": "state-read",
+      "expectedRuleId": "ai-vector-read"
+    },
+    {
+      "id": "websocket-publication",
+      "text": "session.sendMessage",
+      "kind": "external-boundary",
+      "expectedBehavior": "event-publish",
+      "expectedRuleId": "websocket-publication"
+    },
+    {
+      "id": "reviewed-cache-key-precedence",
+      "text": "ViewDynamicHttpDataCacheImpl.getCacheKey",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "configuration-cache-helper"
+    },
+    {
+      "id": "future-wait",
+      "text": "openDataFuture.join",
+      "kind": "java-method",
+      "expectedBehavior": "async-boundary",
+      "expectedRuleId": "future-wait"
+    },
+    {
+      "id": "query-builder",
+      "text": "wrapper.orderByAsc",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "query-builder"
+    }
+  ]
+}

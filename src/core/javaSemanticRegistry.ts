@@ -196,7 +196,7 @@ export const JAVA_SEMANTIC_RULES: JavaSemanticRule[] = [
 export const JAVA_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
   schemaVersion: 1,
   id: "builtin-java-zboss-compatibility",
-  version: "1.0.0",
+  version: "1.1.0",
   language: "java",
   description: "The existing ordered Java semantic registry, versioned without changing classification behavior.",
   compatibility: {
@@ -206,6 +206,15 @@ export const JAVA_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
   scope: {
     frameworks: ["spring", "mybatis", "mybatis-plus", "spring-data"],
     projects: ["zboss-*", "*"]
+  },
+  conflictPolicy: {
+    strategy: "ordered-first-match",
+    reviewedPrecedence: [{
+      id: "cache-key-helper-before-cache-read",
+      winnerRuleId: "configuration-cache-helper",
+      loserRuleId: "configuration-state-read",
+      reason: "Cache-key builders are deterministic calculations even when their enclosing cache type also matches a state-read rule."
+    }]
   },
   rules: JAVA_SEMANTIC_RULES.map((rule) => ({
     id: rule.id,
