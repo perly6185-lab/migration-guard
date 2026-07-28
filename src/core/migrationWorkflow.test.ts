@@ -102,16 +102,25 @@ test("project workflow analyzes Spring, scaffolds Rust and keeps both gates fail
     const analysis = await analyzeMigrationProject(pkg.caseDir);
     assert.equal(analysis.entries.length, 1);
     assert.equal(analysis.sourceAccess, "read-only");
-    assert.equal(analysis.semanticRulePackages?.length, 2);
-    assert.equal(analysis.semanticRulePackages?.[0]?.packageId, "builtin-java-zboss-compatibility");
-    assert.match(analysis.semanticRulePackages?.[0]?.packageVersion ?? "", /^\d+\.\d+\.\d+$/);
-    assert.equal(analysis.semanticRulePackages?.[1]?.packageId, "builtin-java-core");
-    assert.equal(analysis.semanticRulePackages?.[1]?.packageVersion, "1.0.0");
+    assert.equal(analysis.semanticRulePackages?.length, 1);
+    assert.equal(analysis.semanticRulePackages?.[0]?.packageId, "builtin-java-core");
+    assert.equal(analysis.semanticRulePackages?.[0]?.packageVersion, "1.1.0");
+    assert.equal(analysis.semanticPackageResolution?.mode, "auto");
+    assert.deepEqual(
+      analysis.semanticPackageResolution?.excluded.map((item) => item.packageId),
+      ["builtin-java-zboss-compatibility"]
+    );
     assert.equal(await pathExists(analysis.entries[0]!.graphPath), true);
     assert.equal(await pathExists(analysis.entries[0]!.planPath), true);
     const behaviorGraph = await readJsonFile<BehaviorGraph>(analysis.entries[0]!.graphPath);
     assert.equal(behaviorGraph.classificationCoverage?.highRiskExplainablePercent, 100);
     assert.equal(behaviorGraph.nodes[0]?.classification?.source, "entrypoint");
+    assert.equal(
+      behaviorGraph.nodes.some((node) =>
+        node.classification?.packageId === "builtin-java-zboss-compatibility"
+      ),
+      false
+    );
     assert.equal(execFileSync("git", ["status", "--porcelain=v1"], { cwd: sourceRoot, encoding: "utf8" }), sourceStatusBefore);
 
     const analysisIndexPath = path.join(pkg.evidenceDir, "analysis", "index.json");
@@ -120,12 +129,12 @@ test("project workflow analyzes Spring, scaffolds Rust and keeps both gates fail
       semanticRulePackages: Array<{ packageId: string; packageHash: string }>;
     };
     staleIndex.semanticRulePackages.find((item) =>
-      item.packageId === "builtin-java-zboss-compatibility"
+      item.packageId === "builtin-java-core"
     )!.packageHash = "stale-semantic-package";
     await writeJsonFile(analysisIndexPath, staleIndex);
     const semanticDrift = await evaluateMigrationOfflineGate(pkg.caseDir);
     assert.ok(semanticDrift.findings.includes(
-      "MG-OFFLINE-SEMANTIC-PACKAGE-MISMATCH:builtin-java-zboss-compatibility"
+      "MG-OFFLINE-SEMANTIC-PACKAGE-MISMATCH:builtin-java-core"
     ));
     await writeJsonFile(analysisIndexPath, originalIndex);
     const missingCoreIndex = structuredClone(originalIndex) as {

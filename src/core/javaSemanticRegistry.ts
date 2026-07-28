@@ -196,7 +196,7 @@ export const JAVA_SEMANTIC_RULES: JavaSemanticRule[] = [
 export const JAVA_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
   schemaVersion: 1,
   id: "builtin-java-zboss-compatibility",
-  version: "1.1.0",
+  version: "1.2.0",
   language: "java",
   description: "The existing ordered Java semantic registry, versioned without changing classification behavior.",
   compatibility: {
@@ -205,7 +205,7 @@ export const JAVA_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
   },
   scope: {
     frameworks: ["spring", "mybatis", "mybatis-plus", "spring-data"],
-    projects: ["zboss-*", "*"]
+    projects: ["zboss-*"]
   },
   conflictPolicy: {
     strategy: "ordered-first-match",

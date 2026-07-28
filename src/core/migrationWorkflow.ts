@@ -24,7 +24,11 @@ import {
   type JavaRuntimeEvidenceBundle
 } from "./javaRuntimeEvidence.js";
 import { inspectMigrationFixtures } from "./migrationFixture.js";
-import { BUILTIN_JAVA_SEMANTIC_RULE_PACKAGES } from "./javaSemanticPackages.js";
+import {
+  getBuiltinJavaSemanticRulePackage,
+  resolveJavaSemanticRulePackages,
+  type JavaSemanticPackageResolution
+} from "./javaSemanticPackages.js";
 import {
   createSemanticRulePackageLock,
   type SemanticRulePackageLock
@@ -38,6 +42,7 @@ export interface MigrationAnalyzeResult {
   sourceAccess: "read-only";
   adapter: string;
   semanticRulePackages?: SemanticRulePackageLock[];
+  semanticPackageResolution?: JavaSemanticPackageResolution;
   status: "ready" | "blocked";
   entries: Array<{
     id: string;
@@ -77,13 +82,16 @@ export async function analyzeMigrationProject(
   const sourceRoot = resolveMigrationProjectPath(pkg, pkg.profile.source.root);
   if (!await pathExists(sourceRoot)) throw new Error(`Migration source root does not exist: ${sourceRoot}.`);
   const entries: MigrationAnalyzeResult["entries"] = [];
+  const semanticPackageResolution = resolveProjectSemanticPackages(pkg);
+  const selectedSemanticPackageIds = semanticPackageResolution.selected.map((item) => item.packageId);
   const sourceIdentity = await captureAssessmentSourceIdentity(sourceRoot);
   try {
     for (const entrypoint of pkg.profile.entrypoints) {
       const report = await adapter.analyze(pkg, entrypoint, options);
       const result = createEndpointReplacementPlanFromJava(report, {
         ownershipPolicy: pkg.semanticRules.ownershipPolicy,
-        classifications: pkg.semanticRules.classifications
+        classifications: pkg.semanticRules.classifications,
+        semanticPackageIds: selectedSemanticPackageIds
       });
       const entryDir = path.join(pkg.evidenceDir, "analysis", safeSegment(entrypoint.id));
       const analysisPath = path.join(entryDir, "java-analysis.json");
@@ -111,7 +119,10 @@ export async function analyzeMigrationProject(
     sourceIdentity,
     sourceAccess: "read-only",
     adapter: adapter.id,
-    semanticRulePackages: BUILTIN_JAVA_SEMANTIC_RULE_PACKAGES.map(createSemanticRulePackageLock),
+    semanticRulePackages: selectedSemanticPackageIds.map((packageId) =>
+      createSemanticRulePackageLock(getBuiltinJavaSemanticRulePackage(packageId)!)
+    ),
+    semanticPackageResolution,
     status: entries.every((entry) => entry.status === "ready") ? "ready" : "blocked",
     entries
   };
@@ -178,7 +189,16 @@ export async function evaluateMigrationOfflineGate(caseDir: string): Promise<Mig
       findings.push("MG-OFFLINE-SOURCE-IDENTITY-MISMATCH");
     }
     if (index.semanticRulePackages) {
-      for (const currentPackage of BUILTIN_JAVA_SEMANTIC_RULE_PACKAGES.map(createSemanticRulePackageLock)) {
+      const expectedResolution = resolveProjectSemanticPackages(pkg);
+      const expectedPackages = expectedResolution.selected.map((item) =>
+        createSemanticRulePackageLock(getBuiltinJavaSemanticRulePackage(item.packageId)!)
+      );
+      if (!index.semanticPackageResolution
+        || JSON.stringify(index.semanticPackageResolution) !== JSON.stringify(expectedResolution)
+        || index.semanticRulePackages.length !== expectedPackages.length) {
+        findings.push("MG-OFFLINE-SEMANTIC-PACKAGE-SELECTION-MISMATCH");
+      }
+      for (const currentPackage of expectedPackages) {
         const recordedPackage = index.semanticRulePackages.find((item) => item.packageId === currentPackage.packageId);
         if (!recordedPackage || recordedPackage.packageHash !== currentPackage.packageHash) {
           findings.push(`MG-OFFLINE-SEMANTIC-PACKAGE-MISMATCH:${currentPackage.packageId}`);
@@ -215,6 +235,15 @@ export async function evaluateMigrationOfflineGate(caseDir: string): Promise<Mig
     status: findings.length === 0 ? "passed" : "blocked",
     findings: [...new Set(findings)].sort(),
     evidence: [...new Set(evidence)].sort()
+  });
+}
+
+function resolveProjectSemanticPackages(pkg: MigrationProjectPackage): JavaSemanticPackageResolution {
+  return resolveJavaSemanticRulePackages({
+    projectId: pkg.profile.projectId,
+    language: pkg.profile.source.language,
+    framework: pkg.profile.source.framework,
+    explicitPackageIds: pkg.semanticRules.packageIds
   });
 }
 

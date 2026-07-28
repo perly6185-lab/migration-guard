@@ -8,6 +8,7 @@ import type { QueryGateRequirements } from "./queryRuntimeEvidence.js";
 import type { RuntimeCollectorKind } from "./runtimeCollectors.js";
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
+import { resolveJavaSemanticRulePackages } from "./javaSemanticPackages.js";
 
 export const MIGRATION_PROFILE_FILE = "profile.json";
 export const MIGRATION_SEMANTIC_RULES_FILE = "semantic-rules.json";
@@ -61,6 +62,7 @@ export interface MigrationProjectProfile {
 
 export interface MigrationSemanticRules {
   schemaVersion: 1;
+  packageIds?: string[];
   ownershipPolicy: ReviewedOwnershipPolicy;
   classifications: BehaviorClassificationRule[];
   runtimeGates?: Array<{
@@ -192,6 +194,18 @@ export function validateMigrationProject(pkg: MigrationProjectPackage): Migratio
   }
   if (semanticRules.schemaVersion !== 1 || semanticRules.ownershipPolicy?.version !== 1) findings.push("MP-SEMANTIC-RULES-VERSION-UNSUPPORTED");
   if (!Array.isArray(semanticRules.classifications) || !Array.isArray(semanticRules.ownershipPolicy?.rules)) findings.push("MP-SEMANTIC-RULES-INVALID");
+  if (semanticRules.packageIds !== undefined) {
+    try {
+      resolveJavaSemanticRulePackages({
+        projectId: profile.projectId,
+        language: profile.source?.language,
+        framework: profile.source?.framework,
+        explicitPackageIds: semanticRules.packageIds
+      });
+    } catch {
+      findings.push("MP-SEMANTIC-PACKAGES-INVALID");
+    }
+  }
   const behaviors = new Set([
     "entrypoint", "validation", "context-resolution", "decision", "calculation", "state-read",
     "state-write", "external-call", "transaction", "event-publish", "compensation",

@@ -1,5 +1,9 @@
 import type { BehaviorKind } from "./endpointReplacementModel.js";
 import type { SemanticRulePackage } from "./semanticRulePackage.js";
+import {
+  JAVA_SEMANTIC_RULE_PACKAGE,
+  JAVA_SEMANTIC_RULES
+} from "./javaSemanticRegistry.js";
 
 export interface JavaCoreSemanticRule {
   id: string;
@@ -9,7 +13,7 @@ export interface JavaCoreSemanticRule {
   defaultOwnership: "target-owned" | "infrastructure-port" | "reviewed-exclusion";
 }
 
-export const JAVA_CORE_SEMANTIC_RULES: JavaCoreSemanticRule[] = [
+export const PROMOTED_JAVA_CORE_SEMANTIC_RULES: JavaCoreSemanticRule[] = [
   { id: "compensation-keyword", pattern: /undo|rollback|reconcile|compensat|restore/i, kind: "compensation", reason: "compensation semantics", defaultOwnership: "target-owned" },
   { id: "transaction-keyword", pattern: /transaction|commit|unitofwork/i, kind: "transaction", reason: "transaction boundary", defaultOwnership: "target-owned" },
   { id: "event-publication-keyword", pattern: /publish|emit|event|progress|notify/i, kind: "event-publish", reason: "event publication", defaultOwnership: "infrastructure-port" },
@@ -22,12 +26,21 @@ export const JAVA_CORE_SEMANTIC_RULES: JavaCoreSemanticRule[] = [
   { id: "infrastructure-keyword", pattern: /repository|mapper|cache|upload|download|file/i, kind: "external-call", reason: "external or infrastructure boundary", defaultOwnership: "infrastructure-port" }
 ];
 
+const GENERIC_JAVA_SEMANTIC_RULES = JAVA_SEMANTIC_RULES.filter((_, index) =>
+  JAVA_SEMANTIC_RULE_PACKAGE.rules[index]?.origin === "generic-builtin"
+);
+
+export const JAVA_CORE_SEMANTIC_RULES: JavaCoreSemanticRule[] = [
+  ...GENERIC_JAVA_SEMANTIC_RULES,
+  ...PROMOTED_JAVA_CORE_SEMANTIC_RULES
+];
+
 export const JAVA_CORE_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
   schemaVersion: 1,
   id: "builtin-java-core",
-  version: "1.0.0",
+  version: "1.1.0",
   language: "java",
-  description: "Portable high-risk Java behavior rules promoted from the generic classifier.",
+  description: "Portable Java semantics extracted from generic built-ins plus promoted high-risk classifier rules.",
   compatibility: {
     engineSchemaVersion: 1,
     mode: "portable"
@@ -39,6 +52,10 @@ export const JAVA_CORE_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
   conflictPolicy: {
     strategy: "ordered-first-match",
     reviewedPrecedence: [
+      ...(JAVA_SEMANTIC_RULE_PACKAGE.conflictPolicy?.reviewedPrecedence.filter((review) =>
+        JAVA_CORE_SEMANTIC_RULES.some((rule) => rule.id === review.winnerRuleId)
+        && JAVA_CORE_SEMANTIC_RULES.some((rule) => rule.id === review.loserRuleId)
+      ) ?? []),
       {
         id: "event-publication-before-state-mutation",
         winnerRuleId: "event-publication-keyword",

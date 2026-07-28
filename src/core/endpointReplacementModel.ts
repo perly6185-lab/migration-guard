@@ -110,6 +110,17 @@ export interface BehaviorClassificationCoverage {
     nodes: number;
     highRiskNodes: number;
   }>;
+  byPackage: Array<{
+    packageId: string;
+    packageVersion: string;
+    nodes: number;
+    highRiskNodes: number;
+    ruleHits: Array<{
+      ruleId: string;
+      nodes: number;
+      highRiskNodes: number;
+    }>;
+  }>;
   bySourceKind: Array<{
     sourceKind: string;
     nodes: number;

@@ -22,6 +22,7 @@ export interface EndpointReplacementPlanOptions {
   ownership?: Record<string, ReplacementOwnership>;
   ownershipPolicy?: ReviewedOwnershipPolicy;
   classifications?: BehaviorClassificationRule[];
+  semanticPackageIds?: string[];
 }
 
 export interface EndpointPilotPlan {
@@ -134,7 +135,7 @@ export function createEndpointReplacementPlanFromJava(
   report: JavaEndpointAnalysisReport,
   options: EndpointReplacementPlanOptions = {}
 ): { graph: BehaviorGraph; plan: EndpointReplacementPlan } {
-  const graph = createBehaviorGraphFromJava(report, options.classifications);
+  const graph = createBehaviorGraphFromJava(report, options.classifications, options.semanticPackageIds);
   return { graph, plan: createEndpointReplacementPlan(graph, options, report) };
 }
 

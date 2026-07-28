@@ -15,8 +15,7 @@ import type {
   DataContractRequirement,
   StateRequirement
 } from "./endpointReplacementModel.js";
-import { classifyJavaSemanticWithTrace } from "./javaSemanticRegistry.js";
-import { classifyJavaCoreSemanticWithTrace } from "./javaCoreSemanticRegistry.js";
+import { classifyJavaSemanticPackagesWithTrace } from "./javaSemanticPackages.js";
 
 const CONTEXT_SIGNALS: Array<[RegExp, string, string]> = [
   [/tenant/i, "tenant", "tenant context"],
@@ -47,12 +46,15 @@ interface BehaviorClassificationResult {
 
 export function createBehaviorGraphFromJava(
   report: JavaEndpointAnalysisReport,
-  projectRules: BehaviorClassificationRule[] = []
+  projectRules: BehaviorClassificationRule[] = [],
+  semanticPackageIds?: string[]
 ): BehaviorGraph {
   if (!report.selectedRoute) throw new Error("A selected Java route is required to create a behavior graph.");
   const entryId = report.callGraph.nodes.find((node) => node.route?.path === report.endpoint.path)?.id
     ?? report.callGraph.nodes[0]?.id;
-  const nodes = report.callGraph.nodes.map((node) => classifyNode(node, node.id === entryId, projectRules));
+  const nodes = report.callGraph.nodes.map((node) =>
+    classifyNode(node, node.id === entryId, projectRules, semanticPackageIds)
+  );
   const edges = report.callGraph.edges.map((edge) => ({
     from: edge.from,
     to: edge.to,
@@ -212,7 +214,8 @@ export function deriveReplacementContracts(graph: BehaviorGraph, report?: JavaEn
 function classifyNode(
   node: JavaEndpointCallGraphNode,
   entry: boolean,
-  projectRules: BehaviorClassificationRule[]
+  projectRules: BehaviorClassificationRule[],
+  semanticPackageIds?: string[]
 ): BehaviorNode {
   const text = `${node.className}.${node.methodName} ${node.file} ${node.signature ?? ""}`;
   const result = entry
@@ -223,7 +226,7 @@ function classifyNode(
       strength: "authoritative" as const,
       ruleId: "selected-endpoint"
     }
-    : classifyBehavior(text, node.role ?? node.kind, projectRules);
+    : classifyBehavior(text, node.role ?? node.kind, projectRules, semanticPackageIds);
   const { kind, reasons } = result;
   const highRisk = isHighRiskBehavior(kind) || isPotentialHighRiskSource(node);
   const stateful = ["state-read", "state-write", "transaction", "compensation", "coordination"].includes(kind);
@@ -254,7 +257,8 @@ function classifyNode(
 function classifyBehavior(
   text: string,
   sourceKind: string,
-  projectRules: BehaviorClassificationRule[]
+  projectRules: BehaviorClassificationRule[],
+  semanticPackageIds?: string[]
 ): BehaviorClassificationResult {
   for (const rule of projectRules) {
     if (new RegExp(rule.symbolPattern).test(text)) {
@@ -270,7 +274,7 @@ function classifyBehavior(
       };
     }
   }
-  const semantic = classifyJavaSemanticWithTrace(text);
+  const semantic = classifyJavaSemanticPackagesWithTrace(text, semanticPackageIds);
   if (semantic) {
     return {
       kind: semantic.rule.kind,
@@ -281,19 +285,6 @@ function classifyBehavior(
       ruleOrigin: semantic.origin,
       packageId: semantic.packageId,
       packageVersion: semantic.packageVersion
-    };
-  }
-  const coreSemantic = classifyJavaCoreSemanticWithTrace(text);
-  if (coreSemantic) {
-    return {
-      kind: coreSemantic.rule.kind,
-      reasons: [coreSemantic.rule.reason, `registry ${coreSemantic.ruleId}`],
-      source: "semantic-package",
-      strength: "authoritative",
-      ruleId: coreSemantic.ruleId,
-      ruleOrigin: "generic-builtin",
-      packageId: coreSemantic.packageId,
-      packageVersion: coreSemantic.packageVersion
     };
   }
   const rules: Array<[string, BehaviorKind, RegExp, string]> = [
@@ -369,6 +360,7 @@ export function createBehaviorClassificationCoverage(nodes: BehaviorNode[]): Beh
       })),
     byBehavior: summarizeClassification(nodes, (node) => node.kind)
       .map(([behavior, values]) => ({ behavior: behavior as BehaviorKind, ...values })),
+    byPackage: summarizePackages(nodes),
     bySourceKind: summarizeSourceKinds(nodes)
   };
 }
@@ -400,6 +392,27 @@ function summarizeSourceKinds(nodes: BehaviorNode[]): BehaviorClassificationCove
   return [...values.entries()]
     .map(([sourceKind, counts]) => ({ sourceKind, ...counts }))
     .sort((a, b) => a.sourceKind.localeCompare(b.sourceKind));
+}
+
+function summarizePackages(nodes: BehaviorNode[]): BehaviorClassificationCoverage["byPackage"] {
+  const packages = new Map<string, BehaviorNode[]>();
+  for (const node of nodes) {
+    const classification = node.classification;
+    if (classification?.source !== "semantic-package" || !classification.packageId) continue;
+    const values = packages.get(classification.packageId) ?? [];
+    values.push(node);
+    packages.set(classification.packageId, values);
+  }
+  return [...packages.entries()]
+    .map(([packageId, packageNodes]) => ({
+      packageId,
+      packageVersion: packageNodes[0]?.classification?.packageVersion ?? "unknown",
+      nodes: packageNodes.length,
+      highRiskNodes: packageNodes.filter((node) => node.classification?.highRisk).length,
+      ruleHits: summarizeClassification(packageNodes, (node) => node.classification?.ruleId ?? "unknown")
+        .map(([ruleId, values]) => ({ ruleId, ...values }))
+    }))
+    .sort((left, right) => left.packageId.localeCompare(right.packageId));
 }
 
 function isHighRiskBehavior(kind: BehaviorKind): boolean {

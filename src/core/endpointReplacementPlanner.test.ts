@@ -94,17 +94,25 @@ test("classification provenance reports sources and blocks unexplained high-risk
   const producer = graph.nodes.find((item) => item.id === "PaymentProducer.perform");
   assert.equal(repository?.classification?.source, "semantic-package");
   assert.equal(repository?.classification?.packageId, "builtin-java-core");
-  assert.equal(repository?.classification?.packageVersion, "1.0.0");
+  assert.equal(repository?.classification?.packageVersion, "1.1.0");
   assert.equal(repository?.classification?.ruleId, "state-mutation-keyword");
   assert.equal(clock?.classification?.source, "semantic-package");
   assert.equal(clock?.classification?.packageId, "builtin-java-zboss-compatibility");
-  assert.equal(clock?.classification?.packageVersion, "1.1.0");
+  assert.equal(clock?.classification?.packageVersion, "1.2.0");
   assert.equal(clock?.classification?.ruleId, "clock");
   assert.equal(producer?.classification?.source, "unresolved");
   assert.equal(producer?.classification?.highRisk, true);
   assert.equal(graph.classificationCoverage?.highRiskExplainablePercent, 66.67);
   assert.equal(graph.classificationCoverage?.highRiskAuthoritativePercent, 66.67);
   assert.deepEqual(graph.classificationCoverage?.highRiskUnknownNodeIds, ["PaymentProducer.perform"]);
+  assert.deepEqual(
+    graph.classificationCoverage?.byPackage.map((item) => item.packageId),
+    ["builtin-java-core", "builtin-java-zboss-compatibility"]
+  );
+  assert.ok(graph.classificationCoverage?.byPackage.some((item) =>
+    item.packageId === "builtin-java-core"
+    && item.ruleHits.some((rule) => rule.ruleId === "state-mutation-keyword" && rule.highRiskNodes === 1)
+  ));
   assert.ok(graph.completeness.findings.includes("RP-GRAPH-HIGH-RISK-UNCLASSIFIED"));
   assert.ok(plan.findings.includes("RP-GRAPH-HIGH-RISK-UNCLASSIFIED"));
 });

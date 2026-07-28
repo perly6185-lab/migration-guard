@@ -99,16 +99,31 @@ frameworks and service-method entrypoints require a registered source adapter.
 
 The built-in Java registry is exposed as two ordered packages:
 
-- `builtin-java-zboss-compatibility@1.1.0` preserves the existing reviewed
-  compatibility rules without moving, removing or reordering them.
-- `builtin-java-core@1.0.0` contains portable high-risk Java rule families for
-  compensation, transactions, events, validation, context, external boundaries,
-  DDL, state reads/writes and infrastructure boundaries.
+- `builtin-java-zboss-compatibility@1.2.0` preserves the existing reviewed
+  compatibility rules without moving, removing or reordering them, and is
+  scoped to `zboss-*` migration projects.
+- `builtin-java-core@1.1.0` contains the portable `generic-builtin` Java
+  registry plus high-risk rule families for compensation, transactions, events,
+  validation, context, external boundaries, DDL, state reads/writes and
+  infrastructure boundaries.
 
-Classification keeps the order project rule, compatibility package, portable
-core package, then generic fallback. Package manifests record serializable
-patterns, behavior kinds, ownership defaults, reviewed first-match precedence,
-rule origins and deterministic hashes.
+Migration projects resolve packages by project scope: the portable core is
+always selected, while compatibility packages require a matching project id or
+an explicit `semantic-rules.json` `packageIds` selection. Calls without project
+context retain the legacy package order for API compatibility. Classification
+keeps the order project rule, selected compatibility package, portable core
+package, then generic fallback. Package manifests record serializable patterns,
+behavior kinds, ownership defaults, reviewed first-match precedence, rule
+origins and deterministic hashes.
+
+```json
+{
+  "schemaVersion": 1,
+  "packageIds": ["builtin-java-core"],
+  "ownershipPolicy": { "version": 1, "rules": [] },
+  "classifications": []
+}
+```
 
 ```powershell
 node dist/cli.js semantics list
@@ -143,8 +158,11 @@ role inference, or unresolved. `semantics coverage` reports explainability by
 classification source, evidence strength, behavior kind and source kind. It
 distinguishes fully explainable coverage from authoritative package/rule
 coverage, and fails when a potentially high-risk node has no explainable
-classification. Migration analysis locks both built-in package hashes, so an
-added, missing or changed core package invalidates stale analysis evidence.
+classification. Migration analysis locks selected built-in package hashes, so an
+added, missing or changed selected package invalidates stale analysis evidence.
+The analysis index also records automatic or explicit package-selection reasons.
+Coverage reports include package and per-rule hit counts, including their
+high-risk subsets.
 
 Phase 146-150 health semantics, normalization, workspace scanning, persistence hardening and RC results are documented in
 [docs/PHASE_150_REPORT.md](docs/PHASE_150_REPORT.md). Release gates are tracked in

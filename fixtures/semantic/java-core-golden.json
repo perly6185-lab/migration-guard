@@ -44,7 +44,7 @@
     },
     {
       "id": "ddl-mutation",
-      "text": "schema.execute ALTER TABLE orders",
+      "text": "DDL ALTER TABLE orders",
       "kind": "java-method",
       "expectedBehavior": "state-write",
       "expectedRuleId": "ddl-mutation-keyword"

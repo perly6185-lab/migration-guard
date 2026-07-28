@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   classifyJavaCoreSemanticWithTrace,
   JAVA_CORE_SEMANTIC_RULE_PACKAGE,
-  JAVA_CORE_SEMANTIC_RULES
+  JAVA_CORE_SEMANTIC_RULES,
+  PROMOTED_JAVA_CORE_SEMANTIC_RULES
 } from "./javaCoreSemanticRegistry.js";
 import {
   createSemanticRulePackageLock,
@@ -20,7 +21,8 @@ test("java-core is a valid portable package with stable ordered rules", () => {
     JAVA_CORE_SEMANTIC_RULE_PACKAGE.rules.map((rule) => rule.id),
     JAVA_CORE_SEMANTIC_RULES.map((rule) => rule.id)
   );
-  assert.equal(createSemanticRulePackageLock(JAVA_CORE_SEMANTIC_RULE_PACKAGE).ruleCount, 10);
+  assert.equal(PROMOTED_JAVA_CORE_SEMANTIC_RULES.length, 10);
+  assert.ok(createSemanticRulePackageLock(JAVA_CORE_SEMANTIC_RULE_PACKAGE).ruleCount > 10);
 });
 
 test("java-core promotes high-risk generic families without promoting calculation fallbacks", () => {
@@ -31,7 +33,7 @@ test("java-core promotes high-risk generic families without promoting calculatio
     ["OrderPolicy.validatePermission", "validation-keyword", "validation"],
     ["RequestContext.resolveTenant", "context-keyword", "context-resolution"],
     ["PaymentGateway.charge", "external-boundary-keyword", "external-call"],
-    ["schema.execute ALTER TABLE orders", "ddl-mutation-keyword", "state-write"],
+    ["DDL ALTER TABLE orders", "ddl-mutation-keyword", "state-write"],
     ["OrderRepository.save", "state-mutation-keyword", "state-write"],
     ["OrderMapper.findById", "state-lookup-keyword", "state-read"],
     ["BlobCache.copy", "infrastructure-keyword", "external-call"]
@@ -39,10 +41,11 @@ test("java-core promotes high-risk generic families without promoting calculatio
   for (const [text, ruleId, behavior] of cases) {
     const trace = classifyJavaCoreSemanticWithTrace(text);
     assert.equal(trace?.packageId, "builtin-java-core", text);
-    assert.equal(trace?.packageVersion, "1.0.0", text);
+    assert.equal(trace?.packageVersion, "1.1.0", text);
     assert.equal(trace?.ruleId, ruleId, text);
     assert.equal(trace?.rule.kind, behavior, text);
   }
+  assert.equal(classifyJavaCoreSemanticWithTrace("Instant.now")?.ruleId, "clock");
   assert.equal(classifyJavaCoreSemanticWithTrace("OrderCalculator.calculateTotal"), undefined);
 });
 
@@ -54,7 +57,7 @@ test("java-core golden semantics have full coverage without unreviewed conflicts
     ["validation", "OrderPolicy.validatePermission", "validation", "validation-keyword"],
     ["context", "RequestContext.resolveTenant", "context-resolution", "context-keyword"],
     ["external", "PaymentGateway.charge", "external-call", "external-boundary-keyword"],
-    ["ddl", "schema.execute ALTER TABLE orders", "state-write", "ddl-mutation-keyword"],
+    ["ddl", "DDL ALTER TABLE orders", "state-write", "ddl-mutation-keyword"],
     ["write", "OrderRepository.save", "state-write", "state-mutation-keyword"],
     ["read", "OrderMapper.findById", "state-read", "state-lookup-keyword"],
     ["infrastructure", "BlobCache.copy", "external-call", "infrastructure-keyword"]

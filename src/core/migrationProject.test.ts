@@ -125,3 +125,23 @@ test("migration project validation fails closed on invalid project semantic rule
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("migration project validation rejects unsafe semantic package selections", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "migration-project-packages-"));
+  try {
+    const pkg = await initMigrationProject({
+      casesRoot: path.join(root, "cases"),
+      projectId: "package-case",
+      sourceRoot: path.join(root, "java"),
+      targetRoot: path.join(root, "rust"),
+      endpoint: "/api/run"
+    });
+    await writeJsonFile(pkg.semanticRulesPath, {
+      ...pkg.semanticRules,
+      packageIds: ["builtin-java-zboss-compatibility"]
+    });
+    await assert.rejects(loadMigrationProject(pkg.caseDir), /MP-SEMANTIC-PACKAGES-INVALID/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
