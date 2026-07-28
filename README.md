@@ -97,18 +97,28 @@ frameworks and service-method entrypoints require a registered source adapter.
 
 ### Versioned semantic rule packages
 
-The ordered built-in Java registry is exposed as the compatibility package
-`builtin-java-zboss-compatibility@1.1.0`. Packaging does not move, remove or
-reorder existing rules, so classification behavior remains unchanged. The
-package manifest records serializable patterns, behavior kinds, ownership
-defaults, rule origins and a deterministic package hash.
+The built-in Java registry is exposed as two ordered packages:
+
+- `builtin-java-zboss-compatibility@1.1.0` preserves the existing reviewed
+  compatibility rules without moving, removing or reordering them.
+- `builtin-java-core@1.0.0` contains portable high-risk Java rule families for
+  compensation, transactions, events, validation, context, external boundaries,
+  DDL, state reads/writes and infrastructure boundaries.
+
+Classification keeps the order project rule, compatibility package, portable
+core package, then generic fallback. Package manifests record serializable
+patterns, behavior kinds, ownership defaults, reviewed first-match precedence,
+rule origins and deterministic hashes.
 
 ```powershell
 node dist/cli.js semantics list
 node dist/cli.js semantics validate
+node dist/cli.js semantics validate --builtin builtin-java-core
 node dist/cli.js semantics lock --output .migration-guard/semantic-rules/java.lock.json
+node dist/cli.js semantics lock --builtin builtin-java-core --output .migration-guard/semantic-rules/java-core.lock.json
 node dist/cli.js semantics coverage --graph cases/<project>/evidence/analysis/<entry>/behavior-graph.json
 node dist/cli.js semantics evaluate --project zboss-query --output .migration-guard/semantic-rules/zboss-query.json
+node dist/cli.js semantics evaluate --builtin builtin-java-core --samples fixtures/semantic/java-core-golden.json --min-coverage 100 --max-conflicts 0 --max-mismatches 0
 node dist/cli.js semantics evaluate --samples fixtures/semantic/java-golden.json --min-coverage 100 --max-conflicts 0 --max-mismatches 0
 node dist/cli.js semantics diff --from previous.lock.json --to current.lock.json
 npm run semantic:gate
@@ -133,7 +143,8 @@ role inference, or unresolved. `semantics coverage` reports explainability by
 classification source, evidence strength, behavior kind and source kind. It
 distinguishes fully explainable coverage from authoritative package/rule
 coverage, and fails when a potentially high-risk node has no explainable
-classification.
+classification. Migration analysis locks both built-in package hashes, so an
+added, missing or changed core package invalidates stale analysis evidence.
 
 Phase 146-150 health semantics, normalization, workspace scanning, persistence hardening and RC results are documented in
 [docs/PHASE_150_REPORT.md](docs/PHASE_150_REPORT.md). Release gates are tracked in

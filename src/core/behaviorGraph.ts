@@ -16,6 +16,7 @@ import type {
   StateRequirement
 } from "./endpointReplacementModel.js";
 import { classifyJavaSemanticWithTrace } from "./javaSemanticRegistry.js";
+import { classifyJavaCoreSemanticWithTrace } from "./javaCoreSemanticRegistry.js";
 
 const CONTEXT_SIGNALS: Array<[RegExp, string, string]> = [
   [/tenant/i, "tenant", "tenant context"],
@@ -282,17 +283,20 @@ function classifyBehavior(
       packageVersion: semantic.packageVersion
     };
   }
+  const coreSemantic = classifyJavaCoreSemanticWithTrace(text);
+  if (coreSemantic) {
+    return {
+      kind: coreSemantic.rule.kind,
+      reasons: [coreSemantic.rule.reason, `registry ${coreSemantic.ruleId}`],
+      source: "semantic-package",
+      strength: "authoritative",
+      ruleId: coreSemantic.ruleId,
+      ruleOrigin: "generic-builtin",
+      packageId: coreSemantic.packageId,
+      packageVersion: coreSemantic.packageVersion
+    };
+  }
   const rules: Array<[string, BehaviorKind, RegExp, string]> = [
-    ["compensation-keyword", "compensation", /undo|rollback|reconcile|compensat|restore/i, "compensation semantics"],
-    ["transaction-keyword", "transaction", /transaction|commit|unitofwork/i, "transaction boundary"],
-    ["event-publication-keyword", "event-publish", /publish|emit|event|progress|notify/i, "event publication"],
-    ["validation-keyword", "validation", /validat|assert|check|required|unique|permission/i, "validation or policy check"],
-    ["context-keyword", "context-resolution", /tenant|security|auth|datasource|requestcontext|webframework|device|locale|SecurityFramework/i, "runtime context access"],
-    ["external-boundary-keyword", "external-call", /client|\bapi\.|gateway|adapter|storage|fileApi|http|rpc/i, "external service boundary"],
-    ["ddl-mutation-keyword", "state-write", /\bddl\b|create\s+table|alter\s+table|drop\s+table|truncate\s+table/i, "database schema mutation"],
-    ["state-mutation-keyword", "state-write", /insert|save|create|update|delete|remove|clear|write|upsert|persist|record|set|lock|acquire|cancel|terminate|submit|enable|disable|approve|reject|archive/i, "state mutation"],
-    ["state-lookup-keyword", "state-read", /select|query|find|get|list|load|read|count|exists|rowNum|(^|\.)page(?:\b|[A-Z])/i, "state lookup"],
-    ["infrastructure-keyword", "external-call", /repository|mapper|cache|upload|download|file/i, "external or infrastructure boundary"],
     ["decision-keyword", "decision", /(^|\.)(?:is|has|should|can|allow|resolve|filter|match)[A-Z_]|filterConditions|predicate/i, "branch decision"],
     ["calculation-keyword", "calculation", /calculate|compute|derive|convert|assemble|build|map|normalize|fill|evaluate|copyProperties|BeanUtils|CommonResult|success|(^|\.)to[A-Z]|\.init[A-Z].*(?:DO|VO|BO|DTO|Req|Resp)/i, "deterministic transformation"]
   ];

@@ -102,9 +102,11 @@ test("project workflow analyzes Spring, scaffolds Rust and keeps both gates fail
     const analysis = await analyzeMigrationProject(pkg.caseDir);
     assert.equal(analysis.entries.length, 1);
     assert.equal(analysis.sourceAccess, "read-only");
-    assert.equal(analysis.semanticRulePackages?.length, 1);
+    assert.equal(analysis.semanticRulePackages?.length, 2);
     assert.equal(analysis.semanticRulePackages?.[0]?.packageId, "builtin-java-zboss-compatibility");
     assert.match(analysis.semanticRulePackages?.[0]?.packageVersion ?? "", /^\d+\.\d+\.\d+$/);
+    assert.equal(analysis.semanticRulePackages?.[1]?.packageId, "builtin-java-core");
+    assert.equal(analysis.semanticRulePackages?.[1]?.packageVersion, "1.0.0");
     assert.equal(await pathExists(analysis.entries[0]!.graphPath), true);
     assert.equal(await pathExists(analysis.entries[0]!.planPath), true);
     const behaviorGraph = await readJsonFile<BehaviorGraph>(analysis.entries[0]!.graphPath);
@@ -115,13 +117,27 @@ test("project workflow analyzes Spring, scaffolds Rust and keeps both gates fail
     const analysisIndexPath = path.join(pkg.evidenceDir, "analysis", "index.json");
     const originalIndex = await readJsonFile<Record<string, unknown>>(analysisIndexPath);
     const staleIndex = structuredClone(originalIndex) as {
-      semanticRulePackages: Array<{ packageHash: string }>;
+      semanticRulePackages: Array<{ packageId: string; packageHash: string }>;
     };
-    staleIndex.semanticRulePackages[0]!.packageHash = "stale-semantic-package";
+    staleIndex.semanticRulePackages.find((item) =>
+      item.packageId === "builtin-java-zboss-compatibility"
+    )!.packageHash = "stale-semantic-package";
     await writeJsonFile(analysisIndexPath, staleIndex);
     const semanticDrift = await evaluateMigrationOfflineGate(pkg.caseDir);
     assert.ok(semanticDrift.findings.includes(
       "MG-OFFLINE-SEMANTIC-PACKAGE-MISMATCH:builtin-java-zboss-compatibility"
+    ));
+    await writeJsonFile(analysisIndexPath, originalIndex);
+    const missingCoreIndex = structuredClone(originalIndex) as {
+      semanticRulePackages: Array<{ packageId: string; packageHash: string }>;
+    };
+    missingCoreIndex.semanticRulePackages = missingCoreIndex.semanticRulePackages.filter((item) =>
+      item.packageId !== "builtin-java-core"
+    );
+    await writeJsonFile(analysisIndexPath, missingCoreIndex);
+    const missingCorePackage = await evaluateMigrationOfflineGate(pkg.caseDir);
+    assert.ok(missingCorePackage.findings.includes(
+      "MG-OFFLINE-SEMANTIC-PACKAGE-MISMATCH:builtin-java-core"
     ));
     await writeJsonFile(analysisIndexPath, originalIndex);
 

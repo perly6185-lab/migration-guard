@@ -1,0 +1,74 @@
+{
+  "samples": [
+    {
+      "id": "compensation-rollback",
+      "text": "OrderService.rollbackFailedOrder",
+      "kind": "java-method",
+      "expectedBehavior": "compensation",
+      "expectedRuleId": "compensation-keyword"
+    },
+    {
+      "id": "transaction-boundary",
+      "text": "transactionManager.commit",
+      "kind": "java-method",
+      "expectedBehavior": "transaction",
+      "expectedRuleId": "transaction-keyword"
+    },
+    {
+      "id": "event-publication",
+      "text": "orderEvents.publishCreated",
+      "kind": "java-method",
+      "expectedBehavior": "event-publish",
+      "expectedRuleId": "event-publication-keyword"
+    },
+    {
+      "id": "validation-policy",
+      "text": "OrderPolicy.validatePermission",
+      "kind": "java-method",
+      "expectedBehavior": "validation",
+      "expectedRuleId": "validation-keyword"
+    },
+    {
+      "id": "tenant-context",
+      "text": "RequestContext.resolveTenant",
+      "kind": "java-method",
+      "expectedBehavior": "context-resolution",
+      "expectedRuleId": "context-keyword"
+    },
+    {
+      "id": "external-gateway",
+      "text": "PaymentGateway.charge",
+      "kind": "java-method",
+      "expectedBehavior": "external-call",
+      "expectedRuleId": "external-boundary-keyword"
+    },
+    {
+      "id": "ddl-mutation",
+      "text": "schema.execute ALTER TABLE orders",
+      "kind": "java-method",
+      "expectedBehavior": "state-write",
+      "expectedRuleId": "ddl-mutation-keyword"
+    },
+    {
+      "id": "state-mutation",
+      "text": "OrderRepository.save",
+      "kind": "java-method",
+      "expectedBehavior": "state-write",
+      "expectedRuleId": "state-mutation-keyword"
+    },
+    {
+      "id": "state-lookup",
+      "text": "OrderMapper.findById",
+      "kind": "java-method",
+      "expectedBehavior": "state-read",
+      "expectedRuleId": "state-lookup-keyword"
+    },
+    {
+      "id": "infrastructure-boundary",
+      "text": "BlobCache.copy",
+      "kind": "java-method",
+      "expectedBehavior": "external-call",
+      "expectedRuleId": "infrastructure-keyword"
+    }
+  ]
+}

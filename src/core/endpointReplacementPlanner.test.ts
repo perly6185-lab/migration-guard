@@ -92,7 +92,9 @@ test("classification provenance reports sources and blocks unexplained high-risk
   const repository = graph.nodes.find((item) => item.id === "Repository.save");
   const clock = graph.nodes.find((item) => item.id === "LocalDateTime.now");
   const producer = graph.nodes.find((item) => item.id === "PaymentProducer.perform");
-  assert.equal(repository?.classification?.source, "generic-heuristic");
+  assert.equal(repository?.classification?.source, "semantic-package");
+  assert.equal(repository?.classification?.packageId, "builtin-java-core");
+  assert.equal(repository?.classification?.packageVersion, "1.0.0");
   assert.equal(repository?.classification?.ruleId, "state-mutation-keyword");
   assert.equal(clock?.classification?.source, "semantic-package");
   assert.equal(clock?.classification?.packageId, "builtin-java-zboss-compatibility");
@@ -101,7 +103,7 @@ test("classification provenance reports sources and blocks unexplained high-risk
   assert.equal(producer?.classification?.source, "unresolved");
   assert.equal(producer?.classification?.highRisk, true);
   assert.equal(graph.classificationCoverage?.highRiskExplainablePercent, 66.67);
-  assert.equal(graph.classificationCoverage?.highRiskAuthoritativePercent, 33.33);
+  assert.equal(graph.classificationCoverage?.highRiskAuthoritativePercent, 66.67);
   assert.deepEqual(graph.classificationCoverage?.highRiskUnknownNodeIds, ["PaymentProducer.perform"]);
   assert.ok(graph.completeness.findings.includes("RP-GRAPH-HIGH-RISK-UNCLASSIFIED"));
   assert.ok(plan.findings.includes("RP-GRAPH-HIGH-RISK-UNCLASSIFIED"));

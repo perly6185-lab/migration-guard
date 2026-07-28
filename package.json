@@ -27,7 +27,7 @@
     "release:gate": "node scripts/ci/release-gate.mjs",
     "release:candidate": "node scripts/release/candidate.mjs",
     "beta:readiness": "npm run build && node scripts/ci/beta-readiness.mjs",
-    "semantic:gate": "npm run build && node dist/cli.js semantics validate && node dist/cli.js semantics evaluate --samples fixtures/semantic/java-golden.json --min-coverage 100 --max-conflicts 0 --max-mismatches 0",
+    "semantic:gate": "npm run build && node dist/cli.js semantics validate && node dist/cli.js semantics validate --builtin builtin-java-core && node dist/cli.js semantics evaluate --samples fixtures/semantic/java-golden.json --min-coverage 100 --max-conflicts 0 --max-mismatches 0 && node dist/cli.js semantics evaluate --builtin builtin-java-core --samples fixtures/semantic/java-core-golden.json --min-coverage 100 --max-conflicts 0 --max-mismatches 0",
     "vmp:gate": "npm run build && node --test dist/core/vmpBehavior.test.js dist/core/vmpHorizontal.test.js dist/core/vmpQuality.test.js dist/core/vmpRefresh.test.js dist/core/vmpReplay.test.js dist/core/vmpArtifacts.test.js dist/core/vmpBatch.test.js dist/core/vmpContract.test.js && node dist/cli.js vmp fixtures && node dist/cli.js vmp contract"
   },
   "keywords": [

@@ -242,6 +242,10 @@ import {
 } from "./core/javaRuntimeAuthoring.js";
 import { JAVA_SEMANTIC_RULE_PACKAGE } from "./core/javaSemanticRegistry.js";
 import {
+  BUILTIN_JAVA_SEMANTIC_RULE_PACKAGES,
+  getBuiltinJavaSemanticRulePackage
+} from "./core/javaSemanticPackages.js";
+import {
   createSemanticRulePackageLock,
   diffSemanticRulePackageLocks,
   evaluateSemanticRulePackage,
@@ -853,22 +857,27 @@ async function commandSemantics(args: ParsedArgs): Promise<void> {
     if (findings.length > 0) process.exitCode = 1;
     return;
   }
-  const pkg = await loadSemanticPackage(args);
   if (action === "list") {
-    const validation = validateSemanticRulePackage(pkg);
-    console.log(JSON.stringify([{
-      id: pkg.id,
-      version: pkg.version,
-      language: pkg.language,
-      mode: pkg.compatibility?.mode ?? "invalid",
-      frameworks: pkg.scope?.frameworks ?? [],
-      projects: pkg.scope?.projects ?? [],
-      ruleCount: validation.ruleCount,
-      packageHash: validation.packageHash,
-      valid: validation.valid
-    }], null, 2));
+    const packages = !stringOption(args, "package") && !stringOption(args, "builtin")
+      ? BUILTIN_JAVA_SEMANTIC_RULE_PACKAGES
+      : [await loadSemanticPackage(args)];
+    console.log(JSON.stringify(packages.map((pkg) => {
+      const validation = validateSemanticRulePackage(pkg);
+      return {
+        id: pkg.id,
+        version: pkg.version,
+        language: pkg.language,
+        mode: pkg.compatibility?.mode ?? "invalid",
+        frameworks: pkg.scope?.frameworks ?? [],
+        projects: pkg.scope?.projects ?? [],
+        ruleCount: validation.ruleCount,
+        packageHash: validation.packageHash,
+        valid: validation.valid
+      };
+    }), null, 2));
     return;
   }
+  const pkg = await loadSemanticPackage(args);
   if (action === "validate") {
     const validation = validateSemanticRulePackage(pkg);
     console.log(JSON.stringify(validation, null, 2));
@@ -918,6 +927,17 @@ function semanticEvaluationPolicy(args: ParsedArgs): SemanticEvaluationPolicy {
 
 async function loadSemanticPackage(args: ParsedArgs): Promise<SemanticRulePackage> {
   const packagePath = stringOption(args, "package");
+  const builtinId = stringOption(args, "builtin");
+  if (packagePath && builtinId) {
+    throw new Error("Choose either --package or --builtin, not both.");
+  }
+  if (builtinId) {
+    const builtin = getBuiltinJavaSemanticRulePackage(builtinId);
+    if (!builtin) {
+      throw new Error(`Unknown built-in semantic package: ${builtinId}.`);
+    }
+    return builtin;
+  }
   if (!packagePath) return JAVA_SEMANTIC_RULE_PACKAGE;
   const value = await readJsonFile<unknown>(path.resolve(packagePath));
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -3051,11 +3071,11 @@ Usage:
   migration-guard vmp fixtures [--input <json>]
   migration-guard vmp evidence --input <evidence.json>
   migration-guard vmp contract [--root <path>]
-  migration-guard semantics list [--package <semantic-package.json>]
-  migration-guard semantics validate [--package <semantic-package.json>]
+  migration-guard semantics list [--builtin <package-id>|--package <semantic-package.json>]
+  migration-guard semantics validate [--builtin <package-id>|--package <semantic-package.json>]
   migration-guard semantics coverage --graph <behavior-graph.json> [--output <report.json>]
-  migration-guard semantics evaluate (--analysis <java-analysis.json>|--samples <samples.json>|--project <id|case-dir>) [--package <semantic-package.json>] [--min-coverage <0-100>] [--max-conflicts <n>] [--max-mismatches <n>] [--output <report.json>]
-  migration-guard semantics lock [--package <semantic-package.json>] [--output <lock.json>]
+  migration-guard semantics evaluate (--analysis <java-analysis.json>|--samples <samples.json>|--project <id|case-dir>) [--builtin <package-id>|--package <semantic-package.json>] [--min-coverage <0-100>] [--max-conflicts <n>] [--max-mismatches <n>] [--output <report.json>]
+  migration-guard semantics lock [--builtin <package-id>|--package <semantic-package.json>] [--output <lock.json>]
   migration-guard semantics diff --from <lock-or-package.json> --to <lock-or-package.json>
   migration-guard migrate init --project <id> [--source <path>] [--endpoint <path>] [--method POST] [--target-root <path>] [--service-name <name>] [--cases-root <path>] [--force]
   migration-guard migrate analyze (--project <id> [--cases-root <path>]|--case-dir <path>) [--max-depth <n>] [--max-edges <n>] [--include-tests] [--strict]

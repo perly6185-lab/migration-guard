@@ -24,7 +24,7 @@ import {
   type JavaRuntimeEvidenceBundle
 } from "./javaRuntimeEvidence.js";
 import { inspectMigrationFixtures } from "./migrationFixture.js";
-import { JAVA_SEMANTIC_RULE_PACKAGE } from "./javaSemanticRegistry.js";
+import { BUILTIN_JAVA_SEMANTIC_RULE_PACKAGES } from "./javaSemanticPackages.js";
 import {
   createSemanticRulePackageLock,
   type SemanticRulePackageLock
@@ -111,7 +111,7 @@ export async function analyzeMigrationProject(
     sourceIdentity,
     sourceAccess: "read-only",
     adapter: adapter.id,
-    semanticRulePackages: [createSemanticRulePackageLock(JAVA_SEMANTIC_RULE_PACKAGE)],
+    semanticRulePackages: BUILTIN_JAVA_SEMANTIC_RULE_PACKAGES.map(createSemanticRulePackageLock),
     status: entries.every((entry) => entry.status === "ready") ? "ready" : "blocked",
     entries
   };
@@ -178,10 +178,11 @@ export async function evaluateMigrationOfflineGate(caseDir: string): Promise<Mig
       findings.push("MG-OFFLINE-SOURCE-IDENTITY-MISMATCH");
     }
     if (index.semanticRulePackages) {
-      const currentPackage = createSemanticRulePackageLock(JAVA_SEMANTIC_RULE_PACKAGE);
-      const recordedPackage = index.semanticRulePackages.find((item) => item.packageId === currentPackage.packageId);
-      if (!recordedPackage || recordedPackage.packageHash !== currentPackage.packageHash) {
-        findings.push(`MG-OFFLINE-SEMANTIC-PACKAGE-MISMATCH:${currentPackage.packageId}`);
+      for (const currentPackage of BUILTIN_JAVA_SEMANTIC_RULE_PACKAGES.map(createSemanticRulePackageLock)) {
+        const recordedPackage = index.semanticRulePackages.find((item) => item.packageId === currentPackage.packageId);
+        if (!recordedPackage || recordedPackage.packageHash !== currentPackage.packageHash) {
+          findings.push(`MG-OFFLINE-SEMANTIC-PACKAGE-MISMATCH:${currentPackage.packageId}`);
+        }
       }
     }
   }
