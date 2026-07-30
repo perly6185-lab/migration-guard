@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 1,
+  "projectId": "zboss-batch-delete",
+  "projectHash": "9d47c281e6b3bf157450e168d14c7018ccaa518ba960bc3de0b112dc6a58f226",
+  "generatedAt": "2026-07-30T10:58:45.253Z",
+  "controls": {
+    "source.read-only-snapshot": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/source.read-only-snapshot.json",
+          "sha256": "5d3bab330e2b044ae6e2bac004be1c216fc21bde916b6a9f826f7a83e0479617",
+          "controlId": "source.read-only-snapshot",
+          "evidenceKind": "source-snapshot"
+        }
+      ],
+      "note": "Imported from cases/zboss-batch-delete/evidence/gates/offline-gate.json after status and report-hash validation."
+    },
+    "analysis.complete": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/analysis.complete.json",
+          "sha256": "4b15b7b0eb97afb8726896555474f14c2b7e25e3c8d20735abf4422346940612",
+          "controlId": "analysis.complete",
+          "evidenceKind": "analysis-report"
+        }
+      ],
+      "note": "Imported from cases/zboss-batch-delete/evidence/gates/offline-gate.json after status and report-hash validation."
+    },
+    "offline.contract": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/offline.contract.json",
+          "sha256": "19dc03e475316a00a3a2cd926511fbad2ac486dfe0502c554a9310e9f6c91b52",
+          "controlId": "offline.contract",
+          "evidenceKind": "analysis-report"
+        }
+      ],
+      "note": "Imported from cases/zboss-batch-delete/evidence/gates/offline-gate.json after status and report-hash validation."
+    },
+    "implementation.checks": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/implementation.checks.json",
+          "sha256": "a15dbb8aaf20f2c8c6910f38ba79e416137e2b883f4c5576430de72fd95cc226",
+          "controlId": "implementation.checks",
+          "evidenceKind": "test-report"
+        }
+      ],
+      "note": "Imported from artifacts/batch-delete-rust/l3-gate.json after status and report-hash validation."
+    },
+    "scenario.contract": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/scenario.contract.json",
+          "sha256": "c0f9219c0e1354bf8345dbc543868d5c0f392509911b4ff3d38fd43c78cfa851",
+          "controlId": "scenario.contract",
+          "evidenceKind": "test-report"
+        }
+      ],
+      "note": "Imported from artifacts/batch-delete-rust/l3-gate.json after status and report-hash validation."
+    },
+    "dependency.protocol": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/dependency.protocol.json",
+          "sha256": "e2c192e6005d35807124976b8697d73765f27690944b07fc397d4a218953549c",
+          "controlId": "dependency.protocol",
+          "evidenceKind": "container-integration"
+        }
+      ],
+      "note": "Imported from artifacts/batch-delete-rust/container-adapter-gate.json after status and report-hash validation."
+    },
+    "production.adapter.batch-delete-store": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/production.adapter.batch-delete-store.json",
+          "sha256": "6010a3310d7609b0c641e42b52f5d92166a1da4e39c9832eb3fd11e1f0aa794f",
+          "controlId": "production.adapter.batch-delete-store",
+          "evidenceKind": "static-attestation"
+        }
+      ],
+      "note": "Imported from artifacts/batch-delete-rust/l4b-gate.json after status and report-hash validation."
+    },
+    "production.adapter.progress-sink": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/production.adapter.progress-sink.json",
+          "sha256": "b88ac2c69a5d426c56b481f2b9b216d6ac61b2f6d512af4152c1ebead296a45d",
+          "controlId": "production.adapter.progress-sink",
+          "evidenceKind": "static-attestation"
+        }
+      ],
+      "note": "Imported from artifacts/batch-delete-rust/l4b-gate.json after status and report-hash validation."
+    },
+    "production.adapter.compensation-outbox": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/production.adapter.compensation-outbox.json",
+          "sha256": "6d57b11277f35b242766060a13725b7b2fdf50a0f6cd7be7151a62cbbfecb373",
+          "controlId": "production.adapter.compensation-outbox",
+          "evidenceKind": "static-attestation"
+        }
+      ],
+      "note": "Imported from artifacts/batch-delete-rust/l4b-gate.json after status and report-hash validation."
+    },
+    "production.http-service": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/production.http-service.json",
+          "sha256": "e710b3cd31fe64aeeda0c8a2fedadad7d91e36b0820ef14236c15331165dac9f",
+          "controlId": "production.http-service",
+          "evidenceKind": "static-attestation"
+        }
+      ],
+      "note": "Imported from artifacts/batch-delete-rust/l4b-gate.json after status and report-hash validation."
+    },
+    "production.configuration": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/production.configuration.json",
+          "sha256": "bc55b15d4422765261b2090ea1631e4c6bdc817c53ac2ef20b683cdcf7ed1e18",
+          "controlId": "production.configuration",
+          "evidenceKind": "container-integration"
+        }
+      ],
+      "note": "Imported from artifacts/batch-delete-rust/l4b-gate.json after status and report-hash validation."
+    },
+    "production.health-readiness": {
+      "status": "passed",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [
+        {
+          "path": "evidence/completion/production.health-readiness.json",
+          "sha256": "3af8c4f8160b0f8b43dfc05387afdf739aba57adafee11773ddde2a6ee200968",
+          "controlId": "production.health-readiness",
+          "evidenceKind": "container-integration"
+        }
+      ],
+      "note": "Imported from artifacts/batch-delete-rust/l4b-gate.json after status and report-hash validation."
+    },
+    "real.runtime-evidence": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "real.dual-replay": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.unified-real-gate": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.observability": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.canary": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.rollback-rehearsal": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.source-off": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.253Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    }
+  }
+}

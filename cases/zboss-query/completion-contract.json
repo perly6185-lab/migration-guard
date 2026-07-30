@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "projectId": "zboss-query",
+  "controls": [
+    {
+      "id": "source.read-only-snapshot",
+      "level": "L1",
+      "signal": "sourceReadOnlyGuardPassed",
+      "category": "source",
+      "description": "Reference source read-only snapshot is unchanged.",
+      "evidenceKind": "source-snapshot",
+      "maxAgeHours": 168
+    },
+    {
+      "id": "analysis.complete",
+      "level": "L1",
+      "signal": "analysisComplete",
+      "category": "analysis",
+      "description": "All configured entrypoints have complete analysis and replacement plans.",
+      "evidenceKind": "analysis-report",
+      "maxAgeHours": 168
+    },
+    {
+      "id": "offline.contract",
+      "level": "L2",
+      "signal": "offlineContractPassed",
+      "category": "offline",
+      "description": "Offline behavior contract gate passes with fresh lineage.",
+      "evidenceKind": "analysis-report",
+      "maxAgeHours": 168
+    },
+    {
+      "id": "implementation.checks",
+      "level": "L3",
+      "signal": "implementationChecksPassed",
+      "category": "implementation",
+      "description": "Target implementation checks and regression tests pass.",
+      "evidenceKind": "test-report",
+      "maxAgeHours": 168
+    },
+    {
+      "id": "scenario.contract",
+      "level": "L3",
+      "signal": "scenarioContractPassed",
+      "category": "implementation",
+      "description": "Required semantic, fault and concurrency scenarios pass.",
+      "evidenceKind": "test-report",
+      "maxAgeHours": 168
+    },
+    {
+      "id": "dependency.protocol",
+      "level": "L4-A",
+      "signal": "dependencyProtocolChecksPassed",
+      "category": "dependency",
+      "description": "Dependency protocol integration checks pass.",
+      "evidenceKind": "container-integration",
+      "maxAgeHours": 72
+    },
+    {
+      "id": "production.adapter.view-metadata-port",
+      "level": "L4-B",
+      "signal": "concreteAdaptersAttested",
+      "category": "production",
+      "description": "Concrete non-test implementation exists for ViewMetadataPort.",
+      "evidenceKind": "static-attestation",
+      "maxAgeHours": 72
+    },
+    {
+      "id": "production.http-service",
+      "level": "L4-B",
+      "signal": "deployableServiceAttested",
+      "category": "production",
+      "description": "The target starts as a deployable HTTP service with all configured routes.",
+      "evidenceKind": "static-attestation",
+      "maxAgeHours": 72
+    },
+    {
+      "id": "production.configuration",
+      "level": "L4-B",
+      "signal": "deployableServiceAttested",
+      "category": "production",
+      "description": "Startup configuration and secret bindings fail closed.",
+      "evidenceKind": "container-integration",
+      "maxAgeHours": 72
+    },
+    {
+      "id": "production.health-readiness",
+      "level": "L4-B",
+      "signal": "deployableServiceAttested",
+      "category": "operations",
+      "description": "Health and readiness probes traverse required dependencies.",
+      "evidenceKind": "container-integration",
+      "maxAgeHours": 72
+    },
+    {
+      "id": "real.runtime-evidence",
+      "level": "L4-C",
+      "signal": "realEvidencePassed",
+      "category": "real-evidence",
+      "description": "Redacted real-runtime evidence passes semantic validation.",
+      "evidenceKind": "runtime-replay",
+      "maxAgeHours": 24
+    },
+    {
+      "id": "real.dual-replay",
+      "level": "L4-C",
+      "signal": "dualReplayPassed",
+      "category": "real-evidence",
+      "description": "Source and target replay outputs and side effects compare equal.",
+      "evidenceKind": "runtime-replay",
+      "maxAgeHours": 24
+    },
+    {
+      "id": "release.unified-real-gate",
+      "level": "L4",
+      "signal": "unifiedRealGatePassed",
+      "category": "release",
+      "description": "The unified real-environment gate passes with fresh upstream evidence.",
+      "evidenceKind": "runtime-replay",
+      "maxAgeHours": 24
+    },
+    {
+      "id": "release.observability",
+      "level": "L4",
+      "signal": "unifiedRealGatePassed",
+      "category": "operations",
+      "description": "Metrics, logs, traces and correlation identifiers are verified.",
+      "evidenceKind": "operational-drill",
+      "maxAgeHours": 24
+    },
+    {
+      "id": "release.canary",
+      "level": "L4",
+      "signal": "unifiedRealGatePassed",
+      "category": "release",
+      "description": "A bounded canary or shadow rollout is rehearsed.",
+      "evidenceKind": "operational-drill",
+      "maxAgeHours": 24
+    },
+    {
+      "id": "release.rollback-rehearsal",
+      "level": "L4",
+      "signal": "unifiedRealGatePassed",
+      "category": "release",
+      "description": "Rollback restores service and data invariants inside the declared objective.",
+      "evidenceKind": "operational-drill",
+      "maxAgeHours": 24
+    },
+    {
+      "id": "release.source-off",
+      "level": "L4",
+      "signal": "unifiedRealGatePassed",
+      "category": "release",
+      "description": "Source-off behavior and fallback ownership are explicitly verified.",
+      "evidenceKind": "operational-drill",
+      "maxAgeHours": 24
+    }
+  ]
+}

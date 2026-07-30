@@ -1,0 +1,10 @@
+{
+  "reqId": "prp10-refresh",
+  "operator": "REFRESH",
+  "usePageId": 7,
+  "panelId": 8,
+  "fieldId": 3,
+  "pageNo": 1,
+  "pageSize": 20,
+  "skipSavePageSize": true
+}

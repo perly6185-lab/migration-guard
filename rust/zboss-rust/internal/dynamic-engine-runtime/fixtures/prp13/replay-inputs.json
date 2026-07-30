@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "stage": "PRP-13",
+  "context": {
+    "tenantId": 11,
+    "userId": 22,
+    "deviceId": "prp13-device",
+    "requestId": "prp13-request",
+    "traceId": "prp13-trace",
+    "datasource": "primary",
+    "snapshotId": "snapshot-prp13"
+  },
+  "metadata": {
+    "version": 1,
+    "pageId": 7,
+    "panelId": 8,
+    "table": "orders",
+    "businessKey": [
+      "customer"
+    ],
+    "fields": [
+      {
+        "key": "customer",
+        "column": "customer",
+        "aggregate": null
+      },
+      {
+        "key": "status",
+        "column": "status",
+        "aggregate": null
+      },
+      {
+        "key": "total",
+        "column": "amount",
+        "aggregate": "SUM"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "caseId": "standard-page",
+      "requestFile": "../scenarios/standard-page.json",
+      "transport": "application",
+      "snapshot": {
+        "tables": {
+          "orders": [
+            {
+              "amount": 20,
+              "customer": "b",
+              "status": "closed"
+            },
+            {
+              "amount": 10,
+              "customer": "a",
+              "status": "open"
+            }
+          ]
+        },
+        "denyPage": false,
+        "childFormFieldId": null,
+        "childHeaders": {}
+      }
+    },
+    {
+      "caseId": "refresh-operator",
+      "requestFile": "../scenarios/refresh-operator.json",
+      "transport": "application",
+      "snapshot": {
+        "tables": {
+          "orders": [
+            {
+              "amount": 30,
+              "customer": "r1",
+              "status": "open"
+            }
+          ]
+        },
+        "denyPage": false,
+        "childFormFieldId": null,
+        "childHeaders": {}
+      }
+    },
+    {
+      "caseId": "child-form-page",
+      "requestFile": "../scenarios/child-form-page.json",
+      "transport": "application",
+      "snapshot": {
+        "tables": {
+          "orders": [
+            {
+              "amount": 41,
+              "customer": "c-closed",
+              "status": "closed"
+            },
+            {
+              "amount": 40,
+              "customer": "c-open",
+              "status": "open"
+            }
+          ]
+        },
+        "denyPage": false,
+        "childFormFieldId": 99,
+        "childHeaders": {
+          "status": "open"
+        }
+      }
+    },
+    {
+      "caseId": "horizontal-page",
+      "requestFile": "../scenarios/horizontal-page.json",
+      "transport": "application",
+      "snapshot": {
+        "tables": {
+          "orders": [
+            {
+              "amount": 5,
+              "customer": "b",
+              "status": "open"
+            },
+            {
+              "amount": 40,
+              "customer": "a",
+              "status": "open"
+            },
+            {
+              "amount": 60,
+              "customer": "a",
+              "status": "closed"
+            }
+          ]
+        },
+        "denyPage": false,
+        "childFormFieldId": null,
+        "childHeaders": {}
+      }
+    },
+    {
+      "caseId": "quality-text-filter",
+      "requestFile": "../scenarios/quality-text-filter.json",
+      "transport": "application",
+      "snapshot": {
+        "tables": {
+          "orders": [
+            {
+              "amount": 51,
+              "customer": "q-closed",
+              "status": "closed"
+            },
+            {
+              "amount": 50,
+              "customer": "q-open",
+              "status": "open"
+            }
+          ]
+        },
+        "denyPage": false,
+        "childFormFieldId": null,
+        "childHeaders": {}
+      }
+    },
+    {
+      "caseId": "upload-preview-page",
+      "requestFile": "../scenarios/upload-preview-page.json",
+      "transport": "application",
+      "snapshot": {
+        "tables": {
+          "orders": [],
+          "tmp_orders_1": [
+            {
+              "amount": 92,
+              "customer": "t2",
+              "status": "preview"
+            },
+            {
+              "amount": 91,
+              "customer": "t1",
+              "status": "preview"
+            }
+          ]
+        },
+        "denyPage": false,
+        "childFormFieldId": null,
+        "childHeaders": {}
+      }
+    },
+    {
+      "caseId": "tenant-auth-context",
+      "requestFile": "../scenarios/tenant-auth-context.json",
+      "transport": "application",
+      "snapshot": {
+        "tables": {
+          "orders": []
+        },
+        "denyPage": true,
+        "childFormFieldId": null,
+        "childHeaders": {}
+      }
+    },
+    {
+      "caseId": "entrypoint-parity",
+      "requestFile": "../scenarios/entrypoint-parity.json",
+      "transport": "http",
+      "snapshot": {
+        "tables": {
+          "orders": [
+            {
+              "amount": 70,
+              "customer": "e1",
+              "status": "open"
+            }
+          ]
+        },
+        "denyPage": false,
+        "childFormFieldId": null,
+        "childHeaders": {}
+      }
+    }
+  ]
+}

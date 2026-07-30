@@ -3,6 +3,10 @@ import { runShellCommand } from "./exec.js";
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
 import type { ReplacementScenario } from "./endpointReplacementModel.js";
+import type { BatchEvidenceInput } from "./vmpBatch.js";
+import type { PageEvidenceInput } from "./pageRuntimeEvidence.js";
+import type { RuntimeCollectorEvidence, RuntimeCollectorKind } from "./runtimeCollectors.js";
+import type { RuntimeCorrelationTrace } from "./runtimeCorrelation.js";
 
 export type EndpointRuntimeOperation = "setup" | "start" | "health" | "seed" | "invoke" | "inject-fault" | "snapshot" | "collect" | "cleanup" | "stop";
 
@@ -15,9 +19,17 @@ export interface EndpointRuntimeDriverConfig {
 }
 
 export interface EndpointRuntimeObservation {
+  protocol?: "migration-guard.runtime-observation/v1";
   scenarioId: string;
   fixtureHash: string;
+  fixtureKind?: "real-runtime";
   dimensions: Partial<Record<ReplacementScenario["requiredDimensions"][number], unknown>>;
+  collectors?: Partial<Record<RuntimeCollectorKind, RuntimeCollectorEvidence>>;
+  correlation?: RuntimeCorrelationTrace;
+  semantics?: {
+    batch?: BatchEvidenceInput;
+    page?: PageEvidenceInput;
+  };
   cleanup: { passed: boolean };
 }
 

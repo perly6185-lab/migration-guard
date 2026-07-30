@@ -1,0 +1,637 @@
+{
+  "version": 1,
+  "generatedAt": "2026-07-30T09:29:37.757Z",
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "b8d74e551d81131615b27a5d710bd9d94f0b9db943409ea47317879065f62f29",
+  "sourceIdentity": {
+    "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+    "dirty": true,
+    "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+    "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+  },
+  "sourceSnapshot": {
+    "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
+    "directories": [
+      "zboss-module-data-api/src/main/java",
+      "zboss-module-data-domain/src/main/java",
+      "zboss-module-data-infrastructure/src/main/java",
+      "zboss-module-data-infrastructure/src/main/resources",
+      "zboss-module-data-service/src/main/java",
+      "zboss-module-data-service/src/main/resources",
+      "zboss-module-data-type/src/main/java"
+    ],
+    "identity": {
+      "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+      "dirty": true,
+      "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+      "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+    },
+    "treeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "fileCount": 7175
+  },
+  "entries": [
+    {
+      "id": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress",
+      "workload": "batch",
+      "requiredCollectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "analysisHash": "a5bcbc82183c240b26f86d919d6ba2b5c09537f5dfa983c928c0228b16a748ee",
+      "planHash": "2285a6e1916f2e924f9d733b95d8389ec8a22a58f5166b2a83f62403c54b9efc",
+      "scenarios": [
+        {
+          "id": "batch-partial-failure",
+          "title": "Mixed valid and invalid rows return partial failure",
+          "category": "validation",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-PARTIAL-COMMIT",
+            "BUP-DEC-PROGRESS-TERMINAL",
+            "BUP-DEC-UNDO-DURABILITY"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-partial-failure.template.json",
+            "hash": "9de9b18522cedeff8ed82e2afb48e64bc00b769f0a5f897cfcfb82e97e3d8977"
+          }
+        },
+        {
+          "id": "batch-row-limit-rejected",
+          "title": "Update row limit and unsupported headers are enforced before effects",
+          "category": "concurrency",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-ROW-LIMIT"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-row-limit-rejected.template.json",
+            "hash": "f47745e8396908d2d3e2044841f5ac6a57a8ace43bc7f3131554a2dd21782685"
+          }
+        },
+        {
+          "id": "batch-update-success",
+          "title": "Normal batch update succeeds",
+          "category": "concurrency",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-PROGRESS-TERMINAL",
+            "BUP-DEC-UNDO-DURABILITY"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-update-success.template.json",
+            "hash": "31cd57ca284b28d9e0b963be5e23ee3f5f2734bad8bd13e18f1ec3ea045919e5"
+          }
+        },
+        {
+          "id": "branch-coverage",
+          "title": "Decision branch coverage",
+          "category": "branch",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/branch-coverage.template.json",
+            "hash": "ea58d5cf2d3caf3bdb1f7d91ad32255c521ddac29b96eae92bbec3bf5543ed22"
+          }
+        },
+        {
+          "id": "chunked-paste-progress",
+          "title": "Chunked paste preserves progress totals",
+          "category": "success",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-CHUNK-IDEMPOTENCY",
+            "BUP-DEC-PROGRESS-TERMINAL"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/chunked-paste-progress.template.json",
+            "hash": "66a42c5daa32b25d5a314961b323423c898f88e2290e9f2a03fe2ceb4f3f097a"
+          }
+        },
+        {
+          "id": "concurrent-write",
+          "title": "Concurrent state mutation",
+          "category": "concurrency",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-BATCH-REFRESH-LEASE"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write.template.json",
+            "hash": "aef5d75ad370569b537ced94bff25761bc831e0cb2e15c46cab5f1f8a576b937"
+          }
+        },
+        {
+          "id": "context-isolation",
+          "title": "Runtime context isolation",
+          "category": "context",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/context-isolation.template.json",
+            "hash": "fc5e4d2b6686dc50acb0bcd451cc324140a30841b959d057f55ad8a10b9d9ddf"
+          }
+        },
+        {
+          "id": "dependency-failure",
+          "title": "External dependency failure",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-PROGRESS-TERMINAL"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/dependency-failure.template.json",
+            "hash": "7484644bba3fa4cf6e9672ddb9dfc14218d24c01e0007a7e2123a1745566117d"
+          }
+        },
+        {
+          "id": "entrypoint-parity",
+          "title": "Parallel entrypoint parity",
+          "category": "compatibility",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/entrypoint-parity.template.json",
+            "hash": "9090651b78b6700993d046ad8ea1e1b953b5b68291c212fae167f6511764ccc1"
+          }
+        },
+        {
+          "id": "horizontal-batch-upsert",
+          "title": "Horizontal batch upsert",
+          "category": "concurrency",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/horizontal-batch-upsert.template.json",
+            "hash": "b0ab350709f27c06442df696e0594caabeb54b2460eab8d3d51d9fdefc66a2ea"
+          }
+        },
+        {
+          "id": "post-commit-effect-failure",
+          "title": "Post-commit effect durability",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-UNDO-DURABILITY"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/post-commit-effect-failure.template.json",
+            "hash": "1f1e57655c5e5f51caf950e3b4cbaf9cc5acaf505763d5b75aae1c23e05983f2"
+          }
+        },
+        {
+          "id": "primary-success",
+          "title": "Primary successful execution",
+          "category": "success",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success.template.json",
+            "hash": "691a20274dad52eb26c98f7359c8a046d7614d011c0b7ecaf46d47adb0203ac7"
+          }
+        },
+        {
+          "id": "progress-event-shape",
+          "title": "Progress event shape",
+          "category": "success",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-PROGRESS-TERMINAL"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/progress-event-shape.template.json",
+            "hash": "c3de81045565c54d0808bd4491cd47a9251589232de8b1b6553eddac32ee72ea"
+          }
+        },
+        {
+          "id": "scale-boundary",
+          "title": "Scale and performance boundary",
+          "category": "scale",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures",
+            "performance"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/scale-boundary.template.json",
+            "hash": "4dc04d71a68403cd946b6727dc1729836a2479ff73b1c8f1f33c2f2d6e37a90c"
+          }
+        },
+        {
+          "id": "schema-transition-failure",
+          "title": "Schema transition failure",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-SCHEMA-TRANSITION"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/schema-transition-failure.template.json",
+            "hash": "f12e697b514b6ecc2faf856ed6e1860a118ff8a190cb4e216cc2f3a4c2c8d201"
+          }
+        },
+        {
+          "id": "transaction-failure",
+          "title": "Transaction failure and rollback",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-PARTIAL-COMMIT",
+            "BUP-DEC-PROGRESS-TERMINAL",
+            "BUP-DEC-UNDO-DURABILITY"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/transaction-failure.template.json",
+            "hash": "bb2d6bcea97c5f587c274e355552c0c110239f7dea87aa47207f84c43dd154a5"
+          }
+        },
+        {
+          "id": "undo-excludes-failed-rows",
+          "title": "Undo snapshot excludes failed rows",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-PARTIAL-COMMIT",
+            "BUP-DEC-UNDO-DURABILITY"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/undo-excludes-failed-rows.template.json",
+            "hash": "99c6e1f8e1b6d6428c8d0b1398ea7b2114afb7e0f86b74d1e4a55bf14adea6d7"
+          }
+        },
+        {
+          "id": "validation-failure",
+          "title": "Validation rejection",
+          "category": "validation",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-PARTIAL-COMMIT"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/validation-failure.template.json",
+            "hash": "a4df551ff9bbf868b83822ab9f28b4a3967c07f97f282b6f3b12abfb6dd5bf53"
+          }
+        },
+        {
+          "id": "web-rpc-entrypoint-parity",
+          "title": "Web/RPC entrypoint parity",
+          "category": "context",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/web-rpc-entrypoint-parity.template.json",
+            "hash": "235538471a111d20446b935e2d87abcb840a71cb0037d3f5dc5d5e0c535a9683"
+          }
+        }
+      ]
+    }
+  ],
+  "requiredEnvironment": [
+    "MG_JAVA_BASE_URL",
+    "MG_JAVA_DATABASE_URL",
+    "MG_JAVA_DEVICE_ID",
+    "MG_JAVA_DRIVER_CLEANUP_COMMAND",
+    "MG_JAVA_DRIVER_COLLECT_COMMAND",
+    "MG_JAVA_DRIVER_HEALTH_COMMAND",
+    "MG_JAVA_DRIVER_INJECT_FAULT_COMMAND",
+    "MG_JAVA_DRIVER_INVOKE_COMMAND",
+    "MG_JAVA_DRIVER_SEED_COMMAND",
+    "MG_JAVA_DRIVER_SETUP_COMMAND",
+    "MG_JAVA_DRIVER_SNAPSHOT_COMMAND",
+    "MG_JAVA_DRIVER_START_COMMAND",
+    "MG_JAVA_DRIVER_STOP_COMMAND",
+    "MG_JAVA_REDIS_URL",
+    "MG_JAVA_REQUEST_ID",
+    "MG_JAVA_TENANT_ID",
+    "MG_JAVA_TOKEN",
+    "MG_JAVA_USER_ID"
+  ],
+  "driverTemplate": {
+    "path": "evidence/runtime/java/driver.template.json",
+    "hash": "4ca971078eea3598d0b9c722f58f3531e57d2f8cdd4d94b3bff69df52393bebf"
+  },
+  "evidenceSchema": {
+    "path": "evidence/runtime/java/runtime-evidence.schema.json",
+    "hash": "62d6b7a751d1ddc4b9d6d43aeab31f49e5058cb496b961a83d638eb2fa9a15d3"
+  },
+  "collectorTemplates": {
+    "events": {
+      "path": "evidence/runtime/java/collectors/events.template.json",
+      "hash": "c173b1701ce2a7ac267fa06ea96defc5e82b803e70909959211e52b36df3caf6"
+    },
+    "mysql": {
+      "path": "evidence/runtime/java/collectors/mysql.template.json",
+      "hash": "41a43d6ef084346cdff7c554ab70034e512daa783acb0f141ead338d1ffc283c"
+    },
+    "redis": {
+      "path": "evidence/runtime/java/collectors/redis.template.json",
+      "hash": "77aa85acb1bf44606e90f0dfd0ce60158cd0f7745abf77df5f8302d3bbba91fd"
+    }
+  },
+  "contractHash": "20e91b7df989f72e367eea751e002bd0c3436f8a758681e15cefb6ac6cce1676"
+}

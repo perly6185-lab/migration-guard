@@ -7,6 +7,15 @@ import test from "node:test";
 import { compareSelfRefactorStructure, createSelfRefactorPromotionHandoff, crossValidateSelfRefactor, evaluateSelfRefactorScope, normalizeSelfRefactorInitContract, rollbackSelfRefactorCheckpoint, runSelfRefactorStep, selfRefactorRunReportHash } from "./selfRefactorExecution.js";
 import { collectSelfRefactorInventory, createSelfRefactorPlan, selfRefactorPlanHash } from "./selfRefactor.js";
 
+async function removeTempTree(root: string): Promise<void> {
+  await rm(root, {
+    recursive: true,
+    force: true,
+    maxRetries: process.platform === "win32" ? 8 : 2,
+    retryDelay: 100
+  });
+}
+
 test("self-refactor promotion requires passing hash-bound cross-validation", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "migration-guard-self-promote-"));
   try {
@@ -25,7 +34,7 @@ test("self-refactor promotion requires passing hash-bound cross-validation", asy
     assert.equal(handoff.publish, "manual");
     assert.match(handoff.outputPath ?? "", /self-refactor-promotion/);
     assert.match(await readFile((handoff.outputPath ?? "").replace(/\.json$/, ".md"), "utf8"), /Publish: manual/);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await removeTempTree(root); }
 });
 
 test("cross-validation hashes are stable evidence inputs", () => {
@@ -75,7 +84,7 @@ test("self-refactor dry-run binds plan, driver and Git checkpoint without runnin
     assert.deepEqual(report.checks, []);
     assert.match(report.checkpoint.patchHash, /^[a-f0-9]{64}$/);
     assert.match(report.checkpoint.gitStatus, /driver\.json/);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await removeTempTree(root); }
 });
 
 test("self-refactor cross-validation installs immutable driver and candidate tarballs", async () => {
@@ -120,7 +129,7 @@ test("self-refactor cross-validation installs immutable driver and candidate tar
     assert.deepEqual(execution.changedPaths, ["src/target.ts"]);
     assert.equal(execution.scope.passed, true);
     assert.equal(execution.structure?.passed, true);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await removeTempTree(root); }
 });
 
 test("self-refactor rollback restores tracked and untracked checkpoint state", async () => {
@@ -156,7 +165,7 @@ test("self-refactor rollback restores tracked and untracked checkpoint state", a
     assert.match(await readFile(path.join(root, "src", "tracked.ts"), "utf8"), /value = 2/);
     assert.match(await readFile(path.join(root, "src", "untracked.ts"), "utf8"), /extra/);
     await assert.rejects(() => readFile(path.join(root, "src", "later.ts"), "utf8"), { code: "ENOENT" });
-  } finally { await rm(root, { recursive: true, force: true }); await rm(evidenceRoot, { recursive: true, force: true }); }
+  } finally { await removeTempTree(root); await removeTempTree(evidenceRoot); }
 });
 
 test("self-refactor scope and structure gates reject out-of-budget drift", () => {
@@ -186,5 +195,5 @@ test("self-refactor run rejects stale inventory and unconfirmed execution", asyn
     await assert.rejects(() => runSelfRefactorStep({ root, artifactsDir: path.join(root, ".artifacts"), planPath, driverEvidencePath: "missing" }), /inventory changed/);
     await writeFile(path.join(root, "src", "target.ts"), "export const value = 1;\n");
     await assert.rejects(() => runSelfRefactorStep({ root, artifactsDir: path.join(root, ".artifacts"), planPath, driverEvidencePath: "missing", execute: true, confirmation: `${selfRefactorPlanHash(plan)}x` }), /reviewed plan hash/);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await removeTempTree(root); }
 });

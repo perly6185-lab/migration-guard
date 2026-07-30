@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "targetRoot": "D:\\learn\\migration-guard\\rust\\zboss-rust\\components\\batch-update",
+  "targetSourceHash": "db71fe5a7929ae155c3ded03876bc09432e41208db44e97c865c1001a04fe209",
+  "deployableService": false,
+  "concreteAdapters": false,
+  "buildVerified": false,
+  "runtimeVerified": false,
+  "productionEligible": false,
+  "evidence": {
+    "rustSourceFiles": 14,
+    "httpRuntimeDetected": false,
+    "routeFragments": {
+      "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress": true
+    },
+    "traitImplementations": {
+      "MysqlBatchExecutor": false,
+      "RedisScriptExecutor": false
+    },
+    "verification": {
+      "required": true,
+      "path": "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\implementation\\production-verification.json",
+      "present": false,
+      "protocolValid": false,
+      "sourceHashMatches": false,
+      "buildLogVerified": false,
+      "runtimeLogVerified": false,
+      "routesExercised": {
+        "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress": false
+      },
+      "referencedFiles": []
+    }
+  },
+  "findings": [
+    "MG-PRODUCTION-PATH-CONCRETE-ADAPTER-MISSING:MysqlBatchExecutor",
+    "MG-PRODUCTION-PATH-CONCRETE-ADAPTER-MISSING:RedisScriptExecutor",
+    "MG-PRODUCTION-PATH-HTTP-RUNTIME-MISSING",
+    "MG-PRODUCTION-PATH-VERIFICATION-EVIDENCE-MISSING"
+  ]
+}

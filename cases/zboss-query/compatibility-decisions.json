@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "decisions": [
+    {
+      "id": "QUERY-DEC-CALENDAR-VIEW-BINDING",
+      "status": "pending",
+      "scope": "usePageId and explicit viewId binding for calendar metadata",
+      "reason": "The query response must prove that viewId 2064662147688243201 belongs to usePageId 2059838047023181826 and represents the calendar view requested by the client."
+    },
+    {
+      "id": "QUERY-DEC-CALENDAR-CACHE-ISOLATION",
+      "status": "pending",
+      "scope": "calendar metadata cache identity and defensive copying",
+      "reason": "Cache keys and returned objects must isolate different viewId values and prevent request-specific status enrichment from mutating shared cached metadata."
+    }
+  ]
+}

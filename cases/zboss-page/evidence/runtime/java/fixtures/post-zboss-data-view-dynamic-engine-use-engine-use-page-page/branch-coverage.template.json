@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "status": "template",
+  "fixtureKind": "template",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-page",
+  "projectHash": "8b6382cf41106314ee91a17f6c38ee77547e8302ed9c58da8f4a157e8a67ad91",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+  "scenarioId": "branch-coverage",
+  "category": "branch",
+  "request": {
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-tenant-id": "<tenant-id>",
+      "authorization": "Bearer <token>"
+    },
+    "body": {
+      "reqId": "<case-id>",
+      "pageNo": 1,
+      "pageSize": 100,
+      "usePageId": "<usePageId>",
+      "pageId": "<pageId>",
+      "panelId": "<panelId>",
+      "interId": "<interId>",
+      "headerValues": {},
+      "postValues": {},
+      "selectValues": {},
+      "orderValues": [],
+      "_scenario": "branch-coverage"
+    }
+  },
+  "requestFocus": [],
+  "expectedComparison": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "collectorSpecs": {
+    "events": {
+      "path": "evidence/runtime/java/collectors/events.template.json",
+      "hash": "c173b1701ce2a7ac267fa06ea96defc5e82b803e70909959211e52b36df3caf6"
+    },
+    "mysql": {
+      "path": "evidence/runtime/java/collectors/mysql.template.json",
+      "hash": "41a43d6ef084346cdff7c554ab70034e512daa783acb0f141ead338d1ffc283c"
+    },
+    "redis": {
+      "path": "evidence/runtime/java/collectors/redis.template.json",
+      "hash": "77aa85acb1bf44606e90f0dfd0ce60158cd0f7745abf77df5f8302d3bbba91fd"
+    },
+    "sql-trace": {
+      "path": "evidence/runtime/java/collectors/sql-trace.template.json",
+      "hash": "ae60f81676bce2da1f19a1069e8e9947100892061ac46c6c51df289f167139bb"
+    }
+  },
+  "expectations": {
+    "page": {
+      "expectedStatus": 200,
+      "requirePagination": true,
+      "preserveRowOrder": true,
+      "requireRefreshTrace": true,
+      "requireRefreshTerminal": true,
+      "requireRefreshLock": true
+    }
+  },
+  "compatibilityDecisionIds": [
+    "PAGE-DEC-REFRESH-EFFECT-ORDER"
+  ],
+  "secrets": {
+    "policy": "environment-only",
+    "persistedValuesAllowed": false
+  }
+}

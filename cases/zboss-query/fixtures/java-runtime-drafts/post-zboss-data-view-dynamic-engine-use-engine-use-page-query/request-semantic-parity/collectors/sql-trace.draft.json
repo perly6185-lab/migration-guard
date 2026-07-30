@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "collector": "sql-trace",
+  "status": "draft",
+  "file": "evidence/runtime/java/sql-traces/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/request-semantic-parity.jsonl",
+  "correlationEnv": "MG_JAVA_REQUEST_ID",
+  "correlationFields": [
+    "requestId",
+    "correlationId"
+  ],
+  "scenarioId": "request-semantic-parity"
+}

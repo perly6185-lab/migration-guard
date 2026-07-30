@@ -311,7 +311,6 @@ test("java endpoint analysis uses batch-command golden cases for batch update en
       "batch-update-success",
       "batch-partial-failure",
       "batch-row-limit-rejected",
-      "batch-insert-header-defaults",
       "horizontal-batch-upsert",
       "chunked-paste-progress",
       "web-rpc-entrypoint-parity",
@@ -447,6 +446,74 @@ test("java endpoint analysis uses sync-command golden cases for refresh sync end
   }
 });
 
+test("java endpoint analysis models update routes as mutation commands and applies command risks", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-mutation-"));
+  try {
+    const sourceDir = path.join(dir, "src", "main", "java", "demo");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "FieldController.java"), [
+      "package demo;",
+      "@RestController",
+      "@RequestMapping(\"/api/fields\")",
+      "public class FieldController {",
+      "  private FieldService fieldService;",
+      "  // @PreAuthorize(\"hasAuthority('field:update')\")",
+      "",
+      "  @PutMapping(\"/update\")",
+      "  public Object update(FieldUpdateReqVO reqVO) {",
+      "    return fieldService.update(reqVO);",
+      "  }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "FieldService.java"), [
+      "package demo;",
+      "public class FieldService {",
+      "  @Transactional",
+      "  public Object update(FieldUpdateReqVO reqVO) {",
+      "    reqVO.setName(generateUniqueName(reqVO.getName()));",
+      "    repository.findByName(reqVO.getName());",
+      "    repository.updateById(reqVO);",
+      "    return reqVO;",
+      "  }",
+      "  private String generateUniqueName(String value) { return value; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "FieldUpdateReqVO.java"), [
+      "package demo;",
+      "public class FieldUpdateReqVO {",
+      "  private Long id;",
+      "  private Long panelId;",
+      "  private String name;",
+      "  private String type;",
+      "  public String getName() { return name; }",
+      "  public void setName(String value) { name = value; }",
+      "}"
+    ].join("\n"));
+
+    const report = await analyzeJavaEndpoint({
+      root: dir,
+      method: "PUT",
+      endpoint: "/api/fields/update",
+      maxDepth: 5
+    });
+    const riskIds = new Set(report.riskSignals.map((signal) => signal.id));
+
+    assert.equal(report.goldenCasePlan.model, "mutation-command");
+    assert.ok(report.goldenCasePlan.cases.some((item) => item.id === "concurrent-write"));
+    assert.equal(report.goldenCasePlan.cases.some((item) => item.id === "standard-page"), false);
+    assert.equal(riskIds.has("refresh-operator-unresolved"), false);
+    assert.equal(riskIds.has("query-side-effects"), false);
+    const detectedRisks = [...riskIds].sort().join(",");
+    assert.equal(riskIds.has("disabled-authorization-guard"), true, detectedRisks);
+    assert.equal(riskIds.has("request-constraint-coverage-unresolved"), true, detectedRisks);
+    assert.equal(riskIds.has("lost-update-guard-unresolved"), true, detectedRisks);
+    assert.equal(riskIds.has("idempotency-ordering-risk"), true, detectedRisks);
+    assert.match(renderJavaEndpointAnalysisReport(report), /Golden case model: mutation-command/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("java endpoint analysis reports endpoint-not-found when no route matches", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-missing-"));
 
@@ -541,6 +608,232 @@ test("java endpoint analysis parses multiline controller signatures and explicit
     const upload = await analyzeJavaEndpoint({ root: dir, endpoint: "/api/files/upload", method: "POST" });
     assert.ok(upload.callGraph.nodes.some((item) => item.id.startsWith("external:") && item.methodName === "upload"));
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("java endpoint analysis resolves local value accessors and project static helpers", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-local-types-"));
+  try {
+    const sourceDir = path.join(dir, "src", "main", "java", "demo");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "LocalTypeController.java"), [
+      "package demo;",
+      "@RestController",
+      "public class LocalTypeController {",
+      " @GetMapping(\"/local-types\")",
+      " public String read() {",
+      "  View view = new View(\" value \");",
+      "  return Helpers.normalize(view.name());",
+      " }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "View.java"), "package demo; public record View(String name) {}\n");
+    await writeFile(path.join(sourceDir, "Helpers.java"), [
+      "package demo;",
+      "public final class Helpers {",
+      " public static String normalize(String value) { return value.trim(); }",
+      "}"
+    ].join("\n"));
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/local-types" });
+    assert.ok(report.callGraph.nodes.some((node) => node.className === "Helpers" && node.methodName === "normalize"));
+    assert.ok(report.callGraph.nodes.some((node) =>
+      node.kind === "dto"
+      && node.className === "View"
+      && node.methodName === "name"
+      && node.signature?.includes("[generated-value-accessor]")
+    ));
+    assert.equal(report.callGraph.edges.some((edge) => edge.unresolvedTarget === "view.name" && edge.resolution === "unresolved"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("java endpoint analysis honors explicit type imports over duplicate simple names", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-imports-"));
+  try {
+    const appDir = path.join(dir, "src", "main", "java", "app");
+    const preferredDir = path.join(dir, "src", "main", "java", "preferred");
+    const legacyDir = path.join(dir, "src", "main", "java", "legacy");
+    await mkdir(appDir, { recursive: true });
+    await mkdir(preferredDir, { recursive: true });
+    await mkdir(legacyDir, { recursive: true });
+    await writeFile(path.join(appDir, "ImportController.java"), [
+      "package app;",
+      "import preferred.DateFormatUtils;",
+      "import external.StrUtil;",
+      "@RestController",
+      "public class ImportController {",
+      " @GetMapping(\"/imports\")",
+      " public String read() {",
+      "  Object raw = \"2026-07\";",
+      "  return StrUtil.blankToDefault(DateFormatUtils.parseMonth(raw == null ? null : raw.toString()), \"\");",
+      " }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(preferredDir, "DateFormatUtils.java"), [
+      "package preferred;",
+      "public final class DateFormatUtils {",
+      " public static String parseMonth(String value) { return value; }",
+      " public static String parseMonth(Object value) { return value.toString(); }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(legacyDir, "DateFormatUtils.java"), [
+      "package legacy;",
+      "public final class DateFormatUtils {",
+      " public static String parseMonth(String value) { return value; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(legacyDir, "StrUtil.java"), [
+      "package legacy;",
+      "public final class StrUtil {",
+      " public static String blankToDefault(String value, String fallback) { return value; }",
+      "}"
+    ].join("\n"));
+
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/imports" });
+    const dateEdge = report.callGraph.edges.find((edge) => edge.call.method === "parseMonth");
+    const strEdge = report.callGraph.edges.find((edge) => edge.call.method === "blankToDefault");
+    assert.equal(dateEdge?.resolution, "field-injection");
+    assert.match(dateEdge?.to ?? "", /^preferred\.DateFormatUtils\.parseMonth:/);
+    assert.equal(strEdge?.resolution, "static-or-external");
+    assert.equal(report.callGraph.edges.some((edge) => edge.resolution === "ambiguous" || edge.resolution === "unresolved"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("java endpoint analysis prefers a duplicate qualified type from the caller module", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-module-local-"));
+  try {
+    const moduleA = path.join(dir, "module-a", "src", "main", "java", "shared");
+    const moduleB = path.join(dir, "module-b", "src", "main", "java", "shared");
+    await mkdir(moduleA, { recursive: true });
+    await mkdir(moduleB, { recursive: true });
+    await writeFile(path.join(moduleA, "DeepCopy.java"), [
+      "package shared;",
+      "public final class DeepCopy {",
+      " public static Object copy(Object value) { return value; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(moduleB, "DeepCopy.java"), [
+      "package shared;",
+      "public final class DeepCopy {",
+      "",
+      " public static Object copy(Object value) { return value; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(moduleB, "CopyController.java"), [
+      "package shared;",
+      "@RestController",
+      "public class CopyController {",
+      " @GetMapping(\"/copy\")",
+      " public Object read(Object value) { return DeepCopy.copy(value); }",
+      "}"
+    ].join("\n"));
+
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/copy" });
+    const edge = report.callGraph.edges.find((candidate) => candidate.call.method === "copy");
+    const target = report.callGraph.nodes.find((candidate) => candidate.id === edge?.to);
+    assert.equal(edge?.resolution, "field-injection");
+    assert.match(target?.file ?? "", /^module-b\//);
+    assert.equal(report.callGraph.edges.some((candidate) => candidate.resolution === "ambiguous"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("java endpoint analysis recognizes commented multiline record accessors", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-record-comments-"));
+  try {
+    const sourceDir = path.join(dir, "src", "main", "java", "demo");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "RecordController.java"), [
+      "package demo;",
+      "@RestController",
+      "public class RecordController {",
+      " @GetMapping(\"/record-comments\")",
+      " public String read() {",
+      "  Container.FieldMeta field = new Container.FieldMeta(\"name\", \"text\");",
+      "  UpdatePlan plan = new UpdatePlan(\"name\");",
+      "  plan.toBuilder();",
+      "  return field.fieldFormatTag();",
+      " }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "Container.java"), [
+      "package demo;",
+      "public final class Container {",
+      " public record FieldMeta(",
+      "   String field,",
+      "   // The format controls downstream comparison semantics.",
+      "   String fieldFormatTag",
+      " ) {}",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "FieldMeta.java"), [
+      "package demo;",
+      "public class FieldMeta {",
+      " private String unrelated;",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "UpdatePlan.java"), [
+      "package demo;",
+      "@lombok.Value",
+      "@lombok.Builder(toBuilder = true)",
+      "public class UpdatePlan {",
+      " String name;",
+      "}"
+    ].join("\n"));
+
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/record-comments" });
+    const edge = report.callGraph.edges.find((candidate) => candidate.call.method === "fieldFormatTag");
+    const builderEdge = report.callGraph.edges.find((candidate) => candidate.call.method === "toBuilder");
+    assert.equal(edge?.resolution, "static-or-external");
+    assert.match(edge?.to ?? "", /^external:/);
+    assert.equal(builderEdge?.resolution, "static-or-external");
+    assert.equal(report.callGraph.edges.some((candidate) => candidate.resolution === "unresolved"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("java endpoint analysis uses enum method return types to resolve overloads", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-enum-overload-"));
+  try {
+    const sourceDir = path.join(dir, "src", "main", "java", "demo");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "EnumController.java"), [
+      "package demo;",
+      "import jakarta.annotation.Resource;",
+      "@RestController",
+      "public class EnumController {",
+      " @Resource",
+      " private CatalogService catalogService;",
+      " @GetMapping(\"/enum-overload\")",
+      " public Object read() { return catalogService.find(Category.PRIMARY.getCode()); }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "CatalogService.java"), [
+      "package demo;",
+      "public class CatalogService {",
+      " public Object find(Integer code) { return code; }",
+      " public Object find(java.util.List<String> names) { return names; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "Category.java"), [
+      "package demo;",
+      "public enum Category {",
+      " PRIMARY;",
+      " public Integer getCode() { return 1; }",
+      "}"
+    ].join("\n"));
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/enum-overload" });
+    const edge = report.callGraph.edges.find((candidate) => candidate.call.receiver === "catalogService" && candidate.call.method === "find");
+    assert.equal(edge?.resolution, "field-injection");
+    assert.deepEqual(edge?.call.argumentTypes, ["Integer"]);
+    assert.ok(edge?.to?.includes("CatalogService.find"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("java endpoint analysis reports edge-cap truncation and honors max-edges", async () => {

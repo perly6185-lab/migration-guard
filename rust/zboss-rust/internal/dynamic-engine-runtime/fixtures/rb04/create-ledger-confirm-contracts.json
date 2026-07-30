@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "stage": "RB-04",
+  "contractKind": "offline-source-derived-create-ledger-confirm",
+  "liveDestructiveFaultInjectionPerformed": false,
+  "sourceSemantics": {
+    "confirmIdempotencyKeyPresent": false,
+    "ordinaryFailureCleanupPolicy": "mark-failed-without-created-page-cleanup",
+    "cancelCleanupPolicy": "best-effort-cleanup-before-mark-cancelled",
+    "cleanupRegistryPolicy": "clear-all-registrations-after-best-effort-loop"
+  },
+  "cases": [
+    {
+      "caseId": "submit-failure-before-resource",
+      "category": "failure-residue",
+      "scenario": "submitFailure",
+      "requirement": "A job submission failure leaves a FAILED batch but no page residue.",
+      "expected": {
+        "batchStatuses": ["FAILED"],
+        "confirmAttempts": 1,
+        "confirmInvocations": 1,
+        "resourceCount": 0,
+        "registrationCount": 0,
+        "cleanupAttempts": 0,
+        "cleanupSuccesses": 0,
+        "registryClearCalls": 0,
+        "residualResources": [],
+        "events": [
+          "batch.create",
+          "job.submit-failed",
+          "batch.mark-failed"
+        ]
+      }
+    },
+    {
+      "caseId": "ordinary-failure-after-page-registration",
+      "category": "failure-residue",
+      "scenario": "ordinaryFailureAfterPage",
+      "requirement": "An ordinary execution failure after page registration marks FAILED without invoking page cleanup.",
+      "expected": {
+        "batchStatuses": ["FAILED"],
+        "confirmAttempts": 1,
+        "confirmInvocations": 1,
+        "resourceCount": 1,
+        "registrationCount": 1,
+        "cleanupAttempts": 0,
+        "cleanupSuccesses": 0,
+        "registryClearCalls": 0,
+        "residualResources": ["page-a"],
+        "events": [
+          "batch.create",
+          "page.create:page-a",
+          "page.register:page-a",
+          "batch.execution-failed",
+          "batch.mark-failed"
+        ]
+      }
+    },
+    {
+      "caseId": "cancel-after-page-registration",
+      "category": "compensation",
+      "scenario": "cancelAfterPage",
+      "requirement": "Cancellation compensates registered pages before the CANCELLED terminal state.",
+      "expected": {
+        "batchStatuses": ["CANCELLED"],
+        "confirmAttempts": 1,
+        "confirmInvocations": 1,
+        "resourceCount": 0,
+        "registrationCount": 0,
+        "cleanupAttempts": 1,
+        "cleanupSuccesses": 1,
+        "registryClearCalls": 1,
+        "residualResources": [],
+        "events": [
+          "batch.create",
+          "page.create:page-a",
+          "page.register:page-a",
+          "cancel.observed",
+          "cleanup.attempt:page-a",
+          "cleanup.success:page-a",
+          "cleanup.registry-clear",
+          "batch.mark-cancelled"
+        ]
+      }
+    },
+    {
+      "caseId": "cancel-cleanup-partial-failure",
+      "category": "compensation",
+      "scenario": "cancelCleanupPartialFailure",
+      "requirement": "Best-effort cancellation continues after one recycle failure, clears registrations and may leave an orphan resource.",
+      "expected": {
+        "batchStatuses": ["CANCELLED"],
+        "confirmAttempts": 1,
+        "confirmInvocations": 1,
+        "resourceCount": 1,
+        "registrationCount": 0,
+        "cleanupAttempts": 2,
+        "cleanupSuccesses": 1,
+        "registryClearCalls": 1,
+        "residualResources": ["page-a"],
+        "events": [
+          "batch.create",
+          "page.create:page-a",
+          "page.register:page-a",
+          "page.create:page-b",
+          "page.register:page-b",
+          "cancel.observed",
+          "cleanup.attempt:page-a",
+          "cleanup.failed:page-a",
+          "cleanup.attempt:page-b",
+          "cleanup.success:page-b",
+          "cleanup.registry-clear",
+          "batch.mark-cancelled"
+        ]
+      }
+    },
+    {
+      "caseId": "legacy-duplicate-confirm",
+      "category": "duplicate-submit",
+      "scenario": "legacyDuplicate",
+      "requirement": "Without an external guard, two confirms with the same fingerprint create two successful batches.",
+      "expected": {
+        "batchStatuses": ["SUCCESS", "SUCCESS"],
+        "confirmAttempts": 2,
+        "confirmInvocations": 2,
+        "resourceCount": 2,
+        "registrationCount": 2,
+        "cleanupAttempts": 0,
+        "cleanupSuccesses": 0,
+        "registryClearCalls": 0,
+        "residualResources": ["page-a", "page-b"],
+        "events": [
+          "batch.create",
+          "page.create:page-a",
+          "page.register:page-a",
+          "batch.mark-success",
+          "batch.create",
+          "page.create:page-b",
+          "page.register:page-b",
+          "batch.mark-success"
+        ]
+      }
+    },
+    {
+      "caseId": "guarded-duplicate-confirm",
+      "category": "duplicate-submit",
+      "scenario": "guardedDuplicate",
+      "requirement": "The migration guard detects an existing successful fingerprint before invoking confirm again.",
+      "expected": {
+        "batchStatuses": ["SUCCESS"],
+        "confirmAttempts": 2,
+        "confirmInvocations": 1,
+        "resourceCount": 1,
+        "registrationCount": 1,
+        "cleanupAttempts": 0,
+        "cleanupSuccesses": 0,
+        "registryClearCalls": 0,
+        "residualResources": ["page-a"],
+        "events": [
+          "batch.create",
+          "page.create:page-a",
+          "page.register:page-a",
+          "batch.mark-success",
+          "guard.duplicate-success-detected"
+        ]
+      }
+    }
+  ]
+}

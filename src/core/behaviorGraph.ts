@@ -3,6 +3,8 @@ import { stableStringify } from "./normalize.js";
 import type { JavaEndpointAnalysisReport, JavaEndpointCallGraphNode, JavaSqlSourceInfo } from "./javaEndpointAnalysis.js";
 import type {
   BehaviorGraph,
+  BehaviorClassificationCoverage,
+  BehaviorClassificationSource,
   BehaviorKind,
   BehaviorNode,
   ContextRequirement,
@@ -13,7 +15,7 @@ import type {
   DataContractRequirement,
   StateRequirement
 } from "./endpointReplacementModel.js";
-import { classifyJavaSemantic } from "./javaSemanticRegistry.js";
+import { classifyJavaSemanticPackagesWithTrace } from "./javaSemanticPackages.js";
 
 const CONTEXT_SIGNALS: Array<[RegExp, string, string]> = [
   [/tenant/i, "tenant", "tenant context"],
@@ -24,11 +26,35 @@ const CONTEXT_SIGNALS: Array<[RegExp, string, string]> = [
   [/locale|timezone/i, "locale", "locale/timezone context"]
 ];
 
-export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport): BehaviorGraph {
+export interface BehaviorClassificationRule {
+  id: string;
+  symbolPattern: string;
+  behavior: BehaviorKind;
+  reason: string;
+}
+
+interface BehaviorClassificationResult {
+  kind: BehaviorKind;
+  reasons: string[];
+  source: BehaviorClassificationSource;
+  strength: "authoritative" | "heuristic" | "inferred" | "unresolved";
+  ruleId?: string;
+  ruleOrigin?: "generic-builtin" | "reviewed-compatibility" | "project";
+  packageId?: string;
+  packageVersion?: string;
+}
+
+export function createBehaviorGraphFromJava(
+  report: JavaEndpointAnalysisReport,
+  projectRules: BehaviorClassificationRule[] = [],
+  semanticPackageIds?: string[]
+): BehaviorGraph {
   if (!report.selectedRoute) throw new Error("A selected Java route is required to create a behavior graph.");
   const entryId = report.callGraph.nodes.find((node) => node.route?.path === report.endpoint.path)?.id
     ?? report.callGraph.nodes[0]?.id;
-  const nodes = report.callGraph.nodes.map((node) => classifyNode(node, node.id === entryId));
+  const nodes = report.callGraph.nodes.map((node) =>
+    classifyNode(node, node.id === entryId, projectRules, semanticPackageIds)
+  );
   const edges = report.callGraph.edges.map((edge) => ({
     from: edge.from,
     to: edge.to,
@@ -46,6 +72,7 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
   const truncation = report.callGraph.truncation;
   const sqlSources = report.sqlSources ?? [];
   const missingSqlContracts = new Set(sqlSources.flatMap((source) => source.ownershipEvidence?.missingContracts ?? []));
+  const classificationCoverage = createBehaviorClassificationCoverage(nodes);
   const findings = [
     ...(truncation.edgeCapHit ? ["RP-GRAPH-EDGE-CAP"] : []),
     ...(truncation.depthCapHit ? ["RP-GRAPH-DEPTH-CAP"] : []),
@@ -65,7 +92,8 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
       && report.callGraph.nodes.some((node) => node.role === "mapper" && node.signature?.includes("[abstract-declaration]") && !sqlSources.some((source) => source.ownerClassName === node.className && source.ownerMethodName === node.methodName))
       ? ["RP-REPOSITORY-GENERATED-IMPLEMENTATION"]
       : []),
-    ...(sqlSources.some((source) => source.source === "provider") ? ["RP-SQL-PROVIDER-SOURCE"] : [])
+    ...(sqlSources.some((source) => source.source === "provider") ? ["RP-SQL-PROVIDER-SOURCE"] : []),
+    ...(classificationCoverage.highRiskUnknownNodeIds.length > 0 ? ["RP-GRAPH-HIGH-RISK-UNCLASSIFIED"] : [])
   ];
   const workload = inferWorkload(report, nodes);
   const base = {
@@ -89,7 +117,8 @@ export function createBehaviorGraphFromJava(report: JavaEndpointAnalysisReport):
       unresolvedEdges,
       unexpandedNodes: [...truncation.unexpandedBoundaryNodes].sort(),
       findings
-    }
+    },
+    classificationCoverage
   };
   return { ...base, graphHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
 }
@@ -108,7 +137,10 @@ const REVIEWED_EQUIVALENT_TRANSACTION_SELF_CALLS = new Set([
   "AiEmpowerConfigBizServiceImpl.saveAiEmpowerConfig -> AiEmpowerConfigBizServiceImpl.deleteByFieldId"
 ]);
 
-export function findRiskyTransactionSelfInvocations(report: JavaEndpointAnalysisReport): TransactionSelfInvocationEvidence[] {
+export function findRiskyTransactionSelfInvocations(
+  report: JavaEndpointAnalysisReport,
+  options: { equivalentTransactions?: "all" | "reviewed-only" } = {}
+): TransactionSelfInvocationEvidence[] {
   const nodesById = new Map(report.callGraph.nodes.map((node) => [node.id, node]));
   const findings: TransactionSelfInvocationEvidence[] = [];
   for (const edge of report.callGraph.edges) {
@@ -118,15 +150,20 @@ export function findRiskyTransactionSelfInvocations(report: JavaEndpointAnalysis
     if (!target || !targetTransaction) continue;
     const source = nodesById.get(edge.from);
     const sourceTransaction = transactionAnnotation(source);
-    if (sourceTransaction === "@Transactional" && targetTransaction === "@Transactional") continue;
-    const reason = /REQUIRES_NEW/.test(targetTransaction)
+    const requiresNew = /REQUIRES_NEW/.test(targetTransaction);
+    const sourceSymbol = source ? `${source.className}.${source.methodName}` : edge.from;
+    const targetSymbol = `${target.className}.${target.methodName}`;
+    const sameTransactionAttributes = sourceTransaction === targetTransaction;
+    const equivalent = !requiresNew && sameTransactionAttributes;
+    const reviewedEquivalent = sameTransactionAttributes
+      && REVIEWED_EQUIVALENT_TRANSACTION_SELF_CALLS.has(`${sourceSymbol} -> ${targetSymbol}`);
+    if (reviewedEquivalent
+      || (equivalent && options.equivalentTransactions !== "reviewed-only")) continue;
+    const reason = requiresNew
       ? "requires-new-boundary-bypassed" as const
       : sourceTransaction
         ? "transaction-attributes-bypassed" as const
         : "transaction-boundary-bypassed" as const;
-    const sourceSymbol = source ? `${source.className}.${source.methodName}` : edge.from;
-    const targetSymbol = `${target.className}.${target.methodName}`;
-    if (REVIEWED_EQUIVALENT_TRANSACTION_SELF_CALLS.has(`${sourceSymbol} -> ${targetSymbol}`)) continue;
     findings.push({
       edge: `${sourceSymbol} -> ${targetSymbol}`,
       source: sourceSymbol,
@@ -174,9 +211,24 @@ export function deriveReplacementContracts(graph: BehaviorGraph, report?: JavaEn
   };
 }
 
-function classifyNode(node: JavaEndpointCallGraphNode, entry: boolean): BehaviorNode {
+function classifyNode(
+  node: JavaEndpointCallGraphNode,
+  entry: boolean,
+  projectRules: BehaviorClassificationRule[],
+  semanticPackageIds?: string[]
+): BehaviorNode {
   const text = `${node.className}.${node.methodName} ${node.file} ${node.signature ?? ""}`;
-  const [kind, reasons] = entry ? ["entrypoint" as const, ["selected endpoint entry"]] : classifyBehavior(text, node.role ?? node.kind);
+  const result = entry
+    ? {
+      kind: "entrypoint" as const,
+      reasons: ["selected endpoint entry"],
+      source: "entrypoint" as const,
+      strength: "authoritative" as const,
+      ruleId: "selected-endpoint"
+    }
+    : classifyBehavior(text, node.role ?? node.kind, projectRules, semanticPackageIds);
+  const { kind, reasons } = result;
+  const highRisk = isHighRiskBehavior(kind) || isPotentialHighRiskSource(node);
   const stateful = ["state-read", "state-write", "transaction", "compensation", "coordination"].includes(kind);
   const sideEffecting = ["state-write", "external-call", "transaction", "event-publish", "compensation", "observability", "clock-read", "coordination", "async-boundary"].includes(kind);
   return {
@@ -188,33 +240,204 @@ function classifyNode(node: JavaEndpointCallGraphNode, entry: boolean): Behavior
     stateful,
     sideEffecting,
     confidence: kind === "unknown" ? "low" : reasons.length > 1 ? "high" : "medium",
-    reasons
+    reasons,
+    classification: {
+      source: result.source,
+      strength: result.strength,
+      explainable: result.source !== "unresolved",
+      highRisk,
+      ruleId: result.ruleId,
+      ruleOrigin: result.ruleOrigin,
+      packageId: result.packageId,
+      packageVersion: result.packageVersion
+    }
   };
 }
 
-function classifyBehavior(text: string, sourceKind: string): [BehaviorKind, string[]] {
-  const semantic = classifyJavaSemantic(text);
-  if (semantic) return [semantic.kind, [semantic.reason, `registry ${semantic.id}`]];
-  const rules: Array<[BehaviorKind, RegExp, string]> = [
-    ["compensation", /undo|rollback|reconcile|compensat|restore/i, "compensation semantics"],
-    ["transaction", /transaction|commit|unitofwork/i, "transaction boundary"],
-    ["event-publish", /publish|emit|event|progress|notify/i, "event publication"],
-    ["validation", /validat|assert|check|required|unique|permission/i, "validation or policy check"],
-    ["context-resolution", /tenant|security|auth|datasource|requestcontext|webframework|device|locale|SecurityFramework/i, "runtime context access"],
-    ["external-call", /client|\bapi\.|gateway|adapter|storage|fileApi|http|rpc/i, "external service boundary"],
-    ["state-write", /\bddl\b|create\s+table|alter\s+table|drop\s+table|truncate\s+table/i, "database schema mutation"],
-    ["state-write", /insert|save|create|update|delete|remove|clear|write|upsert|persist|record|set|lock|acquire|cancel|terminate|submit|enable|disable|approve|reject|archive/i, "state mutation"],
-    ["state-read", /select|query|find|get|list|load|read|count|exists|rowNum|(^|\.)page(?:\b|[A-Z])/i, "state lookup"],
-    ["external-call", /repository|mapper|cache|upload|download|file/i, "external or infrastructure boundary"],
-    ["decision", /(^|\.)(is|has|should|can|allow|resolve)[A-Z_]/, "branch decision"],
-    ["calculation", /calculate|compute|derive|convert|assemble|build|map|normalize|fill|evaluate|copyProperties|BeanUtils|CommonResult|success|\.init[A-Z].*(?:DO|VO|BO|DTO|Req|Resp)/i, "deterministic transformation"]
+function classifyBehavior(
+  text: string,
+  sourceKind: string,
+  projectRules: BehaviorClassificationRule[],
+  semanticPackageIds?: string[]
+): BehaviorClassificationResult {
+  for (const rule of projectRules) {
+    if (new RegExp(rule.symbolPattern).test(text)) {
+      return {
+        kind: rule.behavior,
+        reasons: [rule.reason, `project semantic rule ${rule.id}`],
+        source: "project-rule",
+        strength: "authoritative",
+        ruleId: rule.id,
+        ruleOrigin: "project",
+        packageId: "migration-project-semantic-rules",
+        packageVersion: "1"
+      };
+    }
+  }
+  const semantic = classifyJavaSemanticPackagesWithTrace(text, semanticPackageIds);
+  if (semantic) {
+    return {
+      kind: semantic.rule.kind,
+      reasons: [semantic.rule.reason, `registry ${semantic.rule.id}`],
+      source: "semantic-package",
+      strength: "authoritative",
+      ruleId: semantic.ruleId,
+      ruleOrigin: semantic.origin,
+      packageId: semantic.packageId,
+      packageVersion: semantic.packageVersion
+    };
+  }
+  const rules: Array<[string, BehaviorKind, RegExp, string]> = [
+    ["decision-keyword", "decision", /(^|\.)(?:is|has|should|can|allow|resolve|filter|match)[A-Z_]|filterConditions|predicate/i, "branch decision"],
+    ["calculation-keyword", "calculation", /calculate|compute|derive|convert|assemble|build|map|normalize|fill|evaluate|copyProperties|BeanUtils|CommonResult|success|(^|\.)to[A-Z]|\.init[A-Z].*(?:DO|VO|BO|DTO|Req|Resp)/i, "deterministic transformation"]
   ];
-  for (const [kind, pattern, reason] of rules) if (pattern.test(text)) return [kind, [reason, `source kind ${sourceKind}`]];
-  if (sourceKind === "assembler" || sourceKind === "mapper" || sourceKind === "support") return ["calculation", [`${sourceKind} role`, "role inference"]];
-  if (sourceKind === "policy") return ["decision", ["policy role", "role inference"]];
-  if (sourceKind === "coordinator") return ["coordination", ["coordination role", "role inference"]];
-  if (sourceKind === "adapter" || sourceKind === "infrastructure-client") return ["external-call", [`${sourceKind} role`, "role inference"]];
-  return ["unknown", [`unclassified source kind ${sourceKind}`]];
+  for (const [ruleId, kind, pattern, reason] of rules) {
+    if (pattern.test(text)) {
+      return {
+        kind,
+        reasons: [reason, `source kind ${sourceKind}`],
+        source: "generic-heuristic",
+        strength: "heuristic",
+        ruleId
+      };
+    }
+  }
+  if (sourceKind === "assembler" || sourceKind === "mapper" || sourceKind === "support") {
+    return roleClassification("calculation", sourceKind, `${sourceKind} role`);
+  }
+  if (sourceKind === "policy") return roleClassification("decision", sourceKind, "policy role");
+  if (sourceKind === "coordinator") return roleClassification("coordination", sourceKind, "coordination role");
+  if (sourceKind === "adapter" || sourceKind === "infrastructure-client") {
+    return roleClassification("external-call", sourceKind, `${sourceKind} role`);
+  }
+  return {
+    kind: "unknown",
+    reasons: [`unclassified source kind ${sourceKind}`],
+    source: "unresolved",
+    strength: "unresolved"
+  };
+}
+
+function roleClassification(kind: BehaviorKind, sourceKind: string, reason: string): BehaviorClassificationResult {
+  return {
+    kind,
+    reasons: [reason, "role inference"],
+    source: "role-inference",
+    strength: "inferred",
+    ruleId: `role-${sourceKind}`
+  };
+}
+
+export function createBehaviorClassificationCoverage(nodes: BehaviorNode[]): BehaviorClassificationCoverage {
+  const highRisk = nodes.filter((node) => node.classification?.highRisk);
+  const explainable = nodes.filter((node) => node.classification?.explainable);
+  const authoritative = nodes.filter((node) => node.classification?.strength === "authoritative");
+  const highRiskExplainable = highRisk.filter((node) => node.classification?.explainable);
+  const highRiskAuthoritative = highRisk.filter((node) => node.classification?.strength === "authoritative");
+  return {
+    version: 1,
+    totalNodes: nodes.length,
+    explainableNodes: explainable.length,
+    explainablePercent: coveragePercent(explainable.length, nodes.length),
+    authoritativeNodes: authoritative.length,
+    authoritativePercent: coveragePercent(authoritative.length, nodes.length),
+    highRiskNodes: highRisk.length,
+    highRiskExplainableNodes: highRiskExplainable.length,
+    highRiskExplainablePercent: coveragePercent(highRiskExplainable.length, highRisk.length),
+    highRiskAuthoritativeNodes: highRiskAuthoritative.length,
+    highRiskAuthoritativePercent: coveragePercent(highRiskAuthoritative.length, highRisk.length),
+    unknownNodeIds: nodes.filter((node) => node.kind === "unknown").map((node) => node.id).sort(),
+    highRiskUnknownNodeIds: highRisk
+      .filter((node) => !node.classification?.explainable)
+      .map((node) => node.id)
+      .sort(),
+    bySource: summarizeClassification(nodes, (node) => node.classification?.source ?? "unresolved")
+      .map(([source, values]) => ({ source: source as BehaviorClassificationSource, ...values })),
+    byStrength: summarizeClassification(nodes, (node) => node.classification?.strength ?? "unresolved")
+      .map(([strength, values]) => ({
+        strength: strength as "authoritative" | "heuristic" | "inferred" | "unresolved",
+        ...values
+      })),
+    byBehavior: summarizeClassification(nodes, (node) => node.kind)
+      .map(([behavior, values]) => ({ behavior: behavior as BehaviorKind, ...values })),
+    byPackage: summarizePackages(nodes),
+    bySourceKind: summarizeSourceKinds(nodes)
+  };
+}
+
+function summarizeClassification(
+  nodes: BehaviorNode[],
+  keyOf: (node: BehaviorNode) => string
+): Array<[string, { nodes: number; highRiskNodes: number }]> {
+  const values = new Map<string, { nodes: number; highRiskNodes: number }>();
+  for (const node of nodes) {
+    const key = keyOf(node);
+    const current = values.get(key) ?? { nodes: 0, highRiskNodes: 0 };
+    current.nodes += 1;
+    if (node.classification?.highRisk) current.highRiskNodes += 1;
+    values.set(key, current);
+  }
+  return [...values.entries()].sort(([left], [right]) => left.localeCompare(right));
+}
+
+function summarizeSourceKinds(nodes: BehaviorNode[]): BehaviorClassificationCoverage["bySourceKind"] {
+  const values = new Map<string, { nodes: number; highRiskNodes: number; unknownNodes: number }>();
+  for (const node of nodes) {
+    const current = values.get(node.sourceKind) ?? { nodes: 0, highRiskNodes: 0, unknownNodes: 0 };
+    current.nodes += 1;
+    if (node.classification?.highRisk) current.highRiskNodes += 1;
+    if (node.kind === "unknown") current.unknownNodes += 1;
+    values.set(node.sourceKind, current);
+  }
+  return [...values.entries()]
+    .map(([sourceKind, counts]) => ({ sourceKind, ...counts }))
+    .sort((a, b) => a.sourceKind.localeCompare(b.sourceKind));
+}
+
+function summarizePackages(nodes: BehaviorNode[]): BehaviorClassificationCoverage["byPackage"] {
+  const packages = new Map<string, BehaviorNode[]>();
+  for (const node of nodes) {
+    const classification = node.classification;
+    if (classification?.source !== "semantic-package" || !classification.packageId) continue;
+    const values = packages.get(classification.packageId) ?? [];
+    values.push(node);
+    packages.set(classification.packageId, values);
+  }
+  return [...packages.entries()]
+    .map(([packageId, packageNodes]) => ({
+      packageId,
+      packageVersion: packageNodes[0]?.classification?.packageVersion ?? "unknown",
+      nodes: packageNodes.length,
+      highRiskNodes: packageNodes.filter((node) => node.classification?.highRisk).length,
+      ruleHits: summarizeClassification(packageNodes, (node) => node.classification?.ruleId ?? "unknown")
+        .map(([ruleId, values]) => ({ ruleId, ...values }))
+    }))
+    .sort((left, right) => left.packageId.localeCompare(right.packageId));
+}
+
+function isHighRiskBehavior(kind: BehaviorKind): boolean {
+  return [
+    "context-resolution",
+    "state-write",
+    "external-call",
+    "transaction",
+    "event-publish",
+    "compensation",
+    "clock-read",
+    "coordination",
+    "async-boundary"
+  ].includes(kind);
+}
+
+function isPotentialHighRiskSource(node: JavaEndpointCallGraphNode): boolean {
+  if (node.kind === "repository" || node.kind === "mapper") return true;
+  if (["adapter", "infrastructure-client", "coordinator"].includes(node.role ?? "")) return true;
+  return /(?:Client|Gateway|Repository|Mapper|Publisher|Producer|Consumer|Scheduler|Executor|Cache|Lock|Transaction)/i
+    .test(`${node.className}.${node.methodName}`);
+}
+
+function coveragePercent(numerator: number, denominator: number): number {
+  return denominator === 0 ? 100 : Number((numerator * 100 / denominator).toFixed(2));
 }
 
 function inferWorkload(report: JavaEndpointAnalysisReport, nodes: BehaviorNode[]): EndpointWorkloadKind {
@@ -227,8 +450,13 @@ function inferWorkload(report: JavaEndpointAnalysisReport, nodes: BehaviorNode[]
   if (/cancel|enable|disable|archive|restore/i.test(entry) && nodes.some((node) => node.sideEffecting)) return "idempotent-command";
   if (report.goldenCasePlan.model === "batch-command") return "batch";
   if (report.goldenCasePlan.model === "sync-command") return "sync";
+  if (report.goldenCasePlan.model === "mutation-command") return "command";
   if (report.goldenCasePlan.model === "page-query") {
     const mutations = nodes.filter((node) => node.kind === "state-write" || node.kind === "transaction").length;
+    const queryEntrypoint = `${report.endpoint.path} ${entry}`;
+    if (mutations > 0 && /(?:^|[\/._\s-])(?:page|list|search|query|find|select|get)(?:$|[\/._\sA-Z-])/i.test(queryEntrypoint)) {
+      return "query-with-effects";
+    }
     if (nodes.some((node) => node.kind === "compensation") || mutations / Math.max(1, nodes.length) >= 0.2) return "command";
     if (mutations > 0) return "query-with-effects";
     return "query";
@@ -353,10 +581,12 @@ function resourceFor(node: BehaviorNode): string {
 function effectKindFor(node: BehaviorNode): EffectRequirement["kind"] {
   const text = `${node.evidence.symbol} ${node.evidence.file}`;
   if (/undo/i.test(text)) return "undo";
+  if (node.kind === "compensation") return "undo";
   if (node.kind === "clock-read") return "clock";
   if (node.kind === "observability") return "audit";
   if (node.kind === "coordination") return /cache|redis/i.test(text) ? "cache" : "lock";
   if (node.kind === "async-boundary") return "event";
+  if (node.kind === "event-publish") return "event";
   if (/event|publish|progress|notify/i.test(text)) return "event";
   if (/cache|redis/i.test(text)) return "cache";
   if (/lock|lease|registry/i.test(text)) return "lock";

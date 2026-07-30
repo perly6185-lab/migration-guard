@@ -1,0 +1,81 @@
+{
+  "scopes": [
+    {
+      "tenantId": 1,
+      "datasource": "primary",
+      "snapshotId": "replace-with-reviewed-snapshot-id",
+      "allowedUserIds": [
+        1
+      ],
+      "pages": [
+        {
+          "requestIds": [
+            2059838047023181826,
+            2059838046687637506
+          ],
+          "metadata": {
+            "version": 1,
+            "pageId": 2059838046687637506,
+            "panelId": 2059838046666665986,
+            "table": "replace_with_reviewed_business_table",
+            "businessKey": [
+              "replace_with_reviewed_business_key"
+            ],
+            "fields": [
+              {
+                "key": "custField59623",
+                "column": "replace_with_reviewed_physical_column",
+                "aggregate": null
+              }
+            ]
+          }
+        }
+      ],
+      "views": [
+        {
+          "usePageId": 2059838047023181826,
+          "viewId": 2064662147688243201,
+          "pageId": 2059838046687637506,
+          "panelId": 2059838046666665986,
+          "interId": 2059838045928468482,
+          "httpId": 2059838047035764738,
+          "viewType": "replace-with-runtime-observed-calendar-type",
+          "panelRespKeys": [],
+          "data": {}
+        }
+      ],
+      "fields": [
+        {
+          "id": 2064558100025122818,
+          "panelId": 2059838046666665986,
+          "usePageId": 2059838047023181826,
+          "name": "replace-with-reviewed-field-name",
+          "field": "custField59623",
+          "tableScriptField": "replace_with_reviewed_physical_column",
+          "fieldTypeValue": "text",
+          "fieldTagInnerKey": "text",
+          "panelRespKey": "replace-with-reviewed-panel-response-key",
+          "deleteBehavior": "remove",
+          "fieldTagCss": "#606266",
+          "fieldBackgroundColor": "#fff",
+          "fontColorConditions": [],
+          "backgroundColorConditions": []
+        }
+      ],
+      "horizontals": [
+        {
+          "horizontalId": 2069983536167243777,
+          "table": "replace_with_reviewed_horizontal_table",
+          "fields": {
+            "custField59623": "replace_with_reviewed_physical_column",
+            "custField60040_0": "replace_with_reviewed_physical_column",
+            "custField60040_0|custField59627": "replace_with_reviewed_physical_column"
+          },
+          "archivedField": null
+        }
+      ],
+      "childFormHeaders": {},
+      "ownedTemporaryTables": []
+    }
+  ]
+}

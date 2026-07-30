@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "status": "accepted-as-real-confirm-observation",
+  "fixtureKind": "real-runtime-mutation-observation",
+  "realEvidenceEligible": true,
+  "temporaryPageFixtureEligible": false,
+  "scenarioId": "create-ledger-import-confirm",
+  "provenance": "user-provided-confirm-request-and-existing-success-batch",
+  "request": {
+    "method": "POST",
+    "path": "/zboss/data/view-dynamic-use-group-data/create-ledger-import/confirm",
+    "analyzeTokenExternalBinding": true,
+    "analyzeTokenPersisted": false,
+    "sheetName": "新建空表",
+    "customName": "新建空表",
+    "columnOverrides": [
+      {
+        "colIndex": 0,
+        "fieldTagInnerKey": "text",
+        "fieldTypeValue": "text",
+        "ignored": false,
+        "groupPath": []
+      },
+      {
+        "colIndex": 1,
+        "fieldTagInnerKey": "int",
+        "fieldTypeValue": "int",
+        "ignored": false,
+        "groupPath": []
+      }
+    ]
+  },
+  "observedContract": {
+    "existingBatchDetectedBeforeSubmit": true,
+    "duplicateConfirmInvoked": false,
+    "batchStatus": "SUCCESS",
+    "currentPhase": "FINISHED",
+    "progressPercent": 100,
+    "sheetCount": 1,
+    "sourceRowsIncludingHeader": 4,
+    "insertedRows": 3,
+    "errorRows": 0,
+    "createdPage": true,
+    "createdUsePage": true,
+    "createdPanel": true,
+    "createdFieldCount": 2,
+    "physicalTableRowCount": 3
+  },
+  "semanticBoundary": {
+    "confirmHasIdempotencyKey": false,
+    "cancelCompensatesCreatedPages": true,
+    "ordinaryFailureCompensatesCreatedPages": false,
+    "temporaryPageCoverage": false
+  },
+  "evidence": {
+    "path": "artifacts/page-rust/real-create-ledger-confirm.json",
+    "reportHash": "43876022a9b31c3a941cc1d265f87e8abcc8bd7f385e8ae1a7eefa4026396b0e"
+  },
+  "promotionBlockers": [
+    "a controlled failed confirm is still required to verify real failure residue and compensation behavior",
+    "the legacy /page uploadTmpTableName branch remains uncovered"
+  ]
+}

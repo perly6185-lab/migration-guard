@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "projectId": "zboss-horizontal-list",
+  "projectHash": "ccebc5b0388bec3efe075a37afe3ae05b6ab1908295dd2cc8f3d2086a80f8714",
+  "variables": [
+    {
+      "name": "MG_JAVA_BASE_URL",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DATABASE_URL",
+      "required": true,
+      "sensitive": true,
+      "purpose": "database"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_CLEANUP_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_COLLECT_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_HEALTH_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_INJECT_FAULT_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_INVOKE_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_SEED_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_SETUP_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_SNAPSHOT_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_START_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_STOP_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_REDIS_URL",
+      "required": true,
+      "sensitive": true,
+      "purpose": "redis"
+    },
+    {
+      "name": "MG_JAVA_REQUEST_ID",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_TENANT_ID",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_TOKEN",
+      "required": true,
+      "sensitive": true,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_USER_ID",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    }
+  ],
+  "contractHash": "48b6483e0dd66c03b5c13a896cbdb0d2a82ee9bf9485dddf26b127513351294b"
+}

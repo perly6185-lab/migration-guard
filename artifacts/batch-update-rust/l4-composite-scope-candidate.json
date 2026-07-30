@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-update-l4-composite-scope",
+  "observedAt": "2026-07-29",
+  "source": {
+    "gatewayBaseUrl": "https://test.ia-gz.com/admin-api",
+    "queryRoute": "/zboss/data/view/dynamic/engine/use/engine-use-page/query",
+    "pageRoute": "/zboss/data/view/dynamic/engine/use/engine-use-page/page",
+    "confirmSyncRoute": "/zboss/data/view/dynamic-use-group-data/confirm-sync",
+    "routesInvoked": false,
+    "queryMode": "read-only MySQL metadata through the approved test-server bridge"
+  },
+  "binding": {
+    "tenantId": "2059823220968001539",
+    "usePageId": "2059838082205003777",
+    "pageId": "2059838081877848066",
+    "panelId": "2059838081856876546",
+    "interId": "2059838081038987266",
+    "httpId": "2059838082217586690",
+    "operationalId": "2059838081898819585",
+    "physicalTable": "cust_table6311",
+    "allFiveRequestIdsConsistent": true,
+    "httpPanelAndInterConsistent": true
+  },
+  "requestShape": {
+    "pageNo": 1,
+    "pageSize": 1000,
+    "showArchived": false,
+    "requestedDataFieldCount": 15,
+    "resolvedDataFieldCount": 15,
+    "requestedVirtualGroupCount": 3,
+    "resolvedVirtualGroupCount": 3
+  },
+  "childForm": {
+    "parentFieldId": "2064520806866022401",
+    "parentFieldCode": "custField60052",
+    "childUsePageId": "2059838047023181826",
+    "childPageId": "2059838046687637506",
+    "childPanelId": "2059838046666665986",
+    "childPhysicalTable": "cust_table6300",
+    "childFieldCount": 52
+  },
+  "physicalShape": {
+    "parentEstimatedRows": 7445,
+    "childEstimatedRows": 22747,
+    "parentPrimaryKeyFieldConfigured": false
+  },
+  "confirmSync": {
+    "isMutation": true,
+    "defaultUpdateMode": "INCREMENTAL",
+    "executionOrder": [
+      "distributed lock and running-task gate",
+      "pipeline stage",
+      "relation stage",
+      "split stage",
+      "derived-field refresh",
+      "WebSocket terminal result",
+      "lock release"
+    ],
+    "configuredStages": {
+      "pipeline": {
+        "present": true,
+        "active": false,
+        "deleted": true
+      },
+      "relation": {
+        "present": true,
+        "active": true,
+        "deleted": false,
+        "sourceUsePageId": "2059838047023181826",
+        "targetUsePageId": "2059838082205003777"
+      },
+      "split": {
+        "present": false,
+        "active": false
+      }
+    }
+  },
+  "classification": {
+    "compositeReadContractCandidate": true,
+    "childFormSemanticCandidate": true,
+    "confirmSyncSemanticCandidate": true,
+    "batchWriteFixtureCandidate": false,
+    "reason": "The scope contains existing monthly-attendance and employee-attendance data. confirm-sync has an active relation stage that can mutate the 7,445-row target and trigger derived-field refreshes.",
+    "permittedNow": [
+      "metadata discovery",
+      "authenticated read-only query/page replay after a dedicated token is bound",
+      "request and response shape comparison"
+    ],
+    "stillBlocked": [
+      "confirm-sync invocation",
+      "batch update invocation",
+      "fixture seeding",
+      "fault injection",
+      "cleanup mutation",
+      "promotion to real write-runtime evidence"
+    ]
+  },
+  "decision": "COMPOSITE-READ-SCOPE-READY-WRITE-GATE-BLOCKED"
+}

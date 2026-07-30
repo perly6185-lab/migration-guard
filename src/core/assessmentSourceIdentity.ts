@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { runShellCommand } from "./exec.js";
 import { sha256 } from "./hash.js";
@@ -11,11 +11,15 @@ export interface AssessmentSourceIdentity {
 }
 
 export async function captureAssessmentSourceIdentity(root: string): Promise<AssessmentSourceIdentity> {
+  const gitRoot = await findGitRoot(root);
+  const git = gitRoot
+    ? `git -c safe.directory=${JSON.stringify(gitRoot.replaceAll("\\", "/"))}`
+    : "git";
   const [head, status, trackedDiff, untracked] = await Promise.all([
-    runShellCommand("git rev-parse --verify HEAD", { cwd: root, timeoutMs: 5000, maxOutputBytes: 4096 }),
-    runShellCommand("git status --short --untracked-files=all", { cwd: root, timeoutMs: 15000, maxOutputBytes: 4 * 1024 * 1024 }),
-    runShellCommand("git diff --binary --no-ext-diff HEAD --", { cwd: root, timeoutMs: 30000, maxOutputBytes: 64 * 1024 * 1024 }),
-    runShellCommand("git ls-files --others --exclude-standard -z", { cwd: root, timeoutMs: 15000, maxOutputBytes: 4 * 1024 * 1024 })
+    runShellCommand(`${git} rev-parse --verify HEAD`, { cwd: root, timeoutMs: 15000, maxOutputBytes: 4096 }),
+    runShellCommand(`${git} status --short --untracked-files=all`, { cwd: root, timeoutMs: 15000, maxOutputBytes: 4 * 1024 * 1024 }),
+    runShellCommand(`${git} diff --binary --no-ext-diff HEAD --`, { cwd: root, timeoutMs: 30000, maxOutputBytes: 64 * 1024 * 1024 }),
+    runShellCommand(`${git} ls-files --others --exclude-standard -z`, { cwd: root, timeoutMs: 15000, maxOutputBytes: 4 * 1024 * 1024 })
   ]);
   const revision = head.exitCode === 0 && head.stdout.trim() ? head.stdout.trim() : "unversioned";
   const normalizedStatus = revision === "unversioned" ? "" : status.exitCode === 0 ? normalizeAssessmentGitStatus(status.stdout) : `status-unavailable:${status.error ?? status.stderr}`;
@@ -32,6 +36,20 @@ export async function captureAssessmentSourceIdentity(root: string): Promise<Ass
     : "";
   const dirtyFingerprint = sha256(fingerprintPayload);
   return { revision, dirty, dirtyFingerprint, identity: dirty ? `${revision}+dirty:${dirtyFingerprint.slice(0, 12)}` : revision };
+}
+
+async function findGitRoot(root: string): Promise<string | undefined> {
+  let current = path.resolve(root);
+  while (true) {
+    try {
+      await access(path.join(current, ".git"));
+      return current;
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return undefined;
+      current = parent;
+    }
+  }
 }
 
 export function normalizeAssessmentGitStatus(value: string): string {

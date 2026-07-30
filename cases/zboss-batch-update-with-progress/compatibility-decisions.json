@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "decisions": [
+    {
+      "id": "BUP-DEC-ROW-LIMIT",
+      "status": "approved",
+      "scope": "batchUpdateWithProgress request.batchPostValueList; batchHeaderValueList is unsupported",
+      "reason": "Approved correction: allow at most 10000 write rows in batchPostValueList, reject a non-empty batchHeaderValueList on this update endpoint, and perform validation before progress, coordination, database or undo effects.",
+      "resolvesFindings": [
+        "RP-COMMAND-REQUEST-CONSTRAINTS-UNRESOLVED"
+      ],
+      "approvedBy": "user",
+      "approvedAt": "2026-07-27T22:23:55.6116723+08:00"
+    },
+    {
+      "id": "BUP-DEC-PARTIAL-COMMIT",
+      "status": "approved",
+      "scope": "precheck, worker transactions, response.failedRows",
+      "reason": "Approved contract: each row is atomic but the batch supports partial success; every requested row must be classified as committed or failed, all failures must be returned, and downstream effects derive only from the committed row set.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-27T22:23:55.6116723+08:00"
+    },
+    {
+      "id": "BUP-DEC-CHUNK-IDEMPOTENCY",
+      "status": "approved",
+      "scope": "tenant + clientSessionId + chunkNo + requestHash",
+      "reason": "Approved correction: persist chunk decisions by tenant, clientSessionId and chunkNo; replay the stored result for the same request hash, reject hash conflicts and missing or out-of-order chunks before effects, and replay the stored terminal result for final-chunk retries.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-27T22:23:55.6116723+08:00"
+    },
+    {
+      "id": "BUP-DEC-BATCH-REFRESH-LEASE",
+      "status": "approved",
+      "scope": "tenant + panel batch/refresh coordination",
+      "reason": "Approved correction: use a distributed tenant-and-panel reader/writer lease where batch owners may share and refresh is exclusive; acquisition, renewal, expiry and release require owner tokens and atomic owner checks.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-27T22:23:55.6116723+08:00"
+    },
+    {
+      "id": "BUP-DEC-UNDO-DURABILITY",
+      "status": "approved",
+      "scope": "committed rows + undo snapshots",
+      "reason": "Approved correction: a successful row commit must atomically persist an idempotent undo intent; an outbox consumer may materialize the snapshot asynchronously, failed rows are excluded, and permanent undo failure must be observable rather than silently logged.",
+      "resolvesFindings": [
+        "RP-COMMAND-AFTER-COMMIT-DURABILITY"
+      ],
+      "approvedBy": "user",
+      "approvedAt": "2026-07-27T22:23:55.6116723+08:00"
+    },
+    {
+      "id": "BUP-DEC-PROGRESS-TERMINAL",
+      "status": "approved",
+      "scope": "batch and chunk progress event stream",
+      "reason": "Approved contract: counters are monotonic and conserved across committed and failed rows; the batch has exactly one logical SUCCESS, PARTIAL_FAILED or FAILED transition after row commits and durable undo intents, while transport retries reuse the same event identity and sequence.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-27T22:23:55.6116723+08:00"
+    },
+    {
+      "id": "BUP-DEC-SCHEMA-TRANSITION",
+      "status": "approved",
+      "scope": "dynamic table creation or alteration reached from batchUpdateWithProgress",
+      "reason": "Approved correction: batch processing invokes an isolated schema-transition service for structured create-table or add-column operations, guarded by a tenant-and-panel owner-token lease and a durable request-hash idempotency ledger; row processing resumes only after durable transition success, while DDL failure remains observable and retryable with recovery evidence.",
+      "resolvesFindings": [
+        "RP-COMMAND-TRANSACTIONAL-DDL"
+      ],
+      "approvedBy": "user",
+      "approvedAt": "2026-07-29T14:49:16.3215885+08:00"
+    }
+  ]
+}

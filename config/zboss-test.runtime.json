@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "environment": "zboss-test",
+  "topology": {
+    "gatewayBaseUrl": "https://test.ia-gz.com/admin-api",
+    "serviceHost": "10.10.10.177",
+    "directDataServiceBaseUrl": "http://127.0.0.1:21081/admin-api",
+    "deploymentArtifact": "/data/zbossServer/zbossModuleServer/zboss-module-data-service.jar",
+    "mysql": {
+      "host": "10.10.10.14",
+      "port": 3306,
+      "database": "zz_boss_test"
+    },
+    "redis": {
+      "host": "10.10.10.14",
+      "port": 6379,
+      "database": 1
+    }
+  },
+  "fixtures": {
+    "calendar": {
+      "usePageId": "2059838047023181826",
+      "viewId": "2064662147688243201",
+      "interId": "2059838045928468482",
+      "panelId": "2059838046666665986",
+      "pageId": "2059838046687637506",
+      "httpId": "2059838047035764738"
+    },
+    "horizontalList": {
+      "horizontalId": "2069983536167243777",
+      "interId": "2059838045928468482",
+      "panelId": "2059838046666665986",
+      "pageId": "2059838046687637506",
+      "httpId": "2059838047035764738"
+    }
+  },
+  "credentialStore": {
+    "provider": "windows-dpapi-current-user",
+    "path": ".secrets/zboss-test.dpapi.json",
+    "bindings": [
+      {
+        "key": "javaTenantId",
+        "environment": "MG_JAVA_TENANT_ID"
+      },
+      {
+        "key": "loginUsername",
+        "environment": "MG_LOGIN_USERNAME"
+      },
+      {
+        "key": "loginPassword",
+        "environment": "MG_LOGIN_PASSWORD"
+      },
+      {
+        "key": "mysqlUsername",
+        "environment": "MG_MYSQL_USERNAME"
+      },
+      {
+        "key": "mysqlPassword",
+        "environment": "MG_MYSQL_PASSWORD"
+      }
+    ]
+  },
+  "safety": {
+    "persistAccessToken": false,
+    "persistRawResponses": false,
+    "queryMutationApprovalStored": false,
+    "refreshMutationApprovalStored": false
+  }
+}

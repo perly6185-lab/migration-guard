@@ -1,0 +1,10 @@
+{
+  "reqId": "prp10-horizontal",
+  "usePageId": 7,
+  "pageNo": 1,
+  "pageSize": 1,
+  "horizontalValues": {
+    "total": true
+  },
+  "skipSavePageSize": true
+}

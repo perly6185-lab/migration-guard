@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "status": "accepted-as-upload-analysis-only",
+  "fixtureKind": "real-runtime-upload-candidate",
+  "realEvidenceEligible": true,
+  "temporaryPageFixtureEligible": false,
+  "scenarioId": "create-ledger-import-analyze",
+  "provenance": "user-provided-file-and-request",
+  "request": {
+    "method": "POST",
+    "path": "/zboss/data/view-dynamic-use-group-data/create-ledger-import/analyze",
+    "contentType": "multipart/form-data",
+    "parts": {
+      "file": {
+        "externalBinding": true,
+        "fileName": "addBlankTemplate.xlsx",
+        "sizeBytes": 9056,
+        "sha256": "1d298711e2ec60c67a5b69662c5d0711a2bd6f59ea3f7eea3d0fc7f7bc520714",
+        "binaryPersistedInRepository": false
+      },
+      "menuIdHash": "5e1b2d259759e0e0db316344ff1177b17cae5b95ec35b0566fb1c0bc7d56b225",
+      "updateSupport": true
+    }
+  },
+  "observedContract": {
+    "httpStatus": 200,
+    "businessCode": 0,
+    "sheetCount": 1,
+    "totalRows": 4,
+    "totalColumns": 2,
+    "analyzeSessionReadback": true,
+    "confirmImportInvoked": false
+  },
+  "sideEffectScope": {
+    "sourceFileSaved": true,
+    "redisAnalyzeSessionCreated": true,
+    "redisSessionTtlHours": 2,
+    "mysqlTemporaryTableAttributable": false,
+    "serverSourceFileRetention": "unknown"
+  },
+  "evidence": {
+    "path": "artifacts/page-rust/real-create-ledger-analyze.json",
+    "reportHash": "397e8773601bf11c845652f8a7c1c2e9183c5e93999839df19baf2168567cfef"
+  },
+  "promotionBlockers": [
+    "analyze does not return uploadTmpTableName or uploadTmpFlag",
+    "the /page temporary-table branch needs an old upload-preview request",
+    "server-side stored-file retention/cleanup policy is not exposed by this endpoint"
+  ]
+}

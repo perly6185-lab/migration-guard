@@ -11,6 +11,7 @@ import { findRiskyTransactionSelfInvocations } from "./behaviorGraph.js";
 import type { BehaviorGraph, EndpointWorkloadKind } from "./endpointReplacementModel.js";
 import { captureAssessmentSourceIdentity, type AssessmentSourceIdentity } from "./assessmentSourceIdentity.js";
 import { classifyUnclassifiedBoundary, type UnclassifiedBoundaryCategory } from "./serviceRustAssessment.js";
+import { inventoryJavaProtocolEntrypoints, type JavaProtocolInventoryReport } from "./javaProtocolInventory.js";
 
 export interface ControllerRustAssessmentOptions {
   root: string;
@@ -215,12 +216,14 @@ export interface ControllerRustAssessmentReport {
   truncationInventory: ControllerTruncationInventoryItem[];
   highFanoutInventory: ControllerHighFanoutInventoryItem[];
   truncationRouteClusters: ControllerTruncationRouteCluster[];
+  protocolInventory: JavaProtocolInventoryReport;
   reportHash: string;
 }
 
 export async function assessJavaControllersForRust(options: ControllerRustAssessmentOptions): Promise<ControllerRustAssessmentReport> {
   const analyzer = await createJavaEndpointAnalyzer(options.root, Boolean(options.includeTests));
   const sourceIdentity = await captureAssessmentSourceIdentity(analyzer.root);
+  const protocolInventory = await inventoryJavaProtocolEntrypoints(analyzer.root, Boolean(options.includeTests));
   const routes = analyzer.routes.slice(0, positiveLimit(options.limit, analyzer.routes.length));
   const startedAt = Date.now();
   const methods = routes.map((route, index): ControllerMethodAssessment => {
@@ -235,16 +238,17 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       routeElapsedMs: 0,
       cache: analyzer.cacheStats()
     });
-    const expansion = options.adaptive ? analyzer.analyzeAdaptive({
-      endpoint: route.path,
-      method: route.method,
+    const expansion = options.adaptive ? analyzer.analyzeRouteAdaptive(route, {
       initialDepth: options.maxDepth,
       initialEdges: options.maxEdges,
       maxDepth: options.maxExpansionDepth,
       maxEdges: options.maxExpansionEdges,
       maxRounds: options.maxExpansionRounds
     }) : undefined;
-    const source = expansion?.report ?? analyzer.analyze({ endpoint: route.path, method: route.method, maxDepth: options.maxDepth, maxEdges: options.maxEdges });
+    const source = expansion?.report ?? analyzer.analyzeRoute(route, {
+      maxDepth: options.maxDepth,
+      maxEdges: options.maxEdges
+    });
     const { graph, plan } = createEndpointReplacementPlanFromJava(source);
     const depths = nodeDepths(graph);
     const unclassifiedBoundaries = graph.nodes.filter((node) => node.kind === "unknown").map((node): ControllerUnclassifiedBoundaryOccurrence => ({
@@ -266,7 +270,14 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       candidates: [...(edge.resolutionCandidates ?? [])].sort(compareCandidates)
     })).sort(compareAmbiguousOccurrences);
     const truncation = createTruncationDiagnostic(source);
-    const transactionSelfInvocations = findRiskyTransactionSelfInvocations(source);
+    const transactionSelfInvocations = findRiskyTransactionSelfInvocations(source, {
+      equivalentTransactions: "reviewed-only"
+    });
+    const findings = [...new Set([
+      ...plan.findings,
+      ...(transactionSelfInvocations.length ? ["RP-GRAPH-TRANSACTION-SELF-INVOCATION"] : []),
+      ...(expansion?.status === "budget-exhausted" ? ["RP-GRAPH-EXPANSION-BUDGET-EXHAUSTED"] : [])
+    ])];
     const result: ControllerMethodAssessment = {
       method: route.method,
       path: route.path,
@@ -274,7 +285,7 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       line: route.line,
       handler: `${route.className}.${route.methodName}`,
       workload: graph.workload,
-      status: plan.status,
+      status: findings.length ? "blocked" : plan.status,
       nodes: graph.nodes.length,
       edges: graph.edges.length,
       externalBoundaries: graph.nodes.filter((node) => node.id.startsWith("external:")).length,
@@ -282,7 +293,7 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
       unclassifiedBoundaries,
       ambiguousCalls,
       truncation,
-      findings: [...plan.findings, ...(expansion?.status === "budget-exhausted" ? ["RP-GRAPH-EXPANSION-BUDGET-EXHAUSTED"] : [])],
+      findings,
       expansionStatus: expansion?.status,
       expansionTopology: expansion?.topology,
       expansionRounds: expansion?.rounds.length,
@@ -363,7 +374,8 @@ export async function assessJavaControllersForRust(options: ControllerRustAssess
     ambiguousCallInventory,
     truncationInventory,
     highFanoutInventory,
-    truncationRouteClusters
+    truncationRouteClusters,
+    protocolInventory
   };
   return { ...base, reportHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
 }
@@ -377,6 +389,10 @@ export function renderControllerRustAssessment(report: ControllerRustAssessmentR
     `- Ready: ${report.summary.ready}`,
     `- Blocked: ${report.summary.blocked}`,
     `- Report hash: ${report.reportHash}`, "",
+    "## Protocol entrypoint inventory", "",
+    `- Total: ${report.protocolInventory.summary.total}`,
+    `- Files: ${report.protocolInventory.summary.files}`,
+    ...Object.entries(report.protocolInventory.summary.kinds).map(([kind, count]) => `- ${kind}: ${count}`), "",
     "## Expansion topologies", "",
     ...Object.entries(report.summary.expansionTopologies).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([topology, count]) => `- ${topology}: ${count}`), "",
     "## Transaction self-invocation evidence", "",

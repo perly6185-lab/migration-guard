@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "status": "draft",
+  "fixtureKind": "draft-runtime",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-query",
+  "projectHash": "095dd6f04ff48f99de1e0985d3214c8326d9d1338c005c5567b3ace819676d59",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+  "scenarioId": "query-effect-atomicity",
+  "category": "fault",
+  "request": {
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-tenant-id": "<tenant-id>"
+    },
+    "body": {
+      "reqId": "<case-id>",
+      "pageNo": 1,
+      "pageSize": 100,
+      "usePageId": "<usePageId>",
+      "pageId": "<pageId>",
+      "panelId": "<panelId>",
+      "interId": "<interId>",
+      "headerValues": {},
+      "postValues": {},
+      "selectValues": {},
+      "orderValues": [],
+      "_scenario": "query-effect-atomicity"
+    }
+  },
+  "requestFocus": [],
+  "expectedComparison": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "collectorSpecs": {
+    "mysql": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/query-effect-atomicity/collectors/mysql.draft.json",
+      "hash": "4b213cba2e1345a9ba201c7466614c931ae61af91b23410b34872c13c068cbe1"
+    },
+    "sql-trace": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-query/query-effect-atomicity/collectors/sql-trace.draft.json",
+      "hash": "92aa003095c8eccf3afb1a98775a6342c34b08be43811f5af46791d9ed2520cd"
+    }
+  },
+  "expectations": {
+    "page": {
+      "expectedStatus": 200,
+      "requirePagination": true,
+      "preserveRowOrder": true
+    },
+    "query": {
+      "requireEffectAtomicity": true,
+      "requireIdempotency": true
+    }
+  },
+  "compatibilityDecisionIds": [],
+  "environmentBindings": [
+    {
+      "path": "request.headers.authorization",
+      "environment": "MG_JAVA_TOKEN"
+    }
+  ],
+  "authoring": {
+    "reviewed": false,
+    "instructions": "Replace request and collector placeholders, set collector specs to ready, then run runtime-fixture-promote."
+  }
+}

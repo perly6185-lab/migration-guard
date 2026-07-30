@@ -161,6 +161,8 @@ import { validateCliCommandRegistry } from "./core/cliRegistry.js";
 import { createHandoffContract, explainHandoffContract, readHandoffContract, redactHandoffContract, referenceHandoffArtifact, renderHandoffCompactPrompt, renderHandoffMarkdown, validateHandoffContract, writeHandoffContract } from "./core/handoff.js";
 import { applyHandoffResultImport, planHandoffResultImport, renderHandoffResultImportPlan } from "./core/handoffResult.js";
 import { listBuiltinPolicies } from "./core/policy.js";
+import { loadVmpFixtureCases, readVmpEvidenceEnvelope } from "./core/vmpArtifacts.js";
+import { inspectVmpCodeContract } from "./core/vmpContract.js";
 import { collectSelfRefactorInventory, createSelfRefactorDriver, createSelfRefactorPlan, selfRefactorPlanHash, writeSelfRefactorArtifact } from "./core/selfRefactor.js";
 import { createSelfRefactorPromotionHandoff, crossValidateSelfRefactor, rollbackSelfRefactorCheckpoint, runSelfRefactorStep } from "./core/selfRefactorExecution.js";
 import { analyzeJavaEndpoint, renderJavaEndpointAnalysisReport, writeJavaEndpointAnalysisReport } from "./core/javaEndpointAnalysis.js";
@@ -194,16 +196,70 @@ import {
   type EndpointReplacementPlanOptions
 } from "./core/endpointReplacementPlanner.js";
 import { runEndpointRuntimeDriver, type EndpointRuntimeDriverConfig } from "./core/endpointReplacementRuntime.js";
-import type { EndpointReplacementEvidence, EndpointReplacementPlan, ReplacementScenario } from "./core/endpointReplacementModel.js";
+import type {
+  BehaviorGraph,
+  EndpointReplacementEvidence,
+  EndpointReplacementPlan,
+  ReplacementScenario
+} from "./core/endpointReplacementModel.js";
 import { assessJavaControllersForRust, renderControllerRustAssessment } from "./core/controllerRustAssessment.js";
 import { assessJavaServicesForRust, renderServiceRustAssessment } from "./core/serviceRustAssessment.js";
 import { assessJavaRepositoriesForRust, renderRepositoryRustAssessment, type RepositoryRustAssessmentReport } from "./core/repositoryRustAssessment.js";
+import { assessJavaMcpToolsForRust, renderMcpToolRustAssessment } from "./core/mcpToolRustAssessment.js";
+import { assessJavaGatewayForRust, renderGatewayRustAssessment } from "./core/gatewayRustAssessment.js";
+import { assessJavaInfraForRust, renderInfraRustAssessment } from "./core/infraRustAssessment.js";
 import { assessCrossLayerEvidenceLineage, renderCrossLayerEvidenceLineage } from "./core/crossLayerEvidenceLineage.js";
 import { createRepositoryMetricsSnapshot, evaluateMetricsRegressionGate, renderMetricsRegressionGate, type MetricsRegressionExplanation, type RepositoryMetricsSnapshot } from "./core/rustAssessmentMetricsGate.js";
 import { createRustAssessmentMetricsReport, renderRustAssessmentMetricsReport } from "./core/rustAssessmentMetricsReport.js";
 import type { ControllerRustAssessmentReport } from "./core/controllerRustAssessment.js";
 import type { ServiceRustAssessmentReport } from "./core/serviceRustAssessment.js";
 import type { CrossLayerEvidenceLineageReport } from "./core/crossLayerEvidenceLineage.js";
+import { initMigrationProject } from "./core/migrationProject.js";
+import {
+  analyzeMigrationProject,
+  evaluateMigrationOfflineGate,
+  evaluateMigrationRealGate,
+  scaffoldRustMigrationProject
+} from "./core/migrationWorkflow.js";
+import {
+  evaluateMigrationCompletionGate,
+  prepareMigrationCompletion
+} from "./core/migrationCompletion.js";
+import {
+  assembleJavaRuntimeEvidence,
+  gateJavaRuntimeBaseline,
+  generateSyntheticJavaRuntimeEvidence,
+  preflightJavaRuntimeEvidence,
+  prepareJavaRuntimeEvidence,
+  runJavaRuntimeEvidence,
+  type JavaRuntimeEntryEvidence,
+  type JavaRuntimeEvidenceKind
+} from "./core/javaRuntimeEvidence.js";
+import {
+  collectRuntimeEvidence,
+  validateRuntimeCollectorSpec,
+  type RuntimeCollectorSpec
+} from "./core/runtimeCollectors.js";
+import {
+  prepareJavaRuntimeAuthoring,
+  promoteJavaRuntimeFixture
+} from "./core/javaRuntimeAuthoring.js";
+import { JAVA_SEMANTIC_RULE_PACKAGE } from "./core/javaSemanticRegistry.js";
+import {
+  BUILTIN_JAVA_SEMANTIC_RULE_PACKAGES,
+  getBuiltinJavaSemanticRulePackage
+} from "./core/javaSemanticPackages.js";
+import {
+  createSemanticRulePackageLock,
+  diffSemanticRulePackageLocks,
+  evaluateSemanticRulePackage,
+  semanticSamplesFromJavaAnalysis,
+  validateSemanticRulePackage,
+  type SemanticEvaluationPolicy,
+  type SemanticEvaluationSample,
+  type SemanticRulePackage,
+  type SemanticRulePackageLock
+} from "./core/semanticRulePackage.js";
 
 interface BehaviorEvidenceReport {
   version: 1;
@@ -245,8 +301,9 @@ async function main(argv: string[]): Promise<void> {
     tasks: commandTasks, actions: commandActions, jobs: commandJobs, troubleshoot: commandTroubleshoot, report: commandReport, readiness: commandReadiness,
     "one-shot": commandOneShot, checkpoint: commandCheckpoint, resume: commandResume, rollback: commandRollback,
     task: commandTask, action: commandAction, proposal: commandProposal, "method-extraction": commandMethodExtraction, "sync-issues": commandSyncIssues,
-    "issue-control": commandIssueControl, "self-refactor": commandSelfRefactor, "java-endpoint": commandJavaEndpoint, "full-replacement": commandFullReplacement, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
-    preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff, policy: commandPolicy
+    "issue-control": commandIssueControl, "self-refactor": commandSelfRefactor, "java-endpoint": commandJavaEndpoint, "full-replacement": commandFullReplacement, migrate: commandMigrate, ci: commandCi, contract: commandContract, "dual-run": commandDualRun,
+    preview: commandPreview, artifacts: commandArtifacts, handoff: commandHandoff, policy: commandPolicy, vmp: commandVmp,
+    semantics: commandSemantics
   };
   validateCliCommandRegistry(handlers);
   if (!await dispatchCliCommand(args, handlers)) {
@@ -302,6 +359,55 @@ async function commandJavaEndpoint(args: ParsedArgs): Promise<void> {
     if (args.options.apply) await writeFullReplacementArtifact("repository-rust-assessment", report, path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderRepositoryRustAssessment(report));
     console.log(args.options.json || !args.options.apply ? JSON.stringify(report, null, 2) : renderRepositoryRustAssessment(report));
     if (report.summary.blocked > 0) process.exitCode = 1;
+    return;
+  }
+  if (action === "assess-mcp-tools") {
+    const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
+    const report = await assessJavaMcpToolsForRust({
+      root,
+      maxDepth: numberOption(args, "max-depth"),
+      maxEdges: numberOption(args, "max-edges"),
+      adaptive: Boolean(args.options.adaptive),
+      maxExpansionDepth: numberOption(args, "max-expansion-depth"),
+      maxExpansionEdges: numberOption(args, "max-expansion-edges"),
+      maxExpansionRounds: numberOption(args, "max-expansion-rounds"),
+      includeTests: Boolean(args.options["include-tests"])
+    });
+    if (args.options.apply) {
+      await writeFullReplacementArtifact("mcp-tool-rust-assessment", report, path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderMcpToolRustAssessment(report));
+    }
+    console.log(args.options.json || !args.options.apply ? JSON.stringify(report, null, 2) : renderMcpToolRustAssessment(report));
+    if (report.summary.blocked > 0) process.exitCode = 1;
+    return;
+  }
+  if (action === "assess-gateway") {
+    const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
+    const configSnapshots = stringOption(args, "config-snapshots")?.split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const report = await assessJavaGatewayForRust({
+      root,
+      includeTests: Boolean(args.options["include-tests"]),
+      ...(configSnapshots?.length ? { configSnapshots } : {})
+    });
+    if (args.options.apply) {
+      await writeFullReplacementArtifact("gateway-rust-assessment", report, path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderGatewayRustAssessment(report));
+    }
+    console.log(args.options.json || !args.options.apply ? JSON.stringify(report, null, 2) : renderGatewayRustAssessment(report));
+    if (report.summary.blocked > 0) process.exitCode = 1;
+    return;
+  }
+  if (action === "assess-infra") {
+    const root = path.resolve(process.cwd(), stringOption(args, "root") ?? stringOption(args, "target") ?? process.cwd());
+    const report = await assessJavaInfraForRust({
+      root,
+      includeTests: Boolean(args.options["include-tests"])
+    });
+    if (args.options.apply) {
+      await writeFullReplacementArtifact("infra-rust-assessment", report, path.resolve(root, stringOption(args, "artifacts-dir") ?? ".migration-guard"), renderInfraRustAssessment(report));
+    }
+    console.log(args.options.json || !args.options.apply ? JSON.stringify(report, null, 2) : renderInfraRustAssessment(report));
+    if (report.status === "blocked") process.exitCode = 1;
     return;
   }
   if (action === "assess-services") {
@@ -476,6 +582,184 @@ async function commandFullReplacement(args: ParsedArgs): Promise<void> {
   throw new Error(`Unknown full-replacement command: ${action}`);
 }
 
+async function commandMigrate(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "analyze";
+  if (action === "init") {
+    const projectId = requiredStringOption(args, "project", "migrate init");
+    const casesRoot = path.resolve(stringOption(args, "cases-root") ?? "cases");
+    const sourceRoot = path.resolve(stringOption(args, "source") ?? process.cwd());
+    const targetRoot = path.resolve(stringOption(args, "target-root") ?? path.join("rust", projectId));
+    const pkg = await initMigrationProject({
+      casesRoot,
+      projectId,
+      sourceRoot,
+      targetRoot,
+      endpoint: stringOption(args, "endpoint"),
+      method: stringOption(args, "method"),
+      serviceName: stringOption(args, "service-name"),
+      force: Boolean(args.options.force)
+    });
+    console.log(JSON.stringify({
+      status: "created",
+      projectId,
+      caseDir: pkg.caseDir,
+      profilePath: pkg.profilePath,
+      fixturesDir: pkg.fixturesDir,
+      evidenceDir: pkg.evidenceDir
+    }, null, 2));
+    return;
+  }
+  const caseDir = resolveMigrationCaseDir(args);
+  if (action === "analyze") {
+    const strict = Boolean(args.options.strict);
+    const structuredParser = stringOption(args, "structured-parser")
+      ?? (strict ? "required" : "preferred");
+    if (!["off", "preferred", "required"].includes(structuredParser)) {
+      throw new Error(`Invalid --structured-parser: ${structuredParser}. Expected off, preferred, or required.`);
+    }
+    const result = await analyzeMigrationProject(caseDir, {
+      maxDepth: numberOption(args, "max-depth") ?? (strict ? 32 : undefined),
+      maxEdges: numberOption(args, "max-edges") ?? (strict ? 20_000 : undefined),
+      includeTests: Boolean(args.options["include-tests"]),
+      structuredParser: structuredParser as "off" | "preferred" | "required"
+    });
+    console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "ready" && strict) process.exitCode = 1;
+    return;
+  }
+  if (action === "scaffold") {
+    const target = stringOption(args, "target") ?? "rust";
+    if (target !== "rust") throw new Error(`Unsupported migrate scaffold target: ${target}.`);
+    console.log(JSON.stringify(await scaffoldRustMigrationProject(caseDir, Boolean(args.options.force)), null, 2));
+    return;
+  }
+  if (action === "runtime-prepare") {
+    console.log(JSON.stringify(await prepareJavaRuntimeEvidence(caseDir), null, 2));
+    return;
+  }
+  if (action === "runtime-authoring-prepare") {
+    const report = await prepareJavaRuntimeAuthoring(caseDir, Boolean(args.options.force));
+    console.log(JSON.stringify(report, null, 2));
+    if (!report.authoringReady) process.exitCode = 1;
+    return;
+  }
+  if (action === "runtime-preflight") {
+    const report = await preflightJavaRuntimeEvidence(caseDir);
+    console.log(JSON.stringify(report, null, 2));
+    if (report.status !== "ready-to-run") process.exitCode = 1;
+    return;
+  }
+  if (action === "runtime-self-test") {
+    const result = await generateSyntheticJavaRuntimeEvidence(caseDir);
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.validation.valid) process.exitCode = 1;
+    return;
+  }
+  if (action === "runtime-run") {
+    const result = await runJavaRuntimeEvidence(caseDir);
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.validation.realEligible || result.driverResults.some((item) => item.status !== "passed")) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (action === "runtime-assemble") {
+    const inputPath = path.resolve(requiredStringOption(args, "input", "migrate runtime-assemble"));
+    const input = await readJsonFile<{
+      kind: JavaRuntimeEvidenceKind;
+      entries: Record<string, JavaRuntimeEntryEvidence>;
+    }>(inputPath);
+    if (input.kind !== "real" && input.kind !== "synthetic") {
+      throw new Error("migrate runtime-assemble input kind must be real or synthetic.");
+    }
+    const result = await assembleJavaRuntimeEvidence(
+      caseDir,
+      input.kind,
+      input.entries,
+      stringOption(args, "output")
+    );
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.validation.valid) process.exitCode = 1;
+    return;
+  }
+  if (action === "runtime-gate") {
+    const report = await gateJavaRuntimeBaseline(caseDir, stringOption(args, "evidence"));
+    console.log(JSON.stringify(report, null, 2));
+    if (report.status !== "passed") process.exitCode = 1;
+    return;
+  }
+  if (action === "runtime-collect") {
+    const specPath = path.resolve(requiredStringOption(args, "spec", "migrate runtime-collect"));
+    const spec = await readJsonFile<RuntimeCollectorSpec>(specPath);
+    const result = await collectRuntimeEvidence(spec, { cwd: caseDir });
+    const outputPath = stringOption(args, "output");
+    if (outputPath) await writeJsonFile(path.resolve(outputPath), result);
+    console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "passed") process.exitCode = 1;
+    return;
+  }
+  if (action === "runtime-collector-dry-run") {
+    const specPath = path.resolve(requiredStringOption(args, "spec", "migrate runtime-collector-dry-run"));
+    const spec = await readJsonFile<RuntimeCollectorSpec>(specPath);
+    const findings = validateRuntimeCollectorSpec(spec, { requireReady: false });
+    const result = {
+      status: findings.length === 0 ? "ready" : "blocked",
+      collector: spec.collector,
+      specStatus: spec.status,
+      specPath,
+      findings
+    };
+    console.log(JSON.stringify(result, null, 2));
+    if (findings.length) process.exitCode = 1;
+    return;
+  }
+  if (action === "runtime-fixture-promote") {
+    const result = await promoteJavaRuntimeFixture(
+      caseDir,
+      requiredStringOption(args, "entrypoint", "migrate runtime-fixture-promote"),
+      requiredStringOption(args, "scenario", "migrate runtime-fixture-promote"),
+      requiredStringOption(args, "reviewed-by", "migrate runtime-fixture-promote"),
+      Boolean(args.options.force)
+    );
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (action === "offline-gate") {
+    const report = await evaluateMigrationOfflineGate(caseDir);
+    console.log(JSON.stringify(report, null, 2));
+    if (report.status !== "passed") process.exitCode = 1;
+    return;
+  }
+  if (action === "real-gate") {
+    const report = await evaluateMigrationRealGate(caseDir, stringOption(args, "evidence"));
+    console.log(JSON.stringify(report, null, 2));
+    if (report.status !== "passed") process.exitCode = 1;
+    return;
+  }
+  if (action === "completion-prepare") {
+    console.log(JSON.stringify(
+      await prepareMigrationCompletion(caseDir, Boolean(args.options.force)),
+      null,
+      2
+    ));
+    return;
+  }
+  if (action === "completion-gate") {
+    const report = await evaluateMigrationCompletionGate(caseDir, stringOption(args, "evidence"));
+    console.log(JSON.stringify(report, null, 2));
+    if (report.status !== "passed") process.exitCode = 1;
+    return;
+  }
+  throw new Error(`Unknown migrate command: ${action}`);
+}
+
+function resolveMigrationCaseDir(args: ParsedArgs): string {
+  const explicit = stringOption(args, "case-dir");
+  if (explicit) return path.resolve(explicit);
+  const projectId = requiredStringOption(args, "project", `migrate ${args.positionals[0] ?? "analyze"}`);
+  return path.resolve(stringOption(args, "cases-root") ?? "cases", projectId);
+}
+
 function requiredStringOption(args: ParsedArgs, name: string, command: string): string {
   const value = stringOption(args, name);
   if (!value) throw new Error(`${command} requires --${name} <path>.`);
@@ -545,6 +829,217 @@ async function commandPolicy(args: ParsedArgs): Promise<void> {
   if (action === "list") { console.log(JSON.stringify(listBuiltinPolicies(), null, 2)); return; }
   if (action === "explain") { console.log(JSON.stringify(loaded.policy, null, 2)); return; }
   throw new Error(`Unknown policy command: ${action}`);
+}
+
+async function commandVmp(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "fixtures";
+  if (action === "fixtures") {
+    const input = path.resolve(stringOption(args, "input") ?? "fixtures/vmp/offline-cases.json");
+    const cases = await loadVmpFixtureCases(input);
+    console.log(JSON.stringify({ passed: true, input, caseCount: cases.length, behaviors: cases.map((item) => item.behavior) }, null, 2));
+    return;
+  }
+  if (action === "evidence") {
+    const input = path.resolve(requiredStringOption(args, "input", "vmp evidence"));
+    const envelope = await readVmpEvidenceEnvelope(input);
+    console.log(JSON.stringify({ passed: envelope.bundle.passed, input, integrity: envelope.integrity, blockers: envelope.bundle.blockers }, null, 2));
+    if (!envelope.bundle.passed) process.exitCode = 1;
+    return;
+  }
+  if (action === "contract") {
+    const root = path.resolve(stringOption(args, "root") ?? process.cwd());
+    const report = await inspectVmpCodeContract(root);
+    console.log(JSON.stringify(report, null, 2));
+    if (!report.passed) process.exitCode = 1;
+    return;
+  }
+  throw new Error(`Unknown vmp command: ${action}`);
+}
+
+async function commandSemantics(args: ParsedArgs): Promise<void> {
+  const action = args.positionals[0] ?? "list";
+  if (action === "coverage") {
+    const graphPath = path.resolve(requiredStringOption(args, "graph", "semantics coverage"));
+    const graph = await readJsonFile<BehaviorGraph>(graphPath);
+    if (!graph.classificationCoverage) {
+      throw new Error(`Behavior graph has no classification coverage: ${graphPath}. Regenerate it with migrate analyze.`);
+    }
+    const findings = graph.classificationCoverage.highRiskUnknownNodeIds.length > 0
+      ? ["SEMANTIC-COVERAGE-HIGH-RISK-UNEXPLAINED"]
+      : [];
+    const report = {
+      version: 1,
+      graphPath,
+      graphHash: graph.graphHash,
+      endpoint: graph.endpoint,
+      status: findings.length === 0 ? "passed" : "blocked",
+      coverage: graph.classificationCoverage,
+      findings
+    };
+    const outputOption = stringOption(args, "output");
+    if (outputOption) await writeJsonFile(path.resolve(outputOption), report);
+    console.log(JSON.stringify(outputOption ? { ...report, output: path.resolve(outputOption) } : report, null, 2));
+    if (findings.length > 0) process.exitCode = 1;
+    return;
+  }
+  if (action === "list") {
+    const packages = !stringOption(args, "package") && !stringOption(args, "builtin")
+      ? BUILTIN_JAVA_SEMANTIC_RULE_PACKAGES
+      : [await loadSemanticPackage(args)];
+    console.log(JSON.stringify(packages.map((pkg) => {
+      const validation = validateSemanticRulePackage(pkg);
+      return {
+        id: pkg.id,
+        version: pkg.version,
+        language: pkg.language,
+        mode: pkg.compatibility?.mode ?? "invalid",
+        frameworks: pkg.scope?.frameworks ?? [],
+        projects: pkg.scope?.projects ?? [],
+        ruleCount: validation.ruleCount,
+        packageHash: validation.packageHash,
+        valid: validation.valid
+      };
+    }), null, 2));
+    return;
+  }
+  const pkg = await loadSemanticPackage(args);
+  if (action === "validate") {
+    const validation = validateSemanticRulePackage(pkg);
+    console.log(JSON.stringify(validation, null, 2));
+    if (!validation.valid) process.exitCode = 1;
+    return;
+  }
+  if (action === "lock") {
+    const lock = createSemanticRulePackageLock(pkg);
+    const output = path.resolve(stringOption(args, "output")
+      ?? path.join(".migration-guard", "semantic-rules", `${pkg.id}.lock.json`));
+    await writeJsonFile(output, lock);
+    console.log(JSON.stringify({ ...lock, output }, null, 2));
+    return;
+  }
+  if (action === "diff") {
+    const fromPath = path.resolve(requiredStringOption(args, "from", "semantics diff"));
+    const toPath = path.resolve(requiredStringOption(args, "to", "semantics diff"));
+    const from = await readSemanticLock(fromPath);
+    const to = await readSemanticLock(toPath);
+    console.log(JSON.stringify(diffSemanticRulePackageLocks(from, to), null, 2));
+    return;
+  }
+  if (action === "evaluate") {
+    const samples = await loadSemanticEvaluationSamples(args);
+    const report = evaluateSemanticRulePackage(pkg, samples, semanticEvaluationPolicy(args));
+    const outputOption = stringOption(args, "output");
+    if (outputOption) await writeJsonFile(path.resolve(outputOption), report);
+    console.log(JSON.stringify(outputOption ? { ...report, output: path.resolve(outputOption) } : report, null, 2));
+    if (report.status === "blocked") process.exitCode = 1;
+    return;
+  }
+  throw new Error(`Unknown semantics command: ${action}`);
+}
+
+function semanticEvaluationPolicy(args: ParsedArgs): SemanticEvaluationPolicy {
+  const minimumCoveragePercent = numberOption(args, "min-coverage");
+  const minimumRuleCoveragePercent = numberOption(args, "min-rule-coverage");
+  if (minimumCoveragePercent !== undefined
+    && (minimumCoveragePercent < 0 || minimumCoveragePercent > 100)) {
+    throw new Error(`Invalid --min-coverage: ${minimumCoveragePercent}. Expected a number from 0 to 100.`);
+  }
+  if (minimumRuleCoveragePercent !== undefined
+    && (minimumRuleCoveragePercent < 0 || minimumRuleCoveragePercent > 100)) {
+    throw new Error(
+      `Invalid --min-rule-coverage: ${minimumRuleCoveragePercent}. Expected a number from 0 to 100.`
+    );
+  }
+  return {
+    minimumCoveragePercent,
+    minimumRuleCoveragePercent,
+    maximumUnreviewedConflicts: nonNegativeIntegerOption(args, "max-conflicts"),
+    maximumExpectedMismatches: nonNegativeIntegerOption(args, "max-mismatches")
+  };
+}
+
+async function loadSemanticPackage(args: ParsedArgs): Promise<SemanticRulePackage> {
+  const packagePath = stringOption(args, "package");
+  const builtinId = stringOption(args, "builtin");
+  if (packagePath && builtinId) {
+    throw new Error("Choose either --package or --builtin, not both.");
+  }
+  if (builtinId) {
+    const builtin = getBuiltinJavaSemanticRulePackage(builtinId);
+    if (!builtin) {
+      throw new Error(`Unknown built-in semantic package: ${builtinId}.`);
+    }
+    return builtin;
+  }
+  if (!packagePath) return JAVA_SEMANTIC_RULE_PACKAGE;
+  const value = await readJsonFile<unknown>(path.resolve(packagePath));
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Invalid semantic package JSON root: ${packagePath}. Expected an object.`);
+  }
+  return value as SemanticRulePackage;
+}
+
+async function readSemanticLock(filePath: string): Promise<SemanticRulePackageLock> {
+  const value = await readJsonFile<unknown>(filePath);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Invalid semantic lock or package JSON root: ${filePath}. Expected an object.`);
+  }
+  return "packageHash" in value
+    ? value as unknown as SemanticRulePackageLock
+    : createSemanticRulePackageLock(value as SemanticRulePackage);
+}
+
+async function loadSemanticEvaluationSamples(args: ParsedArgs): Promise<SemanticEvaluationSample[]> {
+  const analysisOption = stringOption(args, "analysis");
+  const samplesOption = stringOption(args, "samples");
+  const projectOption = stringOption(args, "project");
+  const sources = [analysisOption, samplesOption, projectOption].filter(Boolean);
+  if (sources.length !== 1) {
+    throw new Error("semantics evaluate requires exactly one of --analysis, --samples or --project.");
+  }
+  if (analysisOption) {
+    return semanticSamplesFromJavaAnalysis(await readJsonFile<unknown>(path.resolve(analysisOption)));
+  }
+  if (samplesOption) {
+    const value = await readJsonFile<unknown>(path.resolve(samplesOption));
+    const samples = Array.isArray(value)
+      ? value
+      : value && typeof value === "object" && "samples" in value
+        ? (value as { samples?: unknown }).samples
+        : undefined;
+    if (!Array.isArray(samples)) {
+      throw new Error(`Invalid semantic sample corpus: ${samplesOption}. Expected an array or an object with a samples array.`);
+    }
+    return samples as SemanticEvaluationSample[];
+  }
+  const project = projectOption!;
+  const direct = path.resolve(project);
+  const caseDir = await pathExists(direct)
+    ? direct
+    : path.resolve(stringOption(args, "cases-root") ?? "cases", project);
+  const analysisFiles = await listFilesNamed(path.join(caseDir, "evidence", "analysis"), "java-analysis.json");
+  if (analysisFiles.length === 0) {
+    throw new Error(`No java-analysis.json artifacts found for semantic evaluation: ${caseDir}.`);
+  }
+  const samples: SemanticEvaluationSample[] = [];
+  for (const file of analysisFiles) {
+    const relative = path.relative(caseDir, file).replace(/\\/g, "/");
+    for (const sample of semanticSamplesFromJavaAnalysis(await readJsonFile<unknown>(file))) {
+      samples.push({ ...sample, id: `${relative}:${sample.id}` });
+    }
+  }
+  return samples;
+}
+
+async function listFilesNamed(root: string, basename: string): Promise<string[]> {
+  const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
+  const files: string[] = [];
+  for (const entry of entries) {
+    const child = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...await listFilesNamed(child, basename));
+    else if (entry.isFile() && entry.name === basename) files.push(child);
+  }
+  return files.sort();
 }
 
 async function commandHandoff(args: ParsedArgs): Promise<void> {
@@ -2606,6 +3101,32 @@ Usage:
   migration-guard handoff import-result --input <result.json> [--run <id|latest>] --apply --apply-confirm <plan-hash>
   migration-guard policy list [--config <path>]
   migration-guard policy explain [--config <path>]
+  migration-guard vmp fixtures [--input <json>]
+  migration-guard vmp evidence --input <evidence.json>
+  migration-guard vmp contract [--root <path>]
+  migration-guard semantics list [--builtin <package-id>|--package <semantic-package.json>]
+  migration-guard semantics validate [--builtin <package-id>|--package <semantic-package.json>]
+  migration-guard semantics coverage --graph <behavior-graph.json> [--output <report.json>]
+  migration-guard semantics evaluate (--analysis <java-analysis.json>|--samples <samples.json>|--project <id|case-dir>) [--builtin <package-id>|--package <semantic-package.json>] [--min-coverage <0-100>] [--min-rule-coverage <0-100>] [--max-conflicts <n>] [--max-mismatches <n>] [--output <report.json>]
+  migration-guard semantics lock [--builtin <package-id>|--package <semantic-package.json>] [--output <lock.json>]
+  migration-guard semantics diff --from <lock-or-package.json> --to <lock-or-package.json>
+  migration-guard migrate init --project <id> [--source <path>] [--endpoint <path>] [--method POST] [--target-root <path>] [--service-name <name>] [--cases-root <path>] [--force]
+  migration-guard migrate analyze (--project <id> [--cases-root <path>]|--case-dir <path>) [--max-depth <n>] [--max-edges <n>] [--structured-parser off|preferred|required] [--include-tests] [--strict]
+  migration-guard migrate scaffold (--project <id> [--cases-root <path>]|--case-dir <path>) --target rust [--force]
+  migration-guard migrate runtime-prepare (--project <id> [--cases-root <path>]|--case-dir <path>)
+  migration-guard migrate runtime-authoring-prepare (--project <id> [--cases-root <path>]|--case-dir <path>) [--force]
+  migration-guard migrate runtime-preflight (--project <id> [--cases-root <path>]|--case-dir <path>)
+  migration-guard migrate runtime-self-test (--project <id> [--cases-root <path>]|--case-dir <path>)
+  migration-guard migrate runtime-run (--project <id> [--cases-root <path>]|--case-dir <path>)
+  migration-guard migrate runtime-assemble (--project <id> [--cases-root <path>]|--case-dir <path>) --input <json> [--output <json>]
+  migration-guard migrate runtime-gate (--project <id> [--cases-root <path>]|--case-dir <path>) [--evidence <json>]
+  migration-guard migrate runtime-collect (--project <id> [--cases-root <path>]|--case-dir <path>) --spec <collector.json> [--output <evidence.json>]
+  migration-guard migrate runtime-collector-dry-run (--project <id> [--cases-root <path>]|--case-dir <path>) --spec <collector.json>
+  migration-guard migrate runtime-fixture-promote (--project <id> [--cases-root <path>]|--case-dir <path>) --entrypoint <id> --scenario <id> --reviewed-by <identity> [--force]
+  migration-guard migrate offline-gate (--project <id> [--cases-root <path>]|--case-dir <path>)
+  migration-guard migrate real-gate (--project <id> [--cases-root <path>]|--case-dir <path>) [--evidence <json>]
+  migration-guard migrate completion-prepare (--project <id> [--cases-root <path>]|--case-dir <path>) [--force]
+  migration-guard migrate completion-gate (--project <id> [--cases-root <path>]|--case-dir <path>) [--evidence <json>]
   migration-guard report [--run <id|latest>] [--json]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot runbook [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--json]
@@ -2658,6 +3179,9 @@ Usage:
   migration-guard self-refactor rollback --checkpoint <checkpoint.json> --confirm <checkpoint-hash>
   migration-guard java-endpoint analyze --root <java-project> --endpoint <path> [--method POST] [--max-depth <n>] [--max-edges <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--strict] [--json]
   migration-guard java-endpoint assess-controllers --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--progress-every <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard java-endpoint assess-mcp-tools --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard java-endpoint assess-gateway --root <java-project> [--config-snapshots <a.yaml,b.yaml>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
+  migration-guard java-endpoint assess-infra --root <java-project> [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-services --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-repositories --root <java-project> [--max-depth <n>] [--max-edges <n>] [--adaptive] [--max-expansion-depth <n>] [--max-expansion-edges <n>] [--max-expansion-rounds <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]
   migration-guard java-endpoint assess-lineage --root <java-project> [--max-depth <n>] [--max-edges <n>] [--limit <n>] [--include-tests] [--apply] [--artifacts-dir <path>] [--json]

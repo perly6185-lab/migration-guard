@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "specification",
+  "status": "ready",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-query",
+  "id": "calendar-view-query",
+  "endpoint": "POST /zboss/data/view/dynamic/engine/use/engine-use-page/query",
+  "request": {
+    "usePageId": "2059838047023181826",
+    "viewId": "2064662147688243201"
+  },
+  "expectations": {
+    "declaredViewType": "calendar",
+    "responseIdentityMatchesRequest": true,
+    "cacheKeyIncludesViewIdentity": true,
+    "responseMutationDoesNotPolluteCache": true
+  },
+  "decisionIds": [
+    "QUERY-DEC-CALENDAR-VIEW-BINDING",
+    "QUERY-DEC-CALENDAR-CACHE-ISOLATION"
+  ]
+}

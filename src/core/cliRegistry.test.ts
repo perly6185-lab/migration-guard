@@ -12,6 +12,9 @@ test("CLI command catalog remains complete and unique", () => {
   assert.ok(CLI_COMMAND_NAMES.includes("method-extraction"));
   assert.ok(CLI_COMMAND_NAMES.includes("java-endpoint"));
   assert.ok(CLI_COMMAND_NAMES.includes("full-replacement"));
+  assert.ok(CLI_COMMAND_NAMES.includes("migrate"));
+  assert.ok(CLI_COMMAND_NAMES.includes("vmp"));
+  assert.ok(CLI_COMMAND_NAMES.includes("semantics"));
 });
 
 test("CLI registry validation detects missing and unexpected commands", () => {

@@ -1,0 +1,10 @@
+{
+  "reqId": "prp10-standard",
+  "usePageId": 7,
+  "pageNo": 1,
+  "pageSize": 1,
+  "orderValues": [
+    "customer:asc"
+  ],
+  "skipSavePageSize": true
+}

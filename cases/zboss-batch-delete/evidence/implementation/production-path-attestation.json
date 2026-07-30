@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "targetRoot": "D:\\learn\\migration-guard\\rust\\zboss-rust\\components\\batch-delete",
+  "targetSourceHash": "88b9306c3b945f1a06e9e77f58ec5da87f7b6fa69af95895ad5901d4d6304b44",
+  "deployableService": true,
+  "concreteAdapters": true,
+  "buildVerified": false,
+  "runtimeVerified": false,
+  "productionEligible": false,
+  "evidence": {
+    "rustSourceFiles": 7,
+    "httpRuntimeDetected": true,
+    "routeFragments": {
+      "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchDelete": true
+    },
+    "traitImplementations": {
+      "BatchDeleteStore": true,
+      "ProgressSink": true,
+      "CompensationOutbox": true
+    },
+    "verification": {
+      "required": true,
+      "path": "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\implementation\\production-verification.json",
+      "present": false,
+      "protocolValid": false,
+      "sourceHashMatches": false,
+      "buildLogVerified": false,
+      "runtimeLogVerified": false,
+      "routesExercised": {
+        "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchDelete": false
+      },
+      "referencedFiles": []
+    }
+  },
+  "findings": [
+    "MG-PRODUCTION-PATH-VERIFICATION-EVIDENCE-MISSING"
+  ]
+}

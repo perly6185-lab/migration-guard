@@ -1,0 +1,33 @@
+{
+  "protocol": "migration-guard.rust-production-verification/v1",
+  "projectId": "zboss-horizontal-list",
+  "targetSourceHash": "f583c163287228a788c6073cb6b237ddb428e26893e44bf1806d13637ecf2b8b",
+  "synthetic": false,
+  "producer": {
+    "name": "OpenAI Codex",
+    "tool": "cargo-build-and-powershell-http-smoke"
+  },
+  "build": {
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "--all-features",
+      "--release"
+    ],
+    "exitCode": 0,
+    "finishedAt": "2026-07-30T02:38:45.5834875Z",
+    "logPath": "production-build.log",
+    "logSha256": "cc7aed7411951f54a30960c7ac7c35a0c7b2ffde591f33e223767640e527a542"
+  },
+  "runtime": {
+    "startedAt": "2026-07-30T02:39:06.5048069Z",
+    "observedAt": "2026-07-30T02:39:06.6308514Z",
+    "healthStatus": 200,
+    "exercisedRoutes": [
+      "/zboss/data/view/dynamic/engine/use/engine-use-horizontal/list"
+    ],
+    "logPath": "production-runtime.log",
+    "logSha256": "2d036a39db278ef350fa54b13353db33a390cdaa45a05edd50417c004a56c209"
+  }
+}

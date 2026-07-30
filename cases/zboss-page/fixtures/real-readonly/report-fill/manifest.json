@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "status": "accepted",
+  "fixtureKind": "real-runtime-readonly",
+  "realEvidenceEligible": true,
+  "scope": "read-only",
+  "scenarioId": "report-fill",
+  "promotionId": "RB-01",
+  "provenance": "user-captured-request-and-authorized-readonly-collection",
+  "candidatePath": "cases/zboss-page/fixtures/real-candidates/report-fill",
+  "credentialsIncluded": false,
+  "rawResponsesIncluded": false,
+  "requests": [
+    {
+      "id": "fill-metadata-query",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-fill/query",
+      "file": "query.json",
+      "fileHash": "ee2315aa11ebe9297a227eeec8135b6843223e31977c02550c37203f7ebfee01",
+      "effect": "read"
+    },
+    {
+      "id": "fill-page-readonly",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-fill/page",
+      "file": "page.json",
+      "fileHash": "b810722b71e96f095325d613aaadf8be0534896b67f4bdca7da44ca050f472b6",
+      "effect": "read"
+    }
+  ],
+  "executionSafety": {
+    "injectSkipSavePageSize": true,
+    "mysqlSessionReadOnly": true,
+    "mutatingEndpointsAllowed": false
+  },
+  "observedContract": {
+    "metadataBusinessCode": 0,
+    "metadataResponseHash": "da233c27af332275ee56cf2c6f0abf409ccd476ff3ac510f9d445f9d71823e57",
+    "metadataRepeatHashMatches": true,
+    "panelCount": 1,
+    "pageBusinessCode": 0,
+    "pageResponseHash": "5248c667ceb191dc16213cbf94c358035f7a6ab444bc27952214b0f409f1047c",
+    "pageRepeatHashMatches": true,
+    "responseKeys": [
+      "data26070268",
+      "operational26070067"
+    ],
+    "rowsPerGroup": [
+      3,
+      3
+    ]
+  },
+  "evidence": {
+    "path": "artifacts/page-rust/real-report-fill-readonly.json",
+    "reportHash": "2d141fedac34bde0da4add22e6b4b3cd62f05072ebd1f55389b9a2d8de2c3615"
+  },
+  "referenceSourcePolicy": {
+    "access": "read-only",
+    "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768",
+    "treeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "fileCount": 7175
+  },
+  "excludedFromPromotion": [
+    {
+      "id": "fill-refresh-sync",
+      "reason": "mutation endpoint lacks separate execution authorization"
+    }
+  ]
+}

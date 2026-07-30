@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-delete-project-trust",
+  "status": "blocked",
+  "decision": "L4-B",
+  "capability": {
+    "schemaVersion": 1,
+    "achieved": "L4-B",
+    "next": "L4-C",
+    "claims": [
+      {
+        "level": "L0",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L1",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L2",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L3",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-A",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-B",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-C",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-REAL-EVIDENCE-BLOCKED",
+          "MG-CAPABILITY-DUAL-REPLAY-BLOCKED"
+        ]
+      },
+      {
+        "level": "L4",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-UNIFIED-REAL-GATE-BLOCKED"
+        ]
+      }
+    ]
+  },
+  "productionPath": {
+    "schemaVersion": 1,
+    "targetRoot": "D:\\learn\\migration-guard\\rust\\zboss-rust\\internal\\dynamic-engine-runtime",
+    "targetSourceHash": "d7462e5eabfa46f12ed3d7bbc7fbce7b6268e7e96dd42c65751901068031f5d5",
+    "deployableService": true,
+    "concreteAdapters": true,
+    "buildVerified": false,
+    "runtimeVerified": false,
+    "productionEligible": true,
+    "evidence": {
+      "rustSourceFiles": 73,
+      "httpRuntimeDetected": true,
+      "routeFragments": {
+        "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchDelete": true
+      },
+      "traitImplementations": {
+        "BatchDeleteStore": true,
+        "ProgressSink": true,
+        "CompensationOutbox": true
+      },
+      "verification": {
+        "required": false,
+        "present": false,
+        "protocolValid": false,
+        "sourceHashMatches": false,
+        "buildLogVerified": false,
+        "runtimeLogVerified": false,
+        "routesExercised": {
+          "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchDelete": false
+        },
+        "referencedFiles": []
+      }
+    },
+    "findings": []
+  },
+  "evidence": {
+    "analysisProjectHash": "3b9255b27f50a48f219780aa9ce4c126a8c2c397be266c5d360716ed628ee859",
+    "l3ReportHash": "94392a282f649da9a28e7d846870d03a6c3e5c2fc067fabe580c013004455051",
+    "containerReportHash": "32059be7a85fb0e7ea448f79d249e14f451c714dabcd3718eab96f364f625164",
+    "sourceTreeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "rustTestsPassed": 20,
+    "replayCasesPassed": 8,
+    "containerChecksPassed": 78
+  },
+  "boundary": {
+    "realBusinessRequestExecuted": false,
+    "productionEligible": false,
+    "next": [
+      "Implement concrete MySQL and Redis network executors behind the attested protocol wrappers.",
+      "Add an HTTP runtime and bind the batchDelete route.",
+      "Run an approved disposable real-write replay with marker-bound cleanup."
+    ]
+  },
+  "checks": [
+    {
+      "id": "analysis-ready",
+      "pass": true
+    },
+    {
+      "id": "l3-gate-valid",
+      "pass": true
+    },
+    {
+      "id": "container-gate-valid",
+      "pass": true
+    },
+    {
+      "id": "source-snapshot-parity",
+      "pass": true
+    },
+    {
+      "id": "scenario-contract",
+      "pass": true
+    },
+    {
+      "id": "concrete-protocol-adapters",
+      "pass": true
+    }
+  ],
+  "reportHash": "fd509a566db6b40b6723abb9257542ca68beef6035dd520ec67e9957ec269172"
+}

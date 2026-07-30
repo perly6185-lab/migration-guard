@@ -1,4 +1,8 @@
 import type { BehaviorKind } from "./endpointReplacementModel.js";
+import type {
+  SemanticRuleOrigin,
+  SemanticRulePackage
+} from "./semanticRulePackage.js";
 
 export interface JavaSemanticRule {
   id: string;
@@ -12,13 +16,77 @@ export const JAVA_SEMANTIC_RULES: JavaSemanticRule[] = [
   { id: "logging", pattern: /(?:^|\.)(?:log|logger)\.(?:trace|debug|info|warn|error)\b|Slf4j|LoggerFactory/i, kind: "observability", reason: "logging/observability call", defaultOwnership: "reviewed-exclusion" },
   { id: "clock", pattern: /(?:LocalDateTime|LocalDate|LocalTime|DateTime|YearMonth)\.now|Instant\.now|System\.(?:currentTimeMillis|nanoTime)|Clock\.|new\s+Date\b/i, kind: "clock-read", reason: "runtime clock read", defaultOwnership: "target-owned" },
   { id: "runtime-entropy", pattern: /\bUUID\.randomUUID\b|\bsnowflake\.nextId\b/i, kind: "external-call", reason: "runtime entropy or generated identity", defaultOwnership: "target-owned" },
+  { id: "jdk-random-entropy", pattern: /\b(?:Random|SecureRandom)\.(?:nextInt|nextLong|nextDouble|nextBytes)\b/i, kind: "external-call", reason: "runtime pseudo-random or secure-random entropy", defaultOwnership: "target-owned" },
   { id: "runtime-environment", pattern: /\bZoneId\.systemDefault\b/, kind: "context-resolution", reason: "runtime environment timezone lookup", defaultOwnership: "target-owned" },
+  { id: "ai-model-invocation", pattern: /\b(?:requestSpec|dashscope(?:Chat)?Model|chatModel)\.(?:call|stream)\b|\bembeddingModel\.(?:embed|embedForResponse)\b/i, kind: "external-call", reason: "AI model or embedding invocation boundary", defaultOwnership: "infrastructure-port" },
+  { id: "ai-vector-read", pattern: /\bvectorStore\.similaritySearch\b|\bjedis\.ftSearch\b/i, kind: "state-read", reason: "vector similarity or full-text index lookup", defaultOwnership: "infrastructure-port" },
+  { id: "ai-vector-write", pattern: /\bvectorStore\.(?:add|delete)\b/i, kind: "state-write", reason: "vector index mutation", defaultOwnership: "infrastructure-port" },
+  { id: "ai-tool-invocation", pattern: /\bProxyAiChatModel\.invokeLocalToolCallback\b/, kind: "external-call", reason: "reviewed local or MCP tool invocation boundary", defaultOwnership: "infrastructure-port" },
+  { id: "reviewed-mcp-tool-envelope", pattern: /\b(?:ColumnManagementTool\.(?:errMissing|tryParseJsonObject)|LedgerTool\.(?:ambiguousLedger|downstreamError|errJson|errJsonWithHint|errMissing))\b/, kind: "calculation", reason: "reviewed MCP tool validation, JSON parsing, or error-envelope construction", defaultOwnership: "target-owned" },
+  { id: "reviewed-mcp-weather-accessor", pattern: /\b(?:CurrentWeather\.(?:feelsLike|humidity|precipitation|temperature|weatherCode|windDirection|windSpeed)|DailyForecast\.(?:precipitationSum|tempMax|tempMin|time|weatherCode|windDirection|windSpeedMax)|weatherData\.(?:current|currentUnits|daily)|currentUnits\(\)\.(?:humidityUnit|temperatureUnit|windSpeedUnit))\b/, kind: "calculation", reason: "reviewed immutable weather response accessor", defaultOwnership: "target-owned" },
+  { id: "reactor-async-boundary", pattern: /\bSchedulers\.boundedElastic\b|\.\s*thenApplyAsync\b/, kind: "async-boundary", reason: "Reactor scheduler or asynchronous continuation boundary", defaultOwnership: "target-owned" },
+  { id: "reactor-composition", pattern: /\b(?:Flux\.(?:just|empty|concat|defer)|Mono\.(?:just|empty|defer|fromCallable))\b|\.\s*(?:doOnNext|doFinally|onErrorResume)\b/, kind: "calculation", reason: "reactive stream construction or composition", defaultOwnership: "target-owned" },
+  { id: "sse-publication", pattern: /\b(?:emitter|bridge)\.(?:send|complete|completeWithError|start)\b/i, kind: "event-publish", reason: "SSE stream publication or terminal lifecycle", defaultOwnership: "infrastructure-port" },
+  { id: "websocket-publication", pattern: /\bsession\.sendMessage\b/i, kind: "event-publish", reason: "WebSocket message publication", defaultOwnership: "infrastructure-port" },
+  { id: "websocket-lifecycle", pattern: /\bsession\.close\b|\bLedgerTaskWebSocketHandler\.closeSessionsByTaskId\b/i, kind: "coordination", reason: "WebSocket session lifecycle coordination", defaultOwnership: "infrastructure-port" },
+  { id: "ai-value-factory", pattern: /\bQwenChatMessage\.(?:system|user|assistant)\b|\bRedisVectorStore\.MetadataField\b|\bMenuSearchStreamRespVO\.(?:of[A-Z][A-Za-z0-9_]*)\b/, kind: "calculation", reason: "reviewed AI message, metadata, or stream-response value construction", defaultOwnership: "target-owned" },
+  { id: "ai-prompt-sanitizer", pattern: /\bPromptSanitizer\.defangStructuralMarkers\b/, kind: "calculation", reason: "reviewed deterministic prompt sanitization", defaultOwnership: "target-owned" },
+  { id: "ai-session-context", pattern: /\bSessionContext\.of\b/, kind: "context-resolution", reason: "reviewed AI session-context construction", defaultOwnership: "target-owned" },
+  { id: "ai-decision-factory", pattern: /\bIntentResult\.(?:low|medium|high)\b|\bSupervisorDecision\.(?:task|taskFallback|plainChat)\b/, kind: "calculation", reason: "reviewed AI routing decision value factory", defaultOwnership: "target-owned" },
+  { id: "ai-context-factory", pattern: /\b(?:HelpContext\.none|KnowledgeContext\.of)\b/, kind: "context-resolution", reason: "reviewed AI knowledge/help context factory", defaultOwnership: "target-owned" },
+  { id: "reviewed-ai-external-orchestration", pattern: /\b(?:AiCommandSuggestModule\.callAiWithTimeout|AiImageOcrModule\.recognizeText|AiImageAnalyzeModule\.(?:analyze|analyzeSingleImage)|AiMeetingContextPredictModule\.predict|AiSentenceFieldExtractModule\.extractFieldValues|AiPromptGenerateModule\.generate|AiTextPolishModule\.polish|AiChatExcel(?:SheetTag|SheetBaseData|SheetMainData|SheetBusinessData|SheetDataRelation|BusinessProcess|SheetSimilarityAnalysis|BaseDataReInfer|MainDataReInfer|BusinessDataReInfer|DataRelationReInfer)Module\.(?:chatExcelSheetTag|geExcelSheetBaseData|identifyBusinessProcess|analyzeSheetSimilarity|reInferBaseDataGroup|reInferMainDataGroup|reInferBusinessDataGroup|reInferDataRelation))\b/, kind: "external-call", reason: "reviewed AI model orchestration boundary with nested calls retained", defaultOwnership: "infrastructure-port" },
+  { id: "reviewed-ai-response-transform", pattern: /\bAiChatExcel(?:SheetTag|SheetBaseData|SheetMainData|SheetBusinessData|SheetDataRelation|BusinessProcess)Module\.enrichResponse\b|\bAiSentenceFieldExtractModule\.mergeByInputOrder\b|\b(?:AiPromptGenerateModule|AiTextPolishModule)\.stripMarkdown\b|\bAiMeetingContextPredictModule\.truncate\b|\bAiFieldRecommendModule\.cfg(?:Int|Str)\b|\bMenuAccessLogBizServiceImpl\.truncate\b/, kind: "calculation", reason: "reviewed deterministic AI response transformation or configuration lookup", defaultOwnership: "target-owned" },
+  { id: "reviewed-ai-state-read", pattern: /\b(?:LedgerScanServiceImpl\.scanAllTables|ChartCreationServiceImpl\.previewChart|AiScheduledTaskService\.requireOwnTask)\b/, kind: "state-read", reason: "reviewed query, ownership check, or scan orchestration", defaultOwnership: "target-owned" },
+  { id: "reviewed-ai-state-write", pattern: /\b(?:HelpDocIngestor\.ingestHelpDoc|AiChatConversationBizServiceImpl\.renameChatConversation|AiChatConversationDO\.rename|AiAssistantChatApplicationService\.markMessageHelpful|AiChatMessageServiceImpl\.markApprovalResolvedIfPending)\b/, kind: "state-write", reason: "reviewed AI application state mutation with nested persistence retained", defaultOwnership: "target-owned" },
+  { id: "reviewed-ai-validation", pattern: /\bAiAssistantScheduledTaskController\.requireLogin\b/, kind: "context-resolution", reason: "reviewed authenticated-user context requirement", defaultOwnership: "target-owned" },
+  { id: "reviewed-ai-scalar-helper", pattern: /\b(?:AiAssistantChatController|SopApplicationService|SopAttachmentContentParser)\.(?:firstNonBlank|parseMeta|serializeMeta|safeMessage|contains|extension|extensionFromMime|supports)\b/, kind: "calculation", reason: "reviewed deterministic SOP, attachment, or scalar helper", defaultOwnership: "target-owned" },
+  { id: "reviewed-ai-usage-boundary", pattern: /\bAiTokenUsageACL\.summary\b/, kind: "external-call", reason: "reviewed AI token usage summary boundary", defaultOwnership: "infrastructure-port" },
+  { id: "reviewed-ai-usage-empty", pattern: /\bAiTokenUsageACL\.emptySummary\b/, kind: "calculation", reason: "reviewed empty usage summary factory", defaultOwnership: "target-owned" },
+  { id: "reviewed-layout-calculation", pattern: /\b(?:ConnectedComponent\.addPoint|ConnectedComponentAnalyzer\.bfs|EnhancedSheetLayoutAnalyzer\.analyze|GridPreprocessor\.(?:preprocess|cleanText|handleMergedCells|completeBorders|completeRowBorders|completeColBorders|propagateMergedCellInfo|repairBrokenTables|repairBrokenRow|repairBrokenCol)|TableDetectConfig\.(?:defaultConfig|strictConfig)|RowFeature\.borderRatio)\b/, kind: "calculation", reason: "reviewed in-memory spreadsheet layout analysis", defaultOwnership: "target-owned" },
+  { id: "reviewed-layout-orchestration", pattern: /\b(?:ExcelLayoutAnalyzeServiceImpl\.(?:analyze|chooseSheet)|ExcelLayoutBatchServiceImpl\.(?:chooseSheet|generateTaskCode)|ExcelLayoutConfirmServiceImpl\.(?:chooseSheet|confirmLayout)|TableDataExtractor\.indexOfFirstSeparator)\b/, kind: "calculation", reason: "reviewed spreadsheet layout selection, analysis, or task-code orchestration with nested effects retained", defaultOwnership: "target-owned" },
+  { id: "reviewed-ai-module-tail", pattern: /\bAiFieldAnalysisStep\.formatDoneMessage\b|\b(?:AiFieldRecommendModule|AiFieldOptimizeModule)\.(?:stripSuffixes|analyze|analyzeWithSampling)\b|\bAiChatExcelSheetSplitModule\.(?:splitSheet|enrichResponse)\b/, kind: "calculation", reason: "reviewed AI module formatting, analysis orchestration, or response enrichment with nested model calls retained", defaultOwnership: "target-owned" },
+  { id: "reviewed-menu-calculation", pattern: /\b(?:MenuSearchBizServiceImpl|AiChatHistoryRetrievalServiceImpl)\.cosineSimilarity\b|\bMenuSearchBizServiceImpl\.(?:desensitize|escapeJson|containsIgnoreCase|calcScore)\b/, kind: "calculation", reason: "reviewed deterministic menu matching, scoring, or redaction", defaultOwnership: "target-owned" },
+  { id: "reviewed-scheduled-parse", pattern: /\bAiScheduledTaskService\.(?:parseCronOrThrow|parseBlueprintOrThrow|parseBlueprintLenient)\b/, kind: "validation", reason: "reviewed scheduled-task cron or blueprint validation", defaultOwnership: "target-owned" },
+  { id: "reviewed-import-write", pattern: /\bLedgerImportServiceImpl\.importFromJson\b/, kind: "state-write", reason: "reviewed ledger import mutation orchestration with nested persistence retained", defaultOwnership: "target-owned" },
+  { id: "reviewed-sop-index-write", pattern: /\bSopApplicationService\.markIndexStatus\b/, kind: "state-write", reason: "reviewed SOP index status mutation", defaultOwnership: "target-owned" },
+  { id: "reviewed-sop-reindex-event", pattern: /\bSopApplicationService\.triggerReindex\b/, kind: "event-publish", reason: "reviewed SOP asynchronous reindex trigger", defaultOwnership: "infrastructure-port" },
+  { id: "reviewed-sop-content-boundary", pattern: /\bSopAttachmentContentParser\.parse\b/, kind: "external-call", reason: "reviewed attachment content parsing boundary", defaultOwnership: "infrastructure-port" },
+  { id: "reviewed-report-calculation", pattern: /\bReportChartRecommendService\.(?:chartSignature|chartTypeName|reportSignature|validChartTypeOrDefault)\b|\bSopOutlineExtractor\.extract\b|\bDomainKnowledgeResolver\.semanticKey\b/, kind: "calculation", reason: "reviewed deterministic report, outline, or knowledge-key transformation", defaultOwnership: "target-owned" },
+  { id: "reviewed-attachment-scalar", pattern: /\bAiAssistantAttachmentService\.(?:trimSlash|firstNonBlank)\b/, kind: "calculation", reason: "reviewed attachment path or scalar normalization", defaultOwnership: "target-owned" },
+  { id: "reviewed-ledger-field-ai", pattern: /\bAiLedgerFieldRecommendModule\.recommend\b/, kind: "external-call", reason: "reviewed ledger-field AI recommendation boundary", defaultOwnership: "infrastructure-port" },
+  { id: "reviewed-ledger-field-transform", pattern: /\bAiLedgerFieldRecommendModule\.(?:clampPrecision|stripToOutermostJson|text)\b/, kind: "calculation", reason: "reviewed ledger-field recommendation response transformation", defaultOwnership: "target-owned" },
+  { id: "reviewed-smart-suggestion-calculation", pattern: /\bSmartSuggestionBizServiceImpl\.(?:clampLimit|textOrNull)\b/, kind: "calculation", reason: "reviewed smart-suggestion scalar normalization", defaultOwnership: "target-owned" },
+  { id: "reviewed-smart-suggestion-cache", pattern: /\bSmartSuggestionBizServiceImpl\.evictExpiredLocal\b/, kind: "state-write", reason: "reviewed local suggestion-cache eviction", defaultOwnership: "target-owned" },
+  { id: "reviewed-smart-suggestion-metrics", pattern: /\bSmartSuggestionBizServiceImpl\.logMetrics\b/, kind: "observability", reason: "reviewed smart-suggestion metrics emission", defaultOwnership: "reviewed-exclusion" },
+  { id: "reviewed-domain-knowledge", pattern: /\bDomainTemplateLibrary\.byDomain\b/, kind: "state-read", reason: "reviewed in-memory domain template lookup", defaultOwnership: "target-owned" },
+  { id: "reviewed-domain-knowledge-provider", pattern: /\bDomainKnowledgeProvider\.propose\b/, kind: "external-call", reason: "reviewed domain knowledge provider boundary", defaultOwnership: "infrastructure-port" },
+  { id: "reviewed-domain-knowledge-value", pattern: /\bDomainKnowledgeProvider\.tier\b|\bBindResult\.allPresent\b/, kind: "decision", reason: "reviewed knowledge tier or field-binding decision", defaultOwnership: "target-owned" },
+  { id: "reviewed-scheduled-runner", pattern: /\bAiScheduledTaskHeadlessRunner\.(?:tick|runOne)\b/, kind: "async-boundary", reason: "reviewed scheduled headless execution boundary", defaultOwnership: "target-owned" },
+  { id: "reviewed-scheduled-state-write", pattern: /\bAiScheduledTaskHeadlessRunner\.(?:advanceNextRun|advanceNextRunInPlace)\b/, kind: "state-write", reason: "reviewed scheduled-task next-run mutation", defaultOwnership: "target-owned" },
+  { id: "reviewed-scheduled-token", pattern: /\bAiScheduledTaskHeadlessRunner\.mintToken\b/, kind: "context-resolution", reason: "reviewed scheduled execution token context", defaultOwnership: "target-owned" },
+  { id: "reviewed-scheduled-render", pattern: /\bAiScheduledTaskHeadlessRunner\.(?:clip|renderDeterministic|summarizeAgg)\b/, kind: "calculation", reason: "reviewed scheduled-run deterministic rendering", defaultOwnership: "target-owned" },
+  { id: "reviewed-scheduled-narration", pattern: /\bAiScheduledTaskHeadlessRunner\.narrate\b/, kind: "external-call", reason: "reviewed scheduled-run AI narration boundary", defaultOwnership: "infrastructure-port" },
+  { id: "reviewed-assistant-memory-calculation", pattern: /\b(?:AiAssistantChatApplicationService\.(?:ownershipDenied|summarize)|AiUserMemoryService\.(?:asConfidence|asStr|balancedArrayAt|byStrengthDesc|clampConfidence|safeTruncate)|ConversationSummaryService\.safeTruncate|PlanExecuteService\.maskInternalTermsForDisplay|ThinkingFilter\.onDelta)\b/, kind: "calculation", reason: "reviewed assistant memory, display, summary, or delta transformation", defaultOwnership: "target-owned" },
+  { id: "reviewed-assistant-memory-write", pattern: /\b(?:AiAssistantChatApplicationService\.afterAssistantTurn|AiUserMemoryService\.(?:extractIfNeeded|mergeInto|enforceCap)|ConversationSummaryService\.compactIfNeeded)\b/, kind: "state-write", reason: "reviewed assistant memory or conversation-summary mutation", defaultOwnership: "target-owned" },
+  { id: "reviewed-assistant-memory-async", pattern: /\b(?:AiUserMemoryService\.maybeExtractAsync|ConversationSummaryService\.maybeCompactAsync)\b/, kind: "async-boundary", reason: "reviewed asynchronous memory or summary maintenance", defaultOwnership: "target-owned" },
+  { id: "reviewed-assistant-context-read", pattern: /\bcontextAugmenter\.augment\b/, kind: "state-read", reason: "reviewed assistant context augmentation lookup", defaultOwnership: "infrastructure-port" },
+  { id: "reviewed-assistant-run-coordination", pattern: /\b(?:conversationService|PlanExecuteService)\.(?:claimRun|releaseRun|claimRunQuietly|releaseRunQuietly)\b|\bstepLoopExecutor\.runLoop\b/, kind: "coordination", reason: "reviewed assistant run ownership or step-loop coordination", defaultOwnership: "target-owned" },
+  { id: "reviewed-assistant-run-value", pattern: /\bPlanExecuteService\.newRunId\b/, kind: "external-call", reason: "reviewed assistant run identity generation", defaultOwnership: "target-owned" },
+  { id: "reviewed-assistant-plan", pattern: /\bplanParser\.(?:parse|fallback)\b|\bstepLoopExecutor\.newLifecycle\b/, kind: "calculation", reason: "reviewed plan parsing, fallback, or lifecycle construction", defaultOwnership: "target-owned" },
+  { id: "reviewed-assistant-plan-validation", pattern: /\bplanLinter\.lint\b|\b(?:ReliabilityDetectors|UserMemoryGuard)\.(?:looksLikeFabricatedBusinessData|looksLikeBusinessData|accept)\b/, kind: "decision", reason: "reviewed plan, reliability, or memory acceptance decision", defaultOwnership: "target-owned" },
+  { id: "reviewed-assistant-synthesis", pattern: /\bsynthesizerService\.runSynthesizer\b/, kind: "external-call", reason: "reviewed assistant synthesis model boundary", defaultOwnership: "infrastructure-port" },
+  { id: "reviewed-sop-write-tail", pattern: /\bSopApplicationService\.(?:ensureCodeAvailable|forkSystemSop)\b/, kind: "state-write", reason: "reviewed SOP code reservation or fork mutation with nested persistence retained", defaultOwnership: "target-owned" },
+  { id: "reviewed-sop-value-tail", pattern: /\bSopApplicationService\.(?:emptyToNull|slugify)\b/, kind: "calculation", reason: "reviewed SOP scalar normalization", defaultOwnership: "target-owned" },
+  { id: "reviewed-ai-value-accessors", pattern: /\b(?:ReportRecommendation\.(?:analysis|mode)|SkillGuidance\.(?:contextItems|plannerSection)|ContextItem\.skillGuidance|ApprovalRequest\.options|segmentation\.segments|segment\.(?:content|index)|pack\.(?:actions|description|displayName|name)|[acms]\.(?:description|displayName|field|name|panelFieldId|perspectiveTag|showAxis|valueFun))\b|\b(?:analysis|derivable|field|outputHint|role|scope)\(\)\.(?:confidence|derivationHint|name|panelFieldId|preferredChartType)\b/, kind: "calculation", reason: "reviewed AI record or capability value accessor", defaultOwnership: "target-owned" },
+  { id: "workbook-mutation", pattern: /\b(?:CellStyle\.cloneStyleFrom|Sheet\.addMergedRegion)\b/, kind: "state-write", reason: "in-memory workbook style or merged-region mutation", defaultOwnership: "infrastructure-port" },
+  { id: "runnable-execution", pattern: /\b(?:Runnable|taskRunner|cleanupTask)\.run\b|\bTaskCleanupService\.scheduleCleanup\b/, kind: "async-boundary", reason: "callback execution or deferred cleanup boundary", defaultOwnership: "target-owned" },
   { id: "redis", pattern: /RedisTemplate|StringRedisTemplate|opsForValue|opsForHash|redis\.call|RedisScript/i, kind: "coordination", reason: "Redis/cache coordination", defaultOwnership: "infrastructure-port" },
   { id: "async", pattern: /CompletableFuture|ExecutorService|TaskExecutor|\.submit\b|\.execute\b|\.schedule(?:AtFixedRate|WithFixedDelay)?\b|@Async\b/i, kind: "async-boundary", reason: "asynchronous execution boundary", defaultOwnership: "target-owned" },
   { id: "future-wait", pattern: /(?:Future|CompletionStage|\w+Future)\.join\b|\b\w+Future\.get\b/i, kind: "async-boundary", reason: "asynchronous result synchronization", defaultOwnership: "target-owned" },
   { id: "executor-lifecycle", pattern: /\b[A-Za-z0-9_]*executor\.(?:shutdown|shutdownNow|awaitTermination)\b/i, kind: "async-boundary", reason: "executor lifecycle boundary", defaultOwnership: "target-owned" },
   { id: "in-memory-coordination", pattern: /\b(?:[A-Za-z0-9_]*queue\.(?:offer|poll)|barrier\.(?:awaitTurn|signalDone))\b/i, kind: "coordination", reason: "in-memory queue or ordering coordination", defaultOwnership: "target-owned" },
   { id: "signal-coordination", pattern: /\b(?:signal|semaphore|latch)\.(?:acquire|release|await|countDown)\b/i, kind: "coordination", reason: "in-memory signal or semaphore coordination", defaultOwnership: "target-owned" },
+  { id: "aop-context", pattern: /AopContext\.currentProxy/i, kind: "context-resolution", reason: "Spring proxy context access", defaultOwnership: "infrastructure-port" },
   { id: "application-context", pattern: /\b[A-Za-z0-9_]*Context\.(?:current[A-Za-z0-9_]*|enter|exit|push|pop|snapshot|newScope|(?:run|call)With[A-Za-z0-9_]*)\b/, kind: "context-resolution", reason: "application context scope or lookup", defaultOwnership: "target-owned" },
   { id: "rule-context-lookup", pattern: /\bruleContext\.(?:rulesOf|nodesOf)\b/, kind: "calculation", reason: "preloaded rule-context map lookup", defaultOwnership: "target-owned" },
   { id: "sql-session-flush", pattern: /SqlSessionTemplate\.flushStatements\b/i, kind: "state-write", reason: "SQL session write flush", defaultOwnership: "infrastructure-port" },
@@ -27,8 +95,16 @@ export const JAVA_SEMANTIC_RULES: JavaSemanticRule[] = [
   { id: "filesystem-metadata", pattern: /\battrs\.lastModifiedTime\b|\bpathMatcher\.match\b|\bsheet\.rowIterator\b/, kind: "external-call", reason: "filesystem or workbook metadata read", defaultOwnership: "infrastructure-port" },
   { id: "external-resource-lifecycle", pattern: /\b(?:workbook|process)\.(?:close|waitFor)\b|\bpb\.(?:start|redirectErrorStream)\b|\bSystem\.(?:gc|exit)\b/i, kind: "external-call", reason: "external resource or process lifecycle", defaultOwnership: "infrastructure-port" },
   { id: "http-boundary", pattern: /\brequest\.addHeader\b|\bresponse\.body\b/, kind: "external-call", reason: "HTTP request or response boundary", defaultOwnership: "infrastructure-port" },
+  { id: "url-connection-boundary", pattern: /\bURL\.openConnection\b/, kind: "external-call", reason: "URL network connection boundary", defaultOwnership: "infrastructure-port" },
   { id: "lambda", pattern: /lambda\s*->|method-reference|::/, kind: "calculation", reason: "Java lambda or method reference", defaultOwnership: "target-owned" },
   { id: "mapping", pattern: /BeanUtils|copyProperties|Convert\.|ObjectMapper|toBean\b/i, kind: "calculation", reason: "DTO/object mapping", defaultOwnership: "reviewed-exclusion" },
+  { id: "object-clone", pattern: /\bsuper\.clone\b/, kind: "calculation", reason: "in-memory object clone", defaultOwnership: "target-owned" },
+  { id: "configuration-cache-helper", pattern: /\b[A-Z][A-Za-z0-9_]*(?:Event|Http)[A-Za-z0-9_]*Cache(?:Impl)?\.(?:copy|clone|build|create|getCacheKey)[A-Za-z0-9_]*\b/i, kind: "calculation", reason: "in-memory event/HTTP configuration cache transformation", defaultOwnership: "target-owned" },
+  { id: "configuration-cache-prefetch", pattern: /\b[A-Z][A-Za-z0-9_]*(?:Event|Http)[A-Za-z0-9_]*(?:Service|Cache)(?:Impl)?\.prefetchCache[A-Za-z0-9_]*\b/i, kind: "coordination", reason: "event/HTTP configuration cache prefetch", defaultOwnership: "infrastructure-port" },
+  { id: "configuration-transformation", pattern: /\b[A-Z][A-Za-z0-9_]*(?:Event|Http)[A-Za-z0-9_]*(?:Service|Adapter)(?:Impl)?\.to[A-Z][A-Za-z0-9_]*(?:ByList|List|Map)\b/i, kind: "calculation", reason: "in-memory event/HTTP configuration transformation", defaultOwnership: "target-owned" },
+  { id: "configuration-state-read", pattern: /\b[A-Z][A-Za-z0-9_]*(?:Event|Http)[A-Za-z0-9_]*(?:Service|Repository|Mapper|Port|Adapter|Cache)(?:Impl)?\.(?:select|get|find|list|load|query|count|exists)[A-Za-z0-9_]*\b/i, kind: "state-read", reason: "event/HTTP configuration lookup rather than event publication or network execution", defaultOwnership: "infrastructure-port" },
+  { id: "configuration-assembly", pattern: /\b[A-Z][A-Za-z0-9_]*\.(?:initEventServer|initHttpServer)\b/i, kind: "calculation", reason: "in-memory event/HTTP configuration assembly", defaultOwnership: "target-owned" },
+  { id: "key-value-object-factory", pattern: /\b[A-Z][A-Za-z0-9_]*Key\.(?:from|of|create|valueOf)\b/, kind: "calculation", reason: "deterministic key value-object factory", defaultOwnership: "target-owned" },
   { id: "value-object-factory", pattern: /\b(?:[A-Z][A-Za-z0-9_]*(?:Context|Result|Outcome)|Eligibility)\.(?:empty|yes|no|failed|ok|skipped|overCapacity)\b/, kind: "calculation", reason: "value-object factory", defaultOwnership: "reviewed-exclusion" },
   { id: "reviewed-value-resolver", pattern: /\b(?:AiOutputTypeResolver|BatchTypedFieldResolver|ImportFailureMessageResolver|ViewMetaRespKeyResolver)\.resolve\b|\b(?:IntegerExtractor|NumberExtractor|NumberPercentageExtractor)\.extract\b|\bViewMetaExcelHeadSnapshot\.from\b|\b(?:Eligibility\.no|NoMenuUsePageCleanupStats\.empty)\b/, kind: "calculation", reason: "reviewed deterministic value resolver or factory", defaultOwnership: "target-owned" },
   { id: "reviewed-field-value-format", pattern: /\bFieldDateFormatValueDataServiceImpl\.handleFieldDateFormat\b|\bFieldPercentageValueDataServiceImpl\.(?:handleShowFieldValue|handleFormatFieldValue)\b/, kind: "calculation", reason: "reviewed deterministic field value formatting", defaultOwnership: "target-owned" },
@@ -90,12 +166,14 @@ export const JAVA_SEMANTIC_RULES: JavaSemanticRule[] = [
   { id: "reviewed-state-read-tail", pattern: /\bViewDynamicFieldRelationServiceImpl\.expandGraphWithLayoutFieldData\b/, kind: "state-read", reason: "reviewed graph enrichment from stored layout fields", defaultOwnership: "target-owned" },
   { id: "reviewed-business-pure-tail", pattern: /\b(?:AutomationConfigDataBizServiceImpl\.(?:generateTriggerCode|containsIgnoreCase|matchAutomationConfigKeyword)|ViewDynamicFieldDataServiceImpl\.(?:applyRefFieldConfig|generateDecimalScript)|AnomalyRuleServiceImpl\.crossMidnight|DimensionDetectorImpl\.geoTypeFromTagKey|EngineUseExcelBackServiceImpl\.sanitizeZipSegment|NlsSpeechRecognitionServiceImpl\.toShortAsrVO|SqlApiSignatureDataServiceImpl\.toSignatureDataDO|TableDumpServiceImpl\.escape|ViewDynamicExcelPageDataBizServiceImpl\.(?:toLegacyHeadBO|toLegacyHeadRespBO|toLegacyTagScriptFieldBO)|ViewDynamicHorizontalEngineServiceImpl\.(?:determinePageHeaderRowHeight|determinePageLineHeightType)|ViewMetaPipelineSyncDomainServiceImpl\.emptyPlan|AiExpressionCompileService\.(?:compileRule|renderStoredFormula)|BatchExportAsyncServiceImpl\.(?:calcRemainSeconds|toTaskResp)|BatchGenerateComboPlanner\.(?:comboKey|formatValue|next|truncate)|ChangeLogMatchServiceImpl\.(?:newer|pickDisplayName)|ConfirmSyncApplicationServiceImpl\.mergeErrorMessages|LedgerAnalysisCore\.(?:bucketLabel|fmtNum|pct|periodStart|stripNumber|toBigDecimal)|LedgerCommonFieldServiceImpl\.toRespVO|McpLedgerServiceImpl\.toFieldDTO|PartitionManageServiceImpl\.matchesPartitionType|ToCodeFieldDataServiceImpl\.(?:compositeWithText|compressToBase64|generateBarCodeImage|generateQrCodeImage)|ViewDefinitionServiceImpl\.generateDefaultViewName|ViewDynamicFieldSynOldDataServiceImpl\.generateDecimalScript|ViewMetaExcelImportAnalyzeApplicationServiceImpl\.(?:applyDuplicateSummary|applyEntitlementFallback|minColIndexOfSnapshot)|ViewMetaExcelImportAnalyzeSessionApplicationServiceImpl\.(?:toDisplayResult|toFieldDraftResult|toFormatResult)|ViewMetaExcelQuickImportApplicationServiceImpl\.toExcelColLabel|ViewMetaFieldValueSyncStatusService\.firstNotEmpty)\b/, kind: "calculation", reason: "reviewed deterministic low-fanout business helper", defaultOwnership: "target-owned" },
   { id: "reviewed-wide-deterministic-helper", pattern: /\bColorAttributeDefaultFilter\.stripDefaultColors\b|\bViewMetaPageRefValueSyncExecutor\.quoteSqlIdentifier\b|\bViewDynamicLayoutEngineServiceImpl\.reverseDirection\b|\bSqlFieldExtractor\.extractFieldFromAggregateFunction\b|\bViewDynamicFieldNewCopyServiceImpl\.replaceUsePageId\b|\bViewDynamicUsePageNewCopyServiceImpl\.replaceUsePgeUrl\b|\bHandleDateExpDataServiceImpl\.(?:applyDateExpCycle|applyHourRoundRule)\b|\bLedgerAnalysisCore\.(?:contributionPct|roundDisplay)\b/, kind: "calculation", reason: "reviewed deterministic filtering, identifier, direction, URL, date, or numeric transformation", defaultOwnership: "target-owned" },
+  { id: "reviewed-page-ref-value-predicate", pattern: /\bViewMetaPageRefValueSyncExecutor\.(?:hasText|isSafeSqlIdentifier)\b/, kind: "decision", reason: "reviewed local text or SQL identifier predicate", defaultOwnership: "target-owned" },
+  { id: "reviewed-page-ref-value-transform", pattern: /\bViewMetaPageRefValueSyncExecutor\.(?:normalizeColorText|shallowCopyRowData)\b/, kind: "calculation", reason: "reviewed local color normalization or row-map copy", defaultOwnership: "target-owned" },
   { id: "reviewed-consumer-coordination", pattern: /\bParentPanelRefreshServiceImpl\.(?:consumeLoop|doRefreshAncestorPanels|processTask|startConsumer)\b/, kind: "coordination", reason: "reviewed background refresh consumer coordination", defaultOwnership: "target-owned" },
   { id: "private-pure-helper", pattern: /\.(?:format[A-Za-z0-9_]*|groupThousands|parse[A-Za-z0-9_]*|extract[A-Za-z0-9_]*|compare[A-Za-z0-9_]*|bothPresent|nz|blankToNull|canonical[A-Za-z0-9_]*|splitMultiValue|mergeKey|statusPriority|toComparisonLiteral)\b[\s\S]*\bprivate\s+(?:static\s+)?[A-Za-z0-9_<>, ?\[\].]+\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/, kind: "calculation", reason: "private deterministic value helper", defaultOwnership: "target-owned" },
   { id: "serialization", pattern: /(?:JSON\.(?:toJSON|toJSONString|parseArray|parseObject)|gson\.(?:toJson|fromJson)|ObjectMapper)/i, kind: "calculation", reason: "serialization or deserialization", defaultOwnership: "reviewed-exclusion" },
   { id: "string-builder", pattern: /\.append\b/i, kind: "calculation", reason: "deterministic string construction", defaultOwnership: "reviewed-exclusion" },
-  { id: "jdk-stream", pattern: /\.stream\(\)\.(?:filter|map|flatMap|collect|toList|reduce|count|findFirst|findAny|anyMatch|allMatch|noneMatch|sorted|distinct|forEach|max|min)\b|\.(?:values|entrySet)\(\)\.forEach\b/, kind: "calculation", reason: "JDK stream or collection traversal", defaultOwnership: "reviewed-exclusion" },
-  { id: "jdk-date-value", pattern: /(?:LocalDate|LocalDateTime|LocalTime|YearMonth|Instant|Timestamp|sql\.Timestamp)\.(?:of|ofInstant|ofEpochMilli|parse|valueOf)\b|\bsql\.Timestamp\b|\.(?:atStartOfDay|atZone|plusDays|minusDays|plusMonths|minusMonths|plusYears|minusYears|plusSeconds|minusSeconds|withDayOfMonth|withDayOfYear|withMonth|toLocalDate|toLocalDateTime|dayOfMonth|dayOfWeek|toInstant|before|hour)\b|\b(?:DAYS|MONTHS|YEARS)\.between\b/, kind: "calculation", reason: "deterministic date/time value operation", defaultOwnership: "reviewed-exclusion" },
+  { id: "jdk-stream", pattern: /\.stream\(\)\.(?:filter|map|flatMap|collect|toList|reduce|count|findFirst|findAny|anyMatch|allMatch|noneMatch|sorted|distinct|forEach|max|min|limit)\b|\.(?:values|entrySet)\(\)\.forEach\b|(?:^|\.)stream\(\)\.(?:limit|filter|map|toList)\b/, kind: "calculation", reason: "JDK stream or collection traversal", defaultOwnership: "reviewed-exclusion" },
+  { id: "jdk-date-value", pattern: /(?:LocalDate|LocalDateTime|LocalTime|YearMonth|Instant|Timestamp|sql\.Timestamp)\.(?:of|ofInstant|ofEpochMilli|parse|valueOf)\b|\bsql\.Timestamp\b|\.(?:atStartOfDay|atZone|plusDays|plusMillis|minusDays|plusMonths|minusMonths|plusYears|minusYears|plusSeconds|minusSeconds|withDayOfMonth|withDayOfYear|withMonth|toLocalDate|toLocalDateTime|dayOfMonth|dayOfWeek|toInstant|before|hour)\b|\b(?:DAYS|MONTHS|YEARS)\.between\b/, kind: "calculation", reason: "deterministic date/time value operation", defaultOwnership: "reviewed-exclusion" },
   { id: "jdk-string-chain", pattern: /\.toString\(\)\.(?:equals|compareTo)\b/, kind: "calculation", reason: "deterministic string conversion and comparison", defaultOwnership: "reviewed-exclusion" },
   { id: "jdk-date-formatter-constant", pattern: /\b(?:ISO_[A-Z_]+|[A-Za-z0-9_]*Formatter)\.parse\b/, kind: "calculation", reason: "deterministic date formatter parse", defaultOwnership: "reviewed-exclusion" },
   { id: "jdk-week-value", pattern: /\bwf\.(?:weekBasedYear|weekOfWeekBasedYear)\b|\bYearMonth\.from\b/, kind: "calculation", reason: "deterministic week or year-month value", defaultOwnership: "reviewed-exclusion" },
@@ -109,15 +187,85 @@ export const JAVA_SEMANTIC_RULES: JavaSemanticRule[] = [
   { id: "thread-lifecycle", pattern: /\b(?:t\.start|heartbeatScheduler\.shutdownNow)\b/, kind: "async-boundary", reason: "thread or scheduler lifecycle", defaultOwnership: "target-owned" },
   { id: "signal-drain", pattern: /\bsignal\.drainPermits\b/, kind: "coordination", reason: "in-memory signal coordination", defaultOwnership: "target-owned" },
   { id: "archive-construction", pattern: /\bzip\.GZIPOutputStream\b/, kind: "state-write", reason: "compressed output stream boundary", defaultOwnership: "infrastructure-port" },
-  { id: "jdk-pure", pattern: /(?:Objects|Optional|String|StringUtils|Integer|Long|Float|Boolean|Double|BigDecimal|Math|Collections|Arrays|Collectors|Stream|Function|Comparator|DateTimeFormatter|Duration|Pattern|URLEncoder)\.|\.(?:length|replace|replaceAll|substring|subList|startsWith|endsWith|trim|matcher|matches|group|indexOf|lastIndexOf|split|charAt|chars|allMatch|toPlainString|intValue|longValue|longValueExact|doubleValue|toLowerCase|toUpperCase|toCharArray|toByteArray|toArray|sort|retainAll|putIfAbsent|containsAll|iterator|signum|scale|subtract|add|multiply|divide|format|abs|negate|max|thenComparing|reversed)\b|\.values\(\)\.stream\b/, kind: "calculation", reason: "JDK deterministic utility", defaultOwnership: "reviewed-exclusion" },
+  { id: "jdk-pure", pattern: /(?:Objects|Optional|String|StringUtils|Integer|Long|Float|Boolean|Double|BigDecimal|Math|Collections|Arrays|Collectors|Stream|Function|Comparator|DateTimeFormatter|Duration|Pattern|URLEncoder|CronExpression)\.|\.(?:length|size|stream|strip|equals|contains|replace|replaceAll|substring|subList|startsWith|endsWith|trim|matcher|matches|group|indexOf|lastIndexOf|split|charAt|chars|allMatch|toPlainString|intValue|longValue|longValueExact|doubleValue|toLowerCase|toUpperCase|toCharArray|toByteArray|toArray|sort|retainAll|putIfAbsent|containsAll|iterator|signum|scale|subtract|add|multiply|divide|format|abs|negate|max|thenComparing|reversed)\b|\.values\(\)\.stream\b|\b(?:MessageDigest\.digest|JsonNode\.(?:path|asText|asInt)|System\.lineSeparator|[A-Z][A-Z0-9_]*\.name)\b/, kind: "calculation", reason: "JDK deterministic utility", defaultOwnership: "reviewed-exclusion" },
   { id: "reviewed-expression-helper", pattern: /\b(?:RobustComparisonParser\.parseChainedComparison|SafeExpressionEvaluator\.(?:canonicalDateOrNull|evalToOutput)|ConditionMatcher\.(?:matchAll|matchAny)|ExprJsonCodec\.(?:fromJson|toJson)|AiOutputTypeResolver\.splitMultiValue|StringLetterExtractor\.extractLeadingLetters|SyncExceptionMessageParser\.parse)\b/, kind: "calculation", reason: "reviewed deterministic expression parsing or evaluation", defaultOwnership: "target-owned" },
   { id: "reviewed-value-accessor", pattern: /\bentry\.(?:status|expiresAtMillis)\b|\b(?:field|f)\.(?:field|id|fieldFormatTag)\b|\brule\.(?:color|conditions|type)\b|\bctx\.(?:conditionRulesByFieldId|fields|currentRow|viewDynamicFieldIdData|fieldDependencyTree)\b/, kind: "calculation", reason: "reviewed source value accessor", defaultOwnership: "target-owned" },
   { id: "exception-output", pattern: /\.printStackTrace\b/, kind: "observability", reason: "exception diagnostic output", defaultOwnership: "reviewed-exclusion" },
   { id: "query-builder", pattern: /(?:QueryWrapper|LambdaQueryWrapper|UpdateWrapper|wrapper\w*|\b[ww])\.(?:eq|ne|gt|ge|lt|le|like|in|or|and|last|orderBy(?:Asc|Desc)?|select|set)\b/i, kind: "calculation", reason: "query predicate construction", defaultOwnership: "reviewed-exclusion" },
-  { id: "aop-context", pattern: /AopContext\.currentProxy/i, kind: "context-resolution", reason: "Spring proxy context access", defaultOwnership: "infrastructure-port" },
   { id: "progress-report", pattern: /reporter\.reportStage|reportProgress/i, kind: "observability", reason: "progress reporting", defaultOwnership: "target-owned" }
 ];
 
+export const JAVA_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
+  schemaVersion: 1,
+  id: "builtin-java-zboss-compatibility",
+  version: "1.4.0",
+  language: "java",
+  description: "The existing ordered Java semantic registry, versioned without changing classification behavior.",
+  compatibility: {
+    engineSchemaVersion: 1,
+    mode: "builtin-compatibility"
+  },
+  scope: {
+    frameworks: ["spring", "mybatis", "mybatis-plus", "spring-data"],
+    projects: ["zboss-*"]
+  },
+  conflictPolicy: {
+    strategy: "ordered-first-match",
+    reviewedPrecedence: [
+      {
+        id: "cache-key-helper-before-cache-read",
+        winnerRuleId: "configuration-cache-helper",
+        loserRuleId: "configuration-state-read",
+        reason: "Cache-key builders are deterministic calculations even when their enclosing cache type also matches a state-read rule."
+      },
+      {
+        id: "spring-aop-before-generic-context",
+        winnerRuleId: "aop-context",
+        loserRuleId: "application-context",
+        reason: "Spring AOP proxy lookup is an infrastructure boundary, more specific than a generic application context lookup."
+      }
+    ]
+  },
+  rules: JAVA_SEMANTIC_RULES.map((rule) => ({
+    id: rule.id,
+    pattern: rule.pattern.source,
+    flags: rule.pattern.flags,
+    behavior: rule.kind,
+    reason: rule.reason,
+    defaultOwnership: rule.defaultOwnership,
+    origin: semanticRuleOrigin(rule)
+  }))
+};
+
+export interface JavaSemanticClassificationTrace {
+  packageId: string;
+  packageVersion: string;
+  ruleId: string;
+  ruleIndex: number;
+  origin: SemanticRuleOrigin;
+  rule: JavaSemanticRule;
+}
+
 export function classifyJavaSemantic(text: string): JavaSemanticRule | undefined {
   return JAVA_SEMANTIC_RULES.find((rule) => rule.pattern.test(text));
+}
+
+export function classifyJavaSemanticWithTrace(text: string): JavaSemanticClassificationTrace | undefined {
+  const ruleIndex = JAVA_SEMANTIC_RULES.findIndex((rule) => rule.pattern.test(text));
+  if (ruleIndex < 0) return undefined;
+  const rule = JAVA_SEMANTIC_RULES[ruleIndex];
+  return {
+    packageId: JAVA_SEMANTIC_RULE_PACKAGE.id,
+    packageVersion: JAVA_SEMANTIC_RULE_PACKAGE.version,
+    ruleId: rule.id,
+    ruleIndex,
+    origin: JAVA_SEMANTIC_RULE_PACKAGE.rules[ruleIndex].origin,
+    rule
+  };
+}
+
+function semanticRuleOrigin(rule: JavaSemanticRule): SemanticRuleOrigin {
+  return rule.id.startsWith("reviewed-")
+    ? "reviewed-compatibility"
+    : "generic-builtin";
 }

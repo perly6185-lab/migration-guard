@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.completion-control-evidence/v1",
+  "projectId": "zboss-batch-delete",
+  "projectHash": "9d47c281e6b3bf157450e168d14c7018ccaa518ba960bc3de0b112dc6a58f226",
+  "controlId": "implementation.checks",
+  "evidenceKind": "test-report",
+  "status": "passed",
+  "observedAt": "2026-07-30T10:58:45.253Z",
+  "synthetic": false,
+  "realEligible": true,
+  "producer": {
+    "tool": "migration-guard-zboss-completion-sync",
+    "version": "0.3.0-beta.1",
+    "command": "npm run zboss-rust:completion-sync",
+    "identity": "migration-guard:zboss-evidence-bridge"
+  },
+  "claims": {
+    "implementationChecksPassed": true,
+    "upstreamPath": "artifacts/batch-delete-rust/l3-gate.json",
+    "upstreamDecision": "L3-OFFLINE-ACCEPTED",
+    "upstreamReportHash": "94392a282f649da9a28e7d846870d03a6c3e5c2fc067fabe580c013004455051"
+  }
+}

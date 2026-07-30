@@ -1,0 +1,14 @@
+{
+  "reqId": "prp10-quality",
+  "usePageId": 7,
+  "pageNo": 1,
+  "pageSize": 20,
+  "qualityValues": {
+    "status": {
+      "operator": "EQ",
+      "value": "open"
+    }
+  },
+  "textFilterValue": "open",
+  "skipSavePageSize": true
+}

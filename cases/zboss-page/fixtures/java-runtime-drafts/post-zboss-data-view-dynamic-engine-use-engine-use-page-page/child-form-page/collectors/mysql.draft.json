@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "collector": "mysql",
+  "status": "draft",
+  "connectionEnv": "MG_JAVA_DATABASE_URL",
+  "includeRows": false,
+  "queries": [
+    {
+      "id": "connectivity",
+      "sql": "SELECT 1 AS migration_guard_probe"
+    },
+    {
+      "id": "replace-with-before-after-snapshot",
+      "sql": "SELECT 1 AS replace_me"
+    }
+  ]
+}

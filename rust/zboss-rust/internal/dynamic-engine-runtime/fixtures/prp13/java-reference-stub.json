@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "stage": "PRP-13",
+  "driverId": "java-reference-stub",
+  "provenance": "synthetic-frozen-stub-not-real-java-evidence",
+  "cases": [
+    {
+      "caseId": "standard-page",
+      "response": {
+        "httpStatus": 200,
+        "code": 0,
+        "msg": "success",
+        "reqId": "prp10-standard",
+        "total": 2,
+        "data": [
+          {
+            "amount": 10,
+            "customer": "a",
+            "status": "open"
+          }
+        ],
+        "uploadTmpTableName": null
+      },
+      "queryPlans": [
+        {
+          "engine": "mybatis-dynamic",
+          "table": "orders",
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        }
+      ],
+      "eventTrace": []
+    },
+    {
+      "caseId": "refresh-operator",
+      "response": {
+        "httpStatus": 200,
+        "code": 0,
+        "msg": "success",
+        "reqId": "prp10-refresh",
+        "total": 1,
+        "data": [
+          {
+            "amount": 30,
+            "customer": "r1",
+            "status": "open"
+          }
+        ],
+        "uploadTmpTableName": null
+      },
+      "queryPlans": [
+        {
+          "engine": "mybatis-dynamic",
+          "table": "orders",
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        }
+      ],
+      "eventTrace": [
+        "refresh.acquire",
+        "refresh.sync",
+        "refresh.timestamp",
+        "refresh.undo-clear",
+        "refresh.reconcile",
+        "refresh.query",
+        "refresh.unlock"
+      ]
+    },
+    {
+      "caseId": "child-form-page",
+      "response": {
+        "httpStatus": 200,
+        "code": 0,
+        "msg": "success",
+        "reqId": "prp10-child",
+        "total": 1,
+        "data": [
+          {
+            "amount": 40,
+            "customer": "c-open",
+            "status": "open"
+          }
+        ],
+        "uploadTmpTableName": null
+      },
+      "queryPlans": [
+        {
+          "engine": "mybatis-dynamic",
+          "table": "orders",
+          "wherePredicates": 1,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        }
+      ],
+      "eventTrace": []
+    },
+    {
+      "caseId": "horizontal-page",
+      "response": {
+        "httpStatus": 200,
+        "code": 0,
+        "msg": "success",
+        "reqId": "prp10-horizontal",
+        "total": 2,
+        "data": [
+          {
+            "customer": "a",
+            "total": 100
+          }
+        ],
+        "uploadTmpTableName": null
+      },
+      "queryPlans": [
+        {
+          "engine": "mybatis-dynamic",
+          "table": "orders",
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 1,
+          "aggregates": 1
+        }
+      ],
+      "eventTrace": []
+    },
+    {
+      "caseId": "quality-text-filter",
+      "response": {
+        "httpStatus": 200,
+        "code": 0,
+        "msg": "success",
+        "reqId": "prp10-quality",
+        "total": 1,
+        "data": [
+          {
+            "amount": 50,
+            "customer": "q-open",
+            "status": "open"
+          }
+        ],
+        "uploadTmpTableName": null
+      },
+      "queryPlans": [
+        {
+          "engine": "mybatis-dynamic",
+          "table": "orders",
+          "wherePredicates": 1,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        }
+      ],
+      "eventTrace": []
+    },
+    {
+      "caseId": "upload-preview-page",
+      "response": {
+        "httpStatus": 200,
+        "code": 0,
+        "msg": "success",
+        "reqId": "prp10-upload",
+        "total": 2,
+        "data": [
+          {
+            "amount": 91,
+            "customer": "t1",
+            "status": "preview"
+          },
+          {
+            "amount": 92,
+            "customer": "t2",
+            "status": "preview"
+          }
+        ],
+        "uploadTmpTableName": "tmp_orders_1"
+      },
+      "queryPlans": [
+        {
+          "engine": "mybatis-dynamic",
+          "table": "tmp_orders_1",
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        }
+      ],
+      "eventTrace": []
+    },
+    {
+      "caseId": "tenant-auth-context",
+      "response": {
+        "httpStatus": 403,
+        "code": 403001,
+        "msg": "page access denied",
+        "reqId": null,
+        "total": null,
+        "data": [],
+        "uploadTmpTableName": null
+      },
+      "queryPlans": [],
+      "eventTrace": []
+    },
+    {
+      "caseId": "entrypoint-parity",
+      "response": {
+        "httpStatus": 200,
+        "code": 0,
+        "msg": "success",
+        "reqId": "prp10-entrypoint",
+        "total": 1,
+        "data": [
+          {
+            "amount": 70,
+            "customer": "e1",
+            "status": "open"
+          }
+        ],
+        "uploadTmpTableName": null
+      },
+      "queryPlans": [
+        {
+          "engine": "mybatis-dynamic",
+          "table": "orders",
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        }
+      ],
+      "eventTrace": []
+    }
+  ]
+}

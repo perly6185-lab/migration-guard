@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "stage": "PRP-12",
+  "generator": "lcg64-v1",
+  "properties": [
+    {
+      "propertyId": "where-before-having",
+      "seed": 12012001,
+      "iterations": 128
+    },
+    {
+      "propertyId": "horizontal-pages-exact",
+      "seed": 12012002,
+      "iterations": 128
+    },
+    {
+      "propertyId": "having-survivor-union",
+      "seed": 12012003,
+      "iterations": 128
+    },
+    {
+      "propertyId": "average-full-sum-count",
+      "seed": 12012004,
+      "iterations": 256
+    },
+    {
+      "propertyId": "composite-key-collision-free",
+      "seed": 12012005,
+      "iterations": 128
+    },
+    {
+      "propertyId": "terminal-effect-unique",
+      "seed": 12012006,
+      "iterations": 64
+    },
+    {
+      "propertyId": "failure-path-eventual-unlock",
+      "seed": 12012007,
+      "iterations": 96
+    }
+  ]
+}

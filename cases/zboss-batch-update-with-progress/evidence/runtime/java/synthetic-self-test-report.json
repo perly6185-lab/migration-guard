@@ -1,0 +1,7 @@
+{
+  "valid": true,
+  "realEligible": false,
+  "findings": [
+    "MG-JAVA-EVIDENCE-SYNTHETIC-NOT-REAL"
+  ]
+}

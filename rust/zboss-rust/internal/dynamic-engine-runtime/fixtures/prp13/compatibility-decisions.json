@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "stage": "PRP-13",
+  "decisions": [
+    {
+      "decisionId": "PRP13-QUERY-ENGINE-001",
+      "classification": "approved-correction",
+      "caseId": "*",
+      "path": "queryPlans[*].engine",
+      "source": "mybatis-dynamic",
+      "target": "typed-query-plan",
+      "reason": "The Rust replacement must use the validated typed query plan rather than preserve the Java/MyBatis implementation mechanism.",
+      "approvedBy": "page-rust-offline-completion-plan"
+    }
+  ]
+}

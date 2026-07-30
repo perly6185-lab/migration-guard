@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "projectId": "zboss-page",
+  "projectHash": "56aa35908691d3260c90a8d7a1023252ac931dc1b786dcb2f5c34eac20d3229b",
+  "generatedFrom": "D:\\learn\\migration-guard\\cases\\zboss-page\\profile.json",
+  "entrypoints": [
+    {
+      "id": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "kind": "http-route",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/page"
+    }
+  ],
+  "contexts": {
+    "tenant": "required",
+    "user": "required",
+    "request": "required",
+    "datasource": "required",
+    "custom": [
+      "device"
+    ]
+  },
+  "data": {
+    "dialect": "mysql",
+    "adapters": [
+      "mybatis"
+    ]
+  },
+  "infrastructure": {
+    "caches": [
+      "redis"
+    ],
+    "locks": [
+      "redis-page-refresh-lease"
+    ],
+    "events": [
+      "refresh-progress"
+    ],
+    "externalServices": [
+      "system-server"
+    ]
+  },
+  "compatibility": {
+    "strict": true,
+    "approvalRequired": true,
+      "approvedCorrectionIds": [
+        "PAGE-DEC-QUALITY-AGGREGATE-ROUTING",
+        "PAGE-DEC-HORIZONTAL-HAVING",
+        "PAGE-DEC-REQUIRES-NEW-SELF-CALL",
+        "PAGE-DEC-REFRESH-EFFECT-ORDER"
+      ]
+  },
+  "implementationStatus": "scaffold-only"
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "standard-page-basic",
+    "behavior": "standard-page",
+    "request": { "pageId": "fixture-page", "pageNo": 1, "pageSize": 20 },
+    "expectedStatus": 200
+  },
+  {
+    "id": "refresh-basic",
+    "behavior": "refresh",
+    "request": { "pageId": "fixture-page", "panelId": "fixture-panel", "mode": "manual" },
+    "expectedStatus": 200
+  },
+  {
+    "id": "child-table-basic",
+    "behavior": "child-table",
+    "request": { "pageId": "fixture-page", "panelId": "fixture-child", "parentKey": "fixture-parent" },
+    "expectedStatus": 200
+  },
+  {
+    "id": "horizontal-table-basic",
+    "behavior": "horizontal-table",
+    "request": { "pageId": "fixture-page", "panelId": "fixture-horizontal", "pageNo": 1, "pageSize": 20 },
+    "expectedStatus": 200
+  },
+  {
+    "id": "quality-filter-basic",
+    "behavior": "quality-filter",
+    "request": { "pageId": "fixture-page", "filters": [{ "field": "status", "operator": "eq", "value": "active" }] },
+    "expectedStatus": 200
+  },
+  {
+    "id": "temporary-table-basic",
+    "behavior": "temporary-table",
+    "request": { "pageId": "fixture-page", "panelId": "fixture-temporary", "temporaryId": "fixture-temp" },
+    "expectedStatus": 200
+  },
+  {
+    "id": "tenant-permission-denied",
+    "behavior": "tenant-permission",
+    "request": { "pageId": "fixture-page", "permissionCase": "denied" },
+    "expectedStatus": 403
+  }
+]

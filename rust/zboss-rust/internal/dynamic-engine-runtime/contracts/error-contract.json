@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "primaryErrorPolicy": "the first failed refresh operation remains the primary code and message",
+  "compensationErrorPolicy": "release, owner-mismatch, and unlock-evidence failures are retained as redacted compensation details without replacing the primary error",
+  "errors": [
+    {
+      "layer": "validation",
+      "httpStatus": 400,
+      "code": 400001,
+      "retryable": false,
+      "messagePolicy": "stable-safe-summary"
+    },
+    {
+      "layer": "context",
+      "httpStatus": 403,
+      "code": 403001,
+      "retryable": false,
+      "messagePolicy": "stable-safe-summary"
+    },
+    {
+      "layer": "query",
+      "httpStatus": 503,
+      "code": 503001,
+      "retryable": "cause-dependent",
+      "messagePolicy": "redacted-cause"
+    },
+    {
+      "layer": "refresh",
+      "httpStatus": 409,
+      "code": 409001,
+      "retryable": "cause-dependent",
+      "messagePolicy": "redacted-cause"
+    }
+  ]
+}

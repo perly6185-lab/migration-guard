@@ -48,6 +48,135 @@ node dist/cli.js proposal repair --run <run-id> --proposal <failed-proposal-id> 
 node dist/cli.js proposal accept --run <run-id> --proposal <retry-proposal-id> --notes "verified repair"
 ```
 
+## Project-based Java to Rust migration
+
+The `migrate` workflow packages project-specific semantics and evidence under
+`cases/<project-id>` while keeping the behavior graph, replacement planner and
+gates project-neutral:
+
+```bash
+migration-guard migrate init --project orders --source ../orders-java --endpoint /api/orders --method GET --target-root ../orders-rust
+migration-guard migrate analyze --project orders --strict
+migration-guard migrate runtime-prepare --project orders
+migration-guard migrate runtime-authoring-prepare --project orders
+migration-guard migrate runtime-preflight --project orders
+migration-guard migrate runtime-self-test --project orders
+migration-guard migrate runtime-collector-dry-run --project orders --spec <collector.draft.json>
+migration-guard migrate runtime-fixture-promote --project orders --entrypoint <id> --scenario <id> --reviewed-by <identity>
+migration-guard migrate runtime-collect --project orders --spec cases/orders/collectors/mysql.json --output cases/orders/evidence/runtime/mysql.json
+migration-guard migrate runtime-run --project orders
+migration-guard migrate runtime-gate --project orders
+migration-guard migrate scaffold --project orders --target rust
+migration-guard migrate offline-gate --project orders
+migration-guard migrate real-gate --project orders --evidence cases/orders/evidence/runtime/java/real-evidence.json
+```
+
+`init` creates `profile.json`, `semantic-rules.json`,
+`compatibility-decisions.json`, `fixtures/` and `evidence/`. Project semantic
+classification rules are evaluated before core Java heuristics. The Rust output
+is deliberately marked `scaffold-only`; it is not considered migrated until
+offline fixtures and fresh RP1-RP6 real evidence pass.
+
+`runtime-prepare` generates typed Java fixture templates, the complete lifecycle
+driver protocol, a deep runtime evidence schema, and required MySQL/Redis/event
+collector templates without starting any service. Real batch evidence is checked
+for row-set/undo correspondence, progress conservation, lock ownership,
+idempotency decisions and commit-before-terminal ordering.
+`runtime-authoring-prepare` then materializes one redacted, editable draft and
+scenario-bound collector specs per runtime case, plus an environment contract,
+`.env.example` and coverage matrix. Drafts are never real evidence. Promotion
+requires all placeholders to be replaced, collector specs to be read-only and
+`ready`, and an explicit reviewer identity; promoted specs are frozen beside the
+real fixture with new hashes.
+`runtime-self-test` creates synthetic evidence to verify hashing and gate
+plumbing; synthetic provenance is always rejected by `runtime-gate` and
+`real-gate`. Real fixtures and credentials remain outside generated artifacts.
+
+For the ZBoss test environment, committed topology, fixture identifiers, and
+environment-variable bindings live in `config/zboss-test.runtime.json`. Account
+values can be persisted locally with Windows DPAPI and remain decryptable only
+by the same Windows user:
+
+```powershell
+.\scripts\probes\Set-ZbossRuntimeSecrets.ps1
+. .\scripts\probes\Import-ZbossRuntime.ps1
+```
+
+The encrypted `.secrets/` directory is Git-ignored. Access tokens and mutation
+approvals are deliberately never persisted.
+
+The built-in source adapter currently supports Java/Spring HTTP routes. Other
+frameworks and service-method entrypoints require a registered source adapter.
+
+### Versioned semantic rule packages
+
+The built-in Java registry is exposed as two ordered packages:
+
+- `builtin-java-zboss-compatibility@1.3.0` preserves the existing reviewed
+  compatibility rules without moving, removing or reordering them, and is
+  scoped to `zboss-*` migration projects.
+- `builtin-java-core@1.1.0` contains the portable `generic-builtin` Java
+  registry plus high-risk rule families for compensation, transactions, events,
+  validation, context, external boundaries, DDL, state reads/writes and
+  infrastructure boundaries.
+
+Migration projects resolve packages by project scope: the portable core is
+always selected, while compatibility packages require a matching project id or
+an explicit `semantic-rules.json` `packageIds` selection. Calls without project
+context retain the legacy package order for API compatibility. Classification
+keeps the order project rule, selected compatibility package, portable core
+package, then generic fallback. Package manifests record serializable patterns,
+behavior kinds, ownership defaults, reviewed first-match precedence, rule
+origins and deterministic hashes.
+
+```json
+{
+  "schemaVersion": 1,
+  "packageIds": ["builtin-java-core"],
+  "ownershipPolicy": { "version": 1, "rules": [] },
+  "classifications": []
+}
+```
+
+```powershell
+node dist/cli.js semantics list
+node dist/cli.js semantics validate
+node dist/cli.js semantics validate --builtin builtin-java-core
+node dist/cli.js semantics lock --output .migration-guard/semantic-rules/java.lock.json
+node dist/cli.js semantics lock --builtin builtin-java-core --output .migration-guard/semantic-rules/java-core.lock.json
+node dist/cli.js semantics coverage --graph cases/<project>/evidence/analysis/<entry>/behavior-graph.json
+node dist/cli.js semantics evaluate --project zboss-query --output .migration-guard/semantic-rules/zboss-query.json
+node dist/cli.js semantics evaluate --builtin builtin-java-core --samples fixtures/semantic/java-core-golden.json --min-coverage 100 --max-conflicts 0 --max-mismatches 0
+node dist/cli.js semantics evaluate --samples fixtures/semantic/java-golden.json --min-coverage 100 --max-conflicts 0 --max-mismatches 0
+node dist/cli.js semantics diff --from previous.lock.json --to current.lock.json
+npm run semantic:gate
+```
+
+`evaluate` accepts one Java analysis artifact, a sample corpus, or every
+`java-analysis.json` artifact in a migration case. Java methods and external
+boundaries are evaluated as applicable package inputs; SQL source nodes and
+generated abstract declarations are reported separately instead of diluting
+direct-rule coverage. Reports include per-kind coverage, generic versus reviewed
+compatibility hits, reviewed and unreviewed ordered-rule conflicts, expected
+behavior/rule drift, unused rules, package version and package hash.
+
+The package can declare reviewed first-match precedence without changing rule
+order. CI runs the checked-in golden corpus with explicit coverage, conflict and
+mismatch thresholds. Malformed external packages and sample corpora fail closed;
+external package JSON can be selected with `--package`.
+
+New behavior graphs also record classification provenance for every node:
+selected entrypoint, project rule, versioned semantic package, generic heuristic,
+role inference, or unresolved. `semantics coverage` reports explainability by
+classification source, evidence strength, behavior kind and source kind. It
+distinguishes fully explainable coverage from authoritative package/rule
+coverage, and fails when a potentially high-risk node has no explainable
+classification. Migration analysis locks selected built-in package hashes, so an
+added, missing or changed selected package invalidates stale analysis evidence.
+The analysis index also records automatic or explicit package-selection reasons.
+Coverage reports include package and per-rule hit counts, including their
+high-risk subsets.
+
 Phase 146-150 health semantics, normalization, workspace scanning, persistence hardening and RC results are documented in
 [docs/PHASE_150_REPORT.md](docs/PHASE_150_REPORT.md). Release gates are tracked in
 [docs/RELEASE_CHECKLIST_0.2.0.md](docs/RELEASE_CHECKLIST_0.2.0.md).
@@ -57,10 +186,18 @@ integrity and portable AI collaboration roadmap is tracked in
 [docs/PHASE_161_170_PLAN.md](docs/PHASE_161_170_PLAN.md).
 
 CI and local `npm test` recursively discover built tests with stable ordering and
-enforce the minimum file/test counts in `scripts/ci/test-manifest.json`. Unit and
-integration tests run together; packaged smoke and real-project pilots remain
-explicit release gates. CI also publishes total and slowest-test timings, audits
-production dependencies, checks the npm package allowlist and runs installation smoke.
+enforce the minimum file/test counts in `scripts/ci/test-manifest.json`. Tests run
+in bounded shards: unit shards use limited concurrency and integration shards run
+serially. Every test and shard has its own timeout, and an interrupted or timed-out
+shard terminates its child process tree before the runner exits. The runner prints
+the current shard and file list so a stall is attributable instead of appearing as
+one global timeout. Defaults can be tuned with `MG_TEST_CONCURRENCY`,
+`MG_TEST_UNIT_SHARD_SIZE`, `MG_TEST_INTEGRATION_SHARD_SIZE`,
+`MG_TEST_FILE_TIMEOUT_MS`, `MG_TEST_UNIT_SHARD_TIMEOUT_MS`, and
+`MG_TEST_INTEGRATION_SHARD_TIMEOUT_MS`. Packaged smoke and real-project pilots
+remain explicit release gates. CI also publishes total and slowest-test timings,
+audits production dependencies, checks the npm package allowlist and runs
+installation smoke.
 
 The release gate binds every result to one release run, repository context and
 current pilot evidence. Configure all three real-project roots before running it:

@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "status": "accepted",
+  "fixtureKind": "real-runtime-readonly",
+  "realEvidenceEligible": true,
+  "scope": "read-only",
+  "scenarioId": "horizontal-page",
+  "promotionId": "RB-03",
+  "credentialsIncluded": false,
+  "rawResponsesIncluded": false,
+  "request": {
+    "method": "POST",
+    "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/page",
+    "file": "request.json",
+    "fileHash": "cb5114e20f8f39fd62378c3e5e40735a279ae927745dbcc351d7a31792e55e4f",
+    "executionRequestHash": "6a35c2dfe15c9d0787f77d0137b6269ee88ee6a7ceeabe2cc258dd6afc87b264",
+    "effect": "read"
+  },
+  "executionSafety": {
+    "injectSkipSavePageSize": true,
+    "mysqlSessionReadOnly": true,
+    "mutatingEndpointsAllowed": false
+  },
+  "horizontalDefinition": {
+    "horizontalId": "2069983536167243777",
+    "businessTable": "cust_table6300",
+    "fieldCount": 3
+  },
+  "observedContract": {
+    "businessCode": 0,
+    "responseHash": "d847ddd2655632a6913004512c57bae61716cfc4ef84385d0ddaf39246a563a0",
+    "successfulRepeatHashMatches": true,
+    "gatewayDirectHashMatches": true,
+    "responseKeys": [
+      "data26050144",
+      "operational26050036"
+    ],
+    "rowsPerGroup": [
+      500,
+      500
+    ]
+  },
+  "evidence": {
+    "path": "artifacts/page-rust/real-rb03-readonly.json",
+    "reportHash": "30fddc4167da59a78cebd40fe6f00cf024916766708b4c5489a56d5e6caadb85"
+  },
+  "referenceSourcePolicy": {
+    "access": "read-only",
+    "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768",
+    "treeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "fileCount": 7175
+  }
+}

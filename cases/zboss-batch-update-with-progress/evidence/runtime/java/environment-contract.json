@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "b8d74e551d81131615b27a5d710bd9d94f0b9db943409ea47317879065f62f29",
+  "variables": [
+    {
+      "name": "MG_JAVA_BASE_URL",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DATABASE_URL",
+      "required": true,
+      "sensitive": true,
+      "purpose": "database"
+    },
+    {
+      "name": "MG_JAVA_DEVICE_ID",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_CLEANUP_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_COLLECT_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_HEALTH_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_INJECT_FAULT_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_INVOKE_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_SEED_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_SETUP_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_SNAPSHOT_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_START_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_DRIVER_STOP_COMMAND",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_REDIS_URL",
+      "required": true,
+      "sensitive": true,
+      "purpose": "redis"
+    },
+    {
+      "name": "MG_JAVA_REQUEST_ID",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_TENANT_ID",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_TOKEN",
+      "required": true,
+      "sensitive": true,
+      "purpose": "runtime"
+    },
+    {
+      "name": "MG_JAVA_USER_ID",
+      "required": true,
+      "sensitive": false,
+      "purpose": "runtime"
+    }
+  ],
+  "contractHash": "f400fbc924f092af876037d1b37595810faacc2fbef50ee7c4eeb120e4ee702e"
+}

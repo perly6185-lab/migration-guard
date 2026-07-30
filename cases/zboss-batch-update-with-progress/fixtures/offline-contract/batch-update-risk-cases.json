@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "specification",
+  "status": "ready",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "cases": [
+    {
+      "id": "update-row-limit",
+      "inputs": [
+        "postRows=10001",
+        "postRows=10000",
+        "nonEmptyBatchHeaderValueList"
+      ],
+      "requiredEvidence": [
+        "rejection-before-write",
+        "rejection-before-progress",
+        "rejection-before-undo"
+      ]
+    },
+    {
+      "id": "partial-success-commit-set",
+      "inputs": [
+        "mixed-valid-invalid-rows"
+      ],
+      "requiredEvidence": [
+        "requested-row-set",
+        "valid-row-set",
+        "failed-row-set",
+        "committed-row-set",
+        "response-failed-rows"
+      ]
+    },
+    {
+      "id": "chunk-replay",
+      "inputs": [
+        "same-tenant-session-chunk-and-hash",
+        "same-key-different-hash",
+        "out-of-order-chunk",
+        "last-chunk-retry"
+      ],
+      "requiredEvidence": [
+        "accepted-or-replayed-decision",
+        "no-duplicate-write",
+        "no-duplicate-undo"
+      ]
+    },
+    {
+      "id": "batch-refresh-coordination",
+      "inputs": [
+        "same-tenant-panel",
+        "different-tenant-same-panel",
+        "lease-expiry",
+        "owner-mismatch-release"
+      ],
+      "requiredEvidence": [
+        "lock-resource",
+        "owner-token",
+        "acquired-rejected-released-expired-events"
+      ]
+    },
+    {
+      "id": "undo-commit-correspondence",
+      "inputs": [
+        "partial-success",
+        "undo-write-failure"
+      ],
+      "requiredEvidence": [
+        "undo-rows-equal-committed-rows",
+        "failed-rows-excluded",
+        "durability-or-compensation-result"
+      ]
+    },
+    {
+      "id": "progress-conservation",
+      "inputs": [
+        "success",
+        "partial-failure",
+        "worker-failure",
+        "progress-publish-failure"
+      ],
+      "requiredEvidence": [
+        "monotonic-counters",
+        "processed-plus-failed-equals-total",
+        "exactly-one-terminal",
+        "success-terminal-after-commit"
+      ]
+    },
+    {
+      "id": "horizontal-upsert-concurrency",
+      "inputs": [
+        "same-business-key-concurrent-requests",
+        "null-and-string-null-key-parts"
+      ],
+      "requiredEvidence": [
+        "resolved-business-key",
+        "insert-update-split",
+        "unique-conflict-result",
+        "original-row-index"
+      ]
+    },
+    {
+      "id": "web-rpc-parity",
+      "inputs": [
+        "same-normalized-request-through-web-and-rpc"
+      ],
+      "requiredEvidence": [
+        "normalized-request",
+        "tenant-user-datasource-context",
+        "response",
+        "committed-rows",
+        "events"
+      ]
+    }
+  ]
+}

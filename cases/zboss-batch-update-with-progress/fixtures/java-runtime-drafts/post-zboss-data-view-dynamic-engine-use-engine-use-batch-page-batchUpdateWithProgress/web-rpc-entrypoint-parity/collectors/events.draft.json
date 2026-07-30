@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "collector": "events",
+  "status": "draft",
+  "file": "evidence/runtime/java/events/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/web-rpc-entrypoint-parity.jsonl",
+  "correlationFields": [
+    "scenarioId",
+    "requestId",
+    "batchId"
+  ],
+  "includeFields": [
+    "scenarioId",
+    "requestId",
+    "batchId",
+    "type",
+    "stage",
+    "sequence"
+  ],
+  "scenarioId": "web-rpc-entrypoint-parity"
+}

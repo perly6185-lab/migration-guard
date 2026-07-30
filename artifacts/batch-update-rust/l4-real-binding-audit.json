@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-update-l4-real-bindings",
+  "status": "authenticated-read-ready-write-blocked",
+  "observedAt": "2026-07-29",
+  "referenceSourceAccess": "read-only",
+  "service": {
+    "baseUrl": "http://10.10.10.177:22882",
+    "route": "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress",
+    "health": {
+      "application": "UP",
+      "mysql": "UP",
+      "redis": "UP",
+      "redisVersion": "7.4.9"
+    },
+    "unauthenticatedContract": {
+      "httpStatus": 200,
+      "applicationCode": 401,
+      "message": "账号未登录"
+    }
+  },
+  "environment": {
+    "totalRequired": 18,
+    "automaticallyResolvable": [
+      "MG_JAVA_BASE_URL",
+      "MG_JAVA_DEVICE_ID",
+      "MG_JAVA_REQUEST_ID",
+      "MG_JAVA_TENANT_ID",
+      "MG_JAVA_DRIVER_SETUP_COMMAND",
+      "MG_JAVA_DRIVER_START_COMMAND",
+      "MG_JAVA_DRIVER_HEALTH_COMMAND",
+      "MG_JAVA_DRIVER_SEED_COMMAND",
+      "MG_JAVA_DRIVER_INVOKE_COMMAND",
+      "MG_JAVA_DRIVER_INJECT_FAULT_COMMAND",
+      "MG_JAVA_DRIVER_SNAPSHOT_COMMAND",
+      "MG_JAVA_DRIVER_COLLECT_COMMAND",
+      "MG_JAVA_DRIVER_CLEANUP_COMMAND",
+      "MG_JAVA_DRIVER_STOP_COMMAND"
+    ],
+    "requiresSensitiveBinding": [
+      "MG_JAVA_DATABASE_URL",
+      "MG_JAVA_REDIS_URL",
+      "MG_JAVA_TOKEN",
+      "MG_JAVA_USER_ID"
+    ],
+    "ephemeralIdentityValidation": {
+      "userId": "2059823219277697026",
+      "tenantId": "2059823220968001539",
+      "authenticatedQueryPassed": true,
+      "authenticatedPagePassed": true,
+      "tokenPersisted": false,
+      "note": "Token and user identity remain required for automated replay because the supplied bearer token was intentionally not written to disk."
+    }
+  },
+  "fixtureScope": {
+    "runtimeScenarios": 19,
+    "promotedFixtures": 0,
+    "metadataCandidatesDiscovered": 30,
+    "selectedCandidate": {
+      "tenantId": "2059823220968001539",
+      "panelId": "2059838081856876546",
+      "pageId": "2059838081877848066",
+      "usePageId": "2059838082205003777",
+      "physicalTable": "cust_table6311",
+      "estimatedRows": 7445,
+      "childForm": {
+        "fieldCode": "custField60052",
+        "usePageId": "2059838047023181826",
+        "panelId": "2059838046666665986",
+        "physicalTable": "cust_table6300",
+        "estimatedRows": 22747
+      },
+      "activeConfirmSyncStages": [
+        "relation"
+      ],
+      "readContractCandidate": true,
+      "batchWriteFixtureCandidate": false
+    },
+    "selectionBlocker": "Authenticated read replay passed, but the supplied parent/child scope contains existing monthly-attendance and employee-attendance data. Its active confirm-sync relation stage can mutate the target table and trigger derived-field refreshes. It is not an approved batch-write fixture."
+  },
+  "runtimeDrift": {
+    "finding": "DEPLOYED-ROUTE-MISSING",
+    "referenceRoute": "GET /zboss/data/view-dynamic-use-group-data/confirm-sync/latest",
+    "gatewayApplicationCode": 404,
+    "directServiceApplicationCode": 404,
+    "impact": "The deployed JAR and reference source do not expose the same observability surface."
+  },
+  "requiredAccessInputs": {
+    "testIdentity": [
+      "token",
+      "tenantId",
+      "userId"
+    ],
+    "writeScope": [
+      "a disposable usePageId/pageId/panelId replacing the current read-only candidate",
+      "permission to insert/update/delete only migration-guard fixture rows",
+      "verified fixture key and cleanup predicate"
+    ],
+    "collectorAccess": [
+      "read-only MySQL collector URL",
+      "read-only Redis collector URL"
+    ]
+  },
+  "prohibitedShortcuts": [
+    "fabricating real-runtime fixtures",
+    "promoting placeholder collectors",
+    "copying an active user's token",
+    "writing test rows to an unapproved tenant",
+    "claiming WebSocket progress from locally synthesized events"
+  ],
+  "nextDecision": "Keep the authenticated attendance scope read-only. Create or provide an isolated disposable panel with a verified cleanup key before any batch-write, confirm-sync, fault-injection or real-evidence promotion step."
+}

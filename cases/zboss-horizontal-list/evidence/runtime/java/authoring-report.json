@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "generatedAt": "2026-07-30T02:10:52.990Z",
+  "projectId": "zboss-horizontal-list",
+  "projectHash": "ccebc5b0388bec3efe075a37afe3ae05b6ab1908295dd2cc8f3d2086a80f8714",
+  "contractHash": "19e129ca45e65f8f4bf8dba1a5ed51d08896e56fea8ccf3d9e40cdbcac03f341",
+  "scenarioCount": 13,
+  "draftCount": 13,
+  "authoringReady": true,
+  "environmentContract": "evidence/runtime/java/environment-contract.json",
+  "environmentExample": "evidence/runtime/java/.env.example",
+  "scenarios": [
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "branch-coverage",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/branch-coverage/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "concurrent-write",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/concurrent-write/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "context-isolation",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/context-isolation/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "dependency-failure",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/dependency-failure/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "primary-success",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/primary-success/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "query-cache-isolation",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/query-cache-isolation/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "query-effect-atomicity",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/query-effect-atomicity/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "refresh-operator",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/refresh-operator/fixture.draft.json",
+      "requiredCollectors": [
+        "mysql",
+        "redis",
+        "sql-trace"
+      ],
+      "collectorSpecs": {
+        "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/refresh-operator/collectors/mysql.draft.json",
+        "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/refresh-operator/collectors/redis.draft.json",
+        "sql-trace": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/refresh-operator/collectors/sql-trace.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
+        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
+        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "scale-boundary",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/scale-boundary/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "standard-page",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/standard-page/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "tenant-auth-context",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/tenant-auth-context/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "transaction-failure",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/transaction-failure/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioId": "validation-failure",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list/validation-failure/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    }
+  ],
+  "findings": []
+}

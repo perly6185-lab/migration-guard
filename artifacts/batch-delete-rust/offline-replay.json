@@ -1,0 +1,413 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-delete-offline-dual-replay",
+  "status": "pass",
+  "decision": "offline-replay-accepted",
+  "drivers": [
+    {
+      "driverId": "java-batch-delete-reference-stub",
+      "provenance": "synthetic-frozen-stub-not-real-java-runtime-evidence",
+      "realEvidence": false
+    },
+    {
+      "driverId": "rust-batch-delete-memory",
+      "provenance": "deterministic-offline-memory-execution",
+      "realEvidence": false
+    }
+  ],
+  "fixtureHashes": {
+    "javaReferenceStub": "0969515410956b804cb0fb5f5ff314d0d43b3a45fc4b9dfe06fca7654439abd4",
+    "compatibilityDecisions": "58a61565aba62d8480f7522dce65471e0a5d51b6fba405b0f7b378db5b9752f7"
+  },
+  "metrics": {
+    "casesPassed": 8,
+    "casesFailed": 0,
+    "exactCompatibleCases": 6,
+    "approvedCorrectionCases": 2,
+    "classifiedDifferences": 7,
+    "unclassifiedDifferences": 0
+  },
+  "cases": [
+    {
+      "caseId": "success",
+      "status": "pass",
+      "classification": "compatible",
+      "source": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [
+          2082397610825953300,
+          2082397610809176000,
+          2082397610804981800
+        ],
+        "skippedRowIds": [],
+        "activeRowIds": [],
+        "snapshotCount": 3,
+        "undoCount": 3,
+        "outboxState": "COMPLETED",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      },
+      "target": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [
+          2082397610825953300,
+          2082397610809176000,
+          2082397610804981800
+        ],
+        "skippedRowIds": [],
+        "activeRowIds": [],
+        "snapshotCount": 3,
+        "undoCount": 3,
+        "outboxState": "COMPLETED",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      },
+      "differences": [],
+      "unclassifiedDifferences": 0
+    },
+    {
+      "caseId": "partial-reference-skip",
+      "status": "pass",
+      "classification": "compatible",
+      "source": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [
+          2082397610825953300,
+          2082397610804981800
+        ],
+        "skippedRowIds": [
+          2082397610809176000
+        ],
+        "activeRowIds": [
+          2082397610809176000
+        ],
+        "snapshotCount": 2,
+        "undoCount": 2,
+        "outboxState": "COMPLETED",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      },
+      "target": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [
+          2082397610825953300,
+          2082397610804981800
+        ],
+        "skippedRowIds": [
+          2082397610809176000
+        ],
+        "activeRowIds": [
+          2082397610809176000
+        ],
+        "snapshotCount": 2,
+        "undoCount": 2,
+        "outboxState": "COMPLETED",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      },
+      "differences": [],
+      "unclassifiedDifferences": 0
+    },
+    {
+      "caseId": "all-reference-skip",
+      "status": "pass",
+      "classification": "compatible",
+      "source": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [],
+        "skippedRowIds": [
+          2082397610825953300,
+          2082397610809176000,
+          2082397610804981800
+        ],
+        "activeRowIds": [
+          2082397610804981800,
+          2082397610809176000,
+          2082397610825953300
+        ],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      },
+      "target": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [],
+        "skippedRowIds": [
+          2082397610825953300,
+          2082397610809176000,
+          2082397610804981800
+        ],
+        "activeRowIds": [
+          2082397610804981800,
+          2082397610809176000,
+          2082397610825953300
+        ],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      },
+      "differences": [],
+      "unclassifiedDifferences": 0
+    },
+    {
+      "caseId": "missing-active-row",
+      "status": "pass",
+      "classification": "compatible",
+      "source": {
+        "httpStatus": 409,
+        "code": "MISSINGACTIVEROW",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [
+          2082397610809176000,
+          2082397610825953300
+        ],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      },
+      "target": {
+        "httpStatus": 409,
+        "code": "MISSINGACTIVEROW",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [
+          2082397610809176000,
+          2082397610825953300
+        ],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      },
+      "differences": [],
+      "unclassifiedDifferences": 0
+    },
+    {
+      "caseId": "snapshot-failure",
+      "status": "pass",
+      "classification": "compatible",
+      "source": {
+        "httpStatus": 500,
+        "code": "SNAPSHOTWRITEFAILED",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [
+          2082397610804981800,
+          2082397610809176000,
+          2082397610825953300
+        ],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      },
+      "target": {
+        "httpStatus": 500,
+        "code": "SNAPSHOTWRITEFAILED",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [
+          2082397610804981800,
+          2082397610809176000,
+          2082397610825953300
+        ],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      },
+      "differences": [],
+      "unclassifiedDifferences": 0
+    },
+    {
+      "caseId": "undo-failure",
+      "status": "pass",
+      "classification": "compatible",
+      "source": {
+        "httpStatus": 500,
+        "code": "UNDOWRITEFAILED",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [
+          2082397610804981800,
+          2082397610809176000,
+          2082397610825953300
+        ],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      },
+      "target": {
+        "httpStatus": 500,
+        "code": "UNDOWRITEFAILED",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [
+          2082397610804981800,
+          2082397610809176000,
+          2082397610825953300
+        ],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      },
+      "differences": [],
+      "unclassifiedDifferences": 0
+    },
+    {
+      "caseId": "duplicate-replay",
+      "status": "pass",
+      "classification": "approved-correction",
+      "source": {
+        "httpStatus": 409,
+        "code": "MISSINGACTIVEROW",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [],
+        "snapshotCount": 3,
+        "undoCount": 3,
+        "outboxState": "COMPLETED",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      },
+      "target": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [
+          2082397610825953300,
+          2082397610809176000,
+          2082397610804981800
+        ],
+        "skippedRowIds": [],
+        "activeRowIds": [],
+        "snapshotCount": 3,
+        "undoCount": 3,
+        "outboxState": "COMPLETED",
+        "progressTerminal": "SUCCESS",
+        "replayed": true
+      },
+      "differences": [
+        {
+          "path": "code",
+          "source": "MISSINGACTIVEROW",
+          "target": "OK",
+          "classification": "approved-correction",
+          "decisionId": "BD-DEC-DUPLICATE-REPLAY"
+        },
+        {
+          "path": "deletedRowIds",
+          "source": [],
+          "target": [
+            2082397610825953300,
+            2082397610809176000,
+            2082397610804981800
+          ],
+          "classification": "approved-correction",
+          "decisionId": "BD-DEC-DUPLICATE-REPLAY"
+        },
+        {
+          "path": "httpStatus",
+          "source": 409,
+          "target": 200,
+          "classification": "approved-correction",
+          "decisionId": "BD-DEC-DUPLICATE-REPLAY"
+        },
+        {
+          "path": "progressTerminal",
+          "source": "FAILED",
+          "target": "SUCCESS",
+          "classification": "approved-correction",
+          "decisionId": "BD-DEC-DUPLICATE-REPLAY"
+        },
+        {
+          "path": "replayed",
+          "source": false,
+          "target": true,
+          "classification": "approved-correction",
+          "decisionId": "BD-DEC-DUPLICATE-REPLAY"
+        }
+      ],
+      "unclassifiedDifferences": 0
+    },
+    {
+      "caseId": "compensation-failure",
+      "status": "pass",
+      "classification": "approved-correction",
+      "source": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [
+          2082397610825953300,
+          2082397610809176000,
+          2082397610804981800
+        ],
+        "skippedRowIds": [],
+        "activeRowIds": [],
+        "snapshotCount": 3,
+        "undoCount": 3,
+        "outboxState": "LOG_ONLY_FAILURE",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      },
+      "target": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [
+          2082397610825953300,
+          2082397610809176000,
+          2082397610804981800
+        ],
+        "skippedRowIds": [],
+        "activeRowIds": [],
+        "snapshotCount": 3,
+        "undoCount": 3,
+        "outboxState": "FAILED",
+        "progressTerminal": "COMPENSATION_RETRYING",
+        "replayed": false
+      },
+      "differences": [
+        {
+          "path": "outboxState",
+          "source": "LOG_ONLY_FAILURE",
+          "target": "FAILED",
+          "classification": "approved-correction",
+          "decisionId": "BD-DEC-COMPENSATION-DURABILITY"
+        },
+        {
+          "path": "progressTerminal",
+          "source": "SUCCESS",
+          "target": "COMPENSATION_RETRYING",
+          "classification": "approved-correction",
+          "decisionId": "BD-DEC-PROGRESS-COMPLETENESS"
+        }
+      ],
+      "unclassifiedDifferences": 0
+    }
+  ],
+  "limitations": [
+    "The Java driver is a frozen synthetic source-semantic stub, not fresh real Java runtime evidence.",
+    "The Rust driver uses in-process memory state, not production MySQL, Redis or WebSocket adapters.",
+    "The supplied three-row request is stored as a write candidate and was not invoked by this gate."
+  ],
+  "reportHash": "6132b0d53d9afc44d53e4e101eb13156cbdb7815069e90aa8057764ee995e831"
+}

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "decisions": [
+    {
+      "id": "BD-DEC-ROW-LIMIT",
+      "status": "approved",
+      "scope": "batchDelete request.batchPostValueList",
+      "reason": "Approved contract: require 1 to 10000 distinct row ids, normalize duplicates in first-occurrence order, require operationKind ROW_DELETE and reject invalid requests before progress, locking, database, undo or compensation effects.",
+      "resolvesFindings": [
+        "RP-COMMAND-REQUEST-CONSTRAINTS-UNRESOLVED"
+      ],
+      "approvedBy": "user",
+      "approvedAt": "2026-07-29T18:00:00+08:00"
+    },
+    {
+      "id": "BD-DEC-DUPLICATE-REPLAY",
+      "status": "approved",
+      "scope": "tenant + panelId + normalized row ids + request hash",
+      "reason": "Approved correction: persist the terminal decision for a successful delete request; an identical replay returns the stored result without repeating snapshots, undo anchors, progress or compensation, while a hash conflict is rejected before effects.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-29T18:00:00+08:00"
+    },
+    {
+      "id": "BD-DEC-COMPENSATION-DURABILITY",
+      "status": "approved",
+      "scope": "committed delete rows and all after-commit compensation steps",
+      "reason": "Approved correction: persist one idempotent compensation outbox record in the main delete transaction; each ordered step has a durable state, bounded retry and observable terminal failure instead of log-only loss.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-29T18:00:00+08:00"
+    },
+    {
+      "id": "BD-DEC-PROGRESS-COMPLETENESS",
+      "status": "approved",
+      "scope": "batch delete progress and compensation lifecycle",
+      "reason": "Approved correction: distinguish MAIN_COMMITTED from fully compensated SUCCESS; publish monotonic counters and exactly one terminal SUCCESS or COMPENSATION_FAILED after the durable compensation workflow reaches a terminal state.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-29T18:00:00+08:00"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "status": "template",
+  "fixtureKind": "template",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-page",
+  "projectHash": "8b6382cf41106314ee91a17f6c38ee77547e8302ed9c58da8f4a157e8a67ad91",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+  "scenarioId": "context-isolation",
+  "category": "context",
+  "request": {
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-tenant-id": "<tenant-id>",
+      "authorization": "Bearer <token>"
+    },
+    "body": {
+      "reqId": "<case-id>",
+      "pageNo": 1,
+      "pageSize": 100,
+      "usePageId": "<usePageId>",
+      "pageId": "<pageId>",
+      "panelId": "<panelId>",
+      "interId": "<interId>",
+      "headerValues": {},
+      "postValues": {},
+      "selectValues": {},
+      "orderValues": [],
+      "_scenario": "context-isolation"
+    }
+  },
+  "requestFocus": [],
+  "expectedComparison": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "collectorSpecs": {},
+  "expectations": {
+    "page": {
+      "expectedStatus": 200,
+      "requirePagination": true,
+      "preserveRowOrder": true
+    }
+  },
+  "compatibilityDecisionIds": [],
+  "secrets": {
+    "policy": "environment-only",
+    "persistedValuesAllowed": false
+  }
+}

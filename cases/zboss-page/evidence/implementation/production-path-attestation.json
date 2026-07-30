@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "targetRoot": "D:\\learn\\migration-guard\\rust\\zboss-rust\\components\\page",
+  "targetSourceHash": "f583c163287228a788c6073cb6b237ddb428e26893e44bf1806d13637ecf2b8b",
+  "deployableService": true,
+  "concreteAdapters": true,
+  "buildVerified": true,
+  "runtimeVerified": true,
+  "productionEligible": true,
+  "evidence": {
+    "rustSourceFiles": 41,
+    "httpRuntimeDetected": true,
+    "routeFragments": {
+      "/zboss/data/view/dynamic/engine/use/engine-use-page/page": true
+    },
+    "traitImplementations": {
+      "MysqlStatementExecutor": true,
+      "RedisLeaseExecutor": true
+    },
+    "verification": {
+      "required": true,
+      "path": "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\implementation\\production-verification.json",
+      "present": true,
+      "protocolValid": true,
+      "sourceHashMatches": true,
+      "buildLogVerified": true,
+      "runtimeLogVerified": true,
+      "routesExercised": {
+        "/zboss/data/view/dynamic/engine/use/engine-use-page/page": true
+      },
+      "referencedFiles": [
+        "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\implementation\\production-verification.json",
+        "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\implementation\\production-build.log",
+        "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\implementation\\production-runtime.log"
+      ]
+    }
+  },
+  "findings": []
+}

@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "status": "template",
+  "fixtureKind": "template",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "b8d74e551d81131615b27a5d710bd9d94f0b9db943409ea47317879065f62f29",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+  "scenarioId": "context-isolation",
+  "category": "context",
+  "request": {
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-tenant-id": "<tenant-id>",
+      "authorization": "Bearer <token>"
+    },
+    "body": {
+      "reqId": "<case-id>",
+      "domain": "<domain>",
+      "usePageId": "<usePageId>",
+      "pageId": "<pageId>",
+      "panelId": "<panelId>",
+      "interId": "<interId>",
+      "clientSessionId": "<client-session-id>",
+      "enableProgress": true,
+      "expectedTotalRows": 2,
+      "isLastChunk": true,
+      "undo": true,
+      "operationKind": "<operation-kind>",
+      "operationLabel": "<operation-label>",
+      "batchPkFieldValue": "<pk-field>",
+      "batchHeaderValueList": [],
+      "batchPostValueList": [],
+      "headerValues": {},
+      "postValues": {},
+      "qualityValues": {},
+      "horizontalId": "<horizontal-id>",
+      "_scenario": "context-isolation"
+    }
+  },
+  "requestFocus": [],
+  "expectedComparison": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "collectorSpecs": {
+    "events": {
+      "path": "evidence/runtime/java/collectors/events.template.json",
+      "hash": "c173b1701ce2a7ac267fa06ea96defc5e82b803e70909959211e52b36df3caf6"
+    },
+    "mysql": {
+      "path": "evidence/runtime/java/collectors/mysql.template.json",
+      "hash": "41a43d6ef084346cdff7c554ab70034e512daa783acb0f141ead338d1ffc283c"
+    },
+    "redis": {
+      "path": "evidence/runtime/java/collectors/redis.template.json",
+      "hash": "77aa85acb1bf44606e90f0dfd0ce60158cd0f7745abf77df5f8302d3bbba91fd"
+    }
+  },
+  "expectations": {
+    "batch": {
+      "requireUndoCorrespondence": false,
+      "requireProgressTerminal": true,
+      "requireSharedLock": false,
+      "requireChunkIdempotency": false,
+      "requireTransactionTerminalOrdering": true,
+      "requireRowLimitContract": false,
+      "requireCompleteRowClassification": true,
+      "requireReaderWriterLease": false,
+      "requireUndoDurability": false,
+      "requireProgressTerminalIdentity": false
+    }
+  },
+  "compatibilityDecisionIds": [],
+  "secrets": {
+    "policy": "environment-only",
+    "persistedValuesAllowed": false
+  }
+}

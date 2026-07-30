@@ -1,0 +1,488 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-delete-container-adapters",
+  "status": "pass",
+  "decision": "L4-A-PROTOCOL-READY",
+  "capabilityBoundary": {
+    "level": "L4-A",
+    "rustProtocolWrappersAttested": true,
+    "rustNetworkExecutorsImplemented": false,
+    "directContainerProtocolProbe": true,
+    "deployableServiceAttested": false,
+    "productionEligible": false,
+    "nextRequiredLevel": "L4-B"
+  },
+  "environment": {
+    "mysql": "mysql:8.4",
+    "redis": "redis:7.4-alpine",
+    "composeProject": "migration-guard-batch-delete"
+  },
+  "scope": {
+    "mysql": [
+      "atomic idempotency + snapshot + soft-delete + undo + compensation-outbox",
+      "reference-blocked subset classification",
+      "transaction rollback after injected failure",
+      "durable replay and hash conflict",
+      "ordered compensation claim, failure, retry and completion"
+    ],
+    "redis": [
+      "delete/update tenant-panel mutual exclusion",
+      "owner-token renewal, release, expiry and stale-owner rejection",
+      "monotonic progress sequence and replay",
+      "counter conservation, transition validation and one terminal state"
+    ],
+    "realBusinessRequestExecuted": false,
+    "realJavaEvidenceClaimed": false
+  },
+  "sourceSnapshot": {
+    "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768",
+    "treeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "fileCount": 7175,
+    "directories": [
+      "zboss-module-data-api/src/main/java",
+      "zboss-module-data-domain/src/main/java",
+      "zboss-module-data-infrastructure/src/main/java",
+      "zboss-module-data-infrastructure/src/main/resources",
+      "zboss-module-data-service/src/main/java",
+      "zboss-module-data-service/src/main/resources",
+      "zboss-module-data-type/src/main/java"
+    ]
+  },
+  "metrics": {
+    "rustTestsPassed": 20,
+    "checksPassed": 78,
+    "checksTotal": 78
+  },
+  "checks": [
+    {
+      "id": "rust-format",
+      "pass": true
+    },
+    {
+      "id": "rust-tests",
+      "pass": true
+    },
+    {
+      "id": "rust-clippy",
+      "pass": true
+    },
+    {
+      "id": "compose-up",
+      "pass": true
+    },
+    {
+      "id": "container-health",
+      "pass": true,
+      "attempt": 8
+    },
+    {
+      "id": "compose-exec-5",
+      "pass": true
+    },
+    {
+      "id": "mysql-application-user-provisioned",
+      "pass": true,
+      "details": {}
+    },
+    {
+      "id": "compose-exec-7",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-8",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-9",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-10",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-11",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-12",
+      "pass": true
+    },
+    {
+      "id": "mysql-atomic-delete-five-part-commit",
+      "pass": true,
+      "details": {
+        "counts": "3,3,3,1,9"
+      }
+    },
+    {
+      "id": "compose-exec-14",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-15",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-16",
+      "pass": true
+    },
+    {
+      "id": "mysql-reference-skip-classification",
+      "pass": true,
+      "details": {
+        "result": "2,0,2,202"
+      }
+    },
+    {
+      "id": "compose-exec-18",
+      "pass": true
+    },
+    {
+      "id": "mysql-injected-main-transaction-failure",
+      "pass": true,
+      "details": {
+        "status": 1
+      }
+    },
+    {
+      "id": "compose-exec-20",
+      "pass": true
+    },
+    {
+      "id": "mysql-main-transaction-rollback",
+      "pass": true,
+      "details": {
+        "rollback": "3,0,0"
+      }
+    },
+    {
+      "id": "compose-exec-22",
+      "pass": true
+    },
+    {
+      "id": "mysql-durable-delete-replay",
+      "pass": true,
+      "details": {
+        "replay": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:MAIN_COMMITTED:101"
+      }
+    },
+    {
+      "id": "compose-exec-24",
+      "pass": true
+    },
+    {
+      "id": "mysql-idempotency-hash-conflict",
+      "pass": true,
+      "details": {
+        "conflict": "1"
+      }
+    },
+    {
+      "id": "compose-exec-26",
+      "pass": true
+    },
+    {
+      "id": "mysql-duplicate-key-does-not-reexecute",
+      "pass": true,
+      "details": {
+        "status": 1
+      }
+    },
+    {
+      "id": "compose-exec-28",
+      "pass": true
+    },
+    {
+      "id": "mysql-replay-side-effect-count-stable",
+      "pass": true,
+      "details": {
+        "before": "3,3,1",
+        "after": "3,3,1"
+      }
+    },
+    {
+      "id": "compose-exec-30",
+      "pass": true
+    },
+    {
+      "id": "mysql-compensation-ordered-claim",
+      "pass": true,
+      "details": {
+        "claim": "1"
+      }
+    },
+    {
+      "id": "compose-exec-32",
+      "pass": true
+    },
+    {
+      "id": "mysql-compensation-owner-exclusion",
+      "pass": true,
+      "details": {
+        "competing": "0"
+      }
+    },
+    {
+      "id": "compose-exec-34",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-35",
+      "pass": true
+    },
+    {
+      "id": "mysql-compensation-failure-retry-resume",
+      "pass": true,
+      "details": {
+        "result": "2,9,9:SUCCESS"
+      }
+    },
+    {
+      "id": "compose-exec-37",
+      "pass": true
+    },
+    {
+      "id": "redis-delete-owner-acquired",
+      "pass": true,
+      "details": {
+        "expected": "ACQUIRED",
+        "actual": "ACQUIRED"
+      }
+    },
+    {
+      "id": "compose-exec-39",
+      "pass": true
+    },
+    {
+      "id": "redis-update-blocked-by-delete",
+      "pass": true,
+      "details": {
+        "expected": "BUSY",
+        "actual": "BUSY"
+      }
+    },
+    {
+      "id": "compose-exec-41",
+      "pass": true
+    },
+    {
+      "id": "redis-stale-owner-renew-rejected",
+      "pass": true,
+      "details": {
+        "expected": "OWNER_CONFLICT",
+        "actual": "OWNER_CONFLICT"
+      }
+    },
+    {
+      "id": "compose-exec-43",
+      "pass": true
+    },
+    {
+      "id": "redis-owner-renewed",
+      "pass": true,
+      "details": {
+        "expected": "RENEWED",
+        "actual": "RENEWED"
+      }
+    },
+    {
+      "id": "compose-exec-45",
+      "pass": true
+    },
+    {
+      "id": "redis-stale-owner-release-rejected",
+      "pass": true,
+      "details": {
+        "expected": "OWNER_CONFLICT",
+        "actual": "OWNER_CONFLICT"
+      }
+    },
+    {
+      "id": "compose-exec-47",
+      "pass": true
+    },
+    {
+      "id": "redis-owner-release",
+      "pass": true,
+      "details": {
+        "expected": "RELEASED",
+        "actual": "RELEASED"
+      }
+    },
+    {
+      "id": "compose-exec-49",
+      "pass": true
+    },
+    {
+      "id": "redis-update-after-release",
+      "pass": true,
+      "details": {
+        "expected": "ACQUIRED",
+        "actual": "ACQUIRED"
+      }
+    },
+    {
+      "id": "compose-exec-51",
+      "pass": true
+    },
+    {
+      "id": "redis-expired-owner-replaced",
+      "pass": true,
+      "details": {
+        "expected": "ACQUIRED",
+        "actual": "ACQUIRED"
+      }
+    },
+    {
+      "id": "compose-exec-53",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-running",
+      "pass": true,
+      "details": {
+        "expected": "STORED",
+        "actual": "STORED"
+      }
+    },
+    {
+      "id": "compose-exec-55",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-replay",
+      "pass": true,
+      "details": {
+        "expected": "REPLAYED",
+        "actual": "REPLAYED"
+      }
+    },
+    {
+      "id": "compose-exec-57",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-out-of-order",
+      "pass": true,
+      "details": {
+        "expected": "OUT_OF_ORDER",
+        "actual": "OUT_OF_ORDER"
+      }
+    },
+    {
+      "id": "compose-exec-59",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-main-committed",
+      "pass": true,
+      "details": {
+        "expected": "STORED",
+        "actual": "STORED"
+      }
+    },
+    {
+      "id": "compose-exec-61",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-compensation-retrying",
+      "pass": true,
+      "details": {
+        "expected": "STORED",
+        "actual": "STORED"
+      }
+    },
+    {
+      "id": "compose-exec-63",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-success-terminal",
+      "pass": true,
+      "details": {
+        "expected": "STORED",
+        "actual": "STORED"
+      }
+    },
+    {
+      "id": "compose-exec-65",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-second-terminal-rejected",
+      "pass": true,
+      "details": {
+        "expected": "TERMINAL",
+        "actual": "TERMINAL"
+      }
+    },
+    {
+      "id": "compose-exec-67",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-terminal-sequence-conflict",
+      "pass": true,
+      "details": {
+        "expected": "SEQUENCE_CONFLICT",
+        "actual": "SEQUENCE_CONFLICT"
+      }
+    },
+    {
+      "id": "compose-exec-69",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-counter-start",
+      "pass": true,
+      "details": {
+        "expected": "STORED",
+        "actual": "STORED"
+      }
+    },
+    {
+      "id": "compose-exec-71",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-counter-conservation",
+      "pass": true,
+      "details": {
+        "expected": "COUNTER_MISMATCH",
+        "actual": "COUNTER_MISMATCH"
+      }
+    },
+    {
+      "id": "compose-exec-73",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-failed-start",
+      "pass": true,
+      "details": {
+        "expected": "STORED",
+        "actual": "STORED"
+      }
+    },
+    {
+      "id": "compose-exec-75",
+      "pass": true
+    },
+    {
+      "id": "redis-progress-failed-terminal-with-zero-effects",
+      "pass": true,
+      "details": {
+        "expected": "STORED",
+        "actual": "STORED"
+      }
+    },
+    {
+      "id": "reference-source-unchanged",
+      "pass": true,
+      "details": {}
+    }
+  ],
+  "reportHash": "beac72ee1dd905349a11d4ca3dc2172dfec5357af992a56251994e3578536dba"
+}

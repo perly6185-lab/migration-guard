@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "specification",
+  "status": "ready",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-page",
+  "id": "calendar-view",
+  "endpoint": "POST /zboss/data/view/dynamic/engine/use/engine-use-page/page",
+  "workflow": [
+    "POST /zboss/data/view/dynamic/engine/use/engine-use-page/query",
+    "POST /zboss/data/view/dynamic/engine/use/engine-use-page/page"
+  ],
+  "identity": {
+    "usePageId": "2059838047023181826",
+    "viewId": "2064662147688243201",
+    "panelId": "2059838046666665986",
+    "pageId": "2059838046687637506",
+    "httpId": "2059838047035764738"
+  },
+  "expectations": {
+    "declaredViewType": "calendar",
+    "pageNo": 1,
+    "pageSize": 10000,
+    "showArchived": false,
+    "selectedFieldCount": 26,
+    "operatorAbsent": true
+  },
+  "requiredProof": [
+    "query metadata identifies the response as the expected calendar view",
+    "query and page identity values are coherent",
+    "calendar temporal fields and timezone semantics are explicit",
+    "page total and returned rows obey the 10000-row boundary",
+    "no archived rows are returned",
+    "SQL and MySQL evidence distinguish reads from self-healing or preference writes"
+  ],
+  "decisionIds": [
+    "PAGE-DEC-CALENDAR-VIEW-TYPE-SOURCE",
+    "PAGE-DEC-CALENDAR-QUERY-PAGE-BINDING",
+    "PAGE-DEC-CALENDAR-PAGE-SIZE-10000",
+    "PAGE-DEC-CALENDAR-TEMPORAL-SEMANTICS"
+  ]
+}

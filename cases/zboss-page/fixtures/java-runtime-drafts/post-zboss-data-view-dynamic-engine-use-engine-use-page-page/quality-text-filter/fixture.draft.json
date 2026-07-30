@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "status": "draft",
+  "fixtureKind": "draft-runtime",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-page",
+  "projectHash": "8b6382cf41106314ee91a17f6c38ee77547e8302ed9c58da8f4a157e8a67ad91",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+  "scenarioId": "quality-text-filter",
+  "category": "scale",
+  "request": {
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-tenant-id": "<tenant-id>"
+    },
+    "body": {
+      "reqId": "<case-id>",
+      "pageNo": 1,
+      "pageSize": 100,
+      "usePageId": "<usePageId>",
+      "pageId": "<pageId>",
+      "panelId": "<panelId>",
+      "interId": "<interId>",
+      "headerValues": {},
+      "postValues": {},
+      "selectValues": {},
+      "orderValues": [],
+      "_scenario": "quality-text-filter"
+    }
+  },
+  "requestFocus": [
+    "qualityValues",
+    "textFilterValue",
+    "headerValues"
+  ],
+  "expectedComparison": [
+    "status",
+    "error shape",
+    "total",
+    "data rows",
+    "ordering",
+    "system fields"
+  ],
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "collectorSpecs": {
+    "sql-trace": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/quality-text-filter/collectors/sql-trace.draft.json",
+      "hash": "8132110f4bf00ef28a89b993216899a8a3c623d97abd37c6d5a751ea30172c0f"
+    }
+  },
+  "expectations": {
+    "page": {
+      "expectedStatus": 200,
+      "requirePagination": true,
+      "preserveRowOrder": true,
+      "requireTotalFilterParity": true
+    }
+  },
+  "compatibilityDecisionIds": [
+    "PAGE-DEC-QUALITY-AGGREGATE-ROUTING"
+  ],
+  "environmentBindings": [
+    {
+      "path": "request.headers.authorization",
+      "environment": "MG_JAVA_TOKEN"
+    }
+  ],
+  "authoring": {
+    "reviewed": false,
+    "instructions": "Replace request and collector placeholders, set collector specs to ready, then run runtime-fixture-promote."
+  }
+}

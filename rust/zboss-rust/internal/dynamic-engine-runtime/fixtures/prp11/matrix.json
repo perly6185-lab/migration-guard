@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "stage": "PRP-11",
+  "cases": [
+    {
+      "caseId": "fault-metadata",
+      "category": "fault",
+      "requirement": "metadata failure"
+    },
+    {
+      "caseId": "fault-permission",
+      "category": "fault",
+      "requirement": "permission failure"
+    },
+    {
+      "caseId": "fault-query",
+      "category": "fault",
+      "requirement": "query failure"
+    },
+    {
+      "caseId": "fault-sql-timeout",
+      "category": "fault",
+      "requirement": "SQL timeout"
+    },
+    {
+      "caseId": "fault-sql-deadlock",
+      "category": "fault",
+      "requirement": "SQL deadlock"
+    },
+    {
+      "caseId": "fault-invalid-identifier",
+      "category": "fault",
+      "requirement": "invalid identifier"
+    },
+    {
+      "caseId": "fault-redis-acquire",
+      "category": "fault",
+      "requirement": "Redis acquire failure"
+    },
+    {
+      "caseId": "fault-redis-release",
+      "category": "fault",
+      "requirement": "Redis release failure"
+    },
+    {
+      "caseId": "fault-redis-lease-expiry",
+      "category": "fault",
+      "requirement": "Redis lease expiry"
+    },
+    {
+      "caseId": "fault-refresh-sync",
+      "category": "fault",
+      "requirement": "refresh sync failure"
+    },
+    {
+      "caseId": "fault-refresh-timestamp",
+      "category": "fault",
+      "requirement": "refresh timestamp failure"
+    },
+    {
+      "caseId": "fault-refresh-undo",
+      "category": "fault",
+      "requirement": "refresh Undo clear failure"
+    },
+    {
+      "caseId": "fault-refresh-reconcile",
+      "category": "fault",
+      "requirement": "refresh reconcile failure"
+    },
+    {
+      "caseId": "fault-refresh-query",
+      "category": "fault",
+      "requirement": "refresh query failure"
+    },
+    {
+      "caseId": "interrupt-acquire",
+      "category": "interruption",
+      "requirement": "process interruption after acquire"
+    },
+    {
+      "caseId": "interrupt-sync",
+      "category": "interruption",
+      "requirement": "process interruption after sync"
+    },
+    {
+      "caseId": "interrupt-query",
+      "category": "interruption",
+      "requirement": "process interruption after query"
+    },
+    {
+      "caseId": "interrupt-release",
+      "category": "interruption",
+      "requirement": "process interruption during release"
+    },
+    {
+      "caseId": "concurrent-same-scope",
+      "category": "concurrency",
+      "requirement": "same tenant/page/panel has one owner"
+    },
+    {
+      "caseId": "concurrent-tenant-isolation",
+      "category": "concurrency",
+      "requirement": "different tenants may own identical IDs"
+    },
+    {
+      "caseId": "concurrent-column-granularity",
+      "category": "concurrency",
+      "requirement": "same column deduplicates and different columns run"
+    },
+    {
+      "caseId": "concurrent-expired-new-owner",
+      "category": "concurrency",
+      "requirement": "new owner acquires after lease expiry"
+    },
+    {
+      "caseId": "concurrent-stale-owner-release",
+      "category": "concurrency",
+      "requirement": "old owner cannot release new owner lease"
+    }
+  ]
+}

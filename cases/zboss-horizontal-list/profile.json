@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "projectId": "zboss-horizontal-list",
+  "source": {
+    "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
+    "access": "read-only",
+    "directories": [
+      "zboss-module-data-api/src/main/java",
+      "zboss-module-data-domain/src/main/java",
+      "zboss-module-data-infrastructure/src/main/java",
+      "zboss-module-data-infrastructure/src/main/resources",
+      "zboss-module-data-service/src/main/java",
+      "zboss-module-data-service/src/main/resources",
+      "zboss-module-data-type/src/main/java"
+    ],
+    "language": "java",
+    "framework": "spring",
+    "adapter": "java-spring"
+  },
+  "data": {
+    "dialect": "mysql",
+    "adapters": [
+      "mybatis"
+    ]
+  },
+  "entrypoints": [
+    {
+      "id": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "kind": "http-route",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-horizontal/list"
+    }
+  ],
+  "contexts": {
+    "tenant": "required",
+    "user": "required",
+    "request": "required",
+    "datasource": "required",
+    "custom": [
+      "device"
+    ]
+  },
+  "infrastructure": {
+    "caches": [
+      "redis"
+    ],
+    "locks": [
+      "horizontal-refresh-coordination"
+    ],
+    "events": [],
+    "externalServices": [
+      "system-server"
+    ]
+  },
+  "target": {
+    "language": "rust",
+    "root": "../../rust/zboss-rust/internal/dynamic-engine-runtime",
+    "serviceName": "zboss-page",
+    "productionPath": {
+      "requiredTraits": [
+        "MysqlHorizontalQueryExecutor",
+        "HorizontalRefreshCoordinator"
+      ],
+      "requiredRouteFragments": [
+        "/zboss/data/view/dynamic/engine/use/engine-use-horizontal/list"
+      ]
+    }
+  },
+  "compatibility": {
+    "strict": true,
+    "approvalRequired": true,
+    "approvedCorrectionIds": []
+  }
+}

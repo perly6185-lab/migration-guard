@@ -1,0 +1,28 @@
+{
+  "pageNo": 1,
+  "pageSize": 100,
+  "interId": "2075463578447917062",
+  "orderValues": [
+    {
+      "fieldName": "custField64317",
+      "direction": "ASC",
+      "fieldId": "2079848643265212417"
+    }
+  ],
+  "headerValues": {},
+  "postValues": {},
+  "panelId": "2075463586106716161",
+  "pageId": "2075463586303848450",
+  "httpId": "2075463589101449218",
+  "selectValues": {
+    "custField64317": "custField64317",
+    "custField64318": "custField64318",
+    "custField64320": "custField64320",
+    "custField64325": "custField64325",
+    "custField64319": "custField64319",
+    "custField64322": "custField64322",
+    "custField64323": "custField64323"
+  },
+  "showArchived": false,
+  "usePageId": "2075463589034340354"
+}

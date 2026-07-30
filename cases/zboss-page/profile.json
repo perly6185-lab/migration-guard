@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "projectId": "zboss-page",
+  "source": {
+    "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
+    "access": "read-only",
+    "directories": [
+      "zboss-module-data-api/src/main/java",
+      "zboss-module-data-domain/src/main/java",
+      "zboss-module-data-infrastructure/src/main/java",
+      "zboss-module-data-infrastructure/src/main/resources",
+      "zboss-module-data-service/src/main/java",
+      "zboss-module-data-service/src/main/resources",
+      "zboss-module-data-type/src/main/java"
+    ],
+    "language": "java",
+    "framework": "spring",
+    "adapter": "java-spring"
+  },
+  "data": {
+    "dialect": "mysql",
+    "adapters": [
+      "mybatis"
+    ]
+  },
+  "entrypoints": [
+    {
+      "id": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "kind": "http-route",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/page"
+    }
+  ],
+  "contexts": {
+    "tenant": "required",
+    "user": "required",
+    "request": "required",
+    "datasource": "required",
+    "custom": [
+      "device"
+    ]
+  },
+  "infrastructure": {
+    "caches": [
+      "redis"
+    ],
+    "locks": [
+      "redis-page-refresh-lease"
+    ],
+    "events": [
+      "refresh-progress"
+    ],
+    "externalServices": [
+      "system-server"
+    ]
+  },
+  "target": {
+    "language": "rust",
+    "root": "../../rust/zboss-rust/internal/dynamic-engine-runtime",
+    "serviceName": "zboss-page",
+    "productionPath": {
+      "requiredTraits": [
+        "MysqlStatementExecutor",
+        "RedisLeaseExecutor"
+      ],
+      "requiredRouteFragments": [
+        "/zboss/data/view/dynamic/engine/use/engine-use-page/page"
+      ]
+    }
+  },
+  "compatibility": {
+    "strict": true,
+    "approvalRequired": true,
+      "approvedCorrectionIds": [
+        "PAGE-DEC-QUALITY-AGGREGATE-ROUTING",
+        "PAGE-DEC-HORIZONTAL-HAVING",
+        "PAGE-DEC-REQUIRES-NEW-SELF-CALL",
+        "PAGE-DEC-REFRESH-EFFECT-ORDER"
+      ]
+  }
+}

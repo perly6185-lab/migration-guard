@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "collector": "redis",
+  "status": "template",
+  "connectionEnv": "MG_JAVA_REDIS_URL",
+  "includeValues": false,
+  "probes": [
+    {
+      "id": "replace-with-lock-or-ledger-key",
+      "command": [
+        "GET",
+        "migration-guard:replace-me"
+      ]
+    }
+  ]
+}

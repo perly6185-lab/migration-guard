@@ -1,0 +1,14 @@
+{
+  "interId": "2059838045706170370",
+  "httpId": "2059838047035764739",
+  "panelId": "2059838046666665986",
+  "postValues": {
+    "selfBookRowNum": null,
+    "selfBookRowDirection": -1,
+    "custField59623": "test-ledger-value",
+    "custField59624": "test-ledger-value",
+    "custField59625": "2026-07-30"
+  },
+  "headerValues": {},
+  "usePageId": "2059838047023181826"
+}

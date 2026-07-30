@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 1,
+  "stage": "PRP-10",
+  "scenarios": [
+    {
+      "caseId": "standard-page",
+      "runtimeCaseId": "standard-page",
+      "kind": "runtime",
+      "transport": "application",
+      "requestFile": "standard-page.json",
+      "expected": {
+        "httpStatus": 200,
+        "code": 0,
+        "total": 2,
+        "data": [
+          {
+            "amount": 10,
+            "customer": "a",
+            "status": "open"
+          }
+        ],
+        "events": [],
+        "queryPlan": {
+          "count": 1,
+          "table": "orders",
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        },
+        "uploadTmpTableName": null,
+        "fingerprint": "sha256",
+        "dataSnapshotSha256": "7ff5a7b8780b11b959b8a4a015425059b8b6756a3e075d1a8fa1031e105501cc"
+      }
+    },
+    {
+      "caseId": "refresh-operator",
+      "runtimeCaseId": "refresh",
+      "kind": "runtime",
+      "transport": "application",
+      "requestFile": "refresh-operator.json",
+      "expected": {
+        "httpStatus": 200,
+        "code": 0,
+        "total": 1,
+        "data": [
+          {
+            "amount": 30,
+            "customer": "r1",
+            "status": "open"
+          }
+        ],
+        "events": [
+          "refresh.acquire",
+          "refresh.sync",
+          "refresh.timestamp",
+          "refresh.undo-clear",
+          "refresh.reconcile",
+          "refresh.query",
+          "refresh.unlock"
+        ],
+        "queryPlan": {
+          "count": 1,
+          "table": "orders",
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        },
+        "uploadTmpTableName": null,
+        "fingerprint": "sha256",
+        "dataSnapshotSha256": "41cc05708ed914d7a6686dd65f9c8843c32e0b0d1aad40c4e352c6c18e02ece9"
+      }
+    },
+    {
+      "caseId": "child-form-page",
+      "runtimeCaseId": "child-table",
+      "kind": "runtime",
+      "transport": "application",
+      "requestFile": "child-form-page.json",
+      "expected": {
+        "httpStatus": 200,
+        "code": 0,
+        "total": 1,
+        "data": [
+          {
+            "amount": 40,
+            "customer": "c-open",
+            "status": "open"
+          }
+        ],
+        "events": [],
+        "queryPlan": {
+          "count": 1,
+          "table": "orders",
+          "wherePredicates": 1,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        },
+        "uploadTmpTableName": null,
+        "fingerprint": "sha256",
+        "dataSnapshotSha256": "377480e759a74027e062a68c01b02029011b377cb30b85970c8933e3d98a4baf"
+      }
+    },
+    {
+      "caseId": "horizontal-page",
+      "runtimeCaseId": "horizontal-table",
+      "kind": "runtime",
+      "transport": "application",
+      "requestFile": "horizontal-page.json",
+      "expected": {
+        "httpStatus": 200,
+        "code": 0,
+        "total": 2,
+        "data": [
+          {
+            "customer": "a",
+            "total": 100
+          }
+        ],
+        "events": [],
+        "queryPlan": {
+          "count": 1,
+          "table": "orders",
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 1,
+          "aggregates": 1
+        },
+        "uploadTmpTableName": null,
+        "fingerprint": "sha256",
+        "dataSnapshotSha256": "18def576a4040bfaac48f89d92f5d6ac0e283470e776e52ecd9d6fedb55e6271"
+      }
+    },
+    {
+      "caseId": "quality-text-filter",
+      "runtimeCaseId": "quality-filter",
+      "kind": "runtime",
+      "transport": "application",
+      "requestFile": "quality-text-filter.json",
+      "expected": {
+        "httpStatus": 200,
+        "code": 0,
+        "total": 1,
+        "data": [
+          {
+            "amount": 50,
+            "customer": "q-open",
+            "status": "open"
+          }
+        ],
+        "events": [],
+        "queryPlan": {
+          "count": 1,
+          "table": "orders",
+          "wherePredicates": 1,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        },
+        "uploadTmpTableName": null,
+        "fingerprint": "sha256",
+        "dataSnapshotSha256": "c94cfbd83c3ae6fa31d81a4e1d29b51504c5ecc14778c74849dd795fd0eb6826"
+      }
+    },
+    {
+      "caseId": "upload-preview-page",
+      "runtimeCaseId": "temporary-table",
+      "kind": "runtime",
+      "transport": "application",
+      "requestFile": "upload-preview-page.json",
+      "expected": {
+        "httpStatus": 200,
+        "code": 0,
+        "total": 2,
+        "data": [
+          {
+            "amount": 91,
+            "customer": "t1",
+            "status": "preview"
+          },
+          {
+            "amount": 92,
+            "customer": "t2",
+            "status": "preview"
+          }
+        ],
+        "events": [],
+        "queryPlan": {
+          "count": 1,
+          "table": "tmp_orders_1",
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        },
+        "uploadTmpTableName": "tmp_orders_1",
+        "fingerprint": "sha256",
+        "dataSnapshotSha256": "2eef7237b51da43579a4c67a1d94da186e2f765c629baedbd84759af9b2ba206"
+      }
+    },
+    {
+      "caseId": "tenant-auth-context",
+      "runtimeCaseId": "tenant-permission",
+      "kind": "runtime",
+      "transport": "application",
+      "requestFile": "tenant-auth-context.json",
+      "expected": {
+        "httpStatus": 403,
+        "code": 403001,
+        "total": null,
+        "data": [],
+        "events": [],
+        "queryPlan": {
+          "count": 0,
+          "table": null,
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 0
+        },
+        "uploadTmpTableName": null,
+        "fingerprint": "absent-before-query",
+        "dataSnapshotSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    {
+      "caseId": "entrypoint-parity",
+      "runtimeCaseId": "entrypoint-parity",
+      "kind": "offline-extra",
+      "transport": "http",
+      "requestFile": "entrypoint-parity.json",
+      "expected": {
+        "httpStatus": 200,
+        "code": 0,
+        "total": 1,
+        "data": [
+          {
+            "amount": 70,
+            "customer": "e1",
+            "status": "open"
+          }
+        ],
+        "events": [],
+        "queryPlan": {
+          "count": 1,
+          "table": "orders",
+          "wherePredicates": 0,
+          "havingPredicates": 0,
+          "groupBy": 0,
+          "aggregates": 1
+        },
+        "uploadTmpTableName": null,
+        "fingerprint": "sha256",
+        "dataSnapshotSha256": "d6ac0bb8d23caf4c33f521d82b47c2d7650524bf09727a9ed81ebbe1eb1f1f34"
+      }
+    }
+  ]
+}

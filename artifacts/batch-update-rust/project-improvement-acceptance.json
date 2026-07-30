@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-update-project-improvement-acceptance",
+  "assessedAt": "2026-07-29",
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "e29cd9b62ad6ae089aa2864e6c1b0e431d1c17e196fac271952193e737d6fa16",
+  "status": "accepted-with-next-level-blockers",
+  "capability": {
+    "achieved": "L4-A",
+    "next": "L4-B",
+    "productionEligible": false,
+    "realEnvironmentEligible": false
+  },
+  "improvements": [
+    "sequential fail-closed capability levels from L0 through L4",
+    "project-hash, upstream-report-hash and freshness lineage for migration gates",
+    "Rust production-path attestation that excludes test-only trait implementations",
+    "artifact secret scanning for bearer tokens, JWTs, credential URLs and private keys",
+    "disposable write-fixture scope, marker, row-limit, expiry and cleanup verification",
+    "unified trust gate that cannot promote direct SQL or Lua probes beyond L4-A",
+    "bounded test sharding with per-test and per-shard timeouts plus process-tree cleanup"
+  ],
+  "gateResults": {
+    "l3": {
+      "status": "pass",
+      "decision": "L3",
+      "scenarioCount": 19,
+      "rustTestCount": 37,
+      "checks": 13,
+      "report": "artifacts/batch-update-rust/l3-gate.json"
+    },
+    "protocol": {
+      "status": "pass",
+      "decision": "L4-A-PROTOCOL-READY",
+      "checks": 64,
+      "report": "artifacts/batch-update-rust/container-adapter-gate.json"
+    },
+    "trust": {
+      "status": "pass",
+      "decision": "L4-A",
+      "securityFindings": 0,
+      "offlineFreshnessFindings": 0,
+      "realFreshnessFindings": 1,
+      "report": "artifacts/batch-update-rust/trust-gate.json"
+    }
+  },
+  "verification": {
+    "typescriptBuild": "pass",
+    "focusedTests": {
+      "status": "pass",
+      "passed": 25,
+      "failed": 0
+    },
+    "fullTestSuite": {
+      "status": "pass",
+      "durationSeconds": 317.81,
+      "testFiles": 92,
+      "tests": 456,
+      "shardsPassed": 11,
+      "shardsTotal": 11,
+      "failed": 0
+    }
+  },
+  "referenceSource": {
+    "access": "read-only",
+    "unchanged": true,
+    "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+    "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+    "treeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "fileCount": 7175
+  },
+  "nextLevelBlockers": [
+    "MG-CAPABILITY-CONCRETE-ADAPTERS-MISSING",
+    "MG-CAPABILITY-DEPLOYABLE-SERVICE-MISSING",
+    "MG-CAPABILITY-REAL-EVIDENCE-BLOCKED",
+    "MG-CAPABILITY-DUAL-REPLAY-BLOCKED",
+    "MG-CAPABILITY-UNIFIED-REAL-GATE-BLOCKED"
+  ]
+}

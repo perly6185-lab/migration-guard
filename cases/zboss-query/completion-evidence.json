@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "projectId": "zboss-query",
+  "projectHash": "36ee681eca039a0201fb1d70fd8f8a2d65bb89fbf1e99c878650478873eabb06",
+  "generatedAt": "2026-07-30T10:58:32.661Z",
+  "controls": {
+    "source.read-only-snapshot": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "analysis.complete": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "offline.contract": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "implementation.checks": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "scenario.contract": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "dependency.protocol": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "production.adapter.view-metadata-port": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "production.http-service": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "production.configuration": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "production.health-readiness": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "real.runtime-evidence": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "real.dual-replay": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.unified-real-gate": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.observability": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.canary": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.rollback-rehearsal": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.source-off": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:32.661Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    }
+  }
+}

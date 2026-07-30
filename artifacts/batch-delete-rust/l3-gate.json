@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-delete-rust-l3",
+  "status": "pass",
+  "decision": "L3-OFFLINE-ACCEPTED",
+  "capability": {
+    "achieved": "L3",
+    "blockedNext": "L4-A",
+    "blockers": [
+      "No approved disposable real-write replay has been executed.",
+      "Production MySQL, Redis, WebSocket and compensation-worker adapters are not bound.",
+      "The Java side of dual replay is a frozen semantic stub rather than fresh runtime evidence."
+    ]
+  },
+  "scope": {
+    "endpoint": "POST /zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchDelete",
+    "referenceSourceAccess": "read-only",
+    "realRequestStatus": "candidate-not-executed"
+  },
+  "sourceSnapshot": {
+    "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768",
+    "treeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "fileCount": 7175,
+    "directories": [
+      "zboss-module-data-api/src/main/java",
+      "zboss-module-data-domain/src/main/java",
+      "zboss-module-data-infrastructure/src/main/java",
+      "zboss-module-data-infrastructure/src/main/resources",
+      "zboss-module-data-service/src/main/java",
+      "zboss-module-data-service/src/main/resources",
+      "zboss-module-data-type/src/main/java"
+    ]
+  },
+  "metrics": {
+    "rustTestsPassed": 20,
+    "dualReplayCasesPassed": 8,
+    "exactCompatibleCases": 6,
+    "approvedCorrectionCases": 2,
+    "classifiedDifferences": 7,
+    "unclassifiedDifferences": 0,
+    "tamperSelfTestPassed": true
+  },
+  "replayReportHash": "6132b0d53d9afc44d53e4e101eb13156cbdb7815069e90aa8057764ee995e831",
+  "checks": [
+    {
+      "id": "rust-format",
+      "pass": true,
+      "command": "cargo fmt --check"
+    },
+    {
+      "id": "rust-tests",
+      "pass": true,
+      "command": "cargo test --offline application::data::delete"
+    },
+    {
+      "id": "rust-clippy",
+      "pass": true,
+      "command": "cargo clippy --all-targets --offline -- -D warnings"
+    },
+    {
+      "id": "memory-driver-build",
+      "pass": true,
+      "command": "cargo build --bin batch-delete-offline-driver --offline"
+    },
+    {
+      "id": "offline-dual-replay",
+      "pass": true,
+      "command": "D:\\opt\\nodejs\\node.exe D:\\learn\\migration-guard\\rust\\zboss-rust\\internal\\dynamic-engine-runtime\\delete\\scripts\\offline-replay.mjs"
+    },
+    {
+      "id": "real-request-fixture",
+      "pass": true
+    },
+    {
+      "id": "replay-contract",
+      "pass": true
+    },
+    {
+      "id": "unclassified-tamper-self-test",
+      "pass": true
+    },
+    {
+      "id": "reference-source-unchanged",
+      "pass": true
+    }
+  ],
+  "reportHash": "94392a282f649da9a28e7d846870d03a6c3e5c2fc067fabe580c013004455051"
+}

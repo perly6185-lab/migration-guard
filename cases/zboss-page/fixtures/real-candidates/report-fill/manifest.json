@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "status": "candidate",
+  "fixtureKind": "real-runtime-candidate",
+  "realEvidenceEligible": false,
+  "readEvidenceEligible": true,
+  "scenarioId": "report-fill",
+  "provenance": "user-captured-devtools-request",
+  "credentialsIncluded": false,
+  "tenantBinding": "MG_JAVA_TENANT_ID",
+  "requests": [
+    {
+      "id": "fill-metadata-query",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-fill/query",
+      "file": "query.json",
+      "effect": "read"
+    },
+    {
+      "id": "fill-page",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-fill/page",
+      "file": "page.json",
+      "effect": "read"
+    },
+    {
+      "id": "fill-refresh-sync",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/refreshSync",
+      "file": "refresh-sync.json",
+      "effect": "mutation",
+      "executionAuthorized": false
+    }
+  ],
+  "readCollection": {
+    "collectedAtUtc": "2026-07-29T08:19:01.643791Z",
+    "queryBusinessCode": 0,
+    "queryResponseHash": "da233c27af332275ee56cf2c6f0abf409ccd476ff3ac510f9d445f9d71823e57",
+    "pageBusinessCode": 0,
+    "pageResponseHash": "5248c667ceb191dc16213cbf94c358035f7a6ab444bc27952214b0f409f1047c",
+    "pageRepeatHashMatches": true,
+    "credentialsPersisted": false,
+    "rawResponsesPersisted": false
+  },
+  "readPromotion": {
+    "status": "accepted",
+    "promotionId": "RB-01",
+    "path": "cases/zboss-page/fixtures/real-readonly/report-fill",
+    "scope": "query-and-page-only"
+  },
+  "promotionBlockers": [
+    "separately authorize REFRESH mutation",
+    "capture REFRESH before/after snapshot and recovery evidence",
+    "review and promote the mutation portion of the fixture"
+  ]
+}

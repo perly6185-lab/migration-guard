@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "status": "draft",
+  "fixtureKind": "real-runtime-candidate",
+  "realEvidenceEligible": false,
+  "readEvidenceEligible": false,
+  "projectId": "zboss-page",
+  "scenarioId": "calendar-view",
+  "provenance": "user-provided-request",
+  "baseUrl": "https://test.ia-gz.com/admin-api",
+  "credentialsIncluded": false,
+  "rawResponsesIncluded": false,
+  "declaredViewType": "calendar",
+  "requests": [
+    {
+      "id": "calendar-metadata-query",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/query",
+      "file": "query.json",
+      "effect": "query-with-possible-self-healing-writes",
+      "executionAuthorized": false
+    },
+    {
+      "id": "calendar-page",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/page",
+      "file": "page.json",
+      "effect": "query-with-page-size-preference-write-possible",
+      "executionAuthorized": false
+    }
+  ],
+  "workflowBinding": {
+    "sharedUsePageId": "2059838047023181826",
+    "expectedViewId": "2064662147688243201",
+    "panelId": "2059838046666665986",
+    "pageId": "2059838046687637506",
+    "httpId": "2059838047035764738",
+    "bindingProofRequired": true
+  },
+  "safety": {
+    "exactRequestsMayWrite": true,
+    "pageReadOnlyVariantAddsSkipSavePageSize": true,
+    "queryRequiresDisposableEnvironmentOrMysqlBeforeAfterEvidence": true,
+    "mutatingExecutionAuthorized": false
+  },
+  "requiredEvidence": [
+    "query response proves calendar view type and expected viewId",
+    "query/page usePageId and panel/page/http identifiers remain coherent",
+    "calendar start, end, all-day, null and timezone semantics",
+    "pageSize 10000 latency, memory, response size and total-count budget",
+    "stable repeated canonical response hashes",
+    "SQL trace and MySQL before/after snapshot for query-time self-healing",
+    "page request proves whether page-size preference is persisted",
+    "source/target two-step workflow replay"
+  ],
+  "classificationCorrection": {
+    "priorScenario": "horizontal-page",
+    "status": "requires-review",
+    "reason": "The user identified this usePageId as a calendar view. View type must come from query metadata, not response-shape inference."
+  }
+}

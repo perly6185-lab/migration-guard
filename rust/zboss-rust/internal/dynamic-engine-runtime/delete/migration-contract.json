@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "projectId": "zboss-batch-delete",
+  "projectHash": "364315b8b2f9928279c9271c34e0132fc8070a4a56e75be8f2b9c2027e835000",
+  "generatedFrom": "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\profile.json",
+  "entrypoints": [
+    {
+      "id": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchDelete",
+      "kind": "http-route",
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchDelete"
+    }
+  ],
+  "contexts": {
+    "tenant": "required",
+    "user": "required",
+    "request": "required",
+    "datasource": "required",
+    "custom": [
+      "panelId",
+      "usePageId",
+      "operationKind",
+      "batchId"
+    ]
+  },
+  "data": {
+    "dialect": "mysql",
+    "adapters": [
+      "mybatis"
+    ]
+  },
+  "infrastructure": {
+    "caches": [
+      "Redis page-query cache"
+    ],
+    "locks": [
+      "SyncTrigger(usePageId)"
+    ],
+    "events": [
+      "batch-progress",
+      "row-deleted-after-commit",
+      "undo-anchor",
+      "delete-audit"
+    ],
+    "externalServices": [
+      "WebSocket-progress"
+    ]
+  },
+  "compatibility": {
+    "strict": true,
+    "approvalRequired": true,
+      "approvedCorrectionIds": [
+        "BD-DEC-ROW-LIMIT",
+        "BD-DEC-DUPLICATE-REPLAY",
+      "BD-DEC-COMPENSATION-DURABILITY",
+      "BD-DEC-PROGRESS-COMPLETENESS"
+    ]
+  },
+  "implementationStatus": "l4a-production-protocol-ready"
+}
