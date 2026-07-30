@@ -41,6 +41,7 @@ TOKEN = os.environ.get("MG_JAVA_TOKEN")
 LOGIN_USERNAME = os.environ.get("MG_LOGIN_USERNAME")
 LOGIN_PASSWORD = os.environ.get("MG_LOGIN_PASSWORD")
 MODE = os.environ.get("MG_CALENDAR_PROBE_MODE", "plan")
+REQUEST_TIMEOUT_SECONDS = int(os.environ.get("MG_REQUEST_TIMEOUT_SECONDS", "60"))
 QUERY_PATH = "/zboss/data/view/dynamic/engine/use/engine-use-page/query"
 PAGE_PATH = "/zboss/data/view/dynamic/engine/use/engine-use-page/page"
 VOLATILE_KEYS = {
@@ -197,10 +198,23 @@ def execute(token, tenant_id, name, path, body):
     started = time.monotonic()
     try:
         response = urllib.request.urlopen(
-            request, timeout=60, context=ssl.create_default_context()
+            request,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            context=ssl.create_default_context(),
         )
     except urllib.error.HTTPError as error:
         response = error
+    except (TimeoutError, urllib.error.URLError) as error:
+        return {
+            "name": name,
+            "path": path,
+            "requestHash": digest_json(body),
+            "completed": False,
+            "errorType": type(error).__name__,
+            "elapsedMs": round((time.monotonic() - started) * 1000),
+            "rawResponsePersisted": False,
+            "canonicalResponseHash": None,
+        }
     raw = response.read()
     elapsed_ms = round((time.monotonic() - started) * 1000)
     try:
@@ -212,6 +226,7 @@ def execute(token, tenant_id, name, path, body):
         "name": name,
         "path": path,
         "requestHash": digest_json(body),
+        "completed": True,
         "httpStatus": response.status,
         "elapsedMs": elapsed_ms,
         "responseBytes": len(raw),
@@ -339,7 +354,9 @@ else:
         "results": results,
     }
     report["repeatCanonicalHashesMatch"] = all(
-        results[index]["canonicalResponseHash"]
+        results[index]["completed"]
+        and results[index + 1]["completed"]
+        and results[index]["canonicalResponseHash"]
         == results[index + 1]["canonicalResponseHash"]
         for index in range(0, len(results), 2)
     )

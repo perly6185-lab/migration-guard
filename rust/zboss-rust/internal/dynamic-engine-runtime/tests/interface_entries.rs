@@ -253,8 +253,8 @@ fn horizontal_list_route_sorts_and_preserves_composite_projection() {
 }
 
 #[test]
-fn horizontal_refresh_is_fail_closed_until_coordinator_is_bound() {
-    let (_, application) = application();
+fn horizontal_refresh_runs_coordinator_before_list() {
+    let (ports, application) = application();
     let mut request: JsonValue =
         serde_json::from_str(include_str!("../contracts/horizontal-list-request.json")).unwrap();
     request["operator"] = JsonValue::String("REFRESH".to_owned());
@@ -263,8 +263,15 @@ fn horizontal_refresh_is_fail_closed_until_coordinator_is_bound() {
         &Config::default(),
         &application,
     );
-    assert_eq!(response.0, "409 Conflict");
-    assert!(response.1.contains("separate command"));
+    assert_eq!(response.0, "200 OK");
+    assert_eq!(
+        ports
+            .events()
+            .iter()
+            .map(|event| event.kind.as_str())
+            .collect::<Vec<_>>(),
+        vec!["horizontal.refresh.sync"]
+    );
 }
 
 #[test]

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.completion-control-evidence/v1",
+  "projectId": "zboss-page",
+  "projectHash": "1447a1fbd1e1e43af4eeb09c36723ab79da9367ef50d50125a99ac39b470dad0",
+  "controlId": "real.dual-replay",
+  "evidenceKind": "runtime-replay",
+  "status": "blocked",
+  "observedAt": "2026-07-30T13:07:26.490Z",
+  "synthetic": false,
+  "realEligible": true,
+  "producer": {
+    "tool": "migration-guard-zboss-02",
+    "version": "0.3.0-beta.1",
+    "command": "not executed by ZBOSS-02",
+    "identity": "codex-zboss-02-gate"
+  },
+  "claims": {
+    "dualReplayPassed": false,
+    "decisionCount": 11,
+    "compatibilityTestCount": 11,
+    "sourceSnapshotsVerified": 8,
+    "offlineReportHash": "e80b0b1bee6ac0bd8500342a0c15d9eb728ca07e180595777bfadb7efc9db18c",
+    "analysisProjectHash": "1447a1fbd1e1e43af4eeb09c36723ab79da9367ef50d50125a99ac39b470dad0",
+    "blockedReason": "requires dependency, production, real-runtime or release evidence outside ZBOSS-02"
+  }
+}

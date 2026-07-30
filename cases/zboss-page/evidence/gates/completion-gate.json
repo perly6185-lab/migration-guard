@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "gate": "completion",
   "projectId": "zboss-page",
-  "projectHash": "e797014ea05ae48bb9c3fd8cc7e4d003b52a438f0470cb2bc533c8c5b947f9d0",
+  "projectHash": "1447a1fbd1e1e43af4eeb09c36723ab79da9367ef50d50125a99ac39b470dad0",
   "status": "blocked",
   "capability": {
     "schemaVersion": 1,
-    "achieved": "L0",
-    "next": "L1",
+    "achieved": "L3",
+    "next": "L4-A",
     "claims": [
       {
         "level": "L0",
@@ -16,26 +16,18 @@
       },
       {
         "level": "L1",
-        "passed": false,
-        "blockers": [
-          "MG-CAPABILITY-SOURCE-GUARD-MISSING",
-          "MG-CAPABILITY-ANALYSIS-INCOMPLETE"
-        ]
+        "passed": true,
+        "blockers": []
       },
       {
         "level": "L2",
-        "passed": false,
-        "blockers": [
-          "MG-CAPABILITY-OFFLINE-CONTRACT-BLOCKED"
-        ]
+        "passed": true,
+        "blockers": []
       },
       {
         "level": "L3",
-        "passed": false,
-        "blockers": [
-          "MG-CAPABILITY-IMPLEMENTATION-CHECKS-BLOCKED",
-          "MG-CAPABILITY-SCENARIO-CONTRACT-BLOCKED"
-        ]
+        "passed": true,
+        "blockers": []
       },
       {
         "level": "L4-A",
@@ -71,32 +63,44 @@
   },
   "controlSummary": {
     "total": 18,
-    "passed": 0,
-    "blocked": 18
+    "passed": 5,
+    "blocked": 13
   },
   "findings": [
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:analysis.complete",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:dependency.protocol",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:implementation.checks",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:offline.contract",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.adapter.mysql-statement-executor",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.adapter.redis-lease-executor",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.configuration",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.health-readiness",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.http-service",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:real.dual-replay",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:real.runtime-evidence",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.canary",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.observability",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.rollback-rehearsal",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.source-off",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.unified-real-gate",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:scenario.contract",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:source.read-only-snapshot",
-    "MG-COMPLETION-CONTROL-BLOCKED:analysis.complete",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:dependency.protocol:integrationPassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:production.adapter.mysql-statement-executor:productionEligible",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:production.adapter.redis-lease-executor:productionEligible",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:production.configuration:integrationPassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:production.health-readiness:integrationPassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:production.http-service:productionEligible",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:real.dual-replay:dualReplayPassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:real.runtime-evidence:realEvidencePassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:release.canary:canaryRehearsed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:release.observability:observabilityVerified",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:release.rollback-rehearsal:rollbackRehearsed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:release.source-off:sourceOffVerified",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:release.unified-real-gate:unifiedRealGatePassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:real.dual-replay",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:real.runtime-evidence",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:release.canary",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:release.observability",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:release.rollback-rehearsal",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:release.source-off",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:release.unified-real-gate",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:dependency.protocol",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:production.adapter.mysql-statement-executor",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:production.adapter.redis-lease-executor",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:production.configuration",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:production.health-readiness",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:production.http-service",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:real.dual-replay",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:real.runtime-evidence",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:release.canary",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:release.observability",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:release.rollback-rehearsal",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:release.source-off",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:release.unified-real-gate",
     "MG-COMPLETION-CONTROL-BLOCKED:dependency.protocol",
-    "MG-COMPLETION-CONTROL-BLOCKED:implementation.checks",
-    "MG-COMPLETION-CONTROL-BLOCKED:offline.contract",
     "MG-COMPLETION-CONTROL-BLOCKED:production.adapter.mysql-statement-executor",
     "MG-COMPLETION-CONTROL-BLOCKED:production.adapter.redis-lease-executor",
     "MG-COMPLETION-CONTROL-BLOCKED:production.configuration",
@@ -108,17 +112,33 @@
     "MG-COMPLETION-CONTROL-BLOCKED:release.observability",
     "MG-COMPLETION-CONTROL-BLOCKED:release.rollback-rehearsal",
     "MG-COMPLETION-CONTROL-BLOCKED:release.source-off",
-    "MG-COMPLETION-CONTROL-BLOCKED:release.unified-real-gate",
-    "MG-COMPLETION-CONTROL-BLOCKED:scenario.contract",
-    "MG-COMPLETION-CONTROL-BLOCKED:source.read-only-snapshot"
+    "MG-COMPLETION-CONTROL-BLOCKED:release.unified-real-gate"
   ],
   "securityFindings": [],
   "evidence": [
     "D:\\learn\\migration-guard\\cases\\zboss-page\\completion-contract.json",
-    "D:\\learn\\migration-guard\\cases\\zboss-page\\completion-evidence.json"
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\completion-evidence.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\analysis.complete.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\dependency.protocol.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\implementation.checks.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\offline.contract.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\production.adapter.mysql-statement-executor.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\production.adapter.redis-lease-executor.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\production.configuration.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\production.health-readiness.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\production.http-service.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\real.dual-replay.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\real.runtime-evidence.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\release.canary.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\release.observability.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\release.rollback-rehearsal.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\release.source-off.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\release.unified-real-gate.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\scenario.contract.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\completion\\source.read-only-snapshot.json"
   ],
-  "generatedAt": "2026-07-30T10:58:28.969Z",
+  "generatedAt": "2026-07-30T13:07:27.431Z",
   "freshness": "fresh",
   "upstream": [],
-  "reportHash": "ddbf10240567909a15aecfe4c0054d77dfc918c184fb805dffe49d4ab962a8df"
+  "reportHash": "7d9f8ff261d1c657dd716ffe8b465aca7924d1fa31bfc7ed54589f7e078c834a"
 }

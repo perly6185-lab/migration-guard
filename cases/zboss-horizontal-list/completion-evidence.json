@@ -1,116 +1,242 @@
 {
   "schemaVersion": 1,
   "projectId": "zboss-horizontal-list",
-  "projectHash": "81997d203d4fe61758e354622105d4b38e7d635eadb2509b270e503ac9fa82e3",
-  "generatedAt": "2026-07-30T10:58:37.214Z",
+  "projectHash": "c4968d325487648cef048ac34d3a477e463420e5f390d7e2332677e2e8a4bfb2",
+  "generatedAt": "2026-07-30T13:07:26.576Z",
   "controls": {
     "source.read-only-snapshot": {
-      "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "status": "passed",
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\source.read-only-snapshot.json",
+          "sha256": "9ee5b2a9ab0d3403468cf87f9e8365ed0cff3782a793afa010e481f435914f1a",
+          "controlId": "source.read-only-snapshot",
+          "evidenceKind": "source-snapshot"
+        }
+      ],
+      "note": "Verified by the ZBOSS-02 source, analysis, offline and Rust compatibility gates."
     },
     "analysis.complete": {
-      "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "status": "passed",
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\analysis.complete.json",
+          "sha256": "4d3bb182679066e588e8d2124e142a2a1c70a4b3d9ab5dbec027ced4a1068720",
+          "controlId": "analysis.complete",
+          "evidenceKind": "analysis-report"
+        }
+      ],
+      "note": "Verified by the ZBOSS-02 source, analysis, offline and Rust compatibility gates."
     },
     "offline.contract": {
-      "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "status": "passed",
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\offline.contract.json",
+          "sha256": "48e01be2d9d5c467b76f3a1399a3b3460d96d0c2b81dc4155f32bf26a4977425",
+          "controlId": "offline.contract",
+          "evidenceKind": "analysis-report"
+        }
+      ],
+      "note": "Verified by the ZBOSS-02 source, analysis, offline and Rust compatibility gates."
     },
     "implementation.checks": {
-      "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "status": "passed",
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\implementation.checks.json",
+          "sha256": "a60070acb83fd0eef51ccd4e786a948138c4f6112524006e47b6e81445d64128",
+          "controlId": "implementation.checks",
+          "evidenceKind": "test-report"
+        }
+      ],
+      "note": "Verified by the ZBOSS-02 source, analysis, offline and Rust compatibility gates."
     },
     "scenario.contract": {
-      "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "status": "passed",
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\scenario.contract.json",
+          "sha256": "cc86de785b27d9ccc4960fe27e9241e3b403be989fd2a10058ddd7780dd5cc9b",
+          "controlId": "scenario.contract",
+          "evidenceKind": "test-report"
+        }
+      ],
+      "note": "Verified by the ZBOSS-02 source, analysis, offline and Rust compatibility gates."
     },
     "dependency.protocol": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\dependency.protocol.json",
+          "sha256": "dc247eeda79078d958861370638e920b4138f34df4c14d3f85ea26a1b496b200",
+          "controlId": "dependency.protocol",
+          "evidenceKind": "container-integration"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "production.adapter.mysql-horizontal-query-executor": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\production.adapter.mysql-horizontal-query-executor.json",
+          "sha256": "7ce8c5b34889f696f7de8d25239bfb9bc70d667524e070674efad0a2d7ab6264",
+          "controlId": "production.adapter.mysql-horizontal-query-executor",
+          "evidenceKind": "static-attestation"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "production.adapter.horizontal-refresh-coordinator": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\production.adapter.horizontal-refresh-coordinator.json",
+          "sha256": "563a58272e64b5918f7762ef8f4b2569ccdbcee45c7e824febe75471a93525c7",
+          "controlId": "production.adapter.horizontal-refresh-coordinator",
+          "evidenceKind": "static-attestation"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "production.http-service": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\production.http-service.json",
+          "sha256": "8246a152fe0fffa96695f4ff34be37c3512cead0506aa603883350f6a31f0fcd",
+          "controlId": "production.http-service",
+          "evidenceKind": "static-attestation"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "production.configuration": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\production.configuration.json",
+          "sha256": "33d3b1d4074e86318e4dd95dd32569d05cfaeb2d66c5684b741e866ee69c6a9e",
+          "controlId": "production.configuration",
+          "evidenceKind": "container-integration"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "production.health-readiness": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\production.health-readiness.json",
+          "sha256": "fa0cf1e68de197fcdf152801b97604a9f168ecd7b0afdc1f020cfa8f041cfb5f",
+          "controlId": "production.health-readiness",
+          "evidenceKind": "container-integration"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "real.runtime-evidence": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\real.runtime-evidence.json",
+          "sha256": "8ca85ac3fcc2feda0d10a3e481bd987bf5e3133df0163debc206ab19c0786c6e",
+          "controlId": "real.runtime-evidence",
+          "evidenceKind": "runtime-replay"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "real.dual-replay": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\real.dual-replay.json",
+          "sha256": "a645348ecfb55cd91389d1e6b30ef5d51a7f4421ecc6c09338a29204aeaa23f0",
+          "controlId": "real.dual-replay",
+          "evidenceKind": "runtime-replay"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "release.unified-real-gate": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\release.unified-real-gate.json",
+          "sha256": "40b7ae80608fe660df7662ce9a2fd23d03e7d9e80e2f2e9c40d8560af7317254",
+          "controlId": "release.unified-real-gate",
+          "evidenceKind": "runtime-replay"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "release.observability": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\release.observability.json",
+          "sha256": "97cfd0b4403ae3a20a9f55e75ad2e7475b80db44f9abc62efea6d35121ccc898",
+          "controlId": "release.observability",
+          "evidenceKind": "operational-drill"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "release.canary": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\release.canary.json",
+          "sha256": "7c43e02b0ac4af57edb89c8db946dab22334ed7be5a5d591528574a5f74aec78",
+          "controlId": "release.canary",
+          "evidenceKind": "operational-drill"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "release.rollback-rehearsal": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\release.rollback-rehearsal.json",
+          "sha256": "eed0166f500a3c76506b2eb7ac2138816bade31bcbb6a7ec086013b6a79baae3",
+          "controlId": "release.rollback-rehearsal",
+          "evidenceKind": "operational-drill"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     },
     "release.source-off": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.214Z",
-      "artifacts": [],
-      "note": "No fresh qualifying upstream gate proves this control."
+      "observedAt": "2026-07-30T13:07:26.576Z",
+      "artifacts": [
+        {
+          "path": "evidence\\completion\\release.source-off.json",
+          "sha256": "9377f36f91052bad75ee004602ada6ad56b6523d554356a54297a9fe8f05e950",
+          "controlId": "release.source-off",
+          "evidenceKind": "operational-drill"
+        }
+      ],
+      "note": "Intentionally blocked; ZBOSS-02 makes no L4 or production-readiness claim."
     }
   }
 }

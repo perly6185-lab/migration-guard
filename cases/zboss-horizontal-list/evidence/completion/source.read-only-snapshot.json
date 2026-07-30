@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.completion-control-evidence/v1",
+  "projectId": "zboss-horizontal-list",
+  "projectHash": "c4968d325487648cef048ac34d3a477e463420e5f390d7e2332677e2e8a4bfb2",
+  "controlId": "source.read-only-snapshot",
+  "evidenceKind": "source-snapshot",
+  "status": "passed",
+  "observedAt": "2026-07-30T13:07:26.576Z",
+  "synthetic": false,
+  "realEligible": true,
+  "producer": {
+    "tool": "migration-guard-zboss-02",
+    "version": "0.3.0-beta.1",
+    "command": "npm run zboss-rust:compatibility-gate",
+    "identity": "codex-zboss-02-gate"
+  },
+  "claims": {
+    "sourceSnapshotUnchanged": true,
+    "decisionCount": 11,
+    "compatibilityTestCount": 11,
+    "sourceSnapshotsVerified": 8,
+    "offlineReportHash": "2838226ef7d6ce0b71ff161bdd2d0f8eb0dc06f1a1a2edca7c93e7d2335283f5",
+    "analysisProjectHash": "c4968d325487648cef048ac34d3a477e463420e5f390d7e2332677e2e8a4bfb2",
+    "blockedReason": "none"
+  }
+}

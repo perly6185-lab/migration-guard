@@ -2,7 +2,7 @@
   "version": 1,
   "gate": "real",
   "projectId": "zboss-query",
-  "projectHash": "36ee681eca039a0201fb1d70fd8f8a2d65bb89fbf1e99c878650478873eabb06",
+  "projectHash": "f9df8879df209e20482867710f9f4176bcd7e4e5ccf85ae31656d25b406e0cca",
   "status": "blocked",
   "findings": [
     "MG-REAL-UPSTREAM-GATE-STALE"
@@ -11,18 +11,18 @@
     "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\gates\\offline-gate.json"
   ],
   "evidenceDigests": {
-    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\gates\\offline-gate.json": "74405c3320e13b59075b436598b308857163e01d3220a12bd1be9a1993ca7a0c"
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\gates\\offline-gate.json": "76e71621050d8ee783c559198bf44e313fe3162b9aeb7129035a0275ea0f28cf"
   },
   "upstream": [
     {
       "gate": "offline",
       "path": "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\gates\\offline-gate.json",
-      "projectHash": "36ee681eca039a0201fb1d70fd8f8a2d65bb89fbf1e99c878650478873eabb06",
-      "reportHash": "c37ae4ca0475ac526d833d778a970c22b9b4e7f0caf0684f780e58eb7aa17410",
-      "status": "blocked"
+      "projectHash": "f9df8879df209e20482867710f9f4176bcd7e4e5ccf85ae31656d25b406e0cca",
+      "reportHash": "99d4cda929287dc936ec3519ee0a1bc36c270cfb6630b252c64cbd8cd4232e26",
+      "status": "passed"
     }
   ],
-  "generatedAt": "2026-07-30T10:58:32.075Z",
+  "generatedAt": "2026-07-30T13:05:39.696Z",
   "freshness": "stale",
-  "reportHash": "7d37840147aeda58fdcfa7ff2efcea022d45279a4c5e3b5db6e56203203b0db0"
+  "reportHash": "45b1c6231176db8a4967ffdcbdf5cc73321061328fc12f60e09762491c7022f6"
 }

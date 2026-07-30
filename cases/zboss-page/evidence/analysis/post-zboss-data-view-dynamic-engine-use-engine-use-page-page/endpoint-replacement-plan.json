@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "createdAt": "2026-07-30T10:02:17.863Z",
+  "createdAt": "2026-07-30T13:04:24.229Z",
   "endpoint": {
     "runtime": "java",
     "method": "POST",
@@ -10,7 +10,7 @@
     "line": 488
   },
   "workload": "query-with-effects",
-  "status": "blocked",
+  "status": "ready",
   "behaviorGraphHash": "7d119c661c41830128b867e060de5b3af81fb9ddb9800c92bfb39781e833299a",
   "contracts": {
     "contexts": [
@@ -27141,13 +27141,28 @@
       "rollbackBoundary": "reviewed production rollback plan"
     }
   ],
-  "resolvedFindings": [],
-  "findings": [
-    "RP-QUERY-ASYNC-EFFECT-AFTER-RETURN",
-    "RP-QUERY-ENTRYPOINT-PARITY-UNPROVEN",
-    "RP-QUERY-MUTABLE-CACHE-ALIAS",
-    "RP-QUERY-REQUEST-SEMANTIC-DRIFT"
+  "resolvedFindings": [
+    {
+      "finding": "RP-QUERY-ASYNC-EFFECT-AFTER-RETURN",
+      "decisionId": "PAGE-DEC-CALENDAR-PAGE-SIZE-10000",
+      "reason": "Approved boundary: accept at most 10000 rows, preserve total, enforce a 20 MB serialized-response and 40 MB payload-memory budget, and use skipSavePageSize=true when the target preference writer is not configured."
+    },
+    {
+      "finding": "RP-QUERY-ENTRYPOINT-PARITY-UNPROVEN",
+      "decisionId": "PAGE-DEC-CALENDAR-QUERY-PAGE-BINDING",
+      "reason": "Approved scoped binding: query resolves (usePageId, viewId), all reviewed identities remain lossless, and page execution rejects a panel mismatch."
+    },
+    {
+      "finding": "RP-QUERY-MUTABLE-CACHE-ALIAS",
+      "decisionId": "PAGE-DEC-CALENDAR-QUERY-PAGE-BINDING",
+      "reason": "Approved scoped binding: query resolves (usePageId, viewId), all reviewed identities remain lossless, and page execution rejects a panel mismatch."
+    },
+    {
+      "finding": "RP-QUERY-REQUEST-SEMANTIC-DRIFT",
+      "decisionId": "PAGE-DEC-CALENDAR-TEMPORAL-SEMANTICS",
+      "reason": "Approved transport rule: preserve date-only, offset timestamp, all-day and null values exactly; the generic endpoint performs no inferred timezone or DST normalization."
+    }
   ],
-  "nextAction": "RP-QUERY-ASYNC-EFFECT-AFTER-RETURN",
-  "planHash": "6fbe7987cbb221e200ffe719c30ae9e402227620a9cb597a8c8b4214a475e64c"
+  "findings": [],
+  "planHash": "417d3716479dd7f8640a6677bc472eeffead0925862e597e22c03f67bbe1b9ea"
 }

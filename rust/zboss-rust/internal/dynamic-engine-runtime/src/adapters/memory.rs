@@ -25,7 +25,7 @@ use crate::{
         field_catalog::{FieldCatalogEntry, FieldCatalogPort, FieldDeleteBehavior},
         field_delete::{FieldDeleteCommand, FieldDeleteCommit, FieldDeletePort},
         field_schema::{FieldSchemaCommand, FieldSchemaCommit, FieldSchemaPort},
-        horizontal::HorizontalListPort,
+        horizontal::{HorizontalListPort, HorizontalRefreshCoordinator},
         init::{InitCommand, InitCommit, InitPort},
         lease::{Lease, LeaseLockPort, LeasePriority},
         metadata::MetadataPort,
@@ -999,6 +999,17 @@ impl HorizontalListPort for MemoryAdapters {
             })
             .collect();
         Ok(HorizontalSlice { rows, total })
+    }
+}
+
+impl HorizontalRefreshCoordinator for MemoryAdapters {
+    fn refresh_horizontal(
+        &self,
+        context: &RequestContext,
+        _horizontal_id: u64,
+    ) -> Result<(), ApiError> {
+        self.fail_if(FaultPoint::RefreshSync)?;
+        self.record_event(context, "horizontal.refresh.sync")
     }
 }
 

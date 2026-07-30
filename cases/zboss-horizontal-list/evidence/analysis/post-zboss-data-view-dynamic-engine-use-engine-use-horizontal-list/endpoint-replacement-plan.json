@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "createdAt": "2026-07-30T10:03:07.035Z",
+  "createdAt": "2026-07-30T13:05:10.579Z",
   "endpoint": {
     "runtime": "java",
     "method": "POST",
@@ -10,7 +10,7 @@
     "line": 99
   },
   "workload": "query-with-effects",
-  "status": "blocked",
+  "status": "ready",
   "behaviorGraphHash": "4712deb5c03507c0046c6c5ad2c3322fc7dfb8289c19c638464378af5cbad946",
   "contracts": {
     "contexts": [
@@ -5076,11 +5076,18 @@
       "rollbackBoundary": "reviewed production rollback plan"
     }
   ],
-  "resolvedFindings": [],
-  "findings": [
-    "RP-QUERY-EFFECT-CONTRACT-MISSING",
-    "RP-QUERY-MUTABLE-CACHE-ALIAS"
+  "resolvedFindings": [
+    {
+      "finding": "RP-QUERY-EFFECT-CONTRACT-MISSING",
+      "decisionId": "HORIZONTAL-LIST-DEC-REFRESH-EFFECT-ORDER",
+      "reason": "Approved effect order: REFRESH coordination must complete before list execution; a sync failure prevents the query and remains retryable."
+    },
+    {
+      "finding": "RP-QUERY-MUTABLE-CACHE-ALIAS",
+      "decisionId": "HORIZONTAL-LIST-DEC-COMPOSITE-SELECT-KEY",
+      "reason": "Approved parity rule: preserve custField60040_0|custField59627 verbatim after stable ordering and calculated-field projection."
+    }
   ],
-  "nextAction": "RP-QUERY-EFFECT-CONTRACT-MISSING",
-  "planHash": "6d4f944ba5a73250421568e724a67c293b982fab99a9afe51c6e08963e90fdb6"
+  "findings": [],
+  "planHash": "a108e2643c5dba33a33f6f6ea1b9825c88ed8c3d1681f2990ed2b6313f6cebd1"
 }
