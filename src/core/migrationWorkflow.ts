@@ -1,5 +1,7 @@
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { pathExists, readJsonFile, writeJsonFile, writeTextFile } from "./files.js";
+import { sha256 } from "./hash.js";
 import { getMigrationSourceAdapter, type MigrationAnalysisOptions } from "./migrationAdapters.js";
 import {
   loadMigrationProject,
@@ -20,6 +22,12 @@ import {
   type AssessmentSourceIdentity
 } from "./assessmentSourceIdentity.js";
 import {
+  assertReferenceSourceSnapshotUnchanged,
+  captureReferenceSourceSnapshot,
+  referenceSourceSnapshotsEqual,
+  type ReferenceSourceSnapshot
+} from "./referenceSourceGuard.js";
+import {
   validateJavaRuntimeEvidenceBundle,
   type JavaRuntimeEvidenceBundle
 } from "./javaRuntimeEvidence.js";
@@ -33,12 +41,23 @@ import {
   createSemanticRulePackageLock,
   type SemanticRulePackageLock
 } from "./semanticRulePackage.js";
+import {
+  finalizeGateIntegrity,
+  gateReportHash,
+  validateGateIntegrity,
+  type MigrationGateUpstream
+} from "./migrationGateLineage.js";
+import {
+  createRustProductionVerificationTemplate,
+  inspectRustProductionPath
+} from "./productionPathAttestation.js";
 
 export interface MigrationAnalyzeResult {
   version: 1;
   projectId: string;
   projectHash: string;
   sourceIdentity: AssessmentSourceIdentity;
+  sourceSnapshot: ReferenceSourceSnapshot;
   sourceAccess: "read-only";
   adapter: string;
   semanticRulePackages?: SemanticRulePackageLock[];
@@ -47,8 +66,11 @@ export interface MigrationAnalyzeResult {
   entries: Array<{
     id: string;
     analysisPath: string;
+    analysisHash: string;
     graphPath: string;
+    graphHash: string;
     planPath: string;
+    planHash: string;
     status: EndpointReplacementPlan["status"];
     findings: string[];
   }>;
@@ -62,6 +84,11 @@ export interface MigrationGateReport {
   status: "passed" | "blocked";
   findings: string[];
   evidence: string[];
+  evidenceDigests?: Record<string, string>;
+  generatedAt?: string;
+  freshness?: "fresh" | "stale";
+  upstream?: MigrationGateUpstream[];
+  reportHash?: string;
 }
 
 export interface RustScaffoldResult {
@@ -84,14 +111,22 @@ export async function analyzeMigrationProject(
   const entries: MigrationAnalyzeResult["entries"] = [];
   const semanticPackageResolution = resolveProjectSemanticPackages(pkg);
   const selectedSemanticPackageIds = semanticPackageResolution.selected.map((item) => item.packageId);
-  const sourceIdentity = await captureAssessmentSourceIdentity(sourceRoot);
+  const sourceSnapshot = await captureReferenceSourceSnapshot(sourceRoot, pkg.profile.source.directories);
+  const sourceIdentity = sourceSnapshot.identity;
   try {
     for (const entrypoint of pkg.profile.entrypoints) {
       const report = await adapter.analyze(pkg, entrypoint, options);
       const result = createEndpointReplacementPlanFromJava(report, {
         ownershipPolicy: pkg.semanticRules.ownershipPolicy,
         classifications: pkg.semanticRules.classifications,
-        semanticPackageIds: selectedSemanticPackageIds
+        semanticPackageIds: selectedSemanticPackageIds,
+        approvedFindingResolutions: pkg.compatibilityDecisions.decisions
+          .filter((decision) => decision.status === "approved")
+          .flatMap((decision) => (decision.resolvesFindings ?? []).map((finding) => ({
+            finding,
+            decisionId: decision.id,
+            reason: decision.reason
+          })))
       });
       const entryDir = path.join(pkg.evidenceDir, "analysis", safeSegment(entrypoint.id));
       const analysisPath = path.join(entryDir, "java-analysis.json");
@@ -103,20 +138,24 @@ export async function analyzeMigrationProject(
       entries.push({
         id: entrypoint.id,
         analysisPath,
+        analysisHash: await artifactFileHash(analysisPath),
         graphPath,
+        graphHash: await artifactFileHash(graphPath),
         planPath,
+        planHash: await artifactFileHash(planPath),
         status: result.plan.status,
         findings: result.plan.findings
       });
     }
   } finally {
-    await assertReferenceSourceUnchanged(sourceRoot, sourceIdentity, "analysis");
+    await assertReferenceSourceSnapshotUnchanged(sourceSnapshot, "analysis");
   }
   const value: MigrationAnalyzeResult = {
     version: 1,
     projectId: pkg.profile.projectId,
     projectHash: migrationProjectHash(pkg),
     sourceIdentity,
+    sourceSnapshot,
     sourceAccess: "read-only",
     adapter: adapter.id,
     semanticRulePackages: selectedSemanticPackageIds.map((packageId) =>
@@ -137,7 +176,7 @@ export async function scaffoldRustMigrationProject(caseDir: string, force = fals
   }
   const targetRoot = resolveMigrationProjectPath(pkg, pkg.profile.target.root);
   const sourceRoot = resolveMigrationProjectPath(pkg, pkg.profile.source.root);
-  const sourceIdentity = await captureAssessmentSourceIdentity(sourceRoot);
+  const sourceSnapshot = await captureReferenceSourceSnapshot(sourceRoot, pkg.profile.source.directories);
   const crateName = rustCrateName(pkg.profile.target.serviceName);
   const files = new Map<string, string>([
     [path.join(targetRoot, "Cargo.toml"), renderCargoToml(crateName)],
@@ -154,7 +193,7 @@ export async function scaffoldRustMigrationProject(caseDir: string, force = fals
   try {
     for (const [file, content] of files) await writeTextFile(file, content);
   } finally {
-    await assertReferenceSourceUnchanged(sourceRoot, sourceIdentity, "scaffold");
+    await assertReferenceSourceSnapshotUnchanged(sourceSnapshot, "scaffold");
   }
   return {
     version: 1,
@@ -188,6 +227,15 @@ export async function evaluateMigrationOfflineGate(caseDir: string): Promise<Mig
     if (!index.sourceIdentity || stableSourceIdentity(index.sourceIdentity) !== stableSourceIdentity(currentSource)) {
       findings.push("MG-OFFLINE-SOURCE-IDENTITY-MISMATCH");
     }
+    const currentSnapshot = await captureReferenceSourceSnapshot(
+      resolveMigrationProjectPath(pkg, pkg.profile.source.root),
+      pkg.profile.source.directories
+    );
+    if (!index.sourceSnapshot) {
+      findings.push("MG-OFFLINE-SOURCE-SNAPSHOT-MISSING");
+    } else if (!referenceSourceSnapshotsEqual(index.sourceSnapshot, currentSnapshot)) {
+      findings.push("MG-OFFLINE-SOURCE-SNAPSHOT-MISMATCH");
+    }
     if (index.semanticRulePackages) {
       const expectedResolution = resolveProjectSemanticPackages(pkg);
       const expectedPackages = expectedResolution.selected.map((item) =>
@@ -208,15 +256,42 @@ export async function evaluateMigrationOfflineGate(caseDir: string): Promise<Mig
   }
   for (const entrypoint of pkg.profile.entrypoints) {
     const entryDir = path.join(pkg.evidenceDir, "analysis", safeSegment(entrypoint.id));
+    const analysisPath = path.join(entryDir, "java-analysis.json");
     const graphPath = path.join(entryDir, "behavior-graph.json");
     const planPath = path.join(entryDir, "endpoint-replacement-plan.json");
+    const recordedEntry = await pathExists(analysisIndexPath)
+      ? (await readJsonFile<MigrationAnalyzeResult>(analysisIndexPath)).entries
+        .find((item) => item.id === entrypoint.id)
+      : undefined;
+    if (!recordedEntry) {
+      findings.push(`MG-OFFLINE-ANALYSIS-ENTRY-MISSING:${entrypoint.id}`);
+    }
+    if (!await pathExists(analysisPath)) {
+      findings.push(`MG-OFFLINE-ANALYSIS-MISSING:${entrypoint.id}`);
+    } else {
+      evidence.push(analysisPath);
+      if (!recordedEntry?.analysisHash
+        || recordedEntry.analysisHash !== await artifactFileHash(analysisPath)) {
+        findings.push(`MG-OFFLINE-ANALYSIS-HASH-MISMATCH:${entrypoint.id}`);
+      }
+    }
     if (!await pathExists(graphPath)) findings.push(`MG-OFFLINE-GRAPH-MISSING:${entrypoint.id}`);
-    else evidence.push(graphPath);
+    else {
+      evidence.push(graphPath);
+      if (!recordedEntry?.graphHash
+        || recordedEntry.graphHash !== await artifactFileHash(graphPath)) {
+        findings.push(`MG-OFFLINE-GRAPH-HASH-MISMATCH:${entrypoint.id}`);
+      }
+    }
     if (!await pathExists(planPath)) {
       findings.push(`MG-OFFLINE-PLAN-MISSING:${entrypoint.id}`);
       continue;
     }
     evidence.push(planPath);
+    if (!recordedEntry?.planHash
+      || recordedEntry.planHash !== await artifactFileHash(planPath)) {
+      findings.push(`MG-OFFLINE-PLAN-HASH-MISMATCH:${entrypoint.id}`);
+    }
     const plan = await readJsonFile<EndpointReplacementPlan>(planPath);
     if (plan.status !== "ready") findings.push(`MG-OFFLINE-PLAN-BLOCKED:${entrypoint.id}`);
     if (plan.endpoint.path !== entrypoint.path || plan.endpoint.method !== entrypoint.method) {
@@ -263,6 +338,42 @@ export async function evaluateMigrationRealGate(
   const targetRoot = resolveMigrationProjectPath(pkg, pkg.profile.target.root);
   if (!await pathExists(sourceRoot)) findings.push("MG-REAL-SOURCE-ROOT-MISSING");
   if (!await pathExists(targetRoot)) findings.push("MG-REAL-TARGET-ROOT-MISSING");
+  if (pkg.profile.target.language.toLowerCase() === "rust" && await pathExists(targetRoot)) {
+    const implementationEvidenceDir = path.join(pkg.evidenceDir, "implementation");
+    const productionVerificationEvidence = path.join(
+      implementationEvidenceDir,
+      "production-verification.json"
+    );
+    const productionPath = await inspectRustProductionPath(targetRoot, {
+      requiredTraits: pkg.profile.target.productionPath?.requiredTraits ?? [],
+      requiredRouteFragments: pkg.profile.target.productionPath?.requiredRouteFragments
+        ?? pkg.profile.entrypoints.flatMap((entrypoint) => entrypoint.path ? [entrypoint.path] : []),
+      projectId: pkg.profile.projectId,
+      requireVerificationEvidence: pkg.profile.compatibility.strict,
+      verificationEvidencePath: productionVerificationEvidence
+    });
+    const productionPathEvidence = path.join(
+      implementationEvidenceDir,
+      "production-path-attestation.json"
+    );
+    const productionVerificationTemplate = path.join(
+      implementationEvidenceDir,
+      "production-verification.template.json"
+    );
+    if (!await pathExists(productionVerificationEvidence)) {
+      await writeJsonFile(productionVerificationTemplate, createRustProductionVerificationTemplate(
+        pkg.profile.projectId,
+        productionPath.targetSourceHash,
+        pkg.profile.target.productionPath?.requiredRouteFragments
+          ?? pkg.profile.entrypoints.flatMap((entrypoint) => entrypoint.path ? [entrypoint.path] : [])
+      ));
+    }
+    await writeJsonFile(productionPathEvidence, productionPath);
+    evidence.push(productionPathEvidence);
+    evidence.push(...productionPath.evidence.verification.referencedFiles);
+    findings.push(...productionPath.findings);
+    if (!productionPath.productionEligible) findings.push("MG-REAL-PRODUCTION-PATH-NOT-ELIGIBLE");
+  }
   const resolvedEvidencePath = evidencePath
     ? path.resolve(evidencePath)
     : path.join(pkg.evidenceDir, "runtime", "java", "real-evidence.json");
@@ -293,13 +404,87 @@ export async function evaluateMigrationRealGate(
     projectHash: migrationProjectHash(pkg),
     status: findings.length === 0 ? "passed" : "blocked",
     findings: [...new Set(findings)].sort(),
-    evidence: [...new Set(evidence)].sort()
+    evidence: [...new Set(evidence)].sort(),
+    upstream: [{
+      gate: "offline",
+      path: offlinePath,
+      projectHash: offline.projectHash,
+      reportHash: offline.reportHash ?? "",
+      status: offline.status
+    }]
   });
 }
 
 async function writeGateReport(pkg: MigrationProjectPackage, report: MigrationGateReport): Promise<MigrationGateReport> {
-  await writeJsonFile(path.join(pkg.evidenceDir, "gates", `${report.gate}-gate.json`), report);
-  return report;
+  const evidenceDigests = await hashEvidenceFiles(report.evidence);
+  const finalized = finalizeGateIntegrity({
+    ...report,
+    evidenceDigests
+  }) as MigrationGateReport;
+  await writeJsonFile(path.join(pkg.evidenceDir, "gates", `${report.gate}-gate.json`), finalized);
+  if (report.gate === "offline") await invalidateStaleRealGate(pkg, finalized);
+  return finalized;
+}
+
+export async function inspectMigrationGateFreshness(
+  caseDir: string,
+  gate: "offline" | "real"
+): Promise<string[]> {
+  const pkg = await loadMigrationProject(caseDir);
+  const reportPath = path.join(pkg.evidenceDir, "gates", `${gate}-gate.json`);
+  if (!await pathExists(reportPath)) return [`MG-GATE-MISSING:${gate}`];
+  const report = await readJsonFile<MigrationGateReport>(reportPath);
+  let upstream: MigrationGateUpstream[] = [];
+  if (gate === "real") {
+    const offlinePath = path.join(pkg.evidenceDir, "gates", "offline-gate.json");
+    if (!await pathExists(offlinePath)) return ["MG-GATE-UPSTREAM-MISSING:offline"];
+    const offline = await readJsonFile<MigrationGateReport>(offlinePath);
+    upstream = [{
+      gate: "offline",
+      path: offlinePath,
+      projectHash: offline.projectHash,
+      reportHash: offline.reportHash ?? "",
+      status: offline.status
+    }];
+  }
+  const findings = validateGateIntegrity(report, migrationProjectHash(pkg), upstream);
+  findings.push(...await validateEvidenceDigests(report));
+  return [...new Set(findings)].sort();
+}
+
+async function invalidateStaleRealGate(
+  pkg: MigrationProjectPackage,
+  offline: MigrationGateReport
+): Promise<void> {
+  const realPath = path.join(pkg.evidenceDir, "gates", "real-gate.json");
+  if (!await pathExists(realPath)) return;
+  const current = await readJsonFile<MigrationGateReport>(realPath);
+  const expected: MigrationGateUpstream = {
+    gate: "offline",
+    path: path.join(pkg.evidenceDir, "gates", "offline-gate.json"),
+    projectHash: offline.projectHash,
+    reportHash: offline.reportHash ?? "",
+    status: offline.status
+  };
+  if (validateGateIntegrity(current, migrationProjectHash(pkg), [expected]).length === 0) return;
+  const base = finalizeGateIntegrity({
+    version: 1 as const,
+    gate: "real" as const,
+    projectId: pkg.profile.projectId,
+    projectHash: migrationProjectHash(pkg),
+    status: "blocked" as const,
+    findings: ["MG-REAL-UPSTREAM-GATE-STALE"],
+    evidence: [expected.path],
+    evidenceDigests: await hashEvidenceFiles([expected.path]),
+    upstream: [expected]
+  });
+  const stale = {
+    ...base,
+    freshness: "stale" as const,
+    reportHash: ""
+  };
+  stale.reportHash = gateReportHash(stale);
+  await writeJsonFile(realPath, stale);
 }
 
 function safeSegment(value: string): string {
@@ -356,13 +541,39 @@ function stableSourceIdentity(value: AssessmentSourceIdentity): string {
   return `${value.revision}\u001f${value.dirty}\u001f${value.dirtyFingerprint}`;
 }
 
-async function assertReferenceSourceUnchanged(
-  sourceRoot: string,
-  before: AssessmentSourceIdentity,
-  operation: string
-): Promise<void> {
-  const after = await captureAssessmentSourceIdentity(sourceRoot);
-  if (stableSourceIdentity(before) !== stableSourceIdentity(after)) {
-    throw new Error(`MG-SOURCE-READ-ONLY-VIOLATION:${operation}:${sourceRoot}`);
+async function artifactFileHash(file: string): Promise<string> {
+  return sha256((await readFile(file)).toString("base64"));
+}
+
+async function hashEvidenceFiles(files: string[]): Promise<Record<string, string>> {
+  const digests: Record<string, string> = {};
+  for (const file of [...new Set(files)].sort()) {
+    if (await pathExists(file)) digests[file] = await artifactFileHash(file);
   }
+  return digests;
+}
+
+async function validateEvidenceDigests(report: MigrationGateReport): Promise<string[]> {
+  const findings: string[] = [];
+  if (!report.evidenceDigests) return ["MG-GATE-EVIDENCE-DIGESTS-MISSING"];
+  for (const file of report.evidence ?? []) {
+    const expected = report.evidenceDigests[file];
+    if (!expected) {
+      findings.push(`MG-GATE-EVIDENCE-DIGEST-MISSING:${path.basename(file)}`);
+      continue;
+    }
+    if (!await pathExists(file)) {
+      findings.push(`MG-GATE-EVIDENCE-MISSING:${path.basename(file)}`);
+      continue;
+    }
+    if (await artifactFileHash(file) !== expected) {
+      findings.push(`MG-GATE-EVIDENCE-TAMPERED:${path.basename(file)}`);
+    }
+  }
+  for (const file of Object.keys(report.evidenceDigests)) {
+    if (!(report.evidence ?? []).includes(file)) {
+      findings.push(`MG-GATE-EVIDENCE-DIGEST-ORPHAN:${path.basename(file)}`);
+    }
+  }
+  return findings;
 }

@@ -23,6 +23,11 @@ export interface EndpointReplacementPlanOptions {
   ownershipPolicy?: ReviewedOwnershipPolicy;
   classifications?: BehaviorClassificationRule[];
   semanticPackageIds?: string[];
+  approvedFindingResolutions?: Array<{
+    finding: string;
+    decisionId: string;
+    reason: string;
+  }>;
 }
 
 export interface EndpointPilotPlan {
@@ -56,7 +61,7 @@ export function createEndpointReplacementPlan(
       ...commandSemanticFindings(graph, sourceReport)
     ]
     : [];
-  const findings = [...new Set([
+  const rawFindings = [...new Set([
     ...graph.completeness.findings,
     ...boundaries.flatMap((boundary) => boundary.blockers),
     ...policy.findings,
@@ -64,6 +69,16 @@ export function createEndpointReplacementPlan(
     ...(contracts.effects.some((effect) => effect.kind === "unknown") ? ["RP-CONTRACT-UNKNOWN-EFFECT"] : []),
     ...(contracts.effects.some((effect) => effect.failurePolicy === "unknown") ? ["RP-CONTRACT-EFFECT-POLICY-UNKNOWN"] : [])
   ])].sort();
+  const approvedResolutions = new Map(
+    (options.approvedFindingResolutions ?? [])
+      .filter((item) => isCompatibilityResolvableFinding(item.finding))
+      .map((item) => [item.finding, item])
+  );
+  const resolvedFindings = rawFindings
+    .filter((finding) => approvedResolutions.has(finding))
+    .map((finding) => approvedResolutions.get(finding)!)
+    .sort((left, right) => left.finding.localeCompare(right.finding));
+  const findings = rawFindings.filter((finding) => !approvedResolutions.has(finding));
   const blocked = !graph.completeness.complete || findings.length > 0;
   const base = {
     version: 1 as const,
@@ -76,10 +91,15 @@ export function createEndpointReplacementPlan(
     boundaries,
     scenarios,
     waves,
+    resolvedFindings,
     findings,
     nextAction: blocked ? graph.completeness.findings[0] ?? findings[0] : undefined
   };
   return { ...base, planHash: sha256(stableStringify({ ...base, createdAt: undefined })) };
+}
+
+function isCompatibilityResolvableFinding(finding: string): boolean {
+  return /^RP-(?:COMMAND|QUERY)-[A-Z0-9-]+$/.test(finding);
 }
 
 export function evaluateOwnershipPolicy(
@@ -320,6 +340,10 @@ export function renderEndpointReplacementPlan(plan: EndpointReplacementPlan): st
     ...plan.boundaries.map((item) => `- [${item.ownership}] ${item.title}: ${item.nodeIds.length} node(s)${item.blockers.length ? `; ${item.blockers.join(", ")}` : ""}`), "",
     "## Implementation Waves", "",
     ...plan.waves.map((wave) => `- ${wave.index}. ${wave.title}: ${wave.objective}`), "",
+    "## Approved Finding Resolutions", "",
+    ...(plan.resolvedFindings.length
+      ? plan.resolvedFindings.map((item) => `- ${item.finding} -> ${item.decisionId}: ${item.reason}`)
+      : ["- none"]), "",
     "## Findings", "",
     ...(plan.findings.length ? plan.findings.map((finding) => `- ${finding}`) : ["- none"]), ""
   ].join("\n");

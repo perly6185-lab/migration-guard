@@ -158,6 +158,8 @@ test("reviewed ordered precedence resolves known conflicts and policy gates regr
   assert.equal(passed.conflicts[0]?.reviewed, true);
   assert.deepEqual(passed.conflicts[0]?.reviewIds, ["save-before-save-clock"]);
   assert.equal(passed.policy.passed, true);
+  assert.equal(passed.coverage.rulesHit, 1);
+  assert.equal(passed.coverage.totalRules, value.rules.length);
 
   const blocked = evaluateSemanticRulePackage(value, [
     { id: "save", text: "ClockService.save" },
@@ -165,6 +167,15 @@ test("reviewed ordered precedence resolves known conflicts and policy gates regr
   ], { minimumCoveragePercent: 100 });
   assert.equal(blocked.status, "blocked");
   assert.match(blocked.policy.findings[0] ?? "", /COVERAGE-BELOW-MINIMUM/);
+
+  const ruleCoverageBlocked = evaluateSemanticRulePackage(value, [{
+    id: "save",
+    text: "ClockService.save"
+  }], { minimumRuleCoveragePercent: 100 });
+  assert.equal(ruleCoverageBlocked.status, "blocked");
+  assert.ok(ruleCoverageBlocked.policy.findings.some((item) =>
+    item.startsWith("SEMANTIC-POLICY-RULE-COVERAGE-BELOW-MINIMUM:")
+  ));
 });
 
 test("Java analysis samples separate applicable methods from SQL and generated declarations", () => {
@@ -213,6 +224,13 @@ test("malformed external rules and samples fail closed without runtime type erro
   ], { minimumCoveragePercent: 101 });
   assert.equal(invalidPolicy.status, "blocked");
   assert.ok(invalidPolicy.findings.includes("SEMANTIC-POLICY-MINIMUM-COVERAGE-INVALID"));
+  const invalidRuleCoveragePolicy = evaluateSemanticRulePackage(pkg(), [
+    { id: "clock", text: "Instant.now" }
+  ], { minimumRuleCoveragePercent: 101 });
+  assert.equal(invalidRuleCoveragePolicy.status, "blocked");
+  assert.ok(invalidRuleCoveragePolicy.findings.includes(
+    "SEMANTIC-POLICY-MINIMUM-RULE-COVERAGE-INVALID"
+  ));
 
   const invalidScope = pkg();
   invalidScope.scope = null as unknown as SemanticRulePackage["scope"];

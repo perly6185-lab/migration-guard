@@ -71,6 +71,25 @@ test("migration project rejects writable or overlapping reference source roots",
   }
 });
 
+test("migration project rejects a reference source nested inside its case package", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "migration-project-case-overlap-"));
+  try {
+    await assert.rejects(
+      initMigrationProject({
+        casesRoot: path.join(root, "cases"),
+        projectId: "nested-reference",
+        sourceRoot: path.join(root, "cases", "nested-reference", "reference"),
+        targetRoot: path.join(root, "rust"),
+        endpoint: "/api/read",
+        method: "GET"
+      }),
+      /MP-SOURCE-CASE-DIR-OVERLAP/
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("migration project validates runtime semantic gate bindings fail closed", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "migration-project-runtime-gates-"));
   try {
@@ -95,6 +114,46 @@ test("migration project validates runtime semantic gate bindings fail closed", a
       }]
     });
     await assert.rejects(loadMigrationProject(pkg.caseDir), /MP-RUNTIME-GATE-/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("migration project validates configured runtime scenarios fail closed", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "migration-project-runtime-scenarios-"));
+  try {
+    const pkg = await initMigrationProject({
+      casesRoot: path.join(root, "cases"),
+      projectId: "runtime-scenarios",
+      sourceRoot: path.join(root, "java"),
+      targetRoot: path.join(root, "rust"),
+      endpoint: "/api/calendar"
+    });
+    await writeJsonFile(pkg.semanticRulesPath, {
+      ...pkg.semanticRules,
+      runtimeScenarios: [{
+        id: "calendar-view",
+        entrypointId: pkg.profile.entrypoints[0]!.id,
+        title: "Calendar view workflow",
+        category: "compatibility",
+        requiredDimensions: ["http", "decisions", "performance"],
+        reason: "Preserve calendar-specific request and response semantics."
+      }]
+    });
+    assert.equal((await loadMigrationProject(pkg.caseDir)).semanticRules.runtimeScenarios?.length, 1);
+
+    await writeJsonFile(pkg.semanticRulesPath, {
+      ...pkg.semanticRules,
+      runtimeScenarios: [{
+        id: "",
+        entrypointId: "missing-entrypoint",
+        title: "",
+        category: "unknown",
+        requiredDimensions: ["unknown"],
+        reason: ""
+      }]
+    });
+    await assert.rejects(loadMigrationProject(pkg.caseDir), /MP-RUNTIME-SCENARIO-/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

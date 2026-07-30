@@ -86,6 +86,7 @@ export const JAVA_SEMANTIC_RULES: JavaSemanticRule[] = [
   { id: "executor-lifecycle", pattern: /\b[A-Za-z0-9_]*executor\.(?:shutdown|shutdownNow|awaitTermination)\b/i, kind: "async-boundary", reason: "executor lifecycle boundary", defaultOwnership: "target-owned" },
   { id: "in-memory-coordination", pattern: /\b(?:[A-Za-z0-9_]*queue\.(?:offer|poll)|barrier\.(?:awaitTurn|signalDone))\b/i, kind: "coordination", reason: "in-memory queue or ordering coordination", defaultOwnership: "target-owned" },
   { id: "signal-coordination", pattern: /\b(?:signal|semaphore|latch)\.(?:acquire|release|await|countDown)\b/i, kind: "coordination", reason: "in-memory signal or semaphore coordination", defaultOwnership: "target-owned" },
+  { id: "aop-context", pattern: /AopContext\.currentProxy/i, kind: "context-resolution", reason: "Spring proxy context access", defaultOwnership: "infrastructure-port" },
   { id: "application-context", pattern: /\b[A-Za-z0-9_]*Context\.(?:current[A-Za-z0-9_]*|enter|exit|push|pop|snapshot|newScope|(?:run|call)With[A-Za-z0-9_]*)\b/, kind: "context-resolution", reason: "application context scope or lookup", defaultOwnership: "target-owned" },
   { id: "rule-context-lookup", pattern: /\bruleContext\.(?:rulesOf|nodesOf)\b/, kind: "calculation", reason: "preloaded rule-context map lookup", defaultOwnership: "target-owned" },
   { id: "sql-session-flush", pattern: /SqlSessionTemplate\.flushStatements\b/i, kind: "state-write", reason: "SQL session write flush", defaultOwnership: "infrastructure-port" },
@@ -191,14 +192,13 @@ export const JAVA_SEMANTIC_RULES: JavaSemanticRule[] = [
   { id: "reviewed-value-accessor", pattern: /\bentry\.(?:status|expiresAtMillis)\b|\b(?:field|f)\.(?:field|id|fieldFormatTag)\b|\brule\.(?:color|conditions|type)\b|\bctx\.(?:conditionRulesByFieldId|fields|currentRow|viewDynamicFieldIdData|fieldDependencyTree)\b/, kind: "calculation", reason: "reviewed source value accessor", defaultOwnership: "target-owned" },
   { id: "exception-output", pattern: /\.printStackTrace\b/, kind: "observability", reason: "exception diagnostic output", defaultOwnership: "reviewed-exclusion" },
   { id: "query-builder", pattern: /(?:QueryWrapper|LambdaQueryWrapper|UpdateWrapper|wrapper\w*|\b[ww])\.(?:eq|ne|gt|ge|lt|le|like|in|or|and|last|orderBy(?:Asc|Desc)?|select|set)\b/i, kind: "calculation", reason: "query predicate construction", defaultOwnership: "reviewed-exclusion" },
-  { id: "aop-context", pattern: /AopContext\.currentProxy/i, kind: "context-resolution", reason: "Spring proxy context access", defaultOwnership: "infrastructure-port" },
   { id: "progress-report", pattern: /reporter\.reportStage|reportProgress/i, kind: "observability", reason: "progress reporting", defaultOwnership: "target-owned" }
 ];
 
 export const JAVA_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
   schemaVersion: 1,
   id: "builtin-java-zboss-compatibility",
-  version: "1.3.0",
+  version: "1.4.0",
   language: "java",
   description: "The existing ordered Java semantic registry, versioned without changing classification behavior.",
   compatibility: {
@@ -211,12 +211,20 @@ export const JAVA_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
   },
   conflictPolicy: {
     strategy: "ordered-first-match",
-    reviewedPrecedence: [{
-      id: "cache-key-helper-before-cache-read",
-      winnerRuleId: "configuration-cache-helper",
-      loserRuleId: "configuration-state-read",
-      reason: "Cache-key builders are deterministic calculations even when their enclosing cache type also matches a state-read rule."
-    }]
+    reviewedPrecedence: [
+      {
+        id: "cache-key-helper-before-cache-read",
+        winnerRuleId: "configuration-cache-helper",
+        loserRuleId: "configuration-state-read",
+        reason: "Cache-key builders are deterministic calculations even when their enclosing cache type also matches a state-read rule."
+      },
+      {
+        id: "spring-aop-before-generic-context",
+        winnerRuleId: "aop-context",
+        loserRuleId: "application-context",
+        reason: "Spring AOP proxy lookup is an infrastructure boundary, more specific than a generic application context lookup."
+      }
+    ]
   },
   rules: JAVA_SEMANTIC_RULES.map((rule) => ({
     id: rule.id,

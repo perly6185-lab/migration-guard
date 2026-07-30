@@ -316,6 +316,7 @@ export async function promoteJavaRuntimeFixture(
     scenarioId,
     batch: scenario.semanticGates?.includes("batch") ?? (entry.workload === "batch"),
     page: scenario.semanticGates?.includes("page") ?? false,
+    writeSafety: scenario.semanticGates?.includes("batch") ?? (entry.workload === "batch"),
     collectors: requiredCollectors
   });
   if (validation.length) throw new Error(`Promoted Java runtime fixture is invalid: ${validation.join(", ")}.`);

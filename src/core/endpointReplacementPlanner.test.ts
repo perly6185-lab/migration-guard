@@ -94,11 +94,11 @@ test("classification provenance reports sources and blocks unexplained high-risk
   const producer = graph.nodes.find((item) => item.id === "PaymentProducer.perform");
   assert.equal(repository?.classification?.source, "semantic-package");
   assert.equal(repository?.classification?.packageId, "builtin-java-core");
-  assert.equal(repository?.classification?.packageVersion, "1.1.0");
+  assert.equal(repository?.classification?.packageVersion, "1.2.0");
   assert.equal(repository?.classification?.ruleId, "state-mutation-keyword");
   assert.equal(clock?.classification?.source, "semantic-package");
   assert.equal(clock?.classification?.packageId, "builtin-java-zboss-compatibility");
-  assert.equal(clock?.classification?.packageVersion, "1.3.0");
+  assert.equal(clock?.classification?.packageVersion, "1.4.0");
   assert.equal(clock?.classification?.ruleId, "clock");
   assert.equal(producer?.classification?.source, "unresolved");
   assert.equal(producer?.classification?.highRisk, true);
@@ -324,6 +324,56 @@ test("mutation command risks fail closed and create focused replay scenarios", (
   ]) {
     assert.ok(plan.scenarios.some((item) => item.id === scenario), scenario);
   }
+});
+
+test("approved compatibility decisions resolve exact semantic findings but never structural findings", () => {
+  const report = endpointReport("POST", "/fields/update", "update", "mutation-command", [
+    node("Controller.update", "controller", "Controller", "update"),
+    node("Repository.updateById", "repository", "Repository", "updateById")
+  ]);
+  report.riskSignals = [
+    risk("request-constraint-coverage-unresolved", "medium"),
+    risk("transactional-ddl-boundary", "high"),
+    risk("after-commit-effect-risk", "high")
+  ];
+  const { plan } = createEndpointReplacementPlanFromJava(report, {
+    approvedFindingResolutions: [
+      {
+        finding: "RP-COMMAND-REQUEST-CONSTRAINTS-UNRESOLVED",
+        decisionId: "DEC-ROW-LIMIT",
+        reason: "Freeze and validate the target row limit before effects."
+      },
+      {
+        finding: "RP-COMMAND-AFTER-COMMIT-DURABILITY",
+        decisionId: "DEC-OUTBOX",
+        reason: "Persist a durable outbox intent in the row transaction."
+      },
+      {
+        finding: "RP-BOUNDARY-UNRESOLVED:unclassified",
+        decisionId: "DEC-UNSAFE",
+        reason: "Structural findings cannot be waived."
+      }
+    ]
+  });
+  assert.deepEqual(
+    plan.resolvedFindings.map((item) => item.finding),
+    [
+      "RP-COMMAND-AFTER-COMMIT-DURABILITY",
+      "RP-COMMAND-REQUEST-CONSTRAINTS-UNRESOLVED"
+    ]
+  );
+  assert.deepEqual(plan.findings, ["RP-COMMAND-TRANSACTIONAL-DDL"]);
+  assert.equal(plan.status, "blocked");
+
+  report.callGraph.truncation.edgeCapHit = true;
+  const structural = createEndpointReplacementPlanFromJava(report, {
+    approvedFindingResolutions: [{
+      finding: "RP-GRAPH-EDGE-CAP",
+      decisionId: "DEC-UNSAFE",
+      reason: "Structural findings cannot be waived."
+    }]
+  }).plan;
+  assert.ok(structural.findings.includes("RP-GRAPH-EDGE-CAP"));
 });
 
 test("reviewed ownership policy applies narrow safe exclusions and blocks unsafe rules", () => {

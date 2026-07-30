@@ -98,6 +98,7 @@ export type SemanticEvaluationSampleKind =
 
 export interface SemanticEvaluationPolicy {
   minimumCoveragePercent?: number;
+  minimumRuleCoveragePercent?: number;
   maximumUnreviewedConflicts?: number;
   maximumExpectedMismatches?: number;
 }
@@ -133,6 +134,9 @@ export interface SemanticRulePackageEvaluation {
   }>;
   coverage: {
     classifiedPercent: number;
+    ruleCoveragePercent: number;
+    rulesHit: number;
+    totalRules: number;
     genericBuiltinHits: number;
     reviewedCompatibilityHits: number;
     projectHits: number;
@@ -441,6 +445,7 @@ export function evaluateSemanticRulePackage(
   const unreviewedConflicts = conflicts.filter((conflict) => !conflict.reviewed);
   const policyFindings = evaluateSemanticPolicy(policy, {
     coveragePercent: percent(classifiedCount, applicableSampleCount),
+    ruleCoveragePercent: percent(ruleHits.length, pkg.rules.length),
     unreviewedConflicts: unreviewedConflicts.length,
     expectedMismatches: expectedMismatches.length
   });
@@ -472,6 +477,9 @@ export function evaluateSemanticRulePackage(
     expectedMismatches,
     coverage: {
       classifiedPercent: percent(classifiedCount, applicableSampleCount),
+      ruleCoveragePercent: percent(ruleHits.length, pkg.rules.length),
+      rulesHit: ruleHits.length,
+      totalRules: pkg.rules.length,
       genericBuiltinHits: originHits["generic-builtin"],
       reviewedCompatibilityHits: originHits["reviewed-compatibility"],
       projectHits: originHits.project,
@@ -537,6 +545,7 @@ function evaluateSemanticPolicy(
   policy: SemanticEvaluationPolicy,
   actual: {
     coveragePercent: number;
+    ruleCoveragePercent: number;
     unreviewedConflicts: number;
     expectedMismatches: number;
   }
@@ -550,13 +559,25 @@ function evaluateSemanticPolicy(
     || (Number.isInteger(policy.maximumUnreviewedConflicts) && policy.maximumUnreviewedConflicts >= 0);
   const maximumMismatchesValid = policy.maximumExpectedMismatches === undefined
     || (Number.isInteger(policy.maximumExpectedMismatches) && policy.maximumExpectedMismatches >= 0);
+  const minimumRuleCoverageValid = policy.minimumRuleCoveragePercent === undefined
+    || (Number.isFinite(policy.minimumRuleCoveragePercent)
+      && policy.minimumRuleCoveragePercent >= 0
+      && policy.minimumRuleCoveragePercent <= 100);
   if (!minimumCoverageValid) findings.push("SEMANTIC-POLICY-MINIMUM-COVERAGE-INVALID");
+  if (!minimumRuleCoverageValid) findings.push("SEMANTIC-POLICY-MINIMUM-RULE-COVERAGE-INVALID");
   if (!maximumConflictsValid) findings.push("SEMANTIC-POLICY-MAXIMUM-CONFLICTS-INVALID");
   if (!maximumMismatchesValid) findings.push("SEMANTIC-POLICY-MAXIMUM-MISMATCHES-INVALID");
   if (minimumCoverageValid
     && policy.minimumCoveragePercent !== undefined
     && actual.coveragePercent < policy.minimumCoveragePercent) {
     findings.push(`SEMANTIC-POLICY-COVERAGE-BELOW-MINIMUM:${actual.coveragePercent}<${policy.minimumCoveragePercent}`);
+  }
+  if (minimumRuleCoverageValid
+    && policy.minimumRuleCoveragePercent !== undefined
+    && actual.ruleCoveragePercent < policy.minimumRuleCoveragePercent) {
+    findings.push(
+      `SEMANTIC-POLICY-RULE-COVERAGE-BELOW-MINIMUM:${actual.ruleCoveragePercent}<${policy.minimumRuleCoveragePercent}`
+    );
   }
   if (maximumConflictsValid
     && policy.maximumUnreviewedConflicts !== undefined

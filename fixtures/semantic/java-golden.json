@@ -83,6 +83,251 @@
       "kind": "java-method",
       "expectedBehavior": "calculation",
       "expectedRuleId": "reviewed-page-ref-value-transform"
+    },
+    {
+      "id": "reactor-scheduler-boundary",
+      "text": "Schedulers.boundedElastic",
+      "kind": "java-method",
+      "expectedBehavior": "async-boundary",
+      "expectedRuleId": "reactor-async-boundary"
+    },
+    {
+      "id": "reactor-stream-composition",
+      "text": "Mono.fromCallable",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "reactor-composition"
+    },
+    {
+      "id": "sse-emitter-publication",
+      "text": "emitter.send",
+      "kind": "external-boundary",
+      "expectedBehavior": "event-publish",
+      "expectedRuleId": "sse-publication"
+    },
+    {
+      "id": "runnable-callback",
+      "text": "cleanupTask.run",
+      "kind": "java-method",
+      "expectedBehavior": "async-boundary",
+      "expectedRuleId": "runnable-execution"
+    },
+    {
+      "id": "redis-coordination",
+      "text": "redisTemplate.opsForValue",
+      "kind": "external-boundary",
+      "expectedBehavior": "coordination",
+      "expectedRuleId": "redis"
+    },
+    {
+      "id": "executor-submit",
+      "text": "workerExecutor.submit",
+      "kind": "java-method",
+      "expectedBehavior": "async-boundary",
+      "expectedRuleId": "async"
+    },
+    {
+      "id": "executor-shutdown",
+      "text": "batchExecutor.shutdown",
+      "kind": "java-method",
+      "expectedBehavior": "async-boundary",
+      "expectedRuleId": "executor-lifecycle"
+    },
+    {
+      "id": "queue-coordination",
+      "text": "resultQueue.offer",
+      "kind": "java-method",
+      "expectedBehavior": "coordination",
+      "expectedRuleId": "in-memory-coordination"
+    },
+    {
+      "id": "semaphore-coordination",
+      "text": "semaphore.acquire",
+      "kind": "java-method",
+      "expectedBehavior": "coordination",
+      "expectedRuleId": "signal-coordination"
+    },
+    {
+      "id": "application-context-scope",
+      "text": "TenantContext.currentTenant",
+      "kind": "java-method",
+      "expectedBehavior": "context-resolution",
+      "expectedRuleId": "application-context"
+    },
+    {
+      "id": "sql-session-flush",
+      "text": "SqlSessionTemplate.flushStatements",
+      "kind": "external-boundary",
+      "expectedBehavior": "state-write",
+      "expectedRuleId": "sql-session-flush"
+    },
+    {
+      "id": "jdbc-execute-update",
+      "text": "pstmt.executeUpdate",
+      "kind": "external-boundary",
+      "expectedBehavior": "state-write",
+      "expectedRuleId": "jdbc-boundary"
+    },
+    {
+      "id": "filesystem-directory-write",
+      "text": "outputDirectory.mkdirs",
+      "kind": "external-boundary",
+      "expectedBehavior": "state-write",
+      "expectedRuleId": "filesystem-write"
+    },
+    {
+      "id": "filesystem-metadata-read",
+      "text": "attrs.lastModifiedTime",
+      "kind": "external-boundary",
+      "expectedBehavior": "external-call",
+      "expectedRuleId": "filesystem-metadata"
+    },
+    {
+      "id": "process-lifecycle",
+      "text": "process.waitFor",
+      "kind": "external-boundary",
+      "expectedBehavior": "external-call",
+      "expectedRuleId": "external-resource-lifecycle"
+    },
+    {
+      "id": "http-request-boundary",
+      "text": "request.addHeader",
+      "kind": "external-boundary",
+      "expectedBehavior": "external-call",
+      "expectedRuleId": "http-boundary"
+    },
+    {
+      "id": "url-network-boundary",
+      "text": "URL.openConnection",
+      "kind": "external-boundary",
+      "expectedBehavior": "external-call",
+      "expectedRuleId": "url-connection-boundary"
+    },
+    {
+      "id": "method-reference",
+      "text": "rows::size",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "lambda"
+    },
+    {
+      "id": "bean-mapping",
+      "text": "BeanUtils.copyProperties",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "mapping"
+    },
+    {
+      "id": "object-clone",
+      "text": "super.clone",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "object-clone"
+    },
+    {
+      "id": "configuration-assembly",
+      "text": "ServerBootstrap.initHttpServer",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "configuration-assembly"
+    },
+    {
+      "id": "value-object-factory",
+      "text": "ExecutionResult.ok",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "value-object-factory"
+    },
+    {
+      "id": "json-serialization",
+      "text": "JSON.toJSONString",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "serialization"
+    },
+    {
+      "id": "string-construction",
+      "text": "builder.append",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "string-builder"
+    },
+    {
+      "id": "jdk-stream-filter",
+      "text": "rows.stream().filter",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "jdk-stream"
+    },
+    {
+      "id": "jdk-date-value",
+      "text": "LocalDate.parse",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "jdk-date-value"
+    },
+    {
+      "id": "jdk-path-value",
+      "text": "outputPath.resolve",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "jdk-path-value"
+    },
+    {
+      "id": "jdk-enum-lookup",
+      "text": "StatusEnum.valueOf",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "jdk-enum-lookup"
+    },
+    {
+      "id": "standard-error-observability",
+      "text": "err.println",
+      "kind": "java-method",
+      "expectedBehavior": "observability",
+      "expectedRuleId": "stdio-observability"
+    },
+    {
+      "id": "thread-lifecycle",
+      "text": "t.start",
+      "kind": "java-method",
+      "expectedBehavior": "async-boundary",
+      "expectedRuleId": "thread-lifecycle"
+    },
+    {
+      "id": "archive-construction",
+      "text": "zip.GZIPOutputStream",
+      "kind": "external-boundary",
+      "expectedBehavior": "state-write",
+      "expectedRuleId": "archive-construction"
+    },
+    {
+      "id": "jdk-pure-utility",
+      "text": "Objects.requireNonNull",
+      "kind": "java-method",
+      "expectedBehavior": "calculation",
+      "expectedRuleId": "jdk-pure"
+    },
+    {
+      "id": "exception-output",
+      "text": "error.printStackTrace",
+      "kind": "java-method",
+      "expectedBehavior": "observability",
+      "expectedRuleId": "exception-output"
+    },
+    {
+      "id": "spring-aop-context",
+      "text": "AopContext.currentProxy",
+      "kind": "external-boundary",
+      "expectedBehavior": "context-resolution",
+      "expectedRuleId": "aop-context"
+    },
+    {
+      "id": "progress-report",
+      "text": "reporter.reportStage",
+      "kind": "java-method",
+      "expectedBehavior": "observability",
+      "expectedRuleId": "progress-report"
     }
   ]
 }

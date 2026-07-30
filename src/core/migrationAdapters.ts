@@ -9,6 +9,7 @@ export interface MigrationAnalysisOptions {
   maxDepth?: number;
   maxEdges?: number;
   includeTests?: boolean;
+  structuredParser?: "off" | "preferred" | "required";
 }
 
 export interface MigrationSourceAdapter {
@@ -37,7 +38,8 @@ const javaSpringAdapter: MigrationSourceAdapter = {
       method: entrypoint.method,
       maxDepth: options?.maxDepth,
       maxEdges: options?.maxEdges,
-      includeTests: options?.includeTests
+      includeTests: options?.includeTests,
+      structuredParser: options?.structuredParser
     });
   }
 };

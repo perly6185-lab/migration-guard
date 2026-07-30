@@ -3,7 +3,7 @@ import test from "node:test";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { pathExists, readJsonFile, writeJsonFile } from "./files.js";
 import type { BehaviorGraph } from "./endpointReplacementModel.js";
 import { initMigrationProject } from "./migrationProject.js";
@@ -11,6 +11,7 @@ import {
   analyzeMigrationProject,
   evaluateMigrationOfflineGate,
   evaluateMigrationRealGate,
+  inspectMigrationGateFreshness,
   scaffoldRustMigrationProject
 } from "./migrationWorkflow.js";
 import {
@@ -89,6 +90,14 @@ test("project workflow analyzes Spring, scaffolds Rust and keeps both gates fail
     });
     await writeJsonFile(pkg.semanticRulesPath, {
       ...pkg.semanticRules,
+      runtimeScenarios: [{
+        id: "calendar-view",
+        entrypointId: pkg.profile.entrypoints[0]!.id,
+        title: "Calendar view workflow",
+        category: "compatibility",
+        requiredDimensions: ["http", "decisions", "performance"],
+        reason: "Exercise a project-defined domain scenario."
+      }],
       runtimeGates: [{
         id: "orders-page-baseline",
         entrypointId: pkg.profile.entrypoints[0]!.id,
@@ -104,7 +113,7 @@ test("project workflow analyzes Spring, scaffolds Rust and keeps both gates fail
     assert.equal(analysis.sourceAccess, "read-only");
     assert.equal(analysis.semanticRulePackages?.length, 1);
     assert.equal(analysis.semanticRulePackages?.[0]?.packageId, "builtin-java-core");
-    assert.equal(analysis.semanticRulePackages?.[0]?.packageVersion, "1.1.0");
+    assert.equal(analysis.semanticRulePackages?.[0]?.packageVersion, "1.2.0");
     assert.equal(analysis.semanticPackageResolution?.mode, "auto");
     assert.deepEqual(
       analysis.semanticPackageResolution?.excluded.map((item) => item.packageId),
@@ -158,10 +167,27 @@ test("project workflow analyzes Spring, scaffolds Rust and keeps both gates fail
 
     const offline = await evaluateMigrationOfflineGate(pkg.caseDir);
     assert.equal(offline.status, analysis.status === "ready" ? "passed" : "blocked");
+    assert.ok(offline.evidenceDigests);
+    assert.equal(await inspectMigrationGateFreshness(pkg.caseDir, "offline").then((items) => items.length), 0);
+    const planPath = analysis.entries[0]!.planPath;
+    const originalPlan = await readFile(planPath, "utf8");
+    await writeFile(planPath, originalPlan.replace("{", '{\n  "tampered": true,'));
+    assert.ok((await inspectMigrationGateFreshness(pkg.caseDir, "offline"))
+      .some((item) => item.startsWith("MG-GATE-EVIDENCE-TAMPERED:")));
+    const tamperedOffline = await evaluateMigrationOfflineGate(pkg.caseDir);
+    assert.ok(tamperedOffline.findings.some((item) =>
+      item.startsWith("MG-OFFLINE-PLAN-HASH-MISMATCH:")
+    ));
+    await writeFile(planPath, originalPlan);
+    await evaluateMigrationOfflineGate(pkg.caseDir);
 
     const runtimeContract = await prepareJavaRuntimeEvidence(pkg.caseDir);
     assert.equal(runtimeContract.entries.length, 1);
     assert.ok(runtimeContract.entries[0]!.scenarios.length > 0);
+    assert.ok(runtimeContract.entries[0]!.scenarios.some((scenario) =>
+      scenario.id === "calendar-view"
+      && scenario.category === "compatibility"
+      && scenario.requiredDimensions.includes("performance")));
     assert.ok(runtimeContract.entries[0]!.scenarios.every((scenario) =>
       scenario.semanticGates.includes("page") && scenario.requiredCollectors.length === 0));
     const runtimeSchema = await readJsonFile<Record<string, unknown>>(
@@ -250,6 +276,10 @@ test("project workflow analyzes Spring, scaffolds Rust and keeps both gates fail
     const missingReal = await evaluateMigrationRealGate(pkg.caseDir);
     assert.equal(missingReal.status, "blocked");
     assert.ok(missingReal.findings.includes("MG-REAL-EVIDENCE-MISSING"));
+    assert.deepEqual(await inspectMigrationGateFreshness(pkg.caseDir, "real"), []);
+    await evaluateMigrationOfflineGate(pkg.caseDir);
+    assert.ok((await inspectMigrationGateFreshness(pkg.caseDir, "real"))
+      .includes("MG-GATE-STALE"));
     const relabeled = await assembleJavaRuntimeEvidence(pkg.caseDir, "real", synthetic.bundle.entries);
     assert.equal(relabeled.validation.realEligible, false);
     assert.ok(relabeled.validation.findings.some((item) => item.includes("SYNTHETIC-CONTENT")));
@@ -324,6 +354,7 @@ test("real batch evidence requires declared collectors and batch semantics", asy
       path.join(pkg.caseDir, firstDraft.draftFixture)
     );
     authoredFixture.request = {};
+    authoredFixture.writeSafety = disposableWriteSafety();
     await writeJsonFile(path.join(pkg.caseDir, firstDraft.draftFixture), authoredFixture);
     for (const [collector, relativePath] of Object.entries(firstDraft.collectorSpecs)) {
       const specPath = path.join(pkg.caseDir, relativePath!);
@@ -358,6 +389,7 @@ test("real batch evidence requires declared collectors and batch semantics", asy
           entrypointId: entry.id,
           scenarioId: scenario.id,
           request: {},
+          writeSafety: disposableWriteSafety(),
           expectations: {
             batch: {
               requireUndoCorrespondence: true,
@@ -379,3 +411,19 @@ test("real batch evidence requires declared collectors and batch semantics", asy
     await rm(root, { recursive: true, force: true });
   }
 });
+
+function disposableWriteSafety(): Record<string, unknown> {
+  return {
+    mode: "disposable",
+    disposable: true,
+    writeApproved: true,
+    allowedTenantIds: ["tenant-test"],
+    allowedPanelIds: ["panel-test"],
+    allowedTables: ["fixture_rows"],
+    maxAffectedRows: 100,
+    markerKey: "migration_guard_case_id",
+    cleanupPredicate: "migration_guard_case_id = :caseId",
+    cleanupVerificationRequired: true,
+    expiresAt: "2999-01-01T00:00:00.000Z"
+  };
+}

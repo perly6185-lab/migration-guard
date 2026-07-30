@@ -4,6 +4,7 @@ import { pathExists, readJsonFile } from "./files.js";
 import type { BatchGateRequirements } from "./vmpBatch.js";
 import type { PageGateRequirements } from "./pageRuntimeEvidence.js";
 import type { QueryGateRequirements } from "./queryRuntimeEvidence.js";
+import { scanArtifactText } from "./artifactSecurity.js";
 
 export type MigrationFixtureKind = "template" | "specification" | "synthetic" | "draft-runtime" | "real-runtime" | "unclassified";
 export type MigrationCollectorKind =
@@ -26,11 +27,26 @@ export interface MigrationFixtureMetadata {
   scenarioId?: string;
   request?: unknown;
   collectorSpecs?: Partial<Record<MigrationCollectorKind, { path: string; hash: string }>>;
+  writeSafety?: MigrationFixtureWriteSafety;
   expectations?: {
     batch?: BatchGateRequirements;
     page?: PageGateRequirements;
     query?: QueryGateRequirements;
   };
+}
+
+export interface MigrationFixtureWriteSafety {
+  mode: "read-only" | "disposable";
+  disposable: boolean;
+  writeApproved: boolean;
+  allowedTenantIds: string[];
+  allowedPanelIds: string[];
+  allowedTables: string[];
+  maxAffectedRows: number;
+  markerKey: string;
+  cleanupPredicate: string;
+  cleanupVerificationRequired: boolean;
+  expiresAt: string;
 }
 
 export interface MigrationFixtureInspection {
@@ -60,6 +76,7 @@ export function validateMigrationFixture(
     batch?: boolean;
     page?: boolean;
     query?: boolean;
+    writeSafety?: boolean;
     collectors?: MigrationCollectorKind[];
   } = {}
 ): string[] {
@@ -101,6 +118,7 @@ export function validateMigrationFixture(
   } else if (fixture.realEvidenceEligible === true) {
     findings.push("MG-FIXTURE-NONREAL-CLAIMS-ELIGIBILITY");
   }
+  if (expected.writeSafety) findings.push(...validateFixtureWriteSafety(fixture.writeSafety));
   return [...new Set(findings)].sort();
 }
 
@@ -119,12 +137,39 @@ export async function inspectMigrationFixtures(dir: string): Promise<MigrationFi
 }
 
 export function containsSensitiveKey(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(containsSensitiveKey);
-  if (!value || typeof value !== "object") return false;
-  return Object.entries(value as Record<string, unknown>).some(([key, item]) =>
-    /authorization|token|cookie|password|phone|mobile|secret|api[-_]?key/i.test(key)
-      || containsSensitiveKey(item)
-  );
+  return scanArtifactText(JSON.stringify(value), "fixture.json").length > 0;
+}
+
+export function validateFixtureWriteSafety(
+  safety: MigrationFixtureWriteSafety | undefined,
+  now = Date.now()
+): string[] {
+  if (!safety) return ["MG-FIXTURE-WRITE-SAFETY-MISSING"];
+  const findings: string[] = [];
+  if (safety.mode !== "disposable" || safety.disposable !== true) {
+    findings.push("MG-FIXTURE-WRITE-SCOPE-NOT-DISPOSABLE");
+  }
+  if (safety.writeApproved !== true) findings.push("MG-FIXTURE-WRITE-APPROVAL-MISSING");
+  if (!nonEmptyStrings(safety.allowedTenantIds)) findings.push("MG-FIXTURE-WRITE-TENANTS-MISSING");
+  if (!nonEmptyStrings(safety.allowedPanelIds)) findings.push("MG-FIXTURE-WRITE-PANELS-MISSING");
+  if (!nonEmptyStrings(safety.allowedTables)) findings.push("MG-FIXTURE-WRITE-TABLES-MISSING");
+  if (!Number.isInteger(safety.maxAffectedRows)
+    || safety.maxAffectedRows <= 0
+    || safety.maxAffectedRows > 10_000) {
+    findings.push("MG-FIXTURE-WRITE-ROW-LIMIT-INVALID");
+  }
+  if (!safety.markerKey?.trim()) findings.push("MG-FIXTURE-WRITE-MARKER-MISSING");
+  if (!safety.cleanupPredicate?.trim()
+    || (safety.markerKey?.trim() && !safety.cleanupPredicate.includes(safety.markerKey.trim()))) {
+    findings.push("MG-FIXTURE-WRITE-CLEANUP-PREDICATE-INVALID");
+  }
+  if (safety.cleanupVerificationRequired !== true) {
+    findings.push("MG-FIXTURE-WRITE-CLEANUP-VERIFICATION-MISSING");
+  }
+  const expiresAt = Date.parse(safety.expiresAt);
+  if (!Number.isFinite(expiresAt)) findings.push("MG-FIXTURE-WRITE-EXPIRY-INVALID");
+  else if (expiresAt <= now) findings.push("MG-FIXTURE-WRITE-SCOPE-EXPIRED");
+  return [...new Set(findings)].sort();
 }
 
 async function listJsonFiles(dir: string): Promise<string[]> {
@@ -133,7 +178,11 @@ async function listJsonFiles(dir: string): Promise<string[]> {
   const files: string[] = [];
   for (const entry of entries) {
     const child = path.join(dir, entry.name);
-    if (entry.isDirectory() && !isCollectorSpecDirectory(entry.name)) files.push(...await listJsonFiles(child));
+    if (entry.isDirectory()
+      && !isCollectorSpecDirectory(entry.name)
+      && !isCandidateBundleDirectory(entry.name)) {
+      files.push(...await listJsonFiles(child));
+    }
     else if (entry.isFile() && entry.name.endsWith(".json")) files.push(child);
   }
   return files.sort();
@@ -141,4 +190,15 @@ async function listJsonFiles(dir: string): Promise<string[]> {
 
 function isCollectorSpecDirectory(name: string): boolean {
   return name === "collectors" || name.endsWith(".collectors");
+}
+
+function isCandidateBundleDirectory(name: string): boolean {
+  return name === "real-candidates"
+    || name === "real-readonly"
+    || name === "real-runtime-candidates";
+}
+
+function nonEmptyStrings(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length > 0
+    && value.every((item) => typeof item === "string" && item.trim().length > 0);
 }

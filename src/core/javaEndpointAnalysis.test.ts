@@ -647,6 +647,155 @@ test("java endpoint analysis resolves local value accessors and project static h
   }
 });
 
+test("java endpoint analysis honors explicit type imports over duplicate simple names", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-imports-"));
+  try {
+    const appDir = path.join(dir, "src", "main", "java", "app");
+    const preferredDir = path.join(dir, "src", "main", "java", "preferred");
+    const legacyDir = path.join(dir, "src", "main", "java", "legacy");
+    await mkdir(appDir, { recursive: true });
+    await mkdir(preferredDir, { recursive: true });
+    await mkdir(legacyDir, { recursive: true });
+    await writeFile(path.join(appDir, "ImportController.java"), [
+      "package app;",
+      "import preferred.DateFormatUtils;",
+      "import external.StrUtil;",
+      "@RestController",
+      "public class ImportController {",
+      " @GetMapping(\"/imports\")",
+      " public String read() {",
+      "  Object raw = \"2026-07\";",
+      "  return StrUtil.blankToDefault(DateFormatUtils.parseMonth(raw == null ? null : raw.toString()), \"\");",
+      " }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(preferredDir, "DateFormatUtils.java"), [
+      "package preferred;",
+      "public final class DateFormatUtils {",
+      " public static String parseMonth(String value) { return value; }",
+      " public static String parseMonth(Object value) { return value.toString(); }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(legacyDir, "DateFormatUtils.java"), [
+      "package legacy;",
+      "public final class DateFormatUtils {",
+      " public static String parseMonth(String value) { return value; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(legacyDir, "StrUtil.java"), [
+      "package legacy;",
+      "public final class StrUtil {",
+      " public static String blankToDefault(String value, String fallback) { return value; }",
+      "}"
+    ].join("\n"));
+
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/imports" });
+    const dateEdge = report.callGraph.edges.find((edge) => edge.call.method === "parseMonth");
+    const strEdge = report.callGraph.edges.find((edge) => edge.call.method === "blankToDefault");
+    assert.equal(dateEdge?.resolution, "field-injection");
+    assert.match(dateEdge?.to ?? "", /^preferred\.DateFormatUtils\.parseMonth:/);
+    assert.equal(strEdge?.resolution, "static-or-external");
+    assert.equal(report.callGraph.edges.some((edge) => edge.resolution === "ambiguous" || edge.resolution === "unresolved"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("java endpoint analysis prefers a duplicate qualified type from the caller module", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-module-local-"));
+  try {
+    const moduleA = path.join(dir, "module-a", "src", "main", "java", "shared");
+    const moduleB = path.join(dir, "module-b", "src", "main", "java", "shared");
+    await mkdir(moduleA, { recursive: true });
+    await mkdir(moduleB, { recursive: true });
+    await writeFile(path.join(moduleA, "DeepCopy.java"), [
+      "package shared;",
+      "public final class DeepCopy {",
+      " public static Object copy(Object value) { return value; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(moduleB, "DeepCopy.java"), [
+      "package shared;",
+      "public final class DeepCopy {",
+      "",
+      " public static Object copy(Object value) { return value; }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(moduleB, "CopyController.java"), [
+      "package shared;",
+      "@RestController",
+      "public class CopyController {",
+      " @GetMapping(\"/copy\")",
+      " public Object read(Object value) { return DeepCopy.copy(value); }",
+      "}"
+    ].join("\n"));
+
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/copy" });
+    const edge = report.callGraph.edges.find((candidate) => candidate.call.method === "copy");
+    const target = report.callGraph.nodes.find((candidate) => candidate.id === edge?.to);
+    assert.equal(edge?.resolution, "field-injection");
+    assert.match(target?.file ?? "", /^module-b\//);
+    assert.equal(report.callGraph.edges.some((candidate) => candidate.resolution === "ambiguous"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("java endpoint analysis recognizes commented multiline record accessors", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-record-comments-"));
+  try {
+    const sourceDir = path.join(dir, "src", "main", "java", "demo");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "RecordController.java"), [
+      "package demo;",
+      "@RestController",
+      "public class RecordController {",
+      " @GetMapping(\"/record-comments\")",
+      " public String read() {",
+      "  Container.FieldMeta field = new Container.FieldMeta(\"name\", \"text\");",
+      "  UpdatePlan plan = new UpdatePlan(\"name\");",
+      "  plan.toBuilder();",
+      "  return field.fieldFormatTag();",
+      " }",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "Container.java"), [
+      "package demo;",
+      "public final class Container {",
+      " public record FieldMeta(",
+      "   String field,",
+      "   // The format controls downstream comparison semantics.",
+      "   String fieldFormatTag",
+      " ) {}",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "FieldMeta.java"), [
+      "package demo;",
+      "public class FieldMeta {",
+      " private String unrelated;",
+      "}"
+    ].join("\n"));
+    await writeFile(path.join(sourceDir, "UpdatePlan.java"), [
+      "package demo;",
+      "@lombok.Value",
+      "@lombok.Builder(toBuilder = true)",
+      "public class UpdatePlan {",
+      " String name;",
+      "}"
+    ].join("\n"));
+
+    const report = await analyzeJavaEndpoint({ root: dir, method: "GET", endpoint: "/record-comments" });
+    const edge = report.callGraph.edges.find((candidate) => candidate.call.method === "fieldFormatTag");
+    const builderEdge = report.callGraph.edges.find((candidate) => candidate.call.method === "toBuilder");
+    assert.equal(edge?.resolution, "static-or-external");
+    assert.match(edge?.to ?? "", /^external:/);
+    assert.equal(builderEdge?.resolution, "static-or-external");
+    assert.equal(report.callGraph.edges.some((candidate) => candidate.resolution === "unresolved"), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("java endpoint analysis uses enum method return types to resolve overloads", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "migration-guard-java-endpoint-enum-overload-"));
   try {

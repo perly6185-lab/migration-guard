@@ -41,7 +41,7 @@ test("java-core promotes high-risk generic families without promoting calculatio
   for (const [text, ruleId, behavior] of cases) {
     const trace = classifyJavaCoreSemanticWithTrace(text);
     assert.equal(trace?.packageId, "builtin-java-core", text);
-    assert.equal(trace?.packageVersion, "1.1.0", text);
+    assert.equal(trace?.packageVersion, "1.2.0", text);
     assert.equal(trace?.ruleId, ruleId, text);
     assert.equal(trace?.rule.kind, behavior, text);
   }

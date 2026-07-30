@@ -222,6 +222,10 @@ import {
   scaffoldRustMigrationProject
 } from "./core/migrationWorkflow.js";
 import {
+  evaluateMigrationCompletionGate,
+  prepareMigrationCompletion
+} from "./core/migrationCompletion.js";
+import {
   assembleJavaRuntimeEvidence,
   gateJavaRuntimeBaseline,
   generateSyntheticJavaRuntimeEvidence,
@@ -607,13 +611,20 @@ async function commandMigrate(args: ParsedArgs): Promise<void> {
   }
   const caseDir = resolveMigrationCaseDir(args);
   if (action === "analyze") {
+    const strict = Boolean(args.options.strict);
+    const structuredParser = stringOption(args, "structured-parser")
+      ?? (strict ? "required" : "preferred");
+    if (!["off", "preferred", "required"].includes(structuredParser)) {
+      throw new Error(`Invalid --structured-parser: ${structuredParser}. Expected off, preferred, or required.`);
+    }
     const result = await analyzeMigrationProject(caseDir, {
-      maxDepth: numberOption(args, "max-depth"),
-      maxEdges: numberOption(args, "max-edges"),
-      includeTests: Boolean(args.options["include-tests"])
+      maxDepth: numberOption(args, "max-depth") ?? (strict ? 32 : undefined),
+      maxEdges: numberOption(args, "max-edges") ?? (strict ? 20_000 : undefined),
+      includeTests: Boolean(args.options["include-tests"]),
+      structuredParser: structuredParser as "off" | "preferred" | "required"
     });
     console.log(JSON.stringify(result, null, 2));
-    if (result.status !== "ready" && args.options.strict) process.exitCode = 1;
+    if (result.status !== "ready" && strict) process.exitCode = 1;
     return;
   }
   if (action === "scaffold") {
@@ -721,6 +732,20 @@ async function commandMigrate(args: ParsedArgs): Promise<void> {
   }
   if (action === "real-gate") {
     const report = await evaluateMigrationRealGate(caseDir, stringOption(args, "evidence"));
+    console.log(JSON.stringify(report, null, 2));
+    if (report.status !== "passed") process.exitCode = 1;
+    return;
+  }
+  if (action === "completion-prepare") {
+    console.log(JSON.stringify(
+      await prepareMigrationCompletion(caseDir, Boolean(args.options.force)),
+      null,
+      2
+    ));
+    return;
+  }
+  if (action === "completion-gate") {
+    const report = await evaluateMigrationCompletionGate(caseDir, stringOption(args, "evidence"));
     console.log(JSON.stringify(report, null, 2));
     if (report.status !== "passed") process.exitCode = 1;
     return;
@@ -914,12 +939,20 @@ async function commandSemantics(args: ParsedArgs): Promise<void> {
 
 function semanticEvaluationPolicy(args: ParsedArgs): SemanticEvaluationPolicy {
   const minimumCoveragePercent = numberOption(args, "min-coverage");
+  const minimumRuleCoveragePercent = numberOption(args, "min-rule-coverage");
   if (minimumCoveragePercent !== undefined
     && (minimumCoveragePercent < 0 || minimumCoveragePercent > 100)) {
     throw new Error(`Invalid --min-coverage: ${minimumCoveragePercent}. Expected a number from 0 to 100.`);
   }
+  if (minimumRuleCoveragePercent !== undefined
+    && (minimumRuleCoveragePercent < 0 || minimumRuleCoveragePercent > 100)) {
+    throw new Error(
+      `Invalid --min-rule-coverage: ${minimumRuleCoveragePercent}. Expected a number from 0 to 100.`
+    );
+  }
   return {
     minimumCoveragePercent,
+    minimumRuleCoveragePercent,
     maximumUnreviewedConflicts: nonNegativeIntegerOption(args, "max-conflicts"),
     maximumExpectedMismatches: nonNegativeIntegerOption(args, "max-mismatches")
   };
@@ -3074,11 +3107,11 @@ Usage:
   migration-guard semantics list [--builtin <package-id>|--package <semantic-package.json>]
   migration-guard semantics validate [--builtin <package-id>|--package <semantic-package.json>]
   migration-guard semantics coverage --graph <behavior-graph.json> [--output <report.json>]
-  migration-guard semantics evaluate (--analysis <java-analysis.json>|--samples <samples.json>|--project <id|case-dir>) [--builtin <package-id>|--package <semantic-package.json>] [--min-coverage <0-100>] [--max-conflicts <n>] [--max-mismatches <n>] [--output <report.json>]
+  migration-guard semantics evaluate (--analysis <java-analysis.json>|--samples <samples.json>|--project <id|case-dir>) [--builtin <package-id>|--package <semantic-package.json>] [--min-coverage <0-100>] [--min-rule-coverage <0-100>] [--max-conflicts <n>] [--max-mismatches <n>] [--output <report.json>]
   migration-guard semantics lock [--builtin <package-id>|--package <semantic-package.json>] [--output <lock.json>]
   migration-guard semantics diff --from <lock-or-package.json> --to <lock-or-package.json>
   migration-guard migrate init --project <id> [--source <path>] [--endpoint <path>] [--method POST] [--target-root <path>] [--service-name <name>] [--cases-root <path>] [--force]
-  migration-guard migrate analyze (--project <id> [--cases-root <path>]|--case-dir <path>) [--max-depth <n>] [--max-edges <n>] [--include-tests] [--strict]
+  migration-guard migrate analyze (--project <id> [--cases-root <path>]|--case-dir <path>) [--max-depth <n>] [--max-edges <n>] [--structured-parser off|preferred|required] [--include-tests] [--strict]
   migration-guard migrate scaffold (--project <id> [--cases-root <path>]|--case-dir <path>) --target rust [--force]
   migration-guard migrate runtime-prepare (--project <id> [--cases-root <path>]|--case-dir <path>)
   migration-guard migrate runtime-authoring-prepare (--project <id> [--cases-root <path>]|--case-dir <path>) [--force]
@@ -3092,6 +3125,8 @@ Usage:
   migration-guard migrate runtime-fixture-promote (--project <id> [--cases-root <path>]|--case-dir <path>) --entrypoint <id> --scenario <id> --reviewed-by <identity> [--force]
   migration-guard migrate offline-gate (--project <id> [--cases-root <path>]|--case-dir <path>)
   migration-guard migrate real-gate (--project <id> [--cases-root <path>]|--case-dir <path>) [--evidence <json>]
+  migration-guard migrate completion-prepare (--project <id> [--cases-root <path>]|--case-dir <path>) [--force]
+  migration-guard migrate completion-gate (--project <id> [--cases-root <path>]|--case-dir <path>) [--evidence <json>]
   migration-guard report [--run <id|latest>] [--json]
   migration-guard readiness [--run <id|latest>] [--min-proposals <n>] [--min-batch-size <n>] [--skip-target-git] [--strict] [--json]
   migration-guard one-shot runbook [--max-source-file-delta <n>] [--name <text>] [--branch <name>] [--base-branch <name>] [--budget <text>] [--command-prefix <command>] [--json]

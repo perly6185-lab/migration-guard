@@ -245,6 +245,11 @@ export interface EndpointReplacementPlan {
   boundaries: ReplacementBoundaryCandidate[];
   scenarios: ReplacementScenario[];
   waves: ReplacementImplementationWave[];
+  resolvedFindings: Array<{
+    finding: string;
+    decisionId: string;
+    reason: string;
+  }>;
   findings: string[];
   nextAction?: string;
   planHash: string;

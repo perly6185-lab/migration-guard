@@ -11,6 +11,11 @@ import {
   type JavaFieldConfigSnapshot,
   type JavaFieldProjectionFacts
 } from "./javaFieldConfigSnapshot.js";
+import {
+  inspectJavaStructure,
+  type JavaStructuredParserAttestation,
+  type JavaStructuredParserMode
+} from "./javaStructuredParser.js";
 
 export type JavaEndpointHttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD" | "ALL";
 export type JavaEndpointRiskSeverity = "low" | "medium" | "high";
@@ -22,6 +27,7 @@ export interface AnalyzeJavaEndpointOptions {
   maxDepth?: number;
   maxEdges?: number;
   includeTests?: boolean;
+  structuredParser?: JavaStructuredParserMode;
 }
 
 export interface JavaEndpointAnalyzer {
@@ -541,6 +547,7 @@ export interface JavaEndpointAnalysisReport {
     method: JavaEndpointHttpMethod;
     path: string;
   };
+  parser?: JavaStructuredParserAttestation;
   summary: {
     javaFileCount: number;
     routeCount: number;
@@ -596,6 +603,7 @@ interface JavaSourceFile {
 
 interface JavaProjectModel {
   root: string;
+  parser: JavaStructuredParserAttestation;
   files: JavaSourceFile[];
   xmlFiles: JavaSourceFile[];
   types: JavaTypeInfo[];
@@ -748,18 +756,29 @@ const DYNAMIC_SQL_SIGNALS = [
 
 export async function analyzeJavaEndpoint(options: AnalyzeJavaEndpointOptions): Promise<JavaEndpointAnalysisReport> {
   const root = path.resolve(options.root);
-  const analyzer = await createJavaEndpointAnalyzer(root, Boolean(options.includeTests));
+  const analyzer = await createJavaEndpointAnalyzer(
+    root,
+    Boolean(options.includeTests),
+    options.structuredParser ?? "off"
+  );
   return analyzer.analyze(options);
 }
 
 export type JavaTypeRole = "controller" | "application-service" | "domain-service" | "service" | "repository" | "mapper" | "support" | "pipeline" | "processor" | "coordinator" | "adapter" | "infrastructure-client" | "policy" | "assembler" | "unknown";
 
-export async function createJavaEndpointAnalyzer(rootValue: string, includeTests = false): Promise<JavaEndpointAnalyzer> {
+export async function createJavaEndpointAnalyzer(
+  rootValue: string,
+  includeTests = false,
+  structuredParser: JavaStructuredParserMode = "off"
+): Promise<JavaEndpointAnalyzer> {
   const root = path.resolve(rootValue);
-  const [project, sourceIdentity] = await Promise.all([
-    collectJavaProject(root, includeTests),
-    captureAssessmentSourceIdentity(root)
-  ]);
+  const sourceIdentity = await captureAssessmentSourceIdentity(root);
+  const project = await collectJavaProject(
+    root,
+    includeTests,
+    structuredParser,
+    sourceIdentity.identity
+  );
   const routes = extractSpringRoutes(project);
   const serviceMethods = extractServiceMethods(project);
   const mcpToolProviders = extractMcpToolProviders(project);
@@ -2009,6 +2028,7 @@ function analyzeJavaEndpointModel(
       method,
       path: endpointPath
     },
+    parser: project.parser,
     summary: {
       javaFileCount: project.files.length,
       routeCount: routes.length,
@@ -2120,7 +2140,13 @@ export function renderJavaEndpointAnalysisReport(report: JavaEndpointAnalysisRep
   return lines.join("\n");
 }
 
-async function collectJavaProject(root: string, includeTests: boolean): Promise<JavaProjectModel> {
+async function collectJavaProject(
+  root: string,
+  includeTests: boolean,
+  structuredParser: JavaStructuredParserMode,
+  parserCacheIdentity: string
+): Promise<JavaProjectModel> {
+  const parserPromise = inspectJavaStructure(root, includeTests, structuredParser, parserCacheIdentity);
   const absolutePaths = await walkJavaFiles(root);
   const files: JavaSourceFile[] = [];
   for (const absolutePath of absolutePaths) {
@@ -2177,6 +2203,7 @@ async function collectJavaProject(root: string, includeTests: boolean): Promise<
   }
   const project: JavaProjectModel = {
     root,
+    parser: await parserPromise,
     files,
     xmlFiles,
     types,
@@ -4460,7 +4487,7 @@ function resolveCallTargets(
   if (call.receiver === "$lambda") return { targets: [], resolution: "external", candidates: [] };
 
   if (call.receiverType) {
-    const receiverTypes = project.typesByName.get(simpleTypeName(call.receiverType)) ?? [];
+    const receiverTypes = resolveTypesForField(project, call.receiverType, currentType);
     if (receiverTypes.length === 0) return { targets: [], resolution: "external", candidates: [] };
     const receiverCandidates = receiverTypes.flatMap((type) => {
       const implementations = type.name === "FieldTypeUpdateStrategy"
@@ -4652,6 +4679,9 @@ function isGeneratedValueOperationCall(
     || receiverTypes.some((type) =>
       type.kind === "enum" && /^(?:name|ordinal|toString)$/.test(call.method)
       || call.method === "builder" && type.annotations.some((annotation) => /@(?:[A-Za-z0-9_$.]+\.)?Builder\b/.test(annotation))
+      || call.method === "toBuilder" && type.annotations.some((annotation) =>
+        /@(?:[A-Za-z0-9_$.]+\.)?Builder\s*\([^)]*\btoBuilder\s*=\s*true\b[^)]*\)/.test(annotation)
+      )
     )
     || generatedAccessorReturnTypesFromSources(project, receiverType, call.method).length > 0;
 }
@@ -4736,11 +4766,14 @@ function inferArgumentType(
   if (cast) return simpleTypeName(cast[1]);
   const direct = variableTypes.get(trimmed);
   if (direct) return simpleTypeName(direct);
+  if (/\.\s*toString\s*\(\s*\)$/.test(trimmed)) return "String";
   const conditional = splitTopLevelConditional(trimmed);
   if (conditional) {
     const whenTrue = inferArgumentType(project, currentType, conditional.whenTrue, variableTypes, targetMethodName);
     const whenFalse = inferArgumentType(project, currentType, conditional.whenFalse, variableTypes, targetMethodName);
     if (whenTrue !== "unknown" && whenTrue === whenFalse) return whenTrue;
+    if (whenTrue === "null" && whenFalse !== "unknown") return whenFalse;
+    if (whenFalse === "null" && whenTrue !== "unknown") return whenTrue;
   }
   const staticField = trimmed.match(/^([A-Z][A-Za-z0-9_.$]*)\.([A-Za-z_][A-Za-z0-9_]*)$/);
   if (staticField) {
@@ -4905,7 +4938,11 @@ function generatedAccessorReturnTypesFromSources(project: JavaProjectModel, decl
         const range = findBraceRange(lines, index);
         const body = lines.slice(range.start + 1, range.end).join("\n");
         if (recordDeclaration) {
-          const header = lines.slice(index, Math.min(range.end + 1, index + 32)).join(" ").split("{")[0];
+          const header = lines
+            .slice(index, Math.min(range.end + 1, index + 32))
+            .map(stripLineComment)
+            .join(" ")
+            .split("{")[0];
           const components = header.match(/\((.*)\)/)?.[1];
           for (const component of components ? splitJavaArgs(components) : []) {
             const match = component.trim().match(/^([A-Za-z_][A-Za-z0-9_.$<>?\[\]]*)\s+([a-zA-Z_][A-Za-z0-9_]*)$/);
@@ -4926,10 +4963,25 @@ function generatedAccessorReturnTypesFromSources(project: JavaProjectModel, decl
 function resolveTypesForField(project: JavaProjectModel, typeName: string, contextType?: JavaTypeInfo): JavaTypeInfo[] {
   const simpleName = simpleTypeName(typeName);
   const imported = contextType?.imports.find((item) => item.simpleName === simpleName)?.qualifiedName;
-  if (imported) return project.typesByName.get(imported) ?? [];
-  if (typeName.includes(".")) return project.typesByName.get(typeName) ?? [];
+  if (imported) return preferTypesFromContextModule(project.typesByName.get(imported) ?? [], contextType);
+  if (typeName.includes(".")) return preferTypesFromContextModule(project.typesByName.get(typeName) ?? [], contextType);
   const samePackage = contextType?.packageName ? project.typesByName.get(`${contextType.packageName}.${simpleName}`) : undefined;
-  return samePackage?.length ? samePackage : project.typesByName.get(simpleName) ?? [];
+  return preferTypesFromContextModule(samePackage?.length ? samePackage : project.typesByName.get(simpleName) ?? [], contextType);
+}
+
+function preferTypesFromContextModule(types: JavaTypeInfo[], contextType?: JavaTypeInfo): JavaTypeInfo[] {
+  if (types.length < 2 || !contextType) return types;
+  const moduleName = sourceModuleName(contextType.file);
+  if (!moduleName) return types;
+  const local = types.filter((type) => sourceModuleName(type.file) === moduleName);
+  return local.length > 0 ? local : types;
+}
+
+function sourceModuleName(file: string): string | undefined {
+  const normalized = toPosixPath(file);
+  const sourceMarker = normalized.indexOf("/src/");
+  if (sourceMarker <= 0) return undefined;
+  return normalized.slice(0, sourceMarker).split("/").filter(Boolean).at(-1);
 }
 
 function nodeFor(

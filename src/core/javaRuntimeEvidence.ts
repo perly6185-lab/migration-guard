@@ -57,6 +57,12 @@ import {
   validateRuntimeCorrelationTrace,
   type RuntimeCorrelationTrace
 } from "./runtimeCorrelation.js";
+import {
+  assertReferenceSourceSnapshotUnchanged,
+  captureReferenceSourceSnapshot,
+  referenceSourceSnapshotsEqual,
+  type ReferenceSourceSnapshot
+} from "./referenceSourceGuard.js";
 
 const RUNTIME_OPERATIONS = [
   "setup", "start", "health", "seed", "invoke", "inject-fault",
@@ -104,6 +110,7 @@ export interface JavaRuntimeContract {
   projectId: string;
   projectHash: string;
   sourceIdentity: AssessmentSourceIdentity;
+  sourceSnapshot: ReferenceSourceSnapshot;
   entries: JavaRuntimeEntryContract[];
   requiredEnvironment: string[];
   driverTemplate: JavaRuntimeArtifactReference;
@@ -208,9 +215,13 @@ export async function prepareJavaRuntimeEvidence(caseDir: string): Promise<JavaR
     throw new Error("Java runtime prepare blocked: project package changed after analysis.");
   }
   const sourceRoot = resolveMigrationProjectPath(pkg, pkg.profile.source.root);
-  const sourceIdentity = await captureAssessmentSourceIdentity(sourceRoot);
+  const sourceSnapshot = await captureReferenceSourceSnapshot(sourceRoot, pkg.profile.source.directories);
+  const sourceIdentity = sourceSnapshot.identity;
   if (!index.sourceIdentity || !sameSourceIdentity(index.sourceIdentity, sourceIdentity)) {
     throw new Error("Java runtime prepare blocked: Java source identity changed after analysis.");
+  }
+  if (!index.sourceSnapshot || !referenceSourceSnapshotsEqual(index.sourceSnapshot, sourceSnapshot)) {
+    throw new Error("Java runtime prepare blocked: Java source tree changed after analysis.");
   }
   const runtimeDir = javaRuntimeDir(pkg);
   const entries: JavaRuntimeEntryContract[] = [];
@@ -234,7 +245,24 @@ export async function prepareJavaRuntimeEvidence(caseDir: string): Promise<JavaR
     if (plan.contracts.contexts.some((item) => item.name === "user")) requiredEnvironment.add("MG_JAVA_TOKEN");
     const entryCollectors = requiredCollectorsFor(plan, report);
     const scenarios: JavaRuntimeScenarioContract[] = [];
-    for (const scenario of plan.scenarios) {
+    const configuredScenarios: ReplacementScenario[] = (pkg.semanticRules.runtimeScenarios ?? [])
+      .filter((scenario) => scenario.entrypointId === entrypoint.id)
+      .map((scenario) => ({
+        id: scenario.id,
+        title: scenario.title,
+        category: scenario.category,
+        sourceNodes: [],
+        requiredDimensions: scenario.requiredDimensions,
+        reason: scenario.reason
+      }));
+    const scenarioIds = new Set<string>();
+    for (const scenario of [...plan.scenarios, ...configuredScenarios]) {
+      if (scenarioIds.has(scenario.id)) {
+        throw new Error(
+          `Java runtime prepare duplicate scenario for ${entrypoint.id}: ${scenario.id}.`
+        );
+      }
+      scenarioIds.add(scenario.id);
       const binding = runtimeBindingFor(pkg, entrypoint.id, scenario.id, plan.workload, entryCollectors);
       const fixturePath = path.join(runtimeDir, "fixtures", safeSegment(entrypoint.id), `${safeSegment(scenario.id)}.template.json`);
       const fixture = createFixtureTemplate(pkg, report, entrypoint.id, scenario, binding);
@@ -290,6 +318,7 @@ export async function prepareJavaRuntimeEvidence(caseDir: string): Promise<JavaR
     projectId: pkg.profile.projectId,
     projectHash: migrationProjectHash(pkg),
     sourceIdentity,
+    sourceSnapshot,
     entries,
     requiredEnvironment: finalizedEnvironment,
     driverTemplate: artifactReference(pkg, driverTemplatePath, driverTemplate),
@@ -328,8 +357,16 @@ export async function preflightJavaRuntimeEvidence(
   }
   check(checks, "project-hash", contract.projectHash === migrationProjectHash(pkg), "runtime contract matches the project package");
   check(checks, "contract-hash", contract.contractHash === runtimeContractHash(contract), "runtime contract integrity");
-  const currentSource = await captureAssessmentSourceIdentity(resolveMigrationProjectPath(pkg, pkg.profile.source.root));
+  const sourceRoot = resolveMigrationProjectPath(pkg, pkg.profile.source.root);
+  const currentSource = await captureAssessmentSourceIdentity(sourceRoot);
   check(checks, "source-identity", sameSourceIdentity(contract.sourceIdentity, currentSource), "Java source identity is unchanged");
+  const currentSnapshot = await captureReferenceSourceSnapshot(sourceRoot, pkg.profile.source.directories);
+  check(
+    checks,
+    "source-tree",
+    Boolean(contract.sourceSnapshot) && referenceSourceSnapshotsEqual(contract.sourceSnapshot, currentSnapshot),
+    "configured Java source directories are unchanged"
+  );
   for (const artifact of [
     contract.driverTemplate,
     contract.evidenceSchema,
@@ -361,6 +398,7 @@ export async function preflightJavaRuntimeEvidence(
           batch: scenarioSemanticGates(entry, scenario).includes("batch"),
           page: scenarioSemanticGates(entry, scenario).includes("page"),
           query: scenarioSemanticGates(entry, scenario).includes("query"),
+          writeSafety: scenarioSemanticGates(entry, scenario).includes("batch"),
           collectors: scenarioCollectors(entry, scenario)
         }).length === 0;
         if (valid) valid = await validateFixtureCollectorArtifacts(
@@ -498,6 +536,26 @@ export async function runJavaRuntimeEvidence(
   driverResults: EndpointRuntimeDriverResult[];
 }> {
   const pkg = await loadMigrationProject(caseDir);
+  const sourceSnapshot = await captureReferenceSourceSnapshot(
+    resolveMigrationProjectPath(pkg, pkg.profile.source.root),
+    pkg.profile.source.directories
+  );
+  try {
+    return await runJavaRuntimeEvidenceGuarded(pkg, environment);
+  } finally {
+    await assertReferenceSourceSnapshotUnchanged(sourceSnapshot, "runtime-run");
+  }
+}
+
+async function runJavaRuntimeEvidenceGuarded(
+  pkg: MigrationProjectPackage,
+  environment: NodeJS.ProcessEnv
+): Promise<{
+  bundle: JavaRuntimeEvidenceBundle;
+  validation: JavaRuntimeEvidenceValidation;
+  outputPath: string;
+  driverResults: EndpointRuntimeDriverResult[];
+}> {
   const contract = await requireJavaRuntimeContract(pkg);
   const preflight = await preflightJavaRuntimeEvidence(pkg.caseDir, environment);
   if (preflight.status !== "ready-to-run") {
@@ -1398,6 +1456,7 @@ async function realFixtureHash(
     batch: entry && scenario ? scenarioSemanticGates(entry, scenario).includes("batch") : false,
     page: entry && scenario ? scenarioSemanticGates(entry, scenario).includes("page") : false,
     query: entry && scenario ? scenarioSemanticGates(entry, scenario).includes("query") : false,
+    writeSafety: entry && scenario ? scenarioSemanticGates(entry, scenario).includes("batch") : false,
     collectors: entry && scenario ? scenarioCollectors(entry, scenario) : []
   }).length > 0) return undefined;
   return sha256(stableStringify(fixture));

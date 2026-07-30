@@ -41,7 +41,20 @@ test("real runtime fixtures require lineage, readiness, expectations and redacti
     entrypointId: "entry",
     scenarioId: "scenario",
     request: { body: {} },
-    expectations: { batch: { requireProgressTerminal: true } }
+    expectations: { batch: { requireProgressTerminal: true } },
+    writeSafety: {
+      mode: "disposable",
+      disposable: true,
+      writeApproved: true,
+      allowedTenantIds: ["tenant-test"],
+      allowedPanelIds: ["panel-test"],
+      allowedTables: ["fixture_rows"],
+      maxAffectedRows: 100,
+      markerKey: "migration_guard_case_id",
+      cleanupPredicate: "migration_guard_case_id = :caseId",
+      cleanupVerificationRequired: true,
+      expiresAt: "2999-01-01T00:00:00.000Z"
+    }
   };
   assert.deepEqual(validateMigrationFixture(fixture, {
     kind: "real-runtime",
@@ -49,7 +62,8 @@ test("real runtime fixtures require lineage, readiness, expectations and redacti
     projectHash: "hash",
     entrypointId: "entry",
     scenarioId: "scenario",
-    batch: true
+    batch: true,
+    writeSafety: true
   }), []);
   assert.ok(validateMigrationFixture({ ...fixture, request: { password: "persisted" } })
     .includes("MG-FIXTURE-SENSITIVE-CONTENT"));
@@ -57,6 +71,19 @@ test("real runtime fixtures require lineage, readiness, expectations and redacti
     .includes("MG-FIXTURE-BATCH-EXPECTATION-MISSING"));
   assert.ok(validateMigrationFixture({ ...fixture, expectations: {} }, { kind: "real-runtime", page: true })
     .includes("MG-FIXTURE-PAGE-EXPECTATION-MISSING"));
+  assert.ok(validateMigrationFixture({ ...fixture, writeSafety: undefined }, {
+    kind: "real-runtime",
+    batch: true,
+    writeSafety: true
+  }).includes("MG-FIXTURE-WRITE-SAFETY-MISSING"));
+  assert.ok(validateMigrationFixture({
+    ...fixture,
+    writeSafety: { ...fixture.writeSafety, disposable: false, mode: "read-only" as const }
+  }, {
+    kind: "real-runtime",
+    batch: true,
+    writeSafety: true
+  }).includes("MG-FIXTURE-WRITE-SCOPE-NOT-DISPOSABLE"));
 });
 
 test("fixture inspection excludes nested runtime collector specifications", async () => {
@@ -76,6 +103,10 @@ test("fixture inspection excludes nested runtime collector specifications", asyn
     await mkdir(path.join(root, "java-runtime", "entry", "scenario.collectors"), { recursive: true });
     await writeJsonFile(path.join(root, "java-runtime", "entry", "scenario.collectors", "mysql.json"), {
       protocol: "migration-guard.mysql-collector-spec/v1"
+    });
+    await mkdir(path.join(root, "real-candidates", "bundle"), { recursive: true });
+    await writeJsonFile(path.join(root, "real-candidates", "bundle", "request.json"), {
+      rawRequest: true
     });
 
     const inspections = await inspectMigrationFixtures(root);

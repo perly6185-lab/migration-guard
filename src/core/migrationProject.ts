@@ -1,6 +1,9 @@
 import path from "node:path";
 import { ensureDir, pathExists, readJsonFile, resolveMaybeRelative, writeJsonFile } from "./files.js";
-import type { ReviewedOwnershipPolicy } from "./endpointReplacementModel.js";
+import type {
+  ReplacementScenario,
+  ReviewedOwnershipPolicy
+} from "./endpointReplacementModel.js";
 import type { BehaviorClassificationRule } from "./behaviorGraph.js";
 import type { BatchGateRequirements } from "./vmpBatch.js";
 import type { PageGateRequirements } from "./pageRuntimeEvidence.js";
@@ -9,10 +12,12 @@ import type { RuntimeCollectorKind } from "./runtimeCollectors.js";
 import { sha256 } from "./hash.js";
 import { stableStringify } from "./normalize.js";
 import { resolveJavaSemanticRulePackages } from "./javaSemanticPackages.js";
+import type { MigrationCompletionContract } from "./migrationCompletion.js";
 
 export const MIGRATION_PROFILE_FILE = "profile.json";
 export const MIGRATION_SEMANTIC_RULES_FILE = "semantic-rules.json";
 export const MIGRATION_COMPATIBILITY_DECISIONS_FILE = "compatibility-decisions.json";
+export const MIGRATION_COMPLETION_CONTRACT_FILE = "completion-contract.json";
 
 export type MigrationContextKind = "tenant" | "user" | "request" | "datasource";
 export type MigrationContextRequirement = "required" | "optional" | "none";
@@ -52,6 +57,10 @@ export interface MigrationProjectProfile {
     language: string;
     root: string;
     serviceName: string;
+    productionPath?: {
+      requiredTraits: string[];
+      requiredRouteFragments: string[];
+    };
   };
   compatibility: {
     strict: boolean;
@@ -65,6 +74,14 @@ export interface MigrationSemanticRules {
   packageIds?: string[];
   ownershipPolicy: ReviewedOwnershipPolicy;
   classifications: BehaviorClassificationRule[];
+  runtimeScenarios?: Array<{
+    id: string;
+    entrypointId: string;
+    title: string;
+    category: ReplacementScenario["category"];
+    requiredDimensions: ReplacementScenario["requiredDimensions"];
+    reason: string;
+  }>;
   runtimeGates?: Array<{
     id: string;
     entrypointId: string;
@@ -86,6 +103,7 @@ export interface MigrationCompatibilityDecisions {
     status: "approved" | "rejected" | "pending";
     scope: string;
     reason: string;
+    resolvesFindings?: string[];
     approvedBy?: string;
     approvedAt?: string;
   }>;
@@ -96,11 +114,13 @@ export interface MigrationProjectPackage {
   profilePath: string;
   semanticRulesPath: string;
   compatibilityDecisionsPath: string;
+  completionContractPath: string;
   fixturesDir: string;
   evidenceDir: string;
   profile: MigrationProjectProfile;
   semanticRules: MigrationSemanticRules;
   compatibilityDecisions: MigrationCompatibilityDecisions;
+  completionContract?: MigrationCompletionContract;
 }
 
 export interface MigrationProjectValidation {
@@ -142,6 +162,7 @@ export async function loadMigrationProject(caseDir: string): Promise<MigrationPr
   const profilePath = path.join(resolvedCaseDir, MIGRATION_PROFILE_FILE);
   const semanticRulesPath = path.join(resolvedCaseDir, MIGRATION_SEMANTIC_RULES_FILE);
   const compatibilityDecisionsPath = path.join(resolvedCaseDir, MIGRATION_COMPATIBILITY_DECISIONS_FILE);
+  const completionContractPath = path.join(resolvedCaseDir, MIGRATION_COMPLETION_CONTRACT_FILE);
   const required = [profilePath, semanticRulesPath, compatibilityDecisionsPath];
   const missing = [];
   for (const file of required) if (!await pathExists(file)) missing.push(path.basename(file));
@@ -151,11 +172,15 @@ export async function loadMigrationProject(caseDir: string): Promise<MigrationPr
     profilePath,
     semanticRulesPath,
     compatibilityDecisionsPath,
+    completionContractPath,
     fixturesDir: path.join(resolvedCaseDir, "fixtures"),
     evidenceDir: path.join(resolvedCaseDir, "evidence"),
     profile: await readJsonFile<MigrationProjectProfile>(profilePath),
     semanticRules: await readJsonFile<MigrationSemanticRules>(semanticRulesPath),
-    compatibilityDecisions: await readJsonFile<MigrationCompatibilityDecisions>(compatibilityDecisionsPath)
+    compatibilityDecisions: await readJsonFile<MigrationCompatibilityDecisions>(compatibilityDecisionsPath),
+    completionContract: await pathExists(completionContractPath)
+      ? await readJsonFile<MigrationCompletionContract>(completionContractPath)
+      : undefined
   };
   const validation = validateMigrationProject(pkg);
   if (!validation.valid) throw new Error(`Invalid migration project package: ${validation.findings.join(", ")}.`);
@@ -186,11 +211,18 @@ export function validateMigrationProject(pkg: MigrationProjectPackage): Migratio
     }
   }
   if (!profile.target?.language || !profile.target?.root || !profile.target?.serviceName) findings.push("MP-TARGET-INCOMPLETE");
+  if (profile.target?.productionPath
+    && (!Array.isArray(profile.target.productionPath.requiredTraits)
+      || !Array.isArray(profile.target.productionPath.requiredRouteFragments)
+      || profile.target.productionPath.requiredTraits.some((item) => !item.trim())
+      || profile.target.productionPath.requiredRouteFragments.some((item) => !item.trim()))) {
+    findings.push("MP-TARGET-PRODUCTION-PATH-INVALID");
+  }
   if (profile.source?.root && profile.target?.root) {
     const sourceRoot = resolveMaybeRelative(pkg.caseDir, profile.source.root);
     const targetRoot = resolveMaybeRelative(pkg.caseDir, profile.target.root);
     if (pathsOverlap(sourceRoot, targetRoot)) findings.push("MP-SOURCE-TARGET-OVERLAP");
-    if (isSameOrNestedPath(sourceRoot, pkg.caseDir)) findings.push("MP-SOURCE-CASE-DIR-OVERLAP");
+    if (pathsOverlap(sourceRoot, pkg.caseDir)) findings.push("MP-SOURCE-CASE-DIR-OVERLAP");
   }
   if (semanticRules.schemaVersion !== 1 || semanticRules.ownershipPolicy?.version !== 1) findings.push("MP-SEMANTIC-RULES-VERSION-UNSUPPORTED");
   if (!Array.isArray(semanticRules.classifications) || !Array.isArray(semanticRules.ownershipPolicy?.rules)) findings.push("MP-SEMANTIC-RULES-INVALID");
@@ -238,8 +270,59 @@ export function validateMigrationProject(pkg: MigrationProjectPackage): Migratio
   }
   if (compatibilityDecisions.schemaVersion !== 1 || !Array.isArray(compatibilityDecisions.decisions)) findings.push("MP-COMPATIBILITY-DECISIONS-INVALID");
   const approved = new Set(compatibilityDecisions.decisions.filter((item) => item.status === "approved").map((item) => item.id));
+  const findingOwners = new Map<string, string>();
+  for (const decision of compatibilityDecisions.decisions) {
+    for (const finding of decision.resolvesFindings ?? []) {
+      if (!/^RP-(?:COMMAND|QUERY)-[A-Z0-9-]+$/.test(finding)) {
+        findings.push(`MP-COMPATIBILITY-FINDING-INVALID:${decision.id}:${finding}`);
+      }
+      const previous = findingOwners.get(finding);
+      if (previous && previous !== decision.id && decision.status === "approved") {
+        findings.push(`MP-COMPATIBILITY-FINDING-CONFLICT:${finding}`);
+      } else if (decision.status === "approved") {
+        findingOwners.set(finding, decision.id);
+      }
+    }
+  }
+  const runtimeScenarioKeys = new Set<string>();
+  const scenarioCategories = new Set([
+    "success", "validation", "context", "branch", "concurrency", "fault",
+    "compatibility", "scale"
+  ]);
+  const scenarioDimensions = new Set([
+    "http", "context", "decisions", "effects", "state", "events",
+    "concurrency", "failures", "performance"
+  ]);
+  for (const scenario of semanticRules.runtimeScenarios ?? []) {
+    const key = `${scenario.entrypointId}:${scenario.id}`;
+    if (!scenario.id || runtimeScenarioKeys.has(key)) {
+      findings.push(`MP-RUNTIME-SCENARIO-ID-INVALID:${scenario.id || "missing"}`);
+    }
+    runtimeScenarioKeys.add(key);
+    if (!entryIds.has(scenario.entrypointId)) {
+      findings.push(`MP-RUNTIME-SCENARIO-ENTRYPOINT-UNKNOWN:${scenario.id || "missing"}`);
+    }
+    if (!scenario.title?.trim() || !scenario.reason?.trim()) {
+      findings.push(`MP-RUNTIME-SCENARIO-DESCRIPTION-MISSING:${scenario.id || "missing"}`);
+    }
+    if (!scenarioCategories.has(scenario.category)) {
+      findings.push(`MP-RUNTIME-SCENARIO-CATEGORY-INVALID:${scenario.id || "missing"}`);
+    }
+    if (!Array.isArray(scenario.requiredDimensions)
+      || scenario.requiredDimensions.length === 0
+      || scenario.requiredDimensions.some((item) => !scenarioDimensions.has(item))) {
+      findings.push(`MP-RUNTIME-SCENARIO-DIMENSIONS-INVALID:${scenario.id || "missing"}`);
+    }
+  }
   for (const id of profile.compatibility?.approvedCorrectionIds ?? []) {
     if (!approved.has(id)) findings.push(`MP-APPROVED-CORRECTION-MISSING:${id}`);
+  }
+  if (pkg.completionContract) {
+    if (pkg.completionContract.schemaVersion !== 1) findings.push("MP-COMPLETION-CONTRACT-VERSION-UNSUPPORTED");
+    if (pkg.completionContract.projectId !== profile.projectId) findings.push("MP-COMPLETION-CONTRACT-PROJECT-MISMATCH");
+    if (!Array.isArray(pkg.completionContract.controls) || pkg.completionContract.controls.length === 0) {
+      findings.push("MP-COMPLETION-CONTROLS-MISSING");
+    }
   }
   return { valid: findings.length === 0, findings: [...new Set(findings)].sort() };
 }
@@ -252,7 +335,8 @@ export function migrationProjectHash(pkg: MigrationProjectPackage): string {
   return sha256(stableStringify({
     profile: pkg.profile,
     semanticRules: pkg.semanticRules,
-    compatibilityDecisions: pkg.compatibilityDecisions
+    compatibilityDecisions: pkg.compatibilityDecisions,
+    completionContract: pkg.completionContract ?? null
   }));
 }
 
@@ -295,7 +379,11 @@ function createMigrationProjectProfile(options: InitMigrationProjectOptions): Mi
     target: {
       language: "rust",
       root: path.resolve(options.targetRoot),
-      serviceName: options.serviceName ?? `${options.projectId}-migration`
+      serviceName: options.serviceName ?? `${options.projectId}-migration`,
+      productionPath: {
+        requiredTraits: [],
+        requiredRouteFragments: [endpoint]
+      }
     },
     compatibility: {
       strict: true,
@@ -313,6 +401,7 @@ function createEmptySemanticRules(): MigrationSemanticRules {
       rules: []
     },
     classifications: [],
+    runtimeScenarios: [],
     runtimeGates: []
   };
 }

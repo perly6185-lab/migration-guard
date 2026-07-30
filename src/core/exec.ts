@@ -51,9 +51,19 @@ export function runShellCommand(command: string, options: RunShellCommandOptions
       stderrTruncated ||= truncated;
     });
 
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       timedOut = true;
-      terminateProcessTree(child.pid);
+      const terminationError = await terminateProcessTree(child.pid);
+      if (terminationError && !settled) {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        child.kill();
+        finish({
+          exitCode: null,
+          signal: null,
+          error: terminationError
+        });
+      }
     }, options.timeoutMs);
 
     const finish = (result: Pick<CommandExecutionResult, "exitCode" | "signal" | "error">) => {
@@ -95,20 +105,38 @@ export function runShellCommand(command: string, options: RunShellCommandOptions
   });
 }
 
-function terminateProcessTree(pid: number | undefined): void {
-  if (pid === undefined) return;
+async function terminateProcessTree(pid: number | undefined): Promise<string | undefined> {
+  if (pid === undefined) return "Unable to terminate command: child process id is unavailable";
   if (process.platform === "win32") {
-    const killer = spawn("taskkill", ["/pid", String(pid), "/t", "/f"], {
-      stdio: "ignore",
-      windowsHide: true
+    return new Promise((resolve) => {
+      const stderrChunks: Buffer[] = [];
+      const killer = spawn("taskkill", ["/pid", String(pid), "/t", "/f"], {
+        windowsHide: true,
+        stdio: ["ignore", "ignore", "pipe"]
+      });
+      let resolved = false;
+      const finish = (error?: string) => {
+        if (resolved) return;
+        resolved = true;
+        resolve(error);
+      };
+      killer.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+      killer.on("error", (error) => {
+        finish(`Unable to terminate command process tree: ${error.message}`);
+      });
+      killer.on("close", (exitCode) => {
+        const details = Buffer.concat(stderrChunks).toString("utf8").trim();
+        finish(exitCode === 0
+          ? undefined
+          : `Unable to terminate command process tree (taskkill exit ${exitCode})${details ? `: ${details}` : ""}`);
+      });
     });
-    killer.on("error", () => undefined);
-    return;
   }
 
   signalProcessGroup(pid, "SIGTERM");
   const forceTimer = setTimeout(() => signalProcessGroup(pid, "SIGKILL"), 1000);
   forceTimer.unref();
+  return undefined;
 }
 
 function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {

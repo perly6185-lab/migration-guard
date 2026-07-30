@@ -38,7 +38,7 @@ export const JAVA_CORE_SEMANTIC_RULES: JavaCoreSemanticRule[] = [
 export const JAVA_CORE_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
   schemaVersion: 1,
   id: "builtin-java-core",
-  version: "1.1.0",
+  version: "1.2.0",
   language: "java",
   description: "Portable Java semantics extracted from generic built-ins plus promoted high-risk classifier rules.",
   compatibility: {
@@ -73,6 +73,24 @@ export const JAVA_CORE_SEMANTIC_RULE_PACKAGE: SemanticRulePackage = {
         winnerRuleId: "state-lookup-keyword",
         loserRuleId: "infrastructure-keyword",
         reason: "Repository and mapper lookup methods retain their more precise state-read behavior."
+      },
+      {
+        id: "async-submit-before-state-mutation",
+        winnerRuleId: "async",
+        loserRuleId: "state-mutation-keyword",
+        reason: "Executor submit describes an asynchronous boundary, not a durable state mutation."
+      },
+      {
+        id: "signal-acquire-before-state-mutation",
+        winnerRuleId: "signal-coordination",
+        loserRuleId: "state-mutation-keyword",
+        reason: "Semaphore acquire is coordination even though the generic mutation classifier also recognizes acquire."
+      },
+      {
+        id: "configuration-assembly-before-external-boundary",
+        winnerRuleId: "configuration-assembly",
+        loserRuleId: "external-boundary-keyword",
+        reason: "In-memory HTTP server configuration assembly is more specific than the generic http boundary keyword."
       }
     ]
   },
