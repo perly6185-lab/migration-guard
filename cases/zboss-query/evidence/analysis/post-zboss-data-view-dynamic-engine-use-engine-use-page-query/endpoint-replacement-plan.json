@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "createdAt": "2026-07-30T10:02:42.120Z",
+  "createdAt": "2026-07-30T13:04:50.903Z",
   "endpoint": {
     "runtime": "java",
     "method": "POST",
@@ -10,7 +10,7 @@
     "line": 195
   },
   "workload": "query-with-effects",
-  "status": "blocked",
+  "status": "ready",
   "behaviorGraphHash": "0a18bbfdb4e09f07428e283ddab48f05d46eec6bcc5d54061ac83f4998f6249b",
   "contracts": {
     "contexts": [
@@ -7828,14 +7828,33 @@
       "rollbackBoundary": "reviewed production rollback plan"
     }
   ],
-  "resolvedFindings": [],
-  "findings": [
-    "RP-QUERY-ASYNC-EFFECT-AFTER-RETURN",
-    "RP-QUERY-EFFECT-CONTRACT-MISSING",
-    "RP-QUERY-ENTRYPOINT-PARITY-UNPROVEN",
-    "RP-QUERY-MUTABLE-CACHE-ALIAS",
-    "RP-QUERY-REQUEST-SEMANTIC-DRIFT"
+  "resolvedFindings": [
+    {
+      "finding": "RP-QUERY-ASYNC-EFFECT-AFTER-RETURN",
+      "decisionId": "QUERY-DEC-CALENDAR-CACHE-ISOLATION",
+      "reason": "Approved correction: retain tenant/usePageId/viewId cache isolation but return owned defensive metadata so request-specific status enrichment cannot mutate a shared cached object."
+    },
+    {
+      "finding": "RP-QUERY-EFFECT-CONTRACT-MISSING",
+      "decisionId": "QUERY-DEC-CALENDAR-CACHE-ISOLATION",
+      "reason": "Approved correction: retain tenant/usePageId/viewId cache isolation but return owned defensive metadata so request-specific status enrichment cannot mutate a shared cached object."
+    },
+    {
+      "finding": "RP-QUERY-ENTRYPOINT-PARITY-UNPROVEN",
+      "decisionId": "QUERY-DEC-CALENDAR-VIEW-BINDING",
+      "reason": "Approved scoped binding: viewId 2064662147688243201 is resolved only under usePageId 2059838047023181826 and the stored view metadata supplies the calendar type."
+    },
+    {
+      "finding": "RP-QUERY-MUTABLE-CACHE-ALIAS",
+      "decisionId": "QUERY-DEC-CALENDAR-CACHE-ISOLATION",
+      "reason": "Approved correction: retain tenant/usePageId/viewId cache isolation but return owned defensive metadata so request-specific status enrichment cannot mutate a shared cached object."
+    },
+    {
+      "finding": "RP-QUERY-REQUEST-SEMANTIC-DRIFT",
+      "decisionId": "QUERY-DEC-CALENDAR-VIEW-BINDING",
+      "reason": "Approved scoped binding: viewId 2064662147688243201 is resolved only under usePageId 2059838047023181826 and the stored view metadata supplies the calendar type."
+    }
   ],
-  "nextAction": "RP-QUERY-ASYNC-EFFECT-AFTER-RETURN",
-  "planHash": "4e7b69f1bde6c95703fba2c151761d3874936d96d4110e9a62456dc56a1d4ab0"
+  "findings": [],
+  "planHash": "96727cf2cf07124a93846c37f1b622e488a8bbf2002c894ad69825a57df6abe6"
 }

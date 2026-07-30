@@ -3,9 +3,13 @@
   "$id": "migration-guard://zboss-page/horizontal-list-request-v1",
   "title": "ZBoss horizontal list request",
   "type": "object",
-  "required": ["horizontalId"],
+  "anyOf": [
+    { "required": ["horizontalId"] },
+    { "required": ["usePageId"] }
+  ],
   "properties": {
     "horizontalId": { "type": ["integer", "string"], "pattern": "^[1-9][0-9]*$" },
+    "usePageId": { "type": ["integer", "string"], "pattern": "^[1-9][0-9]*$" },
     "pageNo": { "type": ["integer", "null"], "minimum": 1 },
     "pageSize": { "type": ["integer", "null"], "minimum": 1, "maximum": 10000 },
     "operator": { "type": ["string", "null"] },

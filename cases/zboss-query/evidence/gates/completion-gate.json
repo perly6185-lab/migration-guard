@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "gate": "completion",
   "projectId": "zboss-query",
-  "projectHash": "36ee681eca039a0201fb1d70fd8f8a2d65bb89fbf1e99c878650478873eabb06",
+  "projectHash": "f9df8879df209e20482867710f9f4176bcd7e4e5ccf85ae31656d25b406e0cca",
   "status": "blocked",
   "capability": {
     "schemaVersion": 1,
-    "achieved": "L0",
-    "next": "L1",
+    "achieved": "L3",
+    "next": "L4-A",
     "claims": [
       {
         "level": "L0",
@@ -16,26 +16,18 @@
       },
       {
         "level": "L1",
-        "passed": false,
-        "blockers": [
-          "MG-CAPABILITY-SOURCE-GUARD-MISSING",
-          "MG-CAPABILITY-ANALYSIS-INCOMPLETE"
-        ]
+        "passed": true,
+        "blockers": []
       },
       {
         "level": "L2",
-        "passed": false,
-        "blockers": [
-          "MG-CAPABILITY-OFFLINE-CONTRACT-BLOCKED"
-        ]
+        "passed": true,
+        "blockers": []
       },
       {
         "level": "L3",
-        "passed": false,
-        "blockers": [
-          "MG-CAPABILITY-IMPLEMENTATION-CHECKS-BLOCKED",
-          "MG-CAPABILITY-SCENARIO-CONTRACT-BLOCKED"
-        ]
+        "passed": true,
+        "blockers": []
       },
       {
         "level": "L4-A",
@@ -71,31 +63,42 @@
   },
   "controlSummary": {
     "total": 17,
-    "passed": 0,
-    "blocked": 17
+    "passed": 5,
+    "blocked": 12
   },
   "findings": [
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:analysis.complete",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:dependency.protocol",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:implementation.checks",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:offline.contract",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.adapter.view-metadata-port",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.configuration",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.health-readiness",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.http-service",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:real.dual-replay",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:real.runtime-evidence",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.canary",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.observability",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.rollback-rehearsal",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.source-off",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.unified-real-gate",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:scenario.contract",
-    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:source.read-only-snapshot",
-    "MG-COMPLETION-CONTROL-BLOCKED:analysis.complete",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:dependency.protocol:integrationPassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:production.adapter.view-metadata-port:productionEligible",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:production.configuration:integrationPassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:production.health-readiness:integrationPassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:production.http-service:productionEligible",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:real.dual-replay:dualReplayPassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:real.runtime-evidence:realEvidencePassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:release.canary:canaryRehearsed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:release.observability:observabilityVerified",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:release.rollback-rehearsal:rollbackRehearsed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:release.source-off:sourceOffVerified",
+    "MG-COMPLETION-CONTROL-ARTIFACT-CLAIM-MISSING:release.unified-real-gate:unifiedRealGatePassed",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:real.dual-replay",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:real.runtime-evidence",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:release.canary",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:release.observability",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:release.rollback-rehearsal",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:release.source-off",
+    "MG-COMPLETION-CONTROL-ARTIFACT-INDEPENDENT-REVIEW-MISSING:release.unified-real-gate",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:dependency.protocol",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:production.adapter.view-metadata-port",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:production.configuration",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:production.health-readiness",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:production.http-service",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:real.dual-replay",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:real.runtime-evidence",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:release.canary",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:release.observability",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:release.rollback-rehearsal",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:release.source-off",
+    "MG-COMPLETION-CONTROL-ARTIFACT-STATUS-BLOCKED:release.unified-real-gate",
     "MG-COMPLETION-CONTROL-BLOCKED:dependency.protocol",
-    "MG-COMPLETION-CONTROL-BLOCKED:implementation.checks",
-    "MG-COMPLETION-CONTROL-BLOCKED:offline.contract",
     "MG-COMPLETION-CONTROL-BLOCKED:production.adapter.view-metadata-port",
     "MG-COMPLETION-CONTROL-BLOCKED:production.configuration",
     "MG-COMPLETION-CONTROL-BLOCKED:production.health-readiness",
@@ -106,17 +109,32 @@
     "MG-COMPLETION-CONTROL-BLOCKED:release.observability",
     "MG-COMPLETION-CONTROL-BLOCKED:release.rollback-rehearsal",
     "MG-COMPLETION-CONTROL-BLOCKED:release.source-off",
-    "MG-COMPLETION-CONTROL-BLOCKED:release.unified-real-gate",
-    "MG-COMPLETION-CONTROL-BLOCKED:scenario.contract",
-    "MG-COMPLETION-CONTROL-BLOCKED:source.read-only-snapshot"
+    "MG-COMPLETION-CONTROL-BLOCKED:release.unified-real-gate"
   ],
   "securityFindings": [],
   "evidence": [
     "D:\\learn\\migration-guard\\cases\\zboss-query\\completion-contract.json",
-    "D:\\learn\\migration-guard\\cases\\zboss-query\\completion-evidence.json"
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\completion-evidence.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\analysis.complete.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\dependency.protocol.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\implementation.checks.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\offline.contract.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\production.adapter.view-metadata-port.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\production.configuration.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\production.health-readiness.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\production.http-service.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\real.dual-replay.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\real.runtime-evidence.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\release.canary.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\release.observability.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\release.rollback-rehearsal.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\release.source-off.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\release.unified-real-gate.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\scenario.contract.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-query\\evidence\\completion\\source.read-only-snapshot.json"
   ],
-  "generatedAt": "2026-07-30T10:58:33.189Z",
+  "generatedAt": "2026-07-30T13:07:28.174Z",
   "freshness": "fresh",
   "upstream": [],
-  "reportHash": "3e6508ee72815327a1c47f8f9fbe2b8a5ce144af0807115da4be4116783b00c7"
+  "reportHash": "3170e538e2fd249bc53f16d6786323b06982704a8eed8547ea0d87a24968aed8"
 }

@@ -35,27 +35,45 @@
     },
     {
       "id": "PAGE-DEC-CALENDAR-VIEW-TYPE-SOURCE",
-      "status": "pending",
+      "status": "approved",
       "scope": "calendar view classification",
-      "reason": "The user identified usePageId 2059838047023181826 as a calendar view. Runtime query metadata must be the authoritative source; field or response shape must not classify the view."
+      "reason": "Approved parity rule: scoped ViewDefinition metadata is authoritative; response shape never classifies a calendar view. Bound to the ZBOSS-02 source snapshot and dedicated Rust regression test.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-30T20:55:58.0929768+08:00"
     },
     {
       "id": "PAGE-DEC-CALENDAR-QUERY-PAGE-BINDING",
-      "status": "pending",
+      "status": "approved",
       "scope": "query response to page request identity binding",
-      "reason": "Freeze how usePageId, viewId, panelId, pageId, interId and httpId from the metadata phase select the page execution path."
+      "reason": "Approved scoped binding: query resolves (usePageId, viewId), all reviewed identities remain lossless, and page execution rejects a panel mismatch.",
+      "resolvesFindings": [
+        "RP-QUERY-ENTRYPOINT-PARITY-UNPROVEN",
+        "RP-QUERY-MUTABLE-CACHE-ALIAS"
+      ],
+      "approvedBy": "user",
+      "approvedAt": "2026-07-30T20:55:58.0929768+08:00"
     },
     {
       "id": "PAGE-DEC-CALENDAR-PAGE-SIZE-10000",
-      "status": "pending",
+      "status": "approved",
       "scope": "calendar pageSize 10000 and page-size preference persistence",
-      "reason": "Approve only after latency, memory, response-size and total-count budgets are measured, and after deciding whether page-size preference writes are compatible."
+      "reason": "Approved boundary: accept at most 10000 rows, preserve total, enforce a 20 MB serialized-response and 40 MB payload-memory budget, and use skipSavePageSize=true when the target preference writer is not configured.",
+      "resolvesFindings": [
+        "RP-QUERY-ASYNC-EFFECT-AFTER-RETURN"
+      ],
+      "approvedBy": "user",
+      "approvedAt": "2026-07-30T20:55:58.0929768+08:00"
     },
     {
       "id": "PAGE-DEC-CALENDAR-TEMPORAL-SEMANTICS",
-      "status": "pending",
+      "status": "approved",
       "scope": "calendar date/time projection",
-      "reason": "The source and target must agree on start/end boundaries, all-day values, timezone conversion, null values and daylight-saving behavior."
+      "reason": "Approved transport rule: preserve date-only, offset timestamp, all-day and null values exactly; the generic endpoint performs no inferred timezone or DST normalization.",
+      "resolvesFindings": [
+        "RP-QUERY-REQUEST-SEMANTIC-DRIFT"
+      ],
+      "approvedBy": "user",
+      "approvedAt": "2026-07-30T20:55:58.0929768+08:00"
     }
   ]
 }

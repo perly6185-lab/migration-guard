@@ -1,114 +1,114 @@
 {
   "schemaVersion": 1,
   "projectId": "zboss-horizontal-list",
-  "projectHash": "81997d203d4fe61758e354622105d4b38e7d635eadb2509b270e503ac9fa82e3",
-  "generatedAt": "2026-07-30T10:58:37.176Z",
+  "projectHash": "c4968d325487648cef048ac34d3a477e463420e5f390d7e2332677e2e8a4bfb2",
+  "generatedAt": "2026-07-30T13:06:10.127Z",
   "controls": {
     "source.read-only-snapshot": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach source-snapshot evidence and set status to passed after review."
     },
     "analysis.complete": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach analysis-report evidence and set status to passed after review."
     },
     "offline.contract": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach analysis-report evidence and set status to passed after review."
     },
     "implementation.checks": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach test-report evidence and set status to passed after review."
     },
     "scenario.contract": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach test-report evidence and set status to passed after review."
     },
     "dependency.protocol": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach container-integration evidence and set status to passed after review."
     },
     "production.adapter.mysql-horizontal-query-executor": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach static-attestation evidence and set status to passed after review."
     },
     "production.adapter.horizontal-refresh-coordinator": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach static-attestation evidence and set status to passed after review."
     },
     "production.http-service": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach static-attestation evidence and set status to passed after review."
     },
     "production.configuration": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach container-integration evidence and set status to passed after review."
     },
     "production.health-readiness": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach container-integration evidence and set status to passed after review."
     },
     "real.runtime-evidence": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach runtime-replay evidence and set status to passed after review."
     },
     "real.dual-replay": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach runtime-replay evidence and set status to passed after review."
     },
     "release.unified-real-gate": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach runtime-replay evidence and set status to passed after review."
     },
     "release.observability": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach operational-drill evidence and set status to passed after review."
     },
     "release.canary": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach operational-drill evidence and set status to passed after review."
     },
     "release.rollback-rehearsal": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach operational-drill evidence and set status to passed after review."
     },
     "release.source-off": {
       "status": "blocked",
-      "observedAt": "2026-07-30T10:58:37.176Z",
+      "observedAt": "2026-07-30T13:06:10.127Z",
       "artifacts": [],
       "note": "Attach operational-drill evidence and set status to passed after review."
     }

@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "issue": 81,
+  "capturedAt": "2026-07-30T20:55:58.0929768+08:00",
+  "sourceMode": "read-only-static-review",
+  "referenceSourceSnapshots": [
+    {
+      "path": "zboss-module-data-service/src/main/java/com/iagz/zboss/module/data/controller/admin/view/dynamic/engine/use/EngineUsePageController.java",
+      "sha256": "572cb2784e377c15851061eb77e50089da000e81d07e82cde6969c186d3e94ee"
+    },
+    {
+      "path": "zboss-module-data-service/src/main/java/com/iagz/zboss/module/data/viewmeta/page/application/ViewMetaPageRouteApplicationServiceImpl.java",
+      "sha256": "0fcbf9c5e91f1362700a47b02dd05159e7bdba4c454b88c50f0e5baa5ce3fe0f"
+    },
+    {
+      "path": "zboss-module-data-service/src/main/java/com/iagz/zboss/module/data/viewmeta/common/pagequery/infrastructure/adapter/ViewMetaPageQueryPostProcessPortAdapter.java",
+      "sha256": "35fcf0807bd6954e75adafba3db303112eb0192c03d617888fd5763f435248ea"
+    },
+    {
+      "path": "zboss-module-data-service/src/main/java/com/iagz/zboss/module/data/viewmeta/common/pagequery/application/ViewMetaPageQueryCommonApplicationServiceImpl.java",
+      "sha256": "5e9a72c701e4c5efefb59ca2189a4cfd5a091001190d7be5b31ff5d47d46bada"
+    },
+    {
+      "path": "zboss-module-data-service/src/main/java/com/iagz/zboss/module/data/viewmeta/ledger/application/ViewMetaLedgerQueryApplicationServiceImpl.java",
+      "sha256": "cec827801ca425683e69f277330d01feb6c31738206be3c7b1754e4cb5bec506"
+    },
+    {
+      "path": "zboss-module-data-service/src/main/java/com/iagz/zboss/module/data/viewmeta/fieldvaluesync/application/ViewMetaFieldValueSyncStatusResponseSupport.java",
+      "sha256": "02f18e984aae9382a3e8962ab6aa610ba660ae51ed7f2a1b8b891ee3337aef15"
+    },
+    {
+      "path": "zboss-module-data-service/src/main/java/com/iagz/zboss/module/data/controller/admin/view/dynamic/engine/use/EngineUseHorizontalController.java",
+      "sha256": "0a0880cf9a50f393c123b3c9ca886e1f04e00f7ac71d5d62266e69781cb7481d"
+    },
+    {
+      "path": "zboss-module-data-service/src/main/java/com/iagz/zboss/module/data/controller/admin/view/dynamic/engine/use/vo/EngineUseHorizontalInterReqVO.java",
+      "sha256": "bc021cde303f3aca833a4001f8a439ce27dd2533f721e810d1a7c7f427328717"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "PAGE-DEC-CALENDAR-VIEW-TYPE-SOURCE",
+      "sourceFinding": "Calendar classification reads the stored ViewDefinition view type before calendar config is attached.",
+      "targetRule": "Only scoped view metadata classifies a calendar; response shape is not a classifier.",
+      "test": "page_dec_calendar_view_type_source_uses_authoritative_metadata"
+    },
+    {
+      "id": "PAGE-DEC-CALENDAR-QUERY-PAGE-BINDING",
+      "sourceFinding": "Query and page are separate controller routes and carry the reviewed use-page, view, page, panel, inter and HTTP identities.",
+      "targetRule": "Bind view metadata by (usePageId, viewId), reject panel mismatch, and keep all reviewed identities lossless.",
+      "test": "page_dec_calendar_query_page_binding_freezes_scoped_identity"
+    },
+    {
+      "id": "PAGE-DEC-CALENDAR-PAGE-SIZE-10000",
+      "sourceFinding": "The accepted client contract sends pageSize 10000; page-size preference persistence is a side effect of the Java path.",
+      "targetRule": "Accept at most 10000 rows, preserve total, cap deterministic payload memory, and require skipSavePageSize=true where preference persistence is not configured.",
+      "test": "page_dec_calendar_page_size_10000_preserves_total_and_boundary"
+    },
+    {
+      "id": "PAGE-DEC-CALENDAR-TEMPORAL-SEMANTICS",
+      "sourceFinding": "The generic page path transports field values without defining an endpoint-specific timezone conversion.",
+      "targetRule": "Preserve date-only, offset timestamp, all-day and null values exactly; do not infer or normalize timezone/DST offsets.",
+      "test": "page_dec_calendar_temporal_semantics_preserves_boundaries_nulls_and_offsets"
+    },
+    {
+      "id": "QUERY-DEC-CALENDAR-VIEW-BINDING",
+      "sourceFinding": "View metadata lookup is scoped by the requested usePageId and explicit viewId.",
+      "targetRule": "A missing or mismatched (usePageId, viewId) binding fails closed.",
+      "test": "query_dec_calendar_view_binding_is_use_page_and_view_scoped"
+    },
+    {
+      "id": "QUERY-DEC-CALENDAR-CACHE-ISOLATION",
+      "sourceFinding": "The Java cache key includes viewId, but the cached response object is returned directly and later request-specific status enrichment mutates it.",
+      "targetRule": "Preserve scoped cache-key isolation and intentionally correct the shared mutable alias by returning owned defensive data.",
+      "test": "query_dec_calendar_cache_isolation_returns_defensive_owned_data"
+    },
+    {
+      "id": "HORIZONTAL-LIST-DEC-IDENTITY-REWRITE",
+      "sourceFinding": "When horizontalId is absent, the Java controller treats incoming usePageId as horizontalId and reloads stored horizontal identities.",
+      "targetRule": "Supplied horizontalId and derived usePageId branches resolve the same horizontal identity and response.",
+      "test": "horizontal_list_dec_identity_rewrite_supports_supplied_and_derived_ids"
+    },
+    {
+      "id": "HORIZONTAL-LIST-DEC-UNKNOWN-SHOW-ARCHIVED",
+      "sourceFinding": "EngineUseHorizontalInterReqVO has no showArchived member, while the accepted client request includes it.",
+      "targetRule": "Accept showArchived for client compatibility but ignore it in horizontal list semantics.",
+      "test": "horizontal_list_dec_unknown_show_archived_is_accepted_and_ignored"
+    },
+    {
+      "id": "HORIZONTAL-LIST-DEC-PAGE-SIZE-10000",
+      "sourceFinding": "The accepted horizontal client contract sends pageSize 10000.",
+      "targetRule": "Return no more than 10000 rows, preserve total and ordering, and cap deterministic payload memory.",
+      "test": "horizontal_list_dec_page_size_10000_preserves_total_and_boundary"
+    },
+    {
+      "id": "HORIZONTAL-LIST-DEC-COMPOSITE-SELECT-KEY",
+      "sourceFinding": "Calculated fields are processed after horizontalListPackage and the client selects a pipe-delimited composite output key.",
+      "targetRule": "Preserve the composite output key verbatim after stable row ordering and calculated-field projection.",
+      "test": "horizontal_list_dec_composite_select_key_preserves_projection_and_order"
+    },
+    {
+      "id": "HORIZONTAL-LIST-DEC-REFRESH-EFFECT-ORDER",
+      "sourceFinding": "The Java controller calls syncColDataUpdate before horizontalListPackage and processes calculated fields after the query.",
+      "targetRule": "REFRESH coordination completes before list execution; sync failure prevents the query and is retryable.",
+      "test": "horizontal_list_dec_refresh_effect_order_syncs_before_query_and_fails_closed"
+    }
+  ]
+}

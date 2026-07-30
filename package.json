@@ -46,7 +46,9 @@
     "batch-delete-rust:trust-gate": "npm run build && node rust/zboss-rust/internal/dynamic-engine-runtime/delete/scripts/trust-gate.mjs",
     "batch-delete-rust:l4b-gate": "npm run build && node rust/zboss-rust/internal/dynamic-engine-runtime/delete/scripts/l4b-gate.mjs",
     "zboss-rust:gate": "node rust/zboss-rust/scripts/unified-gate.mjs",
+    "zboss-rust:compatibility-gate": "node rust/zboss-rust/internal/dynamic-engine-runtime/scripts/compatibility-gate.mjs",
     "zboss-rust:completion-sync": "npm run build && node scripts/ci/zboss-completion-sync.mjs",
+    "zboss-rust:compatibility-completion": "node scripts/ci/zboss-compatibility-completion.mjs",
     "zboss-rust:run": "cargo run --manifest-path rust/zboss-rust/Cargo.toml --bin zboss"
   },
   "keywords": [

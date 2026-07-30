@@ -3,33 +3,49 @@
   "decisions": [
     {
       "id": "HORIZONTAL-LIST-DEC-IDENTITY-REWRITE",
-      "status": "pending",
+      "status": "approved",
       "scope": "request-normalization",
-      "reason": "When horizontalId is absent the controller derives horizontal, use-page, page and panel identities from stored horizontal metadata; both supplied-ID and derived-ID branches require parity evidence."
+      "reason": "Approved parity rule: when horizontalId is absent, incoming usePageId supplies the horizontal identity; supplied-ID and derived-ID branches must return the same scoped result.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-30T20:55:58.0929768+08:00"
     },
     {
       "id": "HORIZONTAL-LIST-DEC-UNKNOWN-SHOW-ARCHIVED",
-      "status": "pending",
+      "status": "approved",
       "scope": "request-contract",
-      "reason": "The supplied request contains showArchived, but EngineUseHorizontalInterReqVO does not declare that field. Runtime behavior must establish whether it is ignored or rejected."
+      "reason": "Approved compatibility rule: accept the extra showArchived client property but ignore it because EngineUseHorizontalInterReqVO does not declare or apply the field.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-30T20:55:58.0929768+08:00"
     },
     {
       "id": "HORIZONTAL-LIST-DEC-PAGE-SIZE-10000",
-      "status": "pending",
+      "status": "approved",
       "scope": "pagination-and-performance",
-      "reason": "The supplied request asks for 10000 rows. Response completeness, total semantics, memory use and latency require a measured compatibility budget."
+      "reason": "Approved boundary: return no more than 10000 ordered rows, preserve the unpaged total, and enforce 10 second, 20 MB serialized-response and 40 MB payload-memory offline budgets.",
+      "approvedBy": "user",
+      "approvedAt": "2026-07-30T20:55:58.0929768+08:00"
     },
     {
       "id": "HORIZONTAL-LIST-DEC-COMPOSITE-SELECT-KEY",
-      "status": "pending",
+      "status": "approved",
       "scope": "horizontal-projection",
-      "reason": "The composite select key custField60040_0|custField59627 must preserve projection identity, row ordering and calculated-field behavior."
+      "reason": "Approved parity rule: preserve custField60040_0|custField59627 verbatim after stable ordering and calculated-field projection.",
+      "resolvesFindings": [
+        "RP-QUERY-MUTABLE-CACHE-ALIAS"
+      ],
+      "approvedBy": "user",
+      "approvedAt": "2026-07-30T20:55:58.0929768+08:00"
     },
     {
       "id": "HORIZONTAL-LIST-DEC-REFRESH-EFFECT-ORDER",
-      "status": "pending",
+      "status": "approved",
       "scope": "operator-refresh",
-      "reason": "REFRESH executes syncColDataUpdate before horizontalListPackage; the target must preserve mutation ordering, locking and failure behavior."
+      "reason": "Approved effect order: REFRESH coordination must complete before list execution; a sync failure prevents the query and remains retryable.",
+      "resolvesFindings": [
+        "RP-QUERY-EFFECT-CONTRACT-MISSING"
+      ],
+      "approvedBy": "user",
+      "approvedAt": "2026-07-30T20:55:58.0929768+08:00"
     }
   ]
 }

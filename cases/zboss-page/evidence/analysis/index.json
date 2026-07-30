@@ -1,7 +1,7 @@
 {
   "version": 1,
   "projectId": "zboss-page",
-  "projectHash": "e797014ea05ae48bb9c3fd8cc7e4d003b52a438f0470cb2bc533c8c5b947f9d0",
+  "projectHash": "1447a1fbd1e1e43af4eeb09c36723ab79da9367ef50d50125a99ac39b470dad0",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -1102,23 +1102,18 @@
     ],
     "excluded": []
   },
-  "status": "blocked",
+  "status": "ready",
   "entries": [
     {
       "id": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
       "analysisPath": "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-page-page\\java-analysis.json",
-      "analysisHash": "b5c2012d3d3c0e28330be0e80098ff45742db4f734234effaaff6d63c8f236cf",
+      "analysisHash": "739478d145c4f2933fbb97ab818b9d352154af9d4433f924d430d2acd2a13bc3",
       "graphPath": "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-page-page\\behavior-graph.json",
-      "graphHash": "a379585c7308918d45da232fc219abaca73e0d666086517ef824e133e382db8d",
+      "graphHash": "78b2ff754e8b92a3060156086666d7d03b358c613cbc11a1a92ffb47e49b1f13",
       "planPath": "D:\\learn\\migration-guard\\cases\\zboss-page\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-page-page\\endpoint-replacement-plan.json",
-      "planHash": "7aed34ad8df4743fe6ad7dc305904440c284fdd5a887be0c56bcd2f9fe60f76b",
-      "status": "blocked",
-      "findings": [
-        "RP-QUERY-ASYNC-EFFECT-AFTER-RETURN",
-        "RP-QUERY-ENTRYPOINT-PARITY-UNPROVEN",
-        "RP-QUERY-MUTABLE-CACHE-ALIAS",
-        "RP-QUERY-REQUEST-SEMANTIC-DRIFT"
-      ]
+      "planHash": "923adf1cb60e2443b69a3b120f9baadfaf0b3878c00ad9829afc2384e6404782",
+      "status": "ready",
+      "findings": []
     }
   ]
 }

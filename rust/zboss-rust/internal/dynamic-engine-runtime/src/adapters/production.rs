@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     sync::Arc,
+    time::Duration,
 };
 
 use serde::Deserialize;
@@ -14,7 +15,7 @@ use crate::{
             HorizontalTableSchema, MysqlHorizontalListAdapter, SqlxMysqlHorizontalQueryExecutor,
             SqlxMysqlStatementExecutor,
         },
-        tokio_redis::TokioRedisLeaseExecutor,
+        tokio_redis::{RedisHorizontalRefreshCoordinator, TokioRedisLeaseExecutor},
     },
     domain::{
         context::RequestContext,
@@ -28,7 +29,7 @@ use crate::{
         field_catalog::{FieldCatalogEntry, FieldCatalogPort},
         field_delete::{FieldDeleteCommand, FieldDeleteCommit, FieldDeletePort},
         field_schema::{FieldSchemaCommand, FieldSchemaCommit, FieldSchemaPort},
-        horizontal::HorizontalListPort,
+        horizontal::{HorizontalListPort, HorizontalRefreshCoordinator},
         init::{InitCommand, InitCommit, InitPort},
         lease::{Lease, LeaseLockPort, LeasePriority},
         metadata::MetadataPort,
@@ -99,6 +100,7 @@ pub struct ProductionAdapters {
     scopes: BTreeMap<ScopeKey, RuntimeScope>,
     page_query: MysqlPageQueryAdapter<SqlxMysqlStatementExecutor>,
     _lease: RedisLeaseAdapter<TokioRedisLeaseExecutor>,
+    horizontal_refresh: RedisHorizontalRefreshCoordinator,
 }
 
 impl ProductionAdapters {
@@ -119,10 +121,24 @@ impl ProductionAdapters {
         // Preserve the established Redis namespace during the runtime rename
         // so mixed-version deployments still coordinate on the same leases.
         let lease_executor = TokioRedisLeaseExecutor::connect(&redis_url, "zboss-page")?;
+        let horizontal_refresh = RedisHorizontalRefreshCoordinator::connect(
+            &redis_url,
+            std::env::var("ZBOSS_HORIZONTAL_REFRESH_STREAM")
+                .unwrap_or_else(|_| "zboss:horizontal:refresh".to_owned()),
+            Duration::from_secs(
+                std::env::var("ZBOSS_HORIZONTAL_REFRESH_TIMEOUT_SECONDS")
+                    .unwrap_or_else(|_| "30".to_owned())
+                    .parse::<u64>()
+                    .map_err(|error| {
+                        format!("invalid ZBOSS_HORIZONTAL_REFRESH_TIMEOUT_SECONDS: {error}")
+                    })?,
+            ),
+        )?;
         Self::build(
             catalog,
             statement_executor,
             RedisLeaseAdapter::new(lease_executor),
+            horizontal_refresh,
         )
         .map(Arc::new)
     }
@@ -131,6 +147,7 @@ impl ProductionAdapters {
         catalog: ProductionCatalog,
         statement_executor: SqlxMysqlStatementExecutor,
         lease: RedisLeaseAdapter<TokioRedisLeaseExecutor>,
+        horizontal_refresh: RedisHorizontalRefreshCoordinator,
     ) -> Result<Self, String> {
         if catalog.scopes.is_empty() {
             return Err("production catalog must contain at least one scope".to_owned());
@@ -198,6 +215,7 @@ impl ProductionAdapters {
             scopes,
             page_query: MysqlPageQueryAdapter::new(statement_executor),
             _lease: lease,
+            horizontal_refresh,
         })
     }
 
@@ -408,6 +426,18 @@ impl HorizontalListPort for ProductionAdapters {
         self.scope(context)?
             .horizontal
             .list_horizontal(context, query)
+    }
+}
+
+impl HorizontalRefreshCoordinator for ProductionAdapters {
+    fn refresh_horizontal(
+        &self,
+        context: &RequestContext,
+        horizontal_id: u64,
+    ) -> Result<(), ApiError> {
+        self.scope(context)?;
+        self.horizontal_refresh
+            .refresh_horizontal(context, horizontal_id)
     }
 }
 

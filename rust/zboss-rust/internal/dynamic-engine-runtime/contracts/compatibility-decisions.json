@@ -17,6 +17,18 @@
     {
       "id": "PAGE-DEC-REFRESH-EFFECT-ORDER",
       "targetRule": "acquire, sync, timestamp, undo-clear, reconcile, query and owner/fencing-token release remain ordered; compensation errors never replace the primary error"
+    },
+    {
+      "id": "QUERY-DEC-CALENDAR-CACHE-ISOLATION",
+      "targetRule": "preserve scoped cache identity while returning owned defensive metadata instead of the Java shared mutable cache object"
+    },
+    {
+      "id": "HORIZONTAL-LIST-DEC-UNKNOWN-SHOW-ARCHIVED",
+      "targetRule": "accept and ignore showArchived because the Java horizontal list request VO does not declare or apply it"
+    },
+    {
+      "id": "PAGE-DEC-CALENDAR-PAGE-SIZE-10000",
+      "targetRule": "accept the 10000-row boundary without an implicit preference write when skipSavePageSize is true"
     }
   ],
   "unknownDifferencePolicy": "fail-closed"

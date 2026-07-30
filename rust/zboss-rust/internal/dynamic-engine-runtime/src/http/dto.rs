@@ -119,8 +119,8 @@ pub struct HorizontalListRequest {
 
 impl HorizontalListRequest {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.horizontal_id.is_none() {
-            return Err("horizontalId is required until identity rewrite is approved");
+        if self.horizontal_id.is_none() && self.use_page_id.is_none() {
+            return Err("horizontalId or usePageId is required");
         }
         if self.page_no == Some(0) {
             return Err("pageNo must be positive");
