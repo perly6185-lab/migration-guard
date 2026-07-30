@@ -337,7 +337,14 @@ async function inspectInstalledPackage(tarballPath: string): Promise<{ help: str
     const files = await listRelativeFiles(packageRoot);
     const forbiddenFiles = files.filter((file) => file.startsWith("src/") || file.startsWith("pilots/") || file.includes(".test."));
     return { help, initContract, fileCount: files.length, forbiddenFiles };
-  } finally { await fs.rm(temp, { recursive: true, force: true }); }
+  } finally {
+    await fs.rm(temp, {
+      recursive: true,
+      force: true,
+      maxRetries: process.platform === "win32" ? 8 : 2,
+      retryDelay: 100
+    });
+  }
 }
 
 export function normalizeSelfRefactorInitContract(output: string, fixtureRoot: string): string {
