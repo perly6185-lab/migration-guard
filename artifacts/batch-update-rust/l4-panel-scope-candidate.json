@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-update-l4-panel-scope",
+  "observedAt": "2026-07-29",
+  "source": {
+    "gatewayBaseUrl": "https://test.ia-gz.com/admin-api",
+    "suppliedRoute": "/zboss/data/view-dynamic-data/redoStatus",
+    "suppliedRouteInvoked": false,
+    "queryMode": "read-only MySQL metadata through the approved test-server bridge"
+  },
+  "binding": {
+    "tenantId": "2059823220968001539",
+    "panelId": "2059838046666665986",
+    "pageId": "2059838046687637506",
+    "usePageId": "2059838047023181826",
+    "operationalId": "2059838046700220419",
+    "physicalTable": "cust_table6300"
+  },
+  "shape": {
+    "fieldCount": 52,
+    "mappedFieldCount": 52,
+    "readOnlyFieldCount": 26,
+    "horizontalDefinitionCount": 1,
+    "physicalTableCount": 1,
+    "estimatedPhysicalRows": 22747,
+    "primaryKeyFieldConfigured": false
+  },
+  "classification": {
+    "readContractCandidate": true,
+    "batchWriteFixtureCandidate": false,
+    "reason": "The nominated scope is an existing employee-attendance dataset with approximately 22,747 rows and no configured pkFieldId. It is not demonstrated to be disposable or isolated.",
+    "permittedNow": [
+      "metadata discovery",
+      "read-only contract checks",
+      "request-shape preparation"
+    ],
+    "stillBlocked": [
+      "fixture row insertion",
+      "batch update invocation",
+      "fault injection",
+      "cleanup mutation",
+      "promotion of any result to real-runtime evidence"
+    ]
+  },
+  "requiredBeforeWrite": [
+    "a dedicated test token and matching userId",
+    "an explicitly disposable or isolated panel/usePage scope",
+    "explicit permission to seed, update, and delete migration-guard rows",
+    "a verified primary or composite fixture key and cleanup predicate"
+  ],
+  "decision": "REAL-SCOPE-DISCOVERED-WRITE-GATE-BLOCKED"
+}

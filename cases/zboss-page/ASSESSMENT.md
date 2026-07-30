@@ -90,3 +90,38 @@ REFRESH 分支同时涉及同步、时间戳/状态写入、undo 清理、查询
 4. 对四项兼容性决策逐项评审并冻结证据。
 
 详细拆分、验收条件和执行顺序见 [DEVELOPMENT-PLAN.md](./DEVELOPMENT-PLAN.md)。
+
+## 日历视图组合场景补充
+
+用户确认 `usePageId=2059838047023181826`、`viewId=2064662147688243201`
+对应日历视图。该页面采用两阶段加载：
+
+1. `/engine-use-page/query` 读取指定 `usePageId + viewId` 的页面和视图元数据；
+2. `/engine-use-page/page` 使用 `usePageId`、panel/page/inter/http 标识和 26 个投影字段
+   拉取最多 10000 条日历数据。
+
+此前相同 `usePageId` 的运行样本命名为 `horizontal-page`。现保留旧名称以维护既有
+证据哈希，但其视图类型推断不再视为可信事实。后续必须由 query 响应中的视图类型、
+viewId 和 panel 配置证明它是日历视图。
+
+该组合场景新增四项 fail-closed 决策：视图类型来源、query/page 标识绑定、
+10000 行资源预算、日历时间语义。精确请求当前也不能被标记为纯只读：
+query 链路可能执行字段配置自愈写，page 链路在未设置 `skipSavePageSize=true`
+时可能保存分页偏好。
+
+Rust `page-service` 现已直接接受该日历 page 请求：`reqId` 可缺省并从请求上下文
+取得，`usePageId` 与 `pageId` 作为不同身份保留，字符串 Long ID 以 `u64` 精确解析，
+分页兼容上限提升为 10000。`selectValues` 中的 `field -> field` 自映射按投影声明
+处理，不再错误编译成 WHERE 条件。
+
+## 2026-07-30 阻断处理结果
+
+Rust 侧已增加 Axum/Tokio HTTP runtime、SQLx MySQL statement executor、Redis 原子
+lease executor，并以 `cargo build --locked --all-features --release` 及 production
+profile 进程完成构建、健康检查和 page 路由验证。production-path attestation 的
+deployable、adapter、build、runtime、eligible 五项现均为 `true`。
+
+production profile 在缺少部署凭据和完整元数据/权限绑定时保持 fail-closed：
+`/health` 返回 200，`/ready` 与业务路由返回 503，避免 memory adapter 冒充生产数据。
+剩余 real-gate 阻断是 Java/目标真实回放证据和四项日历语义决策，需由授权现场采集
+解除。

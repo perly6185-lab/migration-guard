@@ -132,7 +132,10 @@
             "mysql",
             "redis",
             "events",
-            "sql-trace"
+            "sql-trace",
+            "ai-trace",
+            "stream-trace",
+            "tool-trace"
           ]
         },
         "status": {
@@ -768,6 +771,15 @@
             },
             "sql-trace": {
               "$ref": "#/$defs/collectorEvidence"
+            },
+            "ai-trace": {
+              "$ref": "#/$defs/collectorEvidence"
+            },
+            "stream-trace": {
+              "$ref": "#/$defs/collectorEvidence"
+            },
+            "tool-trace": {
+              "$ref": "#/$defs/collectorEvidence"
             }
           }
         },
@@ -833,7 +845,10 @@
                   "mysql",
                   "redis",
                   "events",
-                  "sql-trace"
+                  "sql-trace",
+                  "ai-trace",
+                  "stream-trace",
+                  "tool-trace"
                 ]
               },
               "scenarioId": {

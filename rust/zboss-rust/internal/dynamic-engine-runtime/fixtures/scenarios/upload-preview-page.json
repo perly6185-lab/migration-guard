@@ -1,0 +1,14 @@
+{
+  "reqId": "prp10-upload",
+  "usePageId": 7,
+  "pageNo": 1,
+  "pageSize": 20,
+  "orderValues": [
+    "customer:asc"
+  ],
+  "postValues": {
+    "uploadTmpTableName": "tmp_orders_1",
+    "uploadTmpFlag": 1
+  },
+  "skipSavePageSize": true
+}

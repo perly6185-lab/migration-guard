@@ -1,0 +1,31 @@
+{
+  "protocol": "migration-guard.rust-production-verification/v1",
+  "projectId": "zboss-page",
+  "targetSourceHash": "b6a58d3267096fadd68dd63d7d717fee5c33b0c5b7dfe4fa7ac793a6a8dc0c38",
+  "synthetic": true,
+  "producer": {
+    "name": "replace-with-producer-identity",
+    "tool": "replace-with-build-and-runtime-harness"
+  },
+  "build": {
+    "command": [
+      "cargo",
+      "build",
+      "--locked"
+    ],
+    "exitCode": 1,
+    "finishedAt": "replace-with-ISO-8601",
+    "logPath": "production-build.log",
+    "logSha256": "replace-with-sha256"
+  },
+  "runtime": {
+    "startedAt": "replace-with-ISO-8601",
+    "observedAt": "replace-with-ISO-8601",
+    "healthStatus": 0,
+    "exercisedRoutes": [
+      "/zboss/data/view/dynamic/engine/use/engine-use-page/page"
+    ],
+    "logPath": "production-runtime.log",
+    "logSha256": "replace-with-sha256"
+  }
+}

@@ -6,6 +6,30 @@
   },
   "classifications": [
     {
+      "id": "page-allocation-order-barrier",
+      "symbolPattern": "AllocationOrderBarrier\\.(?:awaitTurn|signalDone)",
+      "behavior": "coordination",
+      "reason": "Coordinates deterministic allocation order between workers without owning business-state persistence."
+    },
+    {
+      "id": "page-condition-clock-read",
+      "symbolPattern": "ConditionValueParser\\.currentTimeMillis",
+      "behavior": "clock-read",
+      "reason": "Reads the current clock while resolving relative date conditions."
+    },
+    {
+      "id": "page-temporal-calculation",
+      "symbolPattern": "(?:DynamicDateOptionEnum\\.(?:mondayOf|point|quarter|range)|DynamicDateResolver\\.(?:chineseMonth|chineseYear|endOfDay|startOfDay)|LocalDate\\.(?:plusWeeks|with)|TemporalAdjusters\\.lastDayOfMonth|Year\\.(?:atDay|parse)|YearMonth\\.atDay)",
+      "behavior": "calculation",
+      "reason": "Performs deterministic date-range, boundary or calendar projection calculations over supplied values."
+    },
+    {
+      "id": "page-expression-and-format-calculation",
+      "symbolPattern": "(?:ColorAttributeDefaultFilter\\.sameColor|ColorEvaluationResult\\.(?:putBackground|putFont)|ConditionOperator\\.from|ConditionValueParser\\.(?:pad2|parseDateTimestamp|parseNumber|tryParseWithFormatter)|CrossTableAggregator\\.plain|DoubleBinOp\\.apply|JSON\\.parse|NumberFormat\\.parse|SafeExpressionEvaluator\\.(?:dateAdd|literalValue|stringify|truthy)|TEN\\.pow)",
+      "behavior": "calculation",
+      "reason": "Parses or calculates request-local values and response attributes without external I/O or durable mutation."
+    },
+    {
       "id": "page-number-comparison-normalization",
       "symbolPattern": "ExpValueFieldDataServiceImpl\\.toNumberComparisonValue",
       "behavior": "calculation",
@@ -28,6 +52,22 @@
       "symbolPattern": "(?:ViewMetaRefreshSyncProgressService|ViewMetaRefreshSyncProgressPort)\\.",
       "behavior": "event-publish",
       "reason": "Refresh progress frames are externally observable event semantics."
+    }
+  ],
+  "runtimeScenarios": [
+    {
+      "id": "calendar-view",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "title": "Calendar view page phase",
+      "category": "compatibility",
+      "requiredDimensions": [
+        "http",
+        "context",
+        "decisions",
+        "state",
+        "performance"
+      ],
+      "reason": "Verify the page phase of the user-provided calendar workflow, including identity binding, temporal semantics and the 10000-row resource boundary."
     }
   ],
   "runtimeGates": [
@@ -76,6 +116,29 @@
       },
       "decisionIds": [
         "PAGE-DEC-HORIZONTAL-HAVING"
+      ]
+    },
+    {
+      "id": "page-calendar-workflow",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioPattern": "^calendar-view$",
+      "collectors": [
+        "mysql",
+        "sql-trace"
+      ],
+      "gates": {
+        "page": {
+          "expectedStatus": 200,
+          "requirePagination": true,
+          "preserveRowOrder": true,
+          "requireTotalFilterParity": true
+        }
+      },
+      "decisionIds": [
+        "PAGE-DEC-CALENDAR-VIEW-TYPE-SOURCE",
+        "PAGE-DEC-CALENDAR-QUERY-PAGE-BINDING",
+        "PAGE-DEC-CALENDAR-PAGE-SIZE-10000",
+        "PAGE-DEC-CALENDAR-TEMPORAL-SEMANTICS"
       ]
     },
     {

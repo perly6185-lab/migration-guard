@@ -1,7 +1,7 @@
 {
   "version": 1,
   "projectId": "zboss-page",
-  "projectHash": "56aa35908691d3260c90a8d7a1023252ac931dc1b786dcb2f5c34eac20d3229b",
+  "projectHash": "8b6382cf41106314ee91a17f6c38ee77547e8302ed9c58da8f4a157e8a67ad91",
   "variables": [
     {
       "name": "MG_JAVA_BASE_URL",
@@ -112,5 +112,5 @@
       "purpose": "runtime"
     }
   ],
-  "contractHash": "6af27c2ef097e03592ebfc251201d19bff8d943e8c9721c4e217a48a050daa96"
+  "contractHash": "bf9df8a0d1c0703bdbbc6be03c86988d0e64693a18c3da823e91c98f02d230a2"
 }

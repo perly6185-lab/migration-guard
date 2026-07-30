@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.completion-control-evidence/v1",
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "controlId": "schema-transition.client-boundary",
+  "evidenceKind": "container-integration",
+  "status": "passed",
+  "observedAt": "2026-07-30T10:58:41.308Z",
+  "synthetic": false,
+  "realEligible": true,
+  "producer": {
+    "tool": "migration-guard-zboss-completion-sync",
+    "version": "0.3.0-beta.1",
+    "command": "npm run zboss-rust:completion-sync",
+    "identity": "migration-guard:zboss-evidence-bridge"
+  },
+  "claims": {
+    "integrationPassed": true,
+    "upstreamPath": "artifacts/batch-update-rust/container-adapter-gate.json",
+    "upstreamDecision": "L4-A-PROTOCOL-READY",
+    "upstreamReportHash": "4b146b7c7d70ac00918fc656794c4c1070b6cc36f7def8ab830cb97c8a30d163"
+  }
+}

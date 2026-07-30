@@ -1,0 +1,46 @@
+[package]
+name = "zboss-dynamic-engine-runtime"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+publish = false
+
+[dependencies]
+axum = "=0.8.8"
+redis = { version = "=0.27.6", default-features = false, features = ["tokio-comp", "script"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.148"
+sha2 = "=0.10.9"
+sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-tokio", "mysql", "json"] }
+tokio = { version = "=1.52.3", features = ["macros", "rt-multi-thread", "signal", "net", "sync", "time"] }
+
+[lib]
+name = "zboss_dynamic_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "zboss-page"
+path = "src/main.rs"
+
+[[bin]]
+name = "prp13-memory-driver"
+path = "src/bin/prp13-memory-driver.rs"
+required-features = ["memory"]
+
+[[bin]]
+name = "zboss-batch-update"
+path = "src/bin/zboss-batch-update.rs"
+
+[[bin]]
+name = "zboss-batch-delete-rust"
+path = "src/bin/zboss-batch-delete.rs"
+
+[[bin]]
+name = "batch-delete-offline-driver"
+path = "src/bin/batch-delete-offline-driver.rs"
+
+[features]
+default = ["memory"]
+memory = []
+mysql = []
+redis = []

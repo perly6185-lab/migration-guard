@@ -5,8 +5,13 @@
     "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
     "access": "read-only",
     "directories": [
-      "src/main/java",
-      "src/main/resources"
+      "zboss-module-data-api/src/main/java",
+      "zboss-module-data-domain/src/main/java",
+      "zboss-module-data-infrastructure/src/main/java",
+      "zboss-module-data-infrastructure/src/main/resources",
+      "zboss-module-data-service/src/main/java",
+      "zboss-module-data-service/src/main/resources",
+      "zboss-module-data-type/src/main/java"
     ],
     "language": "java",
     "framework": "spring",
@@ -56,8 +61,17 @@
   },
   "target": {
     "language": "rust",
-    "root": "D:\\learn\\migration-guard\\rust\\batch-update-service",
-    "serviceName": "zboss-batch-update"
+    "root": "../../rust/zboss-rust/internal/dynamic-engine-runtime",
+    "serviceName": "zboss-batch-update",
+    "productionPath": {
+      "requiredTraits": [
+        "MysqlBatchExecutor",
+        "RedisScriptExecutor"
+      ],
+      "requiredRouteFragments": [
+        "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress"
+      ]
+    }
   },
   "compatibility": {
     "strict": true,
@@ -68,7 +82,8 @@
       "BUP-DEC-CHUNK-IDEMPOTENCY",
       "BUP-DEC-BATCH-REFRESH-LEASE",
       "BUP-DEC-UNDO-DURABILITY",
-      "BUP-DEC-PROGRESS-TERMINAL"
+      "BUP-DEC-PROGRESS-TERMINAL",
+      "BUP-DEC-SCHEMA-TRANSITION"
     ]
   }
 }

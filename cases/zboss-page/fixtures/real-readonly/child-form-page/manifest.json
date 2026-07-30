@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "status": "accepted",
+  "fixtureKind": "real-runtime-readonly",
+  "realEvidenceEligible": true,
+  "scope": "read-only",
+  "scenarioId": "child-form-page",
+  "promotionId": "RB-03",
+  "credentialsIncluded": false,
+  "rawResponsesIncluded": false,
+  "request": {
+    "method": "POST",
+    "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/page",
+    "file": "request.json",
+    "fileHash": "a18dc3b718aad61e4d0e2b5cef134534469c0da5869840691022d4940b696c59",
+    "executionRequestHash": "c28c3ed30b9368e6aaf711f04026938cc962ed882acb8717cea9661c1df2b944",
+    "effect": "read"
+  },
+  "executionSafety": {
+    "injectSkipSavePageSize": true,
+    "mysqlSessionReadOnly": true,
+    "mutatingEndpointsAllowed": false
+  },
+  "observedContract": {
+    "businessCode": 0,
+    "responseHash": "e32cb3178ce8460afcbfa2da301701454880149719b5361afd67de87571f9002",
+    "successfulRepeatHashMatches": true,
+    "responseKeys": [
+      "data26050144",
+      "operational26050036"
+    ],
+    "rowsPerGroup": [
+      30,
+      30
+    ],
+    "conditionLinks": 4
+  },
+  "evidence": {
+    "path": "artifacts/page-rust/real-rb03-readonly.json",
+    "reportHash": "30fddc4167da59a78cebd40fe6f00cf024916766708b4c5489a56d5e6caadb85"
+  },
+  "referenceSourcePolicy": {
+    "access": "read-only",
+    "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768",
+    "treeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "fileCount": 7175
+  }
+}

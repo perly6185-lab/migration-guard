@@ -1,13 +1,33 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-27T15:03:19.619Z",
+  "generatedAt": "2026-07-30T09:29:37.757Z",
   "projectId": "zboss-batch-update-with-progress",
-  "projectHash": "9ebcfe8959343908d6b33e736eec350244864703d702d7da24c90aecce93fb49",
+  "projectHash": "b8d74e551d81131615b27a5d710bd9d94f0b9db943409ea47317879065f62f29",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
     "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
     "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+  },
+  "sourceSnapshot": {
+    "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
+    "directories": [
+      "zboss-module-data-api/src/main/java",
+      "zboss-module-data-domain/src/main/java",
+      "zboss-module-data-infrastructure/src/main/java",
+      "zboss-module-data-infrastructure/src/main/resources",
+      "zboss-module-data-service/src/main/java",
+      "zboss-module-data-service/src/main/resources",
+      "zboss-module-data-type/src/main/java"
+    ],
+    "identity": {
+      "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+      "dirty": true,
+      "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+      "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+    },
+    "treeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "fileCount": 7175
   },
   "entries": [
     {
@@ -20,8 +40,8 @@
         "mysql",
         "redis"
       ],
-      "analysisHash": "93a6b7502f9cd3b3888c33b02ba9df6ace9e0792c1f134eed554d0b095602de8",
-      "planHash": "90239e6701ba3732f53bc4cfb9a4aa2317144ef0e46ec93ea361eaabc7215c98",
+      "analysisHash": "a5bcbc82183c240b26f86d919d6ba2b5c09537f5dfa983c928c0228b16a748ee",
+      "planHash": "2285a6e1916f2e924f9d733b95d8389ec8a22a58f5166b2a83f62403c54b9efc",
       "scenarios": [
         {
           "id": "batch-partial-failure",
@@ -51,7 +71,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-partial-failure.template.json",
-            "hash": "09b3e853589d38e7a6871414562864c595f0a0edbc2c41fb1134198c99055cae"
+            "hash": "9de9b18522cedeff8ed82e2afb48e64bc00b769f0a5f897cfcfb82e97e3d8977"
           }
         },
         {
@@ -80,7 +100,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-row-limit-rejected.template.json",
-            "hash": "24302a55fcf62e62dc845e0e3649312fb8e90d572e4a50570be906e5f4e2a038"
+            "hash": "f47745e8396908d2d3e2044841f5ac6a57a8ace43bc7f3131554a2dd21782685"
           }
         },
         {
@@ -110,7 +130,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-update-success.template.json",
-            "hash": "fbf459386cf4f2ed4c90e05595299555840f2d089bf2af140869d7cccd59768b"
+            "hash": "31cd57ca284b28d9e0b963be5e23ee3f5f2734bad8bd13e18f1ec3ea045919e5"
           }
         },
         {
@@ -137,7 +157,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/branch-coverage.template.json",
-            "hash": "67a45313d568c3d93a8c74ce22d9fec39d8a8a04676beb7054765b5d0c441d65"
+            "hash": "ea58d5cf2d3caf3bdb1f7d91ad32255c521ddac29b96eae92bbec3bf5543ed22"
           }
         },
         {
@@ -167,7 +187,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/chunked-paste-progress.template.json",
-            "hash": "3fc7228cbbd9a8f054849d6726974cbf026a5c198237623c92e43b3262850417"
+            "hash": "66a42c5daa32b25d5a314961b323423c898f88e2290e9f2a03fe2ceb4f3f097a"
           }
         },
         {
@@ -196,7 +216,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write.template.json",
-            "hash": "59722db79bcd75201145d6c6cc0d78e998b1db780a11f4f26270fe26598046dc"
+            "hash": "aef5d75ad370569b537ced94bff25761bc831e0cb2e15c46cab5f1f8a576b937"
           }
         },
         {
@@ -223,7 +243,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/context-isolation.template.json",
-            "hash": "8de7fc9e0d507d21c8130e6b01715bf9f2850fdf1405ca40a209a7d421ff66ed"
+            "hash": "fc5e4d2b6686dc50acb0bcd451cc324140a30841b959d057f55ad8a10b9d9ddf"
           }
         },
         {
@@ -252,7 +272,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/dependency-failure.template.json",
-            "hash": "d673272316cbe183959407934724f5e38d2ff9163f1f8af0d9577289b2abeee3"
+            "hash": "7484644bba3fa4cf6e9672ddb9dfc14218d24c01e0007a7e2123a1745566117d"
           }
         },
         {
@@ -279,7 +299,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/entrypoint-parity.template.json",
-            "hash": "4938c0663612d232ac0cfea80610df38d90afe6c04740c034f21576123a49a8f"
+            "hash": "9090651b78b6700993d046ad8ea1e1b953b5b68291c212fae167f6511764ccc1"
           }
         },
         {
@@ -306,7 +326,36 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/horizontal-batch-upsert.template.json",
-            "hash": "34718134f314acf9ace983ad579b1dd60ef40ccd87063eef7422eb22f821601b"
+            "hash": "b0ab350709f27c06442df696e0594caabeb54b2460eab8d3d51d9fdefc66a2ea"
+          }
+        },
+        {
+          "id": "post-commit-effect-failure",
+          "title": "Post-commit effect durability",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-UNDO-DURABILITY"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/post-commit-effect-failure.template.json",
+            "hash": "1f1e57655c5e5f51caf950e3b4cbaf9cc5acaf505763d5b75aae1c23e05983f2"
           }
         },
         {
@@ -333,7 +382,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success.template.json",
-            "hash": "18a361bb0b8e81f6437ee8888f267ed65ba98e5b97147e235744fd1d970486d7"
+            "hash": "691a20274dad52eb26c98f7359c8a046d7614d011c0b7ecaf46d47adb0203ac7"
           }
         },
         {
@@ -362,7 +411,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/progress-event-shape.template.json",
-            "hash": "ffe9178d67acea54113c4a00a310b032fbb4486aa4e0a36be73bb32a294db4a9"
+            "hash": "c3de81045565c54d0808bd4491cd47a9251589232de8b1b6553eddac32ee72ea"
           }
         },
         {
@@ -390,7 +439,36 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/scale-boundary.template.json",
-            "hash": "986442ffd9dcefcdcd876406944ef7e780bafb275981b30d210cc52c975861db"
+            "hash": "4dc04d71a68403cd946b6727dc1729836a2479ff73b1c8f1f33c2f2d6e37a90c"
+          }
+        },
+        {
+          "id": "schema-transition-failure",
+          "title": "Schema transition failure",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [
+            "events",
+            "mysql",
+            "redis"
+          ],
+          "semanticGates": [
+            "batch"
+          ],
+          "decisionIds": [
+            "BUP-DEC-SCHEMA-TRANSITION"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/schema-transition-failure.template.json",
+            "hash": "f12e697b514b6ecc2faf856ed6e1860a118ff8a190cb4e216cc2f3a4c2c8d201"
           }
         },
         {
@@ -421,7 +499,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/transaction-failure.template.json",
-            "hash": "50f7ee5aa1663ed7d91477f5a2098d3d23b98da3803b8829cbe9df566c5ef4e9"
+            "hash": "bb2d6bcea97c5f587c274e355552c0c110239f7dea87aa47207f84c43dd154a5"
           }
         },
         {
@@ -451,7 +529,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/undo-excludes-failed-rows.template.json",
-            "hash": "1f7a726bcbca59538699dcfeb8f3ca47c08286e678fc95731672028ccde8c599"
+            "hash": "99c6e1f8e1b6d6428c8d0b1398ea7b2114afb7e0f86b74d1e4a55bf14adea6d7"
           }
         },
         {
@@ -480,7 +558,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/validation-failure.template.json",
-            "hash": "3ef28f26fdb46dee7d81f707759784c25fa2debf4c45b2ab45bb38e1e772614e"
+            "hash": "a4df551ff9bbf868b83822ab9f28b4a3967c07f97f282b6f3b12abfb6dd5bf53"
           }
         },
         {
@@ -507,7 +585,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/web-rpc-entrypoint-parity.template.json",
-            "hash": "611bbb2830747f33bbdf86cb22df124e51439d1fa59db66be1c48923beb8625d"
+            "hash": "235538471a111d20446b935e2d87abcb840a71cb0037d3f5dc5d5e0c535a9683"
           }
         }
       ]
@@ -539,7 +617,7 @@
   },
   "evidenceSchema": {
     "path": "evidence/runtime/java/runtime-evidence.schema.json",
-    "hash": "b004030bef09393435796232786910e9f83fc4405bbdf1f48917517baab2b046"
+    "hash": "62d6b7a751d1ddc4b9d6d43aeab31f49e5058cb496b961a83d638eb2fa9a15d3"
   },
   "collectorTemplates": {
     "events": {
@@ -555,5 +633,5 @@
       "hash": "77aa85acb1bf44606e90f0dfd0ce60158cd0f7745abf77df5f8302d3bbba91fd"
     }
   },
-  "contractHash": "7c9262af887e19406149929e3147541bcbb43ba8fb2024133627b5dd2e54ae6d"
+  "contractHash": "20e91b7df989f72e367eea751e002bd0c3436f8a758681e15cefb6ac6cce1676"
 }

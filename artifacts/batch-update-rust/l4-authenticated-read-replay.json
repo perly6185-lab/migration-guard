@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-update-l4-authenticated-read-replay",
+  "observedAt": "2026-07-29T16:23:35+08:00",
+  "identity": {
+    "userId": "2059823219277697026",
+    "tenantId": "2059823220968001539",
+    "authorizationHeaderBound": true,
+    "tokenPersisted": false,
+    "tokenIncludedInEvidence": false
+  },
+  "dataHandling": {
+    "rawResponsePersisted": false,
+    "businessFieldValuesPersisted": false,
+    "businessFieldValuesPrinted": false,
+    "evidenceContainsOnly": [
+      "application status",
+      "response structure",
+      "collection counts",
+      "field names",
+      "response byte length",
+      "SHA-256 response digest"
+    ]
+  },
+  "queryReplay": {
+    "method": "POST",
+    "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/query",
+    "applicationCode": 0,
+    "responseBytes": 228760,
+    "responseSha256": "0977cbfeaab58880255f17fd6838ba0b7f474f91a387da1f43c001685c2f80a0",
+    "topLevelDataProperties": [
+      "reqId",
+      "usePageId",
+      "layoutId",
+      "fileName",
+      "pageMode",
+      "pageCreateMode",
+      "pageShowType",
+      "pageLineHeightType",
+      "pageHeaderRowHeight",
+      "panelRespKeyList",
+      "data",
+      "valueSyncStatusMap",
+      "useLayoutDataList",
+      "parentUsePageIdList",
+      "viewId",
+      "calendarConfig"
+    ],
+    "status": "passed"
+  },
+  "pageReplay": {
+    "method": "POST",
+    "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/page",
+    "applicationCode": 0,
+    "responseBytes": 280706,
+    "responseSha256": "46e53b55867c65e7b22b37795f73848cca43fa1f9f96cd759e5a1a507d2781e2",
+    "responseBuckets": [
+      {
+        "responseKey": "data26050188",
+        "rowCount": 244,
+        "total": 244,
+        "pageNo": 1,
+        "recordPropertyCount": 24
+      },
+      {
+        "responseKey": "operational26050047",
+        "rowCount": 244,
+        "total": 244,
+        "pageNo": 1,
+        "recordPropertyCount": 24
+      }
+    ],
+    "recordProperties": [
+      "custField60066",
+      "custField60065",
+      "selfBookSerialNumber",
+      "custField60064",
+      "custField60173",
+      "custField60052",
+      "custField60051",
+      "custField60073",
+      "selfBookSerialNumberKey",
+      "custField60050",
+      "custField60072",
+      "selfBookRowIndex",
+      "custField60049",
+      "custField60048",
+      "custField60047",
+      "custField60046",
+      "custField60045",
+      "custField60067",
+      "selfBookPageId",
+      "id",
+      "locked",
+      "selfBookRowNum",
+      "selfBookFieldAttribute",
+      "released"
+    ],
+    "virtualGroupKeysReturnedAsPhysicalColumns": false,
+    "childFormFieldReturned": true,
+    "status": "passed"
+  },
+  "deploymentDrift": {
+    "referenceRoute": "GET /zboss/data/view-dynamic-use-group-data/confirm-sync/latest",
+    "gatewayApplicationCode": 404,
+    "directServiceApplicationCode": 404,
+    "gatewayOrRoutingOnly": false,
+    "finding": "The currently deployed JAR does not expose a read-only route that exists in the reference source snapshot.",
+    "impact": "Real evidence must record the deployed artifact version and cannot assume all reference-source observability endpoints are available."
+  },
+  "writeRoutesInvoked": [],
+  "classification": {
+    "authenticatedReadBaseline": "passed",
+    "batchWriteEvidencePromoted": 0,
+    "confirmSyncInvoked": false,
+    "batchUpdateInvoked": false,
+    "decision": "L4-READ-BASELINE-PASS-WRITE-GATE-BLOCKED"
+  }
+}

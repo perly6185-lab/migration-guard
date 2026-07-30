@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "gate": "completion",
+  "projectId": "zboss-horizontal-list",
+  "projectHash": "81997d203d4fe61758e354622105d4b38e7d635eadb2509b270e503ac9fa82e3",
+  "status": "blocked",
+  "capability": {
+    "schemaVersion": 1,
+    "achieved": "L0",
+    "next": "L1",
+    "claims": [
+      {
+        "level": "L0",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L1",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-SOURCE-GUARD-MISSING",
+          "MG-CAPABILITY-ANALYSIS-INCOMPLETE"
+        ]
+      },
+      {
+        "level": "L2",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-OFFLINE-CONTRACT-BLOCKED"
+        ]
+      },
+      {
+        "level": "L3",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-IMPLEMENTATION-CHECKS-BLOCKED",
+          "MG-CAPABILITY-SCENARIO-CONTRACT-BLOCKED"
+        ]
+      },
+      {
+        "level": "L4-A",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-DEPENDENCY-PROTOCOL-BLOCKED"
+        ]
+      },
+      {
+        "level": "L4-B",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-CONCRETE-ADAPTERS-MISSING",
+          "MG-CAPABILITY-DEPLOYABLE-SERVICE-MISSING"
+        ]
+      },
+      {
+        "level": "L4-C",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-REAL-EVIDENCE-BLOCKED",
+          "MG-CAPABILITY-DUAL-REPLAY-BLOCKED"
+        ]
+      },
+      {
+        "level": "L4",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-UNIFIED-REAL-GATE-BLOCKED"
+        ]
+      }
+    ]
+  },
+  "controlSummary": {
+    "total": 18,
+    "passed": 0,
+    "blocked": 18
+  },
+  "findings": [
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:analysis.complete",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:dependency.protocol",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:implementation.checks",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:offline.contract",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.adapter.horizontal-refresh-coordinator",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.adapter.mysql-horizontal-query-executor",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.configuration",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.health-readiness",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:production.http-service",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:real.dual-replay",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:real.runtime-evidence",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.canary",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.observability",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.rollback-rehearsal",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.source-off",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.unified-real-gate",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:scenario.contract",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:source.read-only-snapshot",
+    "MG-COMPLETION-CONTROL-BLOCKED:analysis.complete",
+    "MG-COMPLETION-CONTROL-BLOCKED:dependency.protocol",
+    "MG-COMPLETION-CONTROL-BLOCKED:implementation.checks",
+    "MG-COMPLETION-CONTROL-BLOCKED:offline.contract",
+    "MG-COMPLETION-CONTROL-BLOCKED:production.adapter.horizontal-refresh-coordinator",
+    "MG-COMPLETION-CONTROL-BLOCKED:production.adapter.mysql-horizontal-query-executor",
+    "MG-COMPLETION-CONTROL-BLOCKED:production.configuration",
+    "MG-COMPLETION-CONTROL-BLOCKED:production.health-readiness",
+    "MG-COMPLETION-CONTROL-BLOCKED:production.http-service",
+    "MG-COMPLETION-CONTROL-BLOCKED:real.dual-replay",
+    "MG-COMPLETION-CONTROL-BLOCKED:real.runtime-evidence",
+    "MG-COMPLETION-CONTROL-BLOCKED:release.canary",
+    "MG-COMPLETION-CONTROL-BLOCKED:release.observability",
+    "MG-COMPLETION-CONTROL-BLOCKED:release.rollback-rehearsal",
+    "MG-COMPLETION-CONTROL-BLOCKED:release.source-off",
+    "MG-COMPLETION-CONTROL-BLOCKED:release.unified-real-gate",
+    "MG-COMPLETION-CONTROL-BLOCKED:scenario.contract",
+    "MG-COMPLETION-CONTROL-BLOCKED:source.read-only-snapshot"
+  ],
+  "securityFindings": [],
+  "evidence": [
+    "D:\\learn\\migration-guard\\cases\\zboss-horizontal-list\\completion-contract.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-horizontal-list\\completion-evidence.json"
+  ],
+  "generatedAt": "2026-07-30T10:58:37.741Z",
+  "freshness": "fresh",
+  "upstream": [],
+  "reportHash": "bc1345a92e623533d7ed9aed712dff2216229da4ca74f21b649abd008819d3d3"
+}

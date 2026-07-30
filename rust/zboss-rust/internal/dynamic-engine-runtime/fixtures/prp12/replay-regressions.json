@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "stage": "PRP-12",
+  "replays": [
+    {
+      "propertyId": "failure-path-eventual-unlock",
+      "seed": 12012007,
+      "iteration": 23,
+      "observedFailure": "Preference fault was bypassed by a request that skipped page-size persistence.",
+      "resolution": "The failure-path generator now exercises normal preference persistence before checking eventual lease recovery.",
+      "status": "replayed-pass"
+    }
+  ]
+}

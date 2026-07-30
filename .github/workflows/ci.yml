@@ -76,3 +76,34 @@ jobs:
       - name: Beta readiness
         if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
         run: npm run beta:readiness
+
+  rust:
+    name: ZBoss Rust / Ubuntu
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Setup Rust 1.89
+        run: |
+          rustup toolchain install 1.89.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.89.0
+
+      - name: Build Migration Guard
+        run: npm run build
+
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked --manifest-path rust/zboss-rust/Cargo.toml
+
+      - name: Unified Rust workspace gate
+        run: npm run zboss-rust:gate

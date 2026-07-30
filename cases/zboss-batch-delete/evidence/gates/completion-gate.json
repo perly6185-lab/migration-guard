@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "gate": "completion",
+  "projectId": "zboss-batch-delete",
+  "projectHash": "9d47c281e6b3bf157450e168d14c7018ccaa518ba960bc3de0b112dc6a58f226",
+  "status": "blocked",
+  "capability": {
+    "schemaVersion": 1,
+    "achieved": "L4-B",
+    "next": "L4-C",
+    "claims": [
+      {
+        "level": "L0",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L1",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L2",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L3",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-A",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-B",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-C",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-REAL-EVIDENCE-BLOCKED",
+          "MG-CAPABILITY-DUAL-REPLAY-BLOCKED"
+        ]
+      },
+      {
+        "level": "L4",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-UNIFIED-REAL-GATE-BLOCKED"
+        ]
+      }
+    ]
+  },
+  "controlSummary": {
+    "total": 19,
+    "passed": 12,
+    "blocked": 7
+  },
+  "findings": [
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:real.dual-replay",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:real.runtime-evidence",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.canary",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.observability",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.rollback-rehearsal",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.source-off",
+    "MG-COMPLETION-CONTROL-ARTIFACT-MISSING:release.unified-real-gate",
+    "MG-COMPLETION-CONTROL-BLOCKED:real.dual-replay",
+    "MG-COMPLETION-CONTROL-BLOCKED:real.runtime-evidence",
+    "MG-COMPLETION-CONTROL-BLOCKED:release.canary",
+    "MG-COMPLETION-CONTROL-BLOCKED:release.observability",
+    "MG-COMPLETION-CONTROL-BLOCKED:release.rollback-rehearsal",
+    "MG-COMPLETION-CONTROL-BLOCKED:release.source-off",
+    "MG-COMPLETION-CONTROL-BLOCKED:release.unified-real-gate"
+  ],
+  "securityFindings": [],
+  "evidence": [
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\completion-contract.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\completion-evidence.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\analysis.complete.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\dependency.protocol.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\implementation.checks.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\offline.contract.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\production.adapter.batch-delete-store.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\production.adapter.compensation-outbox.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\production.adapter.progress-sink.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\production.configuration.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\production.health-readiness.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\production.http-service.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\scenario.contract.json",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\completion\\source.read-only-snapshot.json"
+  ],
+  "generatedAt": "2026-07-30T10:58:45.799Z",
+  "freshness": "fresh",
+  "upstream": [],
+  "reportHash": "2dd9d4cad408fbe5173c590c330175005b91328b3f0bd854fbdfbf1ef5873d43"
+}

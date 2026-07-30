@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "draft-runtime",
+  "fixtureId": "ledger-three-row-delete",
+  "status": "draft",
+  "candidateStatus": "candidate-not-executed-by-migration-guard",
+  "realEvidenceEligible": false,
+  "mutationPolicy": "requires-explicit-disposable-write-approval",
+  "source": {
+    "baseUrl": "https://test.ia-gz.com/admin-api",
+    "method": "POST",
+    "path": "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchDelete",
+    "tenantId": "2059823220968001539"
+  },
+  "ledger": {
+    "tableName": "cust_table7119",
+    "panelId": "2082276811427217409",
+    "usePageId": "2082276811842453506",
+    "expectedFields": [
+      "custField66444",
+      "custField66445"
+    ]
+  },
+  "request": {
+    "interId": "2082276810223452163",
+    "httpId": "2082276811863425027",
+    "usePageId": "2082276811842453506",
+    "panelId": "2082276811427217409",
+    "batchPostValueList": [
+      {
+        "id": "2082397610825953281"
+      },
+      {
+        "id": "2082397610809176066"
+      },
+      {
+        "id": "2082397610804981762"
+      }
+    ],
+    "operationKind": "ROW_DELETE",
+    "operationLabel": "3 行"
+  },
+  "expectedPrecondition": {
+    "allRowsActive": true,
+    "rowLabelsFromPriorUpdateFixture": [
+      "钛4",
+      "铝5",
+      "铁6"
+    ]
+  },
+  "requiredEvidence": [
+    "redacted-http-response",
+    "business-row-before-after",
+    "delete-snapshot-rows",
+    "undo-anchor-rows",
+    "progress-sequence",
+    "compensation-terminal-state",
+    "marker-bound-cleanup-verification"
+  ]
+}

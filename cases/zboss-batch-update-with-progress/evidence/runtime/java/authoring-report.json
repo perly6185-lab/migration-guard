@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-27T15:03:20.757Z",
+  "generatedAt": "2026-07-30T09:29:38.930Z",
   "projectId": "zboss-batch-update-with-progress",
-  "projectHash": "9ebcfe8959343908d6b33e736eec350244864703d702d7da24c90aecce93fb49",
-  "contractHash": "7c9262af887e19406149929e3147541bcbb43ba8fb2024133627b5dd2e54ae6d",
-  "scenarioCount": 17,
-  "draftCount": 17,
+  "projectHash": "b8d74e551d81131615b27a5d710bd9d94f0b9db943409ea47317879065f62f29",
+  "contractHash": "20e91b7df989f72e367eea751e002bd0c3436f8a758681e15cefb6ac6cce1676",
+  "scenarioCount": 19,
+  "draftCount": 19,
   "authoringReady": true,
   "environmentContract": "evidence/runtime/java/environment-contract.json",
   "environmentExample": "evidence/runtime/java/.env.example",
@@ -226,6 +226,27 @@
     },
     {
       "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "scenarioId": "post-commit-effect-failure",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/post-commit-effect-failure/fixture.draft.json",
+      "requiredCollectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "collectorSpecs": {
+        "events": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/post-commit-effect-failure/collectors/events.draft.json",
+        "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/post-commit-effect-failure/collectors/mysql.draft.json",
+        "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/post-commit-effect-failure/collectors/redis.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
+        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
+        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
       "scenarioId": "primary-success",
       "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success/fixture.draft.json",
       "requiredCollectors": [
@@ -279,6 +300,27 @@
         "events": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/scale-boundary/collectors/events.draft.json",
         "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/scale-boundary/collectors/mysql.draft.json",
         "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/scale-boundary/collectors/redis.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
+        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
+        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+      "scenarioId": "schema-transition-failure",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/schema-transition-failure/fixture.draft.json",
+      "requiredCollectors": [
+        "events",
+        "mysql",
+        "redis"
+      ],
+      "collectorSpecs": {
+        "events": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/schema-transition-failure/collectors/events.draft.json",
+        "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/schema-transition-failure/collectors/mysql.draft.json",
+        "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/schema-transition-failure/collectors/redis.draft.json"
       },
       "placeholderFindings": [
         "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",

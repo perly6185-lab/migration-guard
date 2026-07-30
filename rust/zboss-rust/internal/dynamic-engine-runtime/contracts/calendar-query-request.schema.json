@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migration-guard://zboss-page/calendar-query-request-v1",
+  "title": "ZBoss explicit calendar metadata query",
+  "type": "object",
+  "required": ["usePageId", "viewId"],
+  "properties": {
+    "reqId": { "type": "string" },
+    "usePageId": { "type": ["integer", "string"], "pattern": "^[1-9][0-9]*$" },
+    "viewId": { "type": ["integer", "string"], "pattern": "^[1-9][0-9]*$" }
+  },
+  "additionalProperties": true
+}

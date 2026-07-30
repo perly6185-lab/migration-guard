@@ -107,3 +107,41 @@ Web `/query` 已切到 `ViewMetaLedgerQueryApplicationService`，RPC
 
 下一步优先修复缓存隔离问题，再为 query-time writes、async timeout、Web/RPC parity
 和 template override 建立兼容性决策与定向 fixture。
+
+## 日历视图请求补充
+
+新增真实候选请求：
+
+```json
+{"usePageId":"2059838047023181826","viewId":"2064662147688243201"}
+```
+
+用户确认该 `viewId` 表示日历视图。迁移契约不得只以 `usePageId` 缓存或选择元数据；
+必须证明显式 `viewId` 参与视图选择和缓存隔离。query 响应还必须向后续 page 阶段
+提供一致的 panel/page/inter/http 标识。
+
+由于 query 调用链包含配置自愈写，该候选保持未执行、非只读证据状态。真实采集需在
+可回滚环境中同时记录 SQL trace 和 MySQL 前后快照，并验证两次相同请求不会产生
+重复写或跨 viewId 缓存污染。
+
+## Rust 入口状态
+
+`rust/zboss-rust/internal/dynamic-engine-runtime` 已增加
+`POST /zboss/data/view/dynamic/engine/use/engine-use-page/query`。入口接受字符串或整数
+形式的 Long ID，并将 `usePageId + viewId` 作为显式联合身份；响应显式返回
+`viewType`，日历场景门禁负责验证其值为 calendar。
+
+当前实现只读取预先物化的 `ViewMetadataPort`，不会暗中复制 Java 的 query-time
+自愈写。生产迁移仍需决定是删除这类读时写，还是通过独立命令实现，并补 MySQL
+适配器、缓存隔离及双轨回放证据。
+
+## 2026-07-30 阻断处理结果
+
+Rust 侧的结构性阻断已解除：Axum/Tokio 服务可启动，query 路由已通过生产 profile
+的真实进程冒烟验证，构建、运行日志及源码哈希证据均通过 production-path
+attestation。当前 real gate 不再报告 HTTP runtime、route、adapter、build 或
+runtime verification 缺失。
+
+剩余阻断仅为两类：Java/目标真实回放证据缺失，以及
+`QUERY-DEC-CALENDAR-VIEW-BINDING`、`QUERY-DEC-CALENDAR-CACHE-ISOLATION`
+尚未依据现场响应批准。未使用模拟响应替代这两项证据。

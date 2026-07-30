@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "status": "template",
+  "fixtureKind": "template",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-page",
+  "projectHash": "8b6382cf41106314ee91a17f6c38ee77547e8302ed9c58da8f4a157e8a67ad91",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+  "scenarioId": "calendar-view",
+  "category": "compatibility",
+  "request": {
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-tenant-id": "<tenant-id>",
+      "authorization": "Bearer <token>"
+    },
+    "body": {
+      "reqId": "<case-id>",
+      "pageNo": 1,
+      "pageSize": 100,
+      "usePageId": "<usePageId>",
+      "pageId": "<pageId>",
+      "panelId": "<panelId>",
+      "interId": "<interId>",
+      "headerValues": {},
+      "postValues": {},
+      "selectValues": {},
+      "orderValues": [],
+      "_scenario": "calendar-view"
+    }
+  },
+  "requestFocus": [],
+  "expectedComparison": [
+    "http",
+    "context",
+    "decisions",
+    "state",
+    "performance"
+  ],
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "state",
+    "performance"
+  ],
+  "collectorSpecs": {
+    "mysql": {
+      "path": "evidence/runtime/java/collectors/mysql.template.json",
+      "hash": "41a43d6ef084346cdff7c554ab70034e512daa783acb0f141ead338d1ffc283c"
+    },
+    "sql-trace": {
+      "path": "evidence/runtime/java/collectors/sql-trace.template.json",
+      "hash": "ae60f81676bce2da1f19a1069e8e9947100892061ac46c6c51df289f167139bb"
+    }
+  },
+  "expectations": {
+    "page": {
+      "expectedStatus": 200,
+      "requirePagination": true,
+      "preserveRowOrder": true,
+      "requireTotalFilterParity": true
+    }
+  },
+  "compatibilityDecisionIds": [
+    "PAGE-DEC-CALENDAR-PAGE-SIZE-10000",
+    "PAGE-DEC-CALENDAR-QUERY-PAGE-BINDING",
+    "PAGE-DEC-CALENDAR-TEMPORAL-SEMANTICS",
+    "PAGE-DEC-CALENDAR-VIEW-TYPE-SOURCE"
+  ],
+  "secrets": {
+    "policy": "environment-only",
+    "persistedValuesAllowed": false
+  }
+}

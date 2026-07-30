@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "status": "rejected-as-unfiltered-baseline",
+  "fixtureKind": "real-runtime-readonly-diagnostic",
+  "realEvidenceEligible": false,
+  "scenarioId": "quality-filter",
+  "promotionId": "RB-03",
+  "scope": "read-only",
+  "request": {
+    "method": "POST",
+    "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/page?panelId=2059838081856876546",
+    "file": "request.json",
+    "fileHash": "a75ae771746a25af3bdb20bdb0fbedf9a6144dba7d1eef951487059773370a19",
+    "effect": "read",
+    "qualityValuesPresent": false,
+    "skipSavePageSize": true
+  },
+  "observedContract": {
+    "httpStatus": 200,
+    "businessCode": 0,
+    "responseGroups": 2,
+    "rowsPerGroup": [244, 244],
+    "successfulRepeatHashMatches": true,
+    "mainPhysicalTableActiveRows": 244,
+    "nullSemanticConfigurationRows": 0
+  },
+  "classification": {
+    "acceptedAsQualityCoverage": false,
+    "reason": "request has no qualityValues and no runtime or MySQL metadata has whereExp 13/14"
+  },
+  "evidence": {
+    "path": "artifacts/page-rust/real-quality-page-diagnostic.json",
+    "reportHash": "de4e80e798a82c3a34c4b462a3f7a1a6c4664c8fe4f412d00e1f6df302d1dfc7"
+  },
+  "required": [
+    "capture the actual filtered request containing qualityValues",
+    "identify a qualityValues field whose resolved metadata whereExp is 13 or 14"
+  ]
+}

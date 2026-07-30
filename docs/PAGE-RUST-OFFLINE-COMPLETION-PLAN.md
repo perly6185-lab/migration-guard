@@ -11,7 +11,7 @@
 
 以下条件必须同时成立，才允许把状态标记为 `offline-ready`：
 
-- 独立 `rust/page-service` 可构建、启动和健康检查；
+- `rust/zboss-rust/internal/dynamic-engine-runtime` 可作为统一项目内部能力构建、启动和健康检查；
 - HTTP 请求、响应 envelope、错误码和五类上下文契约已版本化；
 - 普通分页、横向分页、quality WHERE/HAVING、REFRESH 全部由 Rust 实现；
 - 数据库、Redis、时钟、事件等基础设施均通过 port 隔离；
@@ -31,7 +31,7 @@
 ```text
 rust/
 ├── batch-update-service/
-└── page-service/
+└── zboss-rust/internal/dynamic-engine-runtime/
     ├── Cargo.toml
     ├── Cargo.lock
     ├── README.md

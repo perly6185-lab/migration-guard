@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "specification",
+  "status": "ready",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-horizontal-list",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+  "scenarioId": "provided-horizontal-list",
+  "request": {
+    "method": "POST",
+    "path": "/zboss/data/view/dynamic/engine/use/engine-use-horizontal/list",
+    "body": {
+      "pageNo": 1,
+      "pageSize": 10000,
+      "interId": "2059838045928468482",
+      "orderValues": [
+        {
+          "fieldName": "custField59623",
+          "direction": "ASC",
+          "fieldId": "2062779663044210689"
+        }
+      ],
+      "headerValues": {},
+      "postValues": {},
+      "panelId": "2059838046666665986",
+      "pageId": "2059838046687637506",
+      "httpId": "2059838047035764738",
+      "selectValues": {
+        "custField59623": "custField59623",
+        "custField60040_0": "custField60040_0",
+        "custField60040_0|custField59627": "custField60040_0|custField59627"
+      },
+      "showArchived": false,
+      "engineHorizontalPartReqVOS": [],
+      "horizontalId": "2069983536167243777"
+    }
+  },
+  "expectations": {
+    "page": {
+      "expectedStatus": 200,
+      "requirePagination": true,
+      "preserveRowOrder": true,
+      "requireTotalFilterParity": true,
+      "requireHorizontalConsistency": true
+    }
+  },
+  "reviewRequired": [
+    "unknown showArchived request-field behavior",
+    "pageSize 10000 latency and memory budget",
+    "ASC ordering stability for custField59623",
+    "composite projection key custField60040_0|custField59627",
+    "calculated-field output parity",
+    "absence of REFRESH write effects when operator is omitted"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "decisions": [
+    {
+      "decisionId": "BD-DEC-DUPLICATE-REPLAY",
+      "caseId": "duplicate-replay",
+      "paths": [
+        "httpStatus",
+        "code",
+        "deletedRowIds",
+        "progressTerminal",
+        "replayed"
+      ],
+      "classification": "approved-correction"
+    },
+    {
+      "decisionId": "BD-DEC-COMPENSATION-DURABILITY",
+      "caseId": "compensation-failure",
+      "paths": [
+        "outboxState"
+      ],
+      "classification": "approved-correction"
+    },
+    {
+      "decisionId": "BD-DEC-PROGRESS-COMPLETENESS",
+      "caseId": "compensation-failure",
+      "paths": [
+        "progressTerminal"
+      ],
+      "classification": "approved-correction"
+    }
+  ]
+}

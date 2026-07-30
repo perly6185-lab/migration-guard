@@ -1,0 +1,1119 @@
+{
+  "version": 1,
+  "projectId": "zboss-batch-delete",
+  "projectHash": "9d47c281e6b3bf157450e168d14c7018ccaa518ba960bc3de0b112dc6a58f226",
+  "sourceIdentity": {
+    "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+    "dirty": true,
+    "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+    "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+  },
+  "sourceSnapshot": {
+    "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
+    "directories": [
+      "zboss-module-data-api/src/main/java",
+      "zboss-module-data-domain/src/main/java",
+      "zboss-module-data-infrastructure/src/main/java",
+      "zboss-module-data-infrastructure/src/main/resources",
+      "zboss-module-data-service/src/main/java",
+      "zboss-module-data-service/src/main/resources",
+      "zboss-module-data-type/src/main/java"
+    ],
+    "identity": {
+      "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+      "dirty": true,
+      "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+      "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+    },
+    "treeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "fileCount": 7175
+  },
+  "sourceAccess": "read-only",
+  "adapter": "java-spring",
+  "semanticRulePackages": [
+    {
+      "schemaVersion": 1,
+      "packageId": "builtin-java-zboss-compatibility",
+      "packageVersion": "1.4.0",
+      "language": "java",
+      "packageHash": "c0cb52ef6fa264176c4975b30191d8b416ffd5589d3902b6a8997d832cd3e0ec",
+      "ruleCount": 180,
+      "rules": [
+        {
+          "id": "logging",
+          "ruleHash": "310186d749eaa8188abf5a286cfa86a829f87abeae2a21c3bdc1390f14873371"
+        },
+        {
+          "id": "clock",
+          "ruleHash": "22c3b5e2b3e82c20979afbfa8d24db11dd140945e0e039d9b4b2f19f8b91f180"
+        },
+        {
+          "id": "runtime-entropy",
+          "ruleHash": "8b912873ec30b33168ad8ec8c4bae593cfeaa276ad96fb8709e4bfa0800bd5d5"
+        },
+        {
+          "id": "jdk-random-entropy",
+          "ruleHash": "b151d4b3add60c00b90704a9fc870ca244f7dfa5ad95bae5e1a01f817c3cffad"
+        },
+        {
+          "id": "runtime-environment",
+          "ruleHash": "4211189f163adbbbe8758548edc7c6413cb4eed2039d9bccaf8f5bba38131e4f"
+        },
+        {
+          "id": "ai-model-invocation",
+          "ruleHash": "88ea05aa76897d1cf9a7bee948dac42874bd2ba61ddaf261ceb2a1ba257146f2"
+        },
+        {
+          "id": "ai-vector-read",
+          "ruleHash": "b34dc53c92e7d3b8d8755672761422c4cc81998706691bb586d296938912d357"
+        },
+        {
+          "id": "ai-vector-write",
+          "ruleHash": "9f0630f984e2fedf1ff75b53424e43f7b36a28037d1c8f2a092e04ede177ce60"
+        },
+        {
+          "id": "ai-tool-invocation",
+          "ruleHash": "b148c64842a8032954d11cdae80e2346d99c3f65bef2db16e7eeb785e93f3ad4"
+        },
+        {
+          "id": "reviewed-mcp-tool-envelope",
+          "ruleHash": "1fbbacf10c01af385b712b2da236a8578cb005f30e77dc8042ab6441e0f17cf5"
+        },
+        {
+          "id": "reviewed-mcp-weather-accessor",
+          "ruleHash": "4afbe1b31b3bd6cf2528ba89acbb158bc0e4fe5e15441592344180c6c3aac81e"
+        },
+        {
+          "id": "reactor-async-boundary",
+          "ruleHash": "628b0524d22c5fef3dee7969b93eea7038dd65ad8884f4e1cb26a9cca02324a6"
+        },
+        {
+          "id": "reactor-composition",
+          "ruleHash": "1d84ac5a34060424444dbb8345f3cd7128c8ce98a486b47270ca2fbbbdb57d67"
+        },
+        {
+          "id": "sse-publication",
+          "ruleHash": "c60d28dffb221d9b66c04e0bceada09291e2877073da20b88887a1bdeed3ee6f"
+        },
+        {
+          "id": "websocket-publication",
+          "ruleHash": "143cc2048d4ee77140cde8303185a9066cb4c973cc80831d5771fdccba2d4530"
+        },
+        {
+          "id": "websocket-lifecycle",
+          "ruleHash": "72878fb1415c90b8608ff80ffdc5385eebc785fb93172b0398c821aa9db40647"
+        },
+        {
+          "id": "ai-value-factory",
+          "ruleHash": "73e9ed054313a3988eed54afa55380d3ba44208f1420a8019e867a082c52a1e4"
+        },
+        {
+          "id": "ai-prompt-sanitizer",
+          "ruleHash": "0a59a1ce52163cf7259df3c7abb704f7c8b0dd8d00d055a38d29c5a299cb2d34"
+        },
+        {
+          "id": "ai-session-context",
+          "ruleHash": "f5539a6d4b3d695782ccc49251258d87aa3e76b8cdfb993ee2cca6e94e2dc90a"
+        },
+        {
+          "id": "ai-decision-factory",
+          "ruleHash": "5d97e4f6f6fc6e65e25926f6fbc7969855c74bd6e638ca9e141537e104a2fa34"
+        },
+        {
+          "id": "ai-context-factory",
+          "ruleHash": "19addd530a293abf3f3a0f5f6fbcf05ae29cce9c975becf9133be1d4700549ed"
+        },
+        {
+          "id": "reviewed-ai-external-orchestration",
+          "ruleHash": "2a14b0b0de648f0a31c9175a4258f3b2108c8972753449af3c1fa5885dfcf919"
+        },
+        {
+          "id": "reviewed-ai-response-transform",
+          "ruleHash": "77459cf6b7f5fdbc026375400881c15a5c297d0533d61c39938974b3b55553ff"
+        },
+        {
+          "id": "reviewed-ai-state-read",
+          "ruleHash": "ec7c0d6a9e4c3fdcde231aa09af0f645617dde874cb9ea4498485006b881db54"
+        },
+        {
+          "id": "reviewed-ai-state-write",
+          "ruleHash": "aff6d7da6c550e4dc8ca7ad3fcda37756defeeecea6a83edbfd79788e9205701"
+        },
+        {
+          "id": "reviewed-ai-validation",
+          "ruleHash": "74b550fea964c0968c30fa64e017696c711be63468c543ec7491b8c730d84057"
+        },
+        {
+          "id": "reviewed-ai-scalar-helper",
+          "ruleHash": "15fb1d1958f058bcb108bd387ac91180bc64a2f5326e6d1b5df9459a518ca691"
+        },
+        {
+          "id": "reviewed-ai-usage-boundary",
+          "ruleHash": "a2a028370858e91073d7ab810de517e3620c1c7eaffb166214fbe59e3e080425"
+        },
+        {
+          "id": "reviewed-ai-usage-empty",
+          "ruleHash": "2f759717c9005cb1a0d4d5562d3c7a94d40184f1f40754ca7730793340151350"
+        },
+        {
+          "id": "reviewed-layout-calculation",
+          "ruleHash": "620af848467b93f48820f37f94eb29797c21bdba8dbd4140a6af4013f563d9b4"
+        },
+        {
+          "id": "reviewed-layout-orchestration",
+          "ruleHash": "d15185f9ca38c0e180c6022ad23fd12293d124564b76014949512b28c961d787"
+        },
+        {
+          "id": "reviewed-ai-module-tail",
+          "ruleHash": "b60aa371cdf9c70911673402c8edb13df29389fe942536a9523006721130aa07"
+        },
+        {
+          "id": "reviewed-menu-calculation",
+          "ruleHash": "34735a9fd85f5e6d6a0e83f6d7f9e9b522f7dd3ce5ff9c93b525c36884b34d71"
+        },
+        {
+          "id": "reviewed-scheduled-parse",
+          "ruleHash": "a52ab099764c540885ab1d23864f8614bfcdcbca8d4dff57936ca38d5f3c7814"
+        },
+        {
+          "id": "reviewed-import-write",
+          "ruleHash": "ce4f3f35ce3312a34da8364eb7a06cf7bcded01006e0ca834cf815571b7287ae"
+        },
+        {
+          "id": "reviewed-sop-index-write",
+          "ruleHash": "b4f2058175eedfad7a408f28e461b7d851bd38e75c9895cbff01c0f91f9d007f"
+        },
+        {
+          "id": "reviewed-sop-reindex-event",
+          "ruleHash": "2e62644392bd52e118c7eba8483c0c6ce9155ada30c123b0df5dceffd6d6d216"
+        },
+        {
+          "id": "reviewed-sop-content-boundary",
+          "ruleHash": "19d289bab2012e785ab9acd6744e53b662bc8d0e726ebb326ea60f123eab6317"
+        },
+        {
+          "id": "reviewed-report-calculation",
+          "ruleHash": "b8a50f5fca900bbf13985c0ef268de62b7956417bc1d30850ad7638566f79162"
+        },
+        {
+          "id": "reviewed-attachment-scalar",
+          "ruleHash": "14ec2ae247284fb26bd604cb6d5fd7bdfddacfd71822377d21b8fe023e741c3c"
+        },
+        {
+          "id": "reviewed-ledger-field-ai",
+          "ruleHash": "37aa112e3b6e7d228783ab58442760b62a8b2ddf761aaaf32fb76ef19ef2e152"
+        },
+        {
+          "id": "reviewed-ledger-field-transform",
+          "ruleHash": "4a418688d65ed24690b027982c102f73f4aea0053eed7f275fd734754f060df9"
+        },
+        {
+          "id": "reviewed-smart-suggestion-calculation",
+          "ruleHash": "847c4240908e761e9c96813270b27c2c22ea4f45d8dc53034d226a7613d25d20"
+        },
+        {
+          "id": "reviewed-smart-suggestion-cache",
+          "ruleHash": "6ff010026f71e97f026dd58a5de316d40f8a975f9bd2344b97dbb780f114d763"
+        },
+        {
+          "id": "reviewed-smart-suggestion-metrics",
+          "ruleHash": "e3403e75c997902291375bc870999c7508f7836ecdb9708ac57d68ede23de73b"
+        },
+        {
+          "id": "reviewed-domain-knowledge",
+          "ruleHash": "ab7d0ac72637c8079471e0cd4c0a7a675ce9b709c848dce609d2df35d230f2c9"
+        },
+        {
+          "id": "reviewed-domain-knowledge-provider",
+          "ruleHash": "abcf1536b44fd7ead6a1c44bebe50b2b437f68a30c0af8f6332080743aa2419e"
+        },
+        {
+          "id": "reviewed-domain-knowledge-value",
+          "ruleHash": "2fc8ab6ffc4bf236fec315c5c162f8cf6090a01bc49c43ea18ce4fb1ef1613c4"
+        },
+        {
+          "id": "reviewed-scheduled-runner",
+          "ruleHash": "87a97fa90dec74acbd5ef94f333d5750f49ac0b61a42f699d92b839fbbd08ac8"
+        },
+        {
+          "id": "reviewed-scheduled-state-write",
+          "ruleHash": "1cbb1104c34c7d698487def6760c0f5983ac22fcdab988a35e22d7a3050dba70"
+        },
+        {
+          "id": "reviewed-scheduled-token",
+          "ruleHash": "2288a37c9e60f161a41bb9b35826343c2a3deaa449ab941f4edba88d29e2444d"
+        },
+        {
+          "id": "reviewed-scheduled-render",
+          "ruleHash": "d6322599d44770ce7869853494067768f2a6b14e782b9b963c8037542c58f093"
+        },
+        {
+          "id": "reviewed-scheduled-narration",
+          "ruleHash": "087bec5ca541f443d958e1cfd6e3d19ddd3632123bf97a238974aa2f8c1111c0"
+        },
+        {
+          "id": "reviewed-assistant-memory-calculation",
+          "ruleHash": "7488ed3720d340eaddfdc7a676239630c8a62cb99a18a4ccb1a726cca3549c76"
+        },
+        {
+          "id": "reviewed-assistant-memory-write",
+          "ruleHash": "677fb72466d410fe4c3f1bb09a4382f475761d5efef53fadfd39d70fa940227a"
+        },
+        {
+          "id": "reviewed-assistant-memory-async",
+          "ruleHash": "fba672a6e58f1b620c0cac086194173480abfae89f8c74b999092c42337f43c4"
+        },
+        {
+          "id": "reviewed-assistant-context-read",
+          "ruleHash": "69d4b30f4b1e906c177662e2ad914c8a51fa183af557367340d1550e5d919242"
+        },
+        {
+          "id": "reviewed-assistant-run-coordination",
+          "ruleHash": "485394fec4727f385a8011a5c78eb17273ab3a6e9b8d50481b29294efb5c3e0b"
+        },
+        {
+          "id": "reviewed-assistant-run-value",
+          "ruleHash": "46d0269b5f115ae205793c6b2b1f088bff292d57fd1aa16557563311b3db0551"
+        },
+        {
+          "id": "reviewed-assistant-plan",
+          "ruleHash": "b44daa67b428a658f3cbc729faffb50b5bfb7fcf826c2f67ed89ca59f5995d17"
+        },
+        {
+          "id": "reviewed-assistant-plan-validation",
+          "ruleHash": "fe333565041e1f0a7258248344d7a60b8ac58cfea40b1dd4cb843a9810a426aa"
+        },
+        {
+          "id": "reviewed-assistant-synthesis",
+          "ruleHash": "66476c884f50b8ca8ff1a91919d42ad073d176405c1e57243e4c063d741d1e5d"
+        },
+        {
+          "id": "reviewed-sop-write-tail",
+          "ruleHash": "b2fc6d5f81f88188c81d881bcccfaef763387d57a0bb20e9776a6a4feb6d328d"
+        },
+        {
+          "id": "reviewed-sop-value-tail",
+          "ruleHash": "0d71440722e5bb041292e0219fef79d9d5359c4ebaa0e94e57bc45330641f943"
+        },
+        {
+          "id": "reviewed-ai-value-accessors",
+          "ruleHash": "90062cb92c3442a8e84d42ae0afc1118373c88fe5da53134004e92b6a9f55593"
+        },
+        {
+          "id": "workbook-mutation",
+          "ruleHash": "4b9910c5f58c39874ae8e4dd45fafe5c3394c146ed816c10024877ceeca70b99"
+        },
+        {
+          "id": "runnable-execution",
+          "ruleHash": "0020be204e57ef610231ee283e2e250b530b765c3688f99c687f92a67d353a4b"
+        },
+        {
+          "id": "redis",
+          "ruleHash": "023a5eefa348a11b9d0cdcdc6f0e2e093fa8d288142611220c7602432e80558b"
+        },
+        {
+          "id": "async",
+          "ruleHash": "13ad0f1364c0c9c0af8868d1c947a96a49deb16457ecb68d89459f7d209f8a50"
+        },
+        {
+          "id": "future-wait",
+          "ruleHash": "e5088cbaac0ee2cc61555352446bd09fc2877c76d185e2caa0e7233affbfd498"
+        },
+        {
+          "id": "executor-lifecycle",
+          "ruleHash": "df3a50ae194dcca11822a4e73920b01fdf3ef1a5fa3dc3306dbd15ef687a3012"
+        },
+        {
+          "id": "in-memory-coordination",
+          "ruleHash": "8631454099d3e43728c25f43d64daa5b51cff4f7df333fd439fe5612caf92556"
+        },
+        {
+          "id": "signal-coordination",
+          "ruleHash": "ae373aa2ab493d7a9c6bb3b37b62335b847dd31c13dbd6ba9a50d16bd9eeb4ef"
+        },
+        {
+          "id": "aop-context",
+          "ruleHash": "dd9c9b90280d7ce8977fa0a48285f42a5256286b7e79d887c0ce2e81df654590"
+        },
+        {
+          "id": "application-context",
+          "ruleHash": "99981889ec0b14b42752d4e18721e8fdfb029ce3c1a50801f7504f22d2f0e804"
+        },
+        {
+          "id": "rule-context-lookup",
+          "ruleHash": "6d9a26b567bc5018d608827f9e03f2e038699bbe46e23613165ef5ac39a8cd91"
+        },
+        {
+          "id": "sql-session-flush",
+          "ruleHash": "1a23f0724ab9aa37d6280c880c246d1aa65d3054391a7f0d508ad9ba3d91c9d3"
+        },
+        {
+          "id": "jdbc-boundary",
+          "ruleHash": "6443c8be7af610daf8943cd0a5a02eb432ded4df12819d9a9abe2a30e8a30fe5"
+        },
+        {
+          "id": "filesystem-write",
+          "ruleHash": "038581c24d8867d653879cf50fe335062eca9757682bb02e710f041a51be33ba"
+        },
+        {
+          "id": "filesystem-metadata",
+          "ruleHash": "630474d5783f79c76b9c61c5fc6826e4a1a7ee731a7d59011ebad4d7d563c267"
+        },
+        {
+          "id": "external-resource-lifecycle",
+          "ruleHash": "fb6103c82936fe82db09c976d7a9738b27aa8be1ac4203df8577e6bbb0b71c42"
+        },
+        {
+          "id": "http-boundary",
+          "ruleHash": "833c8458b5464b281a7c1e8050fe64f6ac07ff250722c2fc9d5fb9ff107f14f2"
+        },
+        {
+          "id": "url-connection-boundary",
+          "ruleHash": "612719da95dfb31047598b43d200f5eb53a39387f03a6605d1a47a887fe39615"
+        },
+        {
+          "id": "lambda",
+          "ruleHash": "6cef964d8fde2d2baa1072cce9df3bea7ed50489129b84b52784076b5a8674fd"
+        },
+        {
+          "id": "mapping",
+          "ruleHash": "5ccc503c23836bd57298c6bfaab858c236f08c369f846fe37ea0bdd2d9b58b92"
+        },
+        {
+          "id": "object-clone",
+          "ruleHash": "124061243464c82006317b32be813f319a1c1d2ac06af0053821c97ae7f009ff"
+        },
+        {
+          "id": "configuration-cache-helper",
+          "ruleHash": "01db1542d4baad22373ee380de224d73ff17ef1556d8c378e37e0414a1ad90eb"
+        },
+        {
+          "id": "configuration-cache-prefetch",
+          "ruleHash": "c47fe3d567a6c094beaac74722fe7c74c63d1cb2edb66da535d0c29a3a241cad"
+        },
+        {
+          "id": "configuration-transformation",
+          "ruleHash": "a021dd8081807b550f1b1d54c364275dbd276e3a8aec4137bb3a349fa385608a"
+        },
+        {
+          "id": "configuration-state-read",
+          "ruleHash": "f2e3b3e928397ed5d4298eea643a0d65c5cc0349a4982a346b9504c0c33ca122"
+        },
+        {
+          "id": "configuration-assembly",
+          "ruleHash": "dd7c5dd19547ceab2603c8ea9fb733e0a0250eebfe9e21802e73270f3cb70f8f"
+        },
+        {
+          "id": "key-value-object-factory",
+          "ruleHash": "c8943dc7307a0a13e93bb168b194fd7fa45deb2bb6e2feb260de865934cc9085"
+        },
+        {
+          "id": "value-object-factory",
+          "ruleHash": "0384c294de97832ba036ded8799485387ad37c8e979c4460e9dbc8d76bd21fe9"
+        },
+        {
+          "id": "reviewed-value-resolver",
+          "ruleHash": "e42cfcbbb6b81658f95b2b7bcd7bf7275fc589766fac17d2cf8ae5a5eec3cada"
+        },
+        {
+          "id": "reviewed-field-value-format",
+          "ruleHash": "a53d452f4826d457f211e5e2b2bff13022a6f3eda2efbd05bfa3ab902109024b"
+        },
+        {
+          "id": "reviewed-in-memory-business-helper",
+          "ruleHash": "30c2a5d062edee75c0ad22167bcc321bb3782cae6fc939dfd3e75209e434c48b"
+        },
+        {
+          "id": "reviewed-local-status-coordination",
+          "ruleHash": "50c5119d38a789bedd38e01651d96fb0377184db80e777fd31ba5b4ccbe4c94b"
+        },
+        {
+          "id": "reviewed-dynamic-ddl-write",
+          "ruleHash": "2166c6c22eccd26e87bff0c023a1789cf5372f64cbda736b5c84ee8f991699f8"
+        },
+        {
+          "id": "reviewed-scalar-business-helper",
+          "ruleHash": "0a2009f0edc11448169500c37cb1da1c6519cc1519a02f4e3dbd832abfb01117"
+        },
+        {
+          "id": "reviewed-rendering-business-helper",
+          "ruleHash": "00d9a2d1826db9440fc96e1bf3e9404c8020dbd8a7de6b083e289c24fce9063b"
+        },
+        {
+          "id": "reviewed-key-business-helper",
+          "ruleHash": "473ea1fd9b85aa97bb244efbf7c5e5d31c6a7d1dac2e8f0c2d1b1fd86e588eda"
+        },
+        {
+          "id": "reviewed-business-state-write",
+          "ruleHash": "e54afd7d8dc5d7bfa1c8a2d5e7799cded2670f0bdd7ccc0758fa46338f9096ab"
+        },
+        {
+          "id": "reviewed-wide-field-sort-write",
+          "ruleHash": "3fd1b962c0d591370ca3c7dc771e1bc207808f6cc4ecf54ba833c8764228e838"
+        },
+        {
+          "id": "reviewed-sync-relation-write",
+          "ruleHash": "377b0d3ce3bad85401bad76ec46bc4a4f947daa3863af52593b4dea6d261d6bd"
+        },
+        {
+          "id": "reviewed-residual-business-write",
+          "ruleHash": "a9d6dac171669a84b1f87626c95cc747a15459a4699f959c04cd823d2b5cadd5"
+        },
+        {
+          "id": "reviewed-effectful-row-callback",
+          "ruleHash": "d2f5717d9b9cc97b17bd4d80c44c6e2db5aa4475340714c1f6859395b694f336"
+        },
+        {
+          "id": "reviewed-import-phase-callback",
+          "ruleHash": "649ec87a2611cb4ee9d6a3395129430a08c7e3af54b2b122837e5a8669520c82"
+        },
+        {
+          "id": "reviewed-low-frequency-business-write",
+          "ruleHash": "3c3d18f8af7533360b0f5937b62a70613ee5aa05c5ff17b7ed859e40f4c622a0"
+        },
+        {
+          "id": "reviewed-low-frequency-business-read",
+          "ruleHash": "850c82345972f0c87fff09bc8d909f2517ae985d71d3b04f5943aafd400ab8c2"
+        },
+        {
+          "id": "reviewed-low-frequency-response-transform",
+          "ruleHash": "155a782af74027ea6c0da48928ceb9c01b8e01497b1db8c7827cb2be55a5eb27"
+        },
+        {
+          "id": "reviewed-low-frequency-media-boundary",
+          "ruleHash": "23743240220d59bde1c095719f6ce0bd7601fd6f5af23bae522b04cb8ec35254"
+        },
+        {
+          "id": "reviewed-usage-summary-boundary",
+          "ruleHash": "891588a2926dcd7364b009abc5cd25e4d53bcc412d49c1cfde683f86dd3aed41"
+        },
+        {
+          "id": "reviewed-layout-activation-write",
+          "ruleHash": "5672af95163c5179927a3d7a2b051b7229959df116b898d7f36116c8ac3b8373"
+        },
+        {
+          "id": "reviewed-partition-export-row",
+          "ruleHash": "0be294e394f00d73cd6f7ea342d1b3d5910efd04ee167cbb9052637bb922f23a"
+        },
+        {
+          "id": "reviewed-refresh-and-layout-write",
+          "ruleHash": "246042403a5da93a7979ace3a9dc7ffc455ce81f8989e8368ca6955ccf11cc93"
+        },
+        {
+          "id": "reviewed-quick-config-read",
+          "ruleHash": "5e08854e88e4c237b0c2c1927d12804bfaee151617b0be8f7069d6636a6c21e7"
+        },
+        {
+          "id": "reviewed-trigger-suppression-scope",
+          "ruleHash": "503d4df89f8425ea71e26319310a4eaf6c3ce36446bf41a7f9047ab19733c4d1"
+        },
+        {
+          "id": "reviewed-business-external-call",
+          "ruleHash": "d571a35ffa9a24341616ff4b5fa504b08db6e3721f9ce1bc3c2b4df204032808"
+        },
+        {
+          "id": "reviewed-direct-or-load-balanced-client-call",
+          "ruleHash": "7ff5fcac54841498f33025d5e26bb9d391bbd9ed558516e0dafdb901da68096c"
+        },
+        {
+          "id": "reviewed-business-async",
+          "ruleHash": "b32c8958c997211b613c171994398b5fcb27148eee6b1dc4586e5b9f781a3eea"
+        },
+        {
+          "id": "reviewed-business-event",
+          "ruleHash": "b7f2bfc0d2ef10af6c5c2c62c579feb17790d76141fb0e0f210a99c7f899a989"
+        },
+        {
+          "id": "reviewed-websocket-acl-event",
+          "ruleHash": "ae9d8c5ed29202a193ed0d9e90647c105a6ef10811f14a52527434900280b7ac"
+        },
+        {
+          "id": "reviewed-ai-acl-external-call",
+          "ruleHash": "661b22d1b231e81a68ced629e1c5f70dfe12fbe6047bd2b1dd2545aec8760ca2"
+        },
+        {
+          "id": "reviewed-business-context",
+          "ruleHash": "b3446cd312b558c2835c1d58ed636383964c9ddeb847c7d13f5a5c53b4fe904e"
+        },
+        {
+          "id": "reviewed-business-local-transform",
+          "ruleHash": "eac3d7e3a51fa10a1260ac617ca7e63f6181cc05ca61320eff7591331453bb5f"
+        },
+        {
+          "id": "reviewed-residual-local-transform",
+          "ruleHash": "d1118d239813ba6ff0a1eef6824439383bb2a8d4e053da208e10dff4c7bbcb3d"
+        },
+        {
+          "id": "reviewed-deep-local-transform",
+          "ruleHash": "29e6d551c59c2413ad542d64e7431350de4d02887c6ab1ce82fe01a526888d39"
+        },
+        {
+          "id": "reviewed-controller-usage-dto",
+          "ruleHash": "cc52d5bce02d70024c212b549ce9f4dac000c775deb6766fcb6de47de1cdfbcb"
+        },
+        {
+          "id": "reviewed-controller-timezone-conversion",
+          "ruleHash": "5b73a32a6d8f7063f3b8d30d0f4d74a9fcdc0ae78a69c6edb01a509b9f486b7f"
+        },
+        {
+          "id": "reviewed-quick-copy-key",
+          "ruleHash": "cc20abdd70d5f203757ad1c9b60efbc081115c6a7f7fd3cd60e25799dd2f96fc"
+        },
+        {
+          "id": "reviewed-local-result-access",
+          "ruleHash": "5a4e1ec74c1918dd016ebb7d4090af4c4a15392f97ec4d85a90b0e51ce70fc78"
+        },
+        {
+          "id": "reviewed-valid-rule-color-access",
+          "ruleHash": "6d0a467b22800a4547e9f429821c39535267291030ebda7b504db080f0ec2000"
+        },
+        {
+          "id": "reviewed-color-preload-access",
+          "ruleHash": "f77547c5560aa6b1fde2420b7d1910120cc34a71f36f5b3d43b5c84c425d509c"
+        },
+        {
+          "id": "reviewed-field-id-method-reference",
+          "ruleHash": "0197605e019596719e00479b934db1e198c2077232507425cacc3cff24c5e109"
+        },
+        {
+          "id": "reviewed-local-record-access",
+          "ruleHash": "50ae0d56b5451fc6b5f91df141ea791ba6bbb7d27472b7c82f6fb84287442d4d"
+        },
+        {
+          "id": "reviewed-residual-record-access",
+          "ruleHash": "06240bfd0eb5f89dd94fbf7060756ae5a42475da925f256a7bf9fad3994dbf0f"
+        },
+        {
+          "id": "reviewed-local-record-tail",
+          "ruleHash": "20a4a66abae0a2f616f96ff973c1d08b33e20142a7ef37112e0d1f3e2faf69df"
+        },
+        {
+          "id": "nested-transfer-object-constructor",
+          "ruleHash": "af8d92723a2ae45c33fdff99129dcfa0ec71087f2a5877e79e9f60fcdd3b431f"
+        },
+        {
+          "id": "reviewed-construction-tail",
+          "ruleHash": "a121739262c375fe033993b18e94d76615f0cd4a80b00b2d95a4618b61a97534"
+        },
+        {
+          "id": "reviewed-business-orchestration-write",
+          "ruleHash": "e2644aedacbf6d8a7b643a614ef71fb491a34b6ac81a0e5bf0d52372fec4a301"
+        },
+        {
+          "id": "reviewed-controller-command-write",
+          "ruleHash": "cbc73dddac1a3d1b2733f56a71d8b265eff5da0fd7a9eeb0e2a351d39bfbe615"
+        },
+        {
+          "id": "reviewed-file-business-write",
+          "ruleHash": "8b5d444291d722afcb2c57c0b43b480c899e26b083a443aac6cecd739a6eab1c"
+        },
+        {
+          "id": "reviewed-business-query-or-decision",
+          "ruleHash": "df235b3ecc02eaeaa87d45cd731be27f29a79a60616d5b6c55e5d25767dd3592"
+        },
+        {
+          "id": "reviewed-domain-requirement",
+          "ruleHash": "d4a8844bcd5ece80410e75b5745573698a97b035a2200d7623287bcaff9b8069"
+        },
+        {
+          "id": "reviewed-domain-draft-write",
+          "ruleHash": "051a82911a1869b9e62940e75a61e17fb156ab1493d4dea3c710f852ce018754"
+        },
+        {
+          "id": "reviewed-domain-entity-write",
+          "ruleHash": "82cac2961728e40c930a314cc76e26670c6c7d5271fece964b2a722ed8e85897"
+        },
+        {
+          "id": "reviewed-stateful-tail",
+          "ruleHash": "3d92705e9a66a80aefc8f89a85854893a75f0a669a8a31456ddda695795815fe"
+        },
+        {
+          "id": "reviewed-external-tail",
+          "ruleHash": "f0044a0976b9fe7088507428f616435ff522968101d18096d401e7f704448ff1"
+        },
+        {
+          "id": "reviewed-entropy-helper",
+          "ruleHash": "6e7cc8bd14f58470d05da8d885bfb15e132de1c4de2bebd4c292baa97d77744e"
+        },
+        {
+          "id": "reviewed-backup-identity",
+          "ruleHash": "ff4e3f9718643e0ba266a38156da02e417acde4f8549b79f723c58d2bcf9481c"
+        },
+        {
+          "id": "reviewed-state-read-tail",
+          "ruleHash": "7478fb9f9ecb5d89d091d6d60625b97ff5091baa2e41478d94e85a72ec65187f"
+        },
+        {
+          "id": "reviewed-business-pure-tail",
+          "ruleHash": "aed05456765813a3d397a4feea5e22820307acdd78737efda90afaa5606f1303"
+        },
+        {
+          "id": "reviewed-wide-deterministic-helper",
+          "ruleHash": "6d33f6f6da3c623238d7559f6492d7062c6f15055bdac3565c439baf2b480733"
+        },
+        {
+          "id": "reviewed-page-ref-value-predicate",
+          "ruleHash": "9bfb71a81a88650bb9925a3c682a458399611408ce8d041dba147d090fd1b5b5"
+        },
+        {
+          "id": "reviewed-page-ref-value-transform",
+          "ruleHash": "a916fb83ad585fbc724d0efd5418d3be1e190d43eb395bf9c04dc301773bb477"
+        },
+        {
+          "id": "reviewed-consumer-coordination",
+          "ruleHash": "7bb827d41fd17cbfd94ae80fe7d805532c3ad8b8c0c0152df1ca5833ac43929b"
+        },
+        {
+          "id": "private-pure-helper",
+          "ruleHash": "41d4d6e587e37a7ddfd274a31698743dd86b552d0ac8b946ad2dd81357a6a0d5"
+        },
+        {
+          "id": "serialization",
+          "ruleHash": "8d401d4472d773a391011841e2040dcc7e04d6812cb2a051a4d66696c787ca6f"
+        },
+        {
+          "id": "string-builder",
+          "ruleHash": "3c3964e68dc84a57117d49f010871849005fa588c105d5eaa483e34baddf0b70"
+        },
+        {
+          "id": "jdk-stream",
+          "ruleHash": "22553ec5a8e428911223d5c8c1a0aad8d4dc06190c0d8f9cbc46617c8ed158a8"
+        },
+        {
+          "id": "jdk-date-value",
+          "ruleHash": "7701c8176f921d8c3e108a744417fa23b7414c37d696f12e58404b75ae94d4af"
+        },
+        {
+          "id": "jdk-string-chain",
+          "ruleHash": "d4f9293bb89d680963612d3ad314bfbc0b94ac8ab0057f6d861b86f13fca6fad"
+        },
+        {
+          "id": "jdk-date-formatter-constant",
+          "ruleHash": "8526d737337e1f0b0d0f17268418e19b7fa5451b63f050c977d2699a3fb82c21"
+        },
+        {
+          "id": "jdk-week-value",
+          "ruleHash": "131373a1efd6f1c87c6390c0104e73adf2207975694b4c5d84756b41cd3b3cb2"
+        },
+        {
+          "id": "jdk-path-value",
+          "ruleHash": "df0a02a1dfe51ef452197fa7e8309340fa8e9018e7f6fecba13bdf2890509f54"
+        },
+        {
+          "id": "jdk-enum-lookup",
+          "ruleHash": "d5873f26f7261fc32922239c2dff1aa999ec2ffc7077232c52bd6da04afb9a6d"
+        },
+        {
+          "id": "jdk-enum-value-comparison",
+          "ruleHash": "62129e8d24fc8665e9b196d61253d8223d22c0eda426e32aa3c94cc997c1b43c"
+        },
+        {
+          "id": "reviewed-builder-or-codec",
+          "ruleHash": "1b661f34f8934d9be2388abb60ee9850fe383b96368d37ac9cf00e193dbccb95"
+        },
+        {
+          "id": "reviewed-deterministic-tail",
+          "ruleHash": "5f13049ae3bd56f4895a5913f29b016022cc8ad8899e3d2573d34c0ec541aefe"
+        },
+        {
+          "id": "reviewed-rendering-tail",
+          "ruleHash": "97957746596b3b75be03ff31506b3af4ad2275dcc3b8441af0589c5fe1f1c9de"
+        },
+        {
+          "id": "stdio-observability",
+          "ruleHash": "322a5eb9af8259ee845c5fb56d9f8ee1fb966639001c05955aecda50a9237352"
+        },
+        {
+          "id": "thread-lifecycle",
+          "ruleHash": "ad75127e1c0b04c552c668153dda3a015e7ef6245c28e09bb5b80ea1dccebc0e"
+        },
+        {
+          "id": "signal-drain",
+          "ruleHash": "697c1e6af67f4f73b91aa56e4b504e51da3da22f76714ba6349fdceb61d3ba15"
+        },
+        {
+          "id": "archive-construction",
+          "ruleHash": "56573c447ebfd28c65f1311c18e11834516fb88a44e2899513c20221e5b02e10"
+        },
+        {
+          "id": "jdk-pure",
+          "ruleHash": "0d12462e842899db1a80452bf29c10d72ce59c03ddf633a06d092f608fd84a7f"
+        },
+        {
+          "id": "reviewed-expression-helper",
+          "ruleHash": "120b3bff9137f473e0b684713c5f1f1a49183aa522492ff9a0e671e0e37e9980"
+        },
+        {
+          "id": "reviewed-value-accessor",
+          "ruleHash": "6b5986ea9484919b2d568228b5afcecfabc25a7c9703c388de2a7029b6e46eeb"
+        },
+        {
+          "id": "exception-output",
+          "ruleHash": "880ad8c1459cc976b23f9a866c2eb2c52e7fe7771882f1ad944eb2d345197682"
+        },
+        {
+          "id": "query-builder",
+          "ruleHash": "14267fe17415a50694e2024f7b0c1a34686779aa27fb3728d50cb9c4ae7a4284"
+        },
+        {
+          "id": "progress-report",
+          "ruleHash": "131c5a9add5f314b7a48c69e4eac8c157ff1c87e01f1250de5e5b1935c9e4134"
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "packageId": "builtin-java-core",
+      "packageVersion": "1.2.0",
+      "language": "java",
+      "packageHash": "3f9fbae3842f2109e0b62355764d6b6d4c370b9b80dab48559815c779dfc389c",
+      "ruleCount": 77,
+      "rules": [
+        {
+          "id": "logging",
+          "ruleHash": "310186d749eaa8188abf5a286cfa86a829f87abeae2a21c3bdc1390f14873371"
+        },
+        {
+          "id": "clock",
+          "ruleHash": "22c3b5e2b3e82c20979afbfa8d24db11dd140945e0e039d9b4b2f19f8b91f180"
+        },
+        {
+          "id": "runtime-entropy",
+          "ruleHash": "8b912873ec30b33168ad8ec8c4bae593cfeaa276ad96fb8709e4bfa0800bd5d5"
+        },
+        {
+          "id": "jdk-random-entropy",
+          "ruleHash": "b151d4b3add60c00b90704a9fc870ca244f7dfa5ad95bae5e1a01f817c3cffad"
+        },
+        {
+          "id": "runtime-environment",
+          "ruleHash": "4211189f163adbbbe8758548edc7c6413cb4eed2039d9bccaf8f5bba38131e4f"
+        },
+        {
+          "id": "ai-model-invocation",
+          "ruleHash": "88ea05aa76897d1cf9a7bee948dac42874bd2ba61ddaf261ceb2a1ba257146f2"
+        },
+        {
+          "id": "ai-vector-read",
+          "ruleHash": "b34dc53c92e7d3b8d8755672761422c4cc81998706691bb586d296938912d357"
+        },
+        {
+          "id": "ai-vector-write",
+          "ruleHash": "9f0630f984e2fedf1ff75b53424e43f7b36a28037d1c8f2a092e04ede177ce60"
+        },
+        {
+          "id": "ai-tool-invocation",
+          "ruleHash": "b148c64842a8032954d11cdae80e2346d99c3f65bef2db16e7eeb785e93f3ad4"
+        },
+        {
+          "id": "reactor-async-boundary",
+          "ruleHash": "628b0524d22c5fef3dee7969b93eea7038dd65ad8884f4e1cb26a9cca02324a6"
+        },
+        {
+          "id": "reactor-composition",
+          "ruleHash": "1d84ac5a34060424444dbb8345f3cd7128c8ce98a486b47270ca2fbbbdb57d67"
+        },
+        {
+          "id": "sse-publication",
+          "ruleHash": "c60d28dffb221d9b66c04e0bceada09291e2877073da20b88887a1bdeed3ee6f"
+        },
+        {
+          "id": "websocket-publication",
+          "ruleHash": "143cc2048d4ee77140cde8303185a9066cb4c973cc80831d5771fdccba2d4530"
+        },
+        {
+          "id": "websocket-lifecycle",
+          "ruleHash": "72878fb1415c90b8608ff80ffdc5385eebc785fb93172b0398c821aa9db40647"
+        },
+        {
+          "id": "ai-value-factory",
+          "ruleHash": "73e9ed054313a3988eed54afa55380d3ba44208f1420a8019e867a082c52a1e4"
+        },
+        {
+          "id": "ai-prompt-sanitizer",
+          "ruleHash": "0a59a1ce52163cf7259df3c7abb704f7c8b0dd8d00d055a38d29c5a299cb2d34"
+        },
+        {
+          "id": "ai-session-context",
+          "ruleHash": "f5539a6d4b3d695782ccc49251258d87aa3e76b8cdfb993ee2cca6e94e2dc90a"
+        },
+        {
+          "id": "ai-decision-factory",
+          "ruleHash": "5d97e4f6f6fc6e65e25926f6fbc7969855c74bd6e638ca9e141537e104a2fa34"
+        },
+        {
+          "id": "ai-context-factory",
+          "ruleHash": "19addd530a293abf3f3a0f5f6fbcf05ae29cce9c975becf9133be1d4700549ed"
+        },
+        {
+          "id": "workbook-mutation",
+          "ruleHash": "4b9910c5f58c39874ae8e4dd45fafe5c3394c146ed816c10024877ceeca70b99"
+        },
+        {
+          "id": "runnable-execution",
+          "ruleHash": "0020be204e57ef610231ee283e2e250b530b765c3688f99c687f92a67d353a4b"
+        },
+        {
+          "id": "redis",
+          "ruleHash": "023a5eefa348a11b9d0cdcdc6f0e2e093fa8d288142611220c7602432e80558b"
+        },
+        {
+          "id": "async",
+          "ruleHash": "13ad0f1364c0c9c0af8868d1c947a96a49deb16457ecb68d89459f7d209f8a50"
+        },
+        {
+          "id": "future-wait",
+          "ruleHash": "e5088cbaac0ee2cc61555352446bd09fc2877c76d185e2caa0e7233affbfd498"
+        },
+        {
+          "id": "executor-lifecycle",
+          "ruleHash": "df3a50ae194dcca11822a4e73920b01fdf3ef1a5fa3dc3306dbd15ef687a3012"
+        },
+        {
+          "id": "in-memory-coordination",
+          "ruleHash": "8631454099d3e43728c25f43d64daa5b51cff4f7df333fd439fe5612caf92556"
+        },
+        {
+          "id": "signal-coordination",
+          "ruleHash": "ae373aa2ab493d7a9c6bb3b37b62335b847dd31c13dbd6ba9a50d16bd9eeb4ef"
+        },
+        {
+          "id": "aop-context",
+          "ruleHash": "dd9c9b90280d7ce8977fa0a48285f42a5256286b7e79d887c0ce2e81df654590"
+        },
+        {
+          "id": "application-context",
+          "ruleHash": "99981889ec0b14b42752d4e18721e8fdfb029ce3c1a50801f7504f22d2f0e804"
+        },
+        {
+          "id": "rule-context-lookup",
+          "ruleHash": "6d9a26b567bc5018d608827f9e03f2e038699bbe46e23613165ef5ac39a8cd91"
+        },
+        {
+          "id": "sql-session-flush",
+          "ruleHash": "1a23f0724ab9aa37d6280c880c246d1aa65d3054391a7f0d508ad9ba3d91c9d3"
+        },
+        {
+          "id": "jdbc-boundary",
+          "ruleHash": "6443c8be7af610daf8943cd0a5a02eb432ded4df12819d9a9abe2a30e8a30fe5"
+        },
+        {
+          "id": "filesystem-write",
+          "ruleHash": "038581c24d8867d653879cf50fe335062eca9757682bb02e710f041a51be33ba"
+        },
+        {
+          "id": "filesystem-metadata",
+          "ruleHash": "630474d5783f79c76b9c61c5fc6826e4a1a7ee731a7d59011ebad4d7d563c267"
+        },
+        {
+          "id": "external-resource-lifecycle",
+          "ruleHash": "fb6103c82936fe82db09c976d7a9738b27aa8be1ac4203df8577e6bbb0b71c42"
+        },
+        {
+          "id": "http-boundary",
+          "ruleHash": "833c8458b5464b281a7c1e8050fe64f6ac07ff250722c2fc9d5fb9ff107f14f2"
+        },
+        {
+          "id": "url-connection-boundary",
+          "ruleHash": "612719da95dfb31047598b43d200f5eb53a39387f03a6605d1a47a887fe39615"
+        },
+        {
+          "id": "lambda",
+          "ruleHash": "6cef964d8fde2d2baa1072cce9df3bea7ed50489129b84b52784076b5a8674fd"
+        },
+        {
+          "id": "mapping",
+          "ruleHash": "5ccc503c23836bd57298c6bfaab858c236f08c369f846fe37ea0bdd2d9b58b92"
+        },
+        {
+          "id": "object-clone",
+          "ruleHash": "124061243464c82006317b32be813f319a1c1d2ac06af0053821c97ae7f009ff"
+        },
+        {
+          "id": "configuration-cache-helper",
+          "ruleHash": "01db1542d4baad22373ee380de224d73ff17ef1556d8c378e37e0414a1ad90eb"
+        },
+        {
+          "id": "configuration-cache-prefetch",
+          "ruleHash": "c47fe3d567a6c094beaac74722fe7c74c63d1cb2edb66da535d0c29a3a241cad"
+        },
+        {
+          "id": "configuration-transformation",
+          "ruleHash": "a021dd8081807b550f1b1d54c364275dbd276e3a8aec4137bb3a349fa385608a"
+        },
+        {
+          "id": "configuration-state-read",
+          "ruleHash": "f2e3b3e928397ed5d4298eea643a0d65c5cc0349a4982a346b9504c0c33ca122"
+        },
+        {
+          "id": "configuration-assembly",
+          "ruleHash": "dd7c5dd19547ceab2603c8ea9fb733e0a0250eebfe9e21802e73270f3cb70f8f"
+        },
+        {
+          "id": "key-value-object-factory",
+          "ruleHash": "c8943dc7307a0a13e93bb168b194fd7fa45deb2bb6e2feb260de865934cc9085"
+        },
+        {
+          "id": "value-object-factory",
+          "ruleHash": "0384c294de97832ba036ded8799485387ad37c8e979c4460e9dbc8d76bd21fe9"
+        },
+        {
+          "id": "nested-transfer-object-constructor",
+          "ruleHash": "af8d92723a2ae45c33fdff99129dcfa0ec71087f2a5877e79e9f60fcdd3b431f"
+        },
+        {
+          "id": "private-pure-helper",
+          "ruleHash": "41d4d6e587e37a7ddfd274a31698743dd86b552d0ac8b946ad2dd81357a6a0d5"
+        },
+        {
+          "id": "serialization",
+          "ruleHash": "8d401d4472d773a391011841e2040dcc7e04d6812cb2a051a4d66696c787ca6f"
+        },
+        {
+          "id": "string-builder",
+          "ruleHash": "3c3964e68dc84a57117d49f010871849005fa588c105d5eaa483e34baddf0b70"
+        },
+        {
+          "id": "jdk-stream",
+          "ruleHash": "22553ec5a8e428911223d5c8c1a0aad8d4dc06190c0d8f9cbc46617c8ed158a8"
+        },
+        {
+          "id": "jdk-date-value",
+          "ruleHash": "7701c8176f921d8c3e108a744417fa23b7414c37d696f12e58404b75ae94d4af"
+        },
+        {
+          "id": "jdk-string-chain",
+          "ruleHash": "d4f9293bb89d680963612d3ad314bfbc0b94ac8ab0057f6d861b86f13fca6fad"
+        },
+        {
+          "id": "jdk-date-formatter-constant",
+          "ruleHash": "8526d737337e1f0b0d0f17268418e19b7fa5451b63f050c977d2699a3fb82c21"
+        },
+        {
+          "id": "jdk-week-value",
+          "ruleHash": "131373a1efd6f1c87c6390c0104e73adf2207975694b4c5d84756b41cd3b3cb2"
+        },
+        {
+          "id": "jdk-path-value",
+          "ruleHash": "df0a02a1dfe51ef452197fa7e8309340fa8e9018e7f6fecba13bdf2890509f54"
+        },
+        {
+          "id": "jdk-enum-lookup",
+          "ruleHash": "d5873f26f7261fc32922239c2dff1aa999ec2ffc7077232c52bd6da04afb9a6d"
+        },
+        {
+          "id": "jdk-enum-value-comparison",
+          "ruleHash": "62129e8d24fc8665e9b196d61253d8223d22c0eda426e32aa3c94cc997c1b43c"
+        },
+        {
+          "id": "stdio-observability",
+          "ruleHash": "322a5eb9af8259ee845c5fb56d9f8ee1fb966639001c05955aecda50a9237352"
+        },
+        {
+          "id": "thread-lifecycle",
+          "ruleHash": "ad75127e1c0b04c552c668153dda3a015e7ef6245c28e09bb5b80ea1dccebc0e"
+        },
+        {
+          "id": "signal-drain",
+          "ruleHash": "697c1e6af67f4f73b91aa56e4b504e51da3da22f76714ba6349fdceb61d3ba15"
+        },
+        {
+          "id": "archive-construction",
+          "ruleHash": "56573c447ebfd28c65f1311c18e11834516fb88a44e2899513c20221e5b02e10"
+        },
+        {
+          "id": "jdk-pure",
+          "ruleHash": "0d12462e842899db1a80452bf29c10d72ce59c03ddf633a06d092f608fd84a7f"
+        },
+        {
+          "id": "exception-output",
+          "ruleHash": "880ad8c1459cc976b23f9a866c2eb2c52e7fe7771882f1ad944eb2d345197682"
+        },
+        {
+          "id": "query-builder",
+          "ruleHash": "14267fe17415a50694e2024f7b0c1a34686779aa27fb3728d50cb9c4ae7a4284"
+        },
+        {
+          "id": "progress-report",
+          "ruleHash": "131c5a9add5f314b7a48c69e4eac8c157ff1c87e01f1250de5e5b1935c9e4134"
+        },
+        {
+          "id": "compensation-keyword",
+          "ruleHash": "3596eaf2b249d257caaac972cd69038e8bed8a3bf9390201865032c5dd42ee05"
+        },
+        {
+          "id": "transaction-keyword",
+          "ruleHash": "fd241638d9b9451ccbef8d88af9716435f8f34715fd50360d0f751d8fcf65f38"
+        },
+        {
+          "id": "event-publication-keyword",
+          "ruleHash": "d22dfb711c1cd87866966e0f99e4d72636650ca7c2dfb7fe6d923f83d02f3b9a"
+        },
+        {
+          "id": "validation-keyword",
+          "ruleHash": "1c0e9a48a5d7fb62c658350a126d46218ae5a39d3751ebd7bb783b32a1bfc5d8"
+        },
+        {
+          "id": "context-keyword",
+          "ruleHash": "2469e9c82257b9833986a5fe0835cab6cc3740f797819e711192fdd1ed80b5ea"
+        },
+        {
+          "id": "external-boundary-keyword",
+          "ruleHash": "c17e4235ca2e748858e694668690f860f348833c2a775cc5429ddf1d4ef392fc"
+        },
+        {
+          "id": "ddl-mutation-keyword",
+          "ruleHash": "c6a816d4bd7a8c2ae52dc6ca18e5e47a50698d89d7cd928875f7f05268f488d6"
+        },
+        {
+          "id": "state-mutation-keyword",
+          "ruleHash": "19035cae4c8552e6c8ce888bec62cf385d7dc6065950a21c27d7ae822bef7acc"
+        },
+        {
+          "id": "state-lookup-keyword",
+          "ruleHash": "36336cff1c33e6731f95525ac31194e010a18bc07adb520f05384527c85f05fd"
+        },
+        {
+          "id": "infrastructure-keyword",
+          "ruleHash": "cf0fb8365d8f4b7f4ad1be292bdd42b2dc3c9b9a7280f09e5821de0f59c4f9f7"
+        }
+      ]
+    }
+  ],
+  "semanticPackageResolution": {
+    "version": 1,
+    "mode": "auto",
+    "context": {
+      "projectId": "zboss-batch-delete",
+      "language": "java",
+      "framework": "spring"
+    },
+    "selected": [
+      {
+        "packageId": "builtin-java-zboss-compatibility",
+        "packageVersion": "1.4.0",
+        "reason": "project-scope-match"
+      },
+      {
+        "packageId": "builtin-java-core",
+        "packageVersion": "1.2.0",
+        "reason": "portable-default"
+      }
+    ],
+    "excluded": []
+  },
+  "status": "ready",
+  "entries": [
+    {
+      "id": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchDelete",
+      "analysisPath": "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchDelete\\java-analysis.json",
+      "analysisHash": "897e606a7cf2324a3cd200b43d63bc462abd71f27ba764ddb3c5fe4a17b356a5",
+      "graphPath": "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchDelete\\behavior-graph.json",
+      "graphHash": "15177689d9e23f08ca143a3a2bf102ae281e26edbd9629b3d752b9180c00248a",
+      "planPath": "D:\\learn\\migration-guard\\cases\\zboss-batch-delete\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchDelete\\endpoint-replacement-plan.json",
+      "planHash": "37afc9e33994eee6386961db9ce62543ef3e11619877a4fda70715171697c6e0",
+      "status": "ready",
+      "findings": []
+    }
+  ]
+}

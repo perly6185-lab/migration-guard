@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "draft-runtime",
+  "status": "draft",
+  "candidateStatus": "provided-unexecuted",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-horizontal-list",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+  "scenarioId": "provided-horizontal-list",
+  "scope": "read-only",
+  "baseUrl": "https://test.ia-gz.com/admin-api",
+  "request": {
+    "method": "POST",
+    "path": "/zboss/data/view/dynamic/engine/use/engine-use-horizontal/list",
+    "file": "request.json",
+    "effect": "read-when-operator-absent",
+    "credentialsIncluded": false
+  },
+  "executionSafety": {
+    "requiredOperatorState": "absent",
+    "refreshOperatorAllowed": false,
+    "mutatingEndpointsAllowed": false,
+    "repeatCount": 2,
+    "maximumPageSize": 10000
+  },
+  "requiredEvidence": [
+    "HTTP status and business code",
+    "redacted response shape and response hash",
+    "repeat response hash comparison",
+    "row count and total",
+    "custField59623 ASC ordering assertion",
+    "composite select-key output assertion",
+    "SQL trace proving no write statement",
+    "latency and response-byte measurements"
+  ]
+}

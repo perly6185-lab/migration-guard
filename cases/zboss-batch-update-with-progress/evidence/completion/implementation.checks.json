@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.completion-control-evidence/v1",
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "controlId": "implementation.checks",
+  "evidenceKind": "test-report",
+  "status": "passed",
+  "observedAt": "2026-07-30T10:58:41.308Z",
+  "synthetic": false,
+  "realEligible": true,
+  "producer": {
+    "tool": "migration-guard-zboss-completion-sync",
+    "version": "0.3.0-beta.1",
+    "command": "npm run zboss-rust:completion-sync",
+    "identity": "migration-guard:zboss-evidence-bridge"
+  },
+  "claims": {
+    "implementationChecksPassed": true,
+    "upstreamPath": "artifacts/batch-update-rust/l3-gate.json",
+    "upstreamDecision": "L3",
+    "upstreamReportHash": "670339586eb6c83d2e433e6308b399e4ec0632664733763e5d73f6e6230f142d"
+  }
+}

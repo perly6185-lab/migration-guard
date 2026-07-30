@@ -6,6 +6,9 @@
       "status": "approved",
       "scope": "batchUpdateWithProgress request.batchPostValueList; batchHeaderValueList is unsupported",
       "reason": "Approved correction: allow at most 10000 write rows in batchPostValueList, reject a non-empty batchHeaderValueList on this update endpoint, and perform validation before progress, coordination, database or undo effects.",
+      "resolvesFindings": [
+        "RP-COMMAND-REQUEST-CONSTRAINTS-UNRESOLVED"
+      ],
       "approvedBy": "user",
       "approvedAt": "2026-07-27T22:23:55.6116723+08:00"
     },
@@ -38,6 +41,9 @@
       "status": "approved",
       "scope": "committed rows + undo snapshots",
       "reason": "Approved correction: a successful row commit must atomically persist an idempotent undo intent; an outbox consumer may materialize the snapshot asynchronously, failed rows are excluded, and permanent undo failure must be observable rather than silently logged.",
+      "resolvesFindings": [
+        "RP-COMMAND-AFTER-COMMIT-DURABILITY"
+      ],
       "approvedBy": "user",
       "approvedAt": "2026-07-27T22:23:55.6116723+08:00"
     },
@@ -48,6 +54,17 @@
       "reason": "Approved contract: counters are monotonic and conserved across committed and failed rows; the batch has exactly one logical SUCCESS, PARTIAL_FAILED or FAILED transition after row commits and durable undo intents, while transport retries reuse the same event identity and sequence.",
       "approvedBy": "user",
       "approvedAt": "2026-07-27T22:23:55.6116723+08:00"
+    },
+    {
+      "id": "BUP-DEC-SCHEMA-TRANSITION",
+      "status": "approved",
+      "scope": "dynamic table creation or alteration reached from batchUpdateWithProgress",
+      "reason": "Approved correction: batch processing invokes an isolated schema-transition service for structured create-table or add-column operations, guarded by a tenant-and-panel owner-token lease and a durable request-hash idempotency ledger; row processing resumes only after durable transition success, while DDL failure remains observable and retryable with recovery evidence.",
+      "resolvesFindings": [
+        "RP-COMMAND-TRANSACTIONAL-DDL"
+      ],
+      "approvedBy": "user",
+      "approvedAt": "2026-07-29T14:49:16.3215885+08:00"
     }
   ]
 }

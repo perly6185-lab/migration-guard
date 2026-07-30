@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-update-project-trust",
+  "status": "pass",
+  "decision": "L4-A",
+  "capability": {
+    "schemaVersion": 1,
+    "achieved": "L4-A",
+    "next": "L4-B",
+    "claims": [
+      {
+        "level": "L0",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L1",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L2",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L3",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-A",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-B",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-CONCRETE-ADAPTERS-MISSING",
+          "MG-CAPABILITY-DEPLOYABLE-SERVICE-MISSING"
+        ]
+      },
+      {
+        "level": "L4-C",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-REAL-EVIDENCE-BLOCKED",
+          "MG-CAPABILITY-DUAL-REPLAY-BLOCKED"
+        ]
+      },
+      {
+        "level": "L4",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-UNIFIED-REAL-GATE-BLOCKED"
+        ]
+      }
+    ]
+  },
+  "productionPath": {
+    "schemaVersion": 1,
+    "targetRoot": "D:\\learn\\migration-guard\\rust\\batch-update-service",
+    "deployableService": false,
+    "concreteAdapters": false,
+    "productionEligible": false,
+    "evidence": {
+      "rustSourceFiles": 14,
+      "httpRuntimeDetected": false,
+      "routeFragments": {
+        "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress": true
+      },
+      "traitImplementations": {
+        "MysqlBatchExecutor": false,
+        "RedisScriptExecutor": false
+      }
+    },
+    "findings": [
+      "MG-PRODUCTION-PATH-CONCRETE-ADAPTER-MISSING:MysqlBatchExecutor",
+      "MG-PRODUCTION-PATH-CONCRETE-ADAPTER-MISSING:RedisScriptExecutor",
+      "MG-PRODUCTION-PATH-HTTP-RUNTIME-MISSING"
+    ]
+  },
+  "gateFreshness": {
+    "offline": [],
+    "real": [
+      "MG-GATE-STALE"
+    ],
+    "note": "A blocked or stale real gate prevents L4-C/L4 but does not invalidate a truthful lower-level claim."
+  },
+  "artifactSecurity": {
+    "scannedRoots": [
+      "artifacts/batch-update-rust",
+      "cases/zboss-batch-update-with-progress/evidence",
+      "cases/zboss-batch-update-with-progress/fixtures"
+    ],
+    "findingCount": 0,
+    "findings": []
+  },
+  "integrityFindings": []
+}

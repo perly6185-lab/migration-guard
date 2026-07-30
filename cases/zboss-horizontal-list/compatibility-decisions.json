@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "decisions": [
+    {
+      "id": "HORIZONTAL-LIST-DEC-IDENTITY-REWRITE",
+      "status": "pending",
+      "scope": "request-normalization",
+      "reason": "When horizontalId is absent the controller derives horizontal, use-page, page and panel identities from stored horizontal metadata; both supplied-ID and derived-ID branches require parity evidence."
+    },
+    {
+      "id": "HORIZONTAL-LIST-DEC-UNKNOWN-SHOW-ARCHIVED",
+      "status": "pending",
+      "scope": "request-contract",
+      "reason": "The supplied request contains showArchived, but EngineUseHorizontalInterReqVO does not declare that field. Runtime behavior must establish whether it is ignored or rejected."
+    },
+    {
+      "id": "HORIZONTAL-LIST-DEC-PAGE-SIZE-10000",
+      "status": "pending",
+      "scope": "pagination-and-performance",
+      "reason": "The supplied request asks for 10000 rows. Response completeness, total semantics, memory use and latency require a measured compatibility budget."
+    },
+    {
+      "id": "HORIZONTAL-LIST-DEC-COMPOSITE-SELECT-KEY",
+      "status": "pending",
+      "scope": "horizontal-projection",
+      "reason": "The composite select key custField60040_0|custField59627 must preserve projection identity, row ordering and calculated-field behavior."
+    },
+    {
+      "id": "HORIZONTAL-LIST-DEC-REFRESH-EFFECT-ORDER",
+      "status": "pending",
+      "scope": "operator-refresh",
+      "reason": "REFRESH executes syncColDataUpdate before horizontalListPackage; the target must preserve mutation ordering, locking and failure behavior."
+    }
+  ]
+}

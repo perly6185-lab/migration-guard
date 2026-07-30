@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "defaultPolicy": "strict-parity",
+  "approvedCorrections": [
+    {
+      "id": "PAGE-DEC-QUALITY-AGGREGATE-ROUTING",
+      "targetRule": "ordinary predicates use WHERE; aggregate predicates use HAVING"
+    },
+    {
+      "id": "PAGE-DEC-HORIZONTAL-HAVING",
+      "targetRule": "apply HAVING before distinct business-key pagination and total"
+    },
+    {
+      "id": "PAGE-DEC-REQUIRES-NEW-SELF-CALL",
+      "targetRule": "preserve the reviewed transaction boundary without Java self-invocation"
+    },
+    {
+      "id": "PAGE-DEC-REFRESH-EFFECT-ORDER",
+      "targetRule": "acquire, sync, timestamp, undo-clear, reconcile, query and owner/fencing-token release remain ordered; compensation errors never replace the primary error"
+    }
+  ],
+  "unknownDifferencePolicy": "fail-closed"
+}

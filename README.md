@@ -92,6 +92,19 @@ real fixture with new hashes.
 plumbing; synthetic provenance is always rejected by `runtime-gate` and
 `real-gate`. Real fixtures and credentials remain outside generated artifacts.
 
+For the ZBoss test environment, committed topology, fixture identifiers, and
+environment-variable bindings live in `config/zboss-test.runtime.json`. Account
+values can be persisted locally with Windows DPAPI and remain decryptable only
+by the same Windows user:
+
+```powershell
+.\scripts\probes\Set-ZbossRuntimeSecrets.ps1
+. .\scripts\probes\Import-ZbossRuntime.ps1
+```
+
+The encrypted `.secrets/` directory is Git-ignored. Access tokens and mutation
+approvals are deliberately never persisted.
+
 The built-in source adapter currently supports Java/Spring HTTP routes. Other
 frameworks and service-method entrypoints require a registered source adapter.
 
@@ -173,10 +186,18 @@ integrity and portable AI collaboration roadmap is tracked in
 [docs/PHASE_161_170_PLAN.md](docs/PHASE_161_170_PLAN.md).
 
 CI and local `npm test` recursively discover built tests with stable ordering and
-enforce the minimum file/test counts in `scripts/ci/test-manifest.json`. Unit and
-integration tests run together; packaged smoke and real-project pilots remain
-explicit release gates. CI also publishes total and slowest-test timings, audits
-production dependencies, checks the npm package allowlist and runs installation smoke.
+enforce the minimum file/test counts in `scripts/ci/test-manifest.json`. Tests run
+in bounded shards: unit shards use limited concurrency and integration shards run
+serially. Every test and shard has its own timeout, and an interrupted or timed-out
+shard terminates its child process tree before the runner exits. The runner prints
+the current shard and file list so a stall is attributable instead of appearing as
+one global timeout. Defaults can be tuned with `MG_TEST_CONCURRENCY`,
+`MG_TEST_UNIT_SHARD_SIZE`, `MG_TEST_INTEGRATION_SHARD_SIZE`,
+`MG_TEST_FILE_TIMEOUT_MS`, `MG_TEST_UNIT_SHARD_TIMEOUT_MS`, and
+`MG_TEST_INTEGRATION_SHARD_TIMEOUT_MS`. Packaged smoke and real-project pilots
+remain explicit release gates. CI also publishes total and slowest-test timings,
+audits production dependencies, checks the npm package allowlist and runs
+installation smoke.
 
 The release gate binds every result to one release run, repository context and
 current pilot evidence. Configure all three real-project roots before running it:

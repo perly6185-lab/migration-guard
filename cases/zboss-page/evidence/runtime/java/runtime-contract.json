@@ -1,13 +1,33 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-27T13:43:25.610Z",
+  "generatedAt": "2026-07-30T01:57:30.488Z",
   "projectId": "zboss-page",
-  "projectHash": "56aa35908691d3260c90a8d7a1023252ac931dc1b786dcb2f5c34eac20d3229b",
+  "projectHash": "8b6382cf41106314ee91a17f6c38ee77547e8302ed9c58da8f4a157e8a67ad91",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
     "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
     "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+  },
+  "sourceSnapshot": {
+    "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
+    "directories": [
+      "zboss-module-data-api/src/main/java",
+      "zboss-module-data-domain/src/main/java",
+      "zboss-module-data-infrastructure/src/main/java",
+      "zboss-module-data-infrastructure/src/main/resources",
+      "zboss-module-data-service/src/main/java",
+      "zboss-module-data-service/src/main/resources",
+      "zboss-module-data-type/src/main/java"
+    ],
+    "identity": {
+      "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+      "dirty": true,
+      "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+      "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+    },
+    "treeHash": "1413c76262063196301f42318ecf8ca8baae5ec4d2b2d1be26d44a713a05a78f",
+    "fileCount": 7175
   },
   "entries": [
     {
@@ -21,8 +41,8 @@
         "redis",
         "sql-trace"
       ],
-      "analysisHash": "6bc768b52a133fa6a01abc3b225d74271c25a370df0dabafc474ad7fdedb8967",
-      "planHash": "aed4d347bfd1890e1ee8bf22bf71460fedbb66a62610ff64272c8b314c1682e9",
+      "analysisHash": "8bcc910d44a54f69486a73cf7487da767e7cd164d6bff65a8112471d611a28d2",
+      "planHash": "fb81cc82c32cdd2a9dff12a8c495da3d434eb631b8cfc0dbd90378e14a8af43b",
       "scenarios": [
         {
           "id": "branch-coverage",
@@ -51,7 +71,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/branch-coverage.template.json",
-            "hash": "93ff24f315027798eb910794b0e08bed70d11cd6e5bb7009bf6837fa03f674cb"
+            "hash": "a327213d96427952769ca418e7b33c7141eaac830108bacd0b689a6a052f9e23"
           }
         },
         {
@@ -74,7 +94,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/child-form-page.template.json",
-            "hash": "e9a5cf9578447429bbc973f73ef92061241a67079c72f02dd93cd5297bc92665"
+            "hash": "1856fe387d516e7bb97989626b9efa40dff15fb74235467318a00db11b75b2b4"
           }
         },
         {
@@ -104,7 +124,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/concurrent-write.template.json",
-            "hash": "4395888dab3f155f0a157810a82be2dcfe82aa41bcf4ac798273e88781f1081b"
+            "hash": "0d778ce2f9ee828a2ddfe391783f933b81545a35b68ff3df65a496461056e399"
           }
         },
         {
@@ -127,7 +147,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/context-isolation.template.json",
-            "hash": "7a1c42172b484826d9a1241b7e27bcbe6b693b95b6b079b2edf7ed63148b28d2"
+            "hash": "f964ebf6394665b3f0549641a0775b675ab5c508ce0d6c3bf429c03d7ff30266"
           }
         },
         {
@@ -157,7 +177,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/dependency-failure.template.json",
-            "hash": "fa31dd9fca100170506d1820ea3ed0851ec0d0d0df735ac0fee83189b0436611"
+            "hash": "07b55a57e119c84124f73ca4cb2fa37a86f0a1907a5dd7d3e99dd8ab94671b18"
           }
         },
         {
@@ -180,7 +200,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/entrypoint-parity.template.json",
-            "hash": "8ea3ba24368bca993b5d454db7752e21bcaf6abbc585ae6e85632ea61502b509"
+            "hash": "1bc9af450d0eeefe60a06f9341f4cb35ab878d2e40e35e1454ce133e0f87c18d"
           }
         },
         {
@@ -207,7 +227,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/horizontal-page.template.json",
-            "hash": "2ee232c9fb4d0308faf9f2b99be7a701c7ddf6fb5fd7747bc6a7543ef25a20c5"
+            "hash": "41216b67cee4fbfdd767002a30bb2bc8fc6ed44467e38da9c5e6eb8b239dd910"
           }
         },
         {
@@ -230,7 +250,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/primary-success.template.json",
-            "hash": "3d36bae657f97e0a3552f1ea621f9977bbede2f5b0740e1ef88498629984e080"
+            "hash": "7455a6ddd7b4d840e4a68d73c34661ab780808b4e27a75758b7ff956281f8ee1"
           }
         },
         {
@@ -257,7 +277,53 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/quality-text-filter.template.json",
-            "hash": "e3628ed4c00c3894a9477de8283f828d0838ce4f1345f6d4e16d340899fd8f7c"
+            "hash": "8b22d2f86c3eddb81d111a379c80b3ebb85327ab996c2ad80a09b1ab79453a5a"
+          }
+        },
+        {
+          "id": "query-cache-isolation",
+          "title": "Query cache response isolation",
+          "category": "compatibility",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/query-cache-isolation.template.json",
+            "hash": "26818b4ebc3e12e8ff774409490fabb5459f676e44399f15c1c2b8340c2d2d2a"
+          }
+        },
+        {
+          "id": "query-timeout-quiescence",
+          "title": "Query timeout task quiescence",
+          "category": "fault",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/query-timeout-quiescence.template.json",
+            "hash": "414e041550080d34d53c3729036f052940207c46a041966ef558d335fbb6963f"
           }
         },
         {
@@ -287,7 +353,30 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/refresh-operator.template.json",
-            "hash": "0f38b3881af911f694b128afdc32eb1aa04309a2fa7b975a8b482fa550d90c9b"
+            "hash": "9736071c3328bf1ea094aabe3e29c9c698d4d2a8785ca6c3afe78685c8913890"
+          }
+        },
+        {
+          "id": "request-semantic-parity",
+          "title": "Request semantic override parity",
+          "category": "compatibility",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "effects",
+            "state",
+            "events",
+            "failures"
+          ],
+          "requiredCollectors": [],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/request-semantic-parity.template.json",
+            "hash": "72cbb32df7031ef4d2c70c6c7e2bb4b5f890dec38dc62863a2f67fd365b33f7c"
           }
         },
         {
@@ -311,7 +400,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/scale-boundary.template.json",
-            "hash": "702cacb7b9bf41390d0eed80391833138881b3bf8021892487f8a9fda1ea9c1b"
+            "hash": "f957cc2fe24852c25867df43506ad179ed1b1e1293897c0a9ff9049e212a77a2"
           }
         },
         {
@@ -334,7 +423,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/standard-page.template.json",
-            "hash": "c08a07e91591266d73e8e3bb7d979e04fa7c7eb746e5d63b5345cc6619c2d084"
+            "hash": "e060642296fd726a9370b1337479e6b9204e2443fccdefa5dea5361c93ea225c"
           }
         },
         {
@@ -357,7 +446,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/tenant-auth-context.template.json",
-            "hash": "962a7d7f8c546b64cacdb09d561dca0f2fc581e1be33005e840a602d5167a210"
+            "hash": "01595903b0b4a4407cba6c0e12842b7461899146362ec3682205318e28957ce5"
           }
         },
         {
@@ -388,7 +477,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/transaction-failure.template.json",
-            "hash": "66b2f2db0dd631444e507af5d117fb30dfa4b100d4cd971d348f584837d97440"
+            "hash": "ce08f3be9769799c14d0c4fa345b01e847c290631af18e1a586ad6b6ac5d85b7"
           }
         },
         {
@@ -411,7 +500,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/upload-preview-page.template.json",
-            "hash": "ec4b1e4b8c4d793cf041ee448fe8cb98e1354cd424bad9ca71ec829a362172df"
+            "hash": "f965e8ea4021c1733eb4135d6f7eac4612167bf3b8a3793b2121fd8028a60423"
           }
         },
         {
@@ -434,7 +523,36 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/validation-failure.template.json",
-            "hash": "6019d17fba5e0016595e08d9a884c42cf154d22cc331e5a0dcd2ffdd3995a0b2"
+            "hash": "5320c8c48ab6176b867ee45f2cab587a048594b5ba414725b072f194d653cdb3"
+          }
+        },
+        {
+          "id": "calendar-view",
+          "title": "Calendar view page phase",
+          "category": "compatibility",
+          "requiredDimensions": [
+            "http",
+            "context",
+            "decisions",
+            "state",
+            "performance"
+          ],
+          "requiredCollectors": [
+            "mysql",
+            "sql-trace"
+          ],
+          "semanticGates": [
+            "page"
+          ],
+          "decisionIds": [
+            "PAGE-DEC-CALENDAR-PAGE-SIZE-10000",
+            "PAGE-DEC-CALENDAR-QUERY-PAGE-BINDING",
+            "PAGE-DEC-CALENDAR-TEMPORAL-SEMANTICS",
+            "PAGE-DEC-CALENDAR-VIEW-TYPE-SOURCE"
+          ],
+          "fixtureTemplate": {
+            "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/calendar-view.template.json",
+            "hash": "54d9d480d1d61b9060d674a7505ff12182dcf2c65a738b87f0e8385d02dfdf36"
           }
         }
       ]
@@ -466,7 +584,7 @@
   },
   "evidenceSchema": {
     "path": "evidence/runtime/java/runtime-evidence.schema.json",
-    "hash": "16d047b39a9be694a62d72816a25aedc9ec22ab28953ec68c462248923034f85"
+    "hash": "62d6b7a751d1ddc4b9d6d43aeab31f49e5058cb496b961a83d638eb2fa9a15d3"
   },
   "collectorTemplates": {
     "events": {
@@ -486,5 +604,5 @@
       "hash": "ae60f81676bce2da1f19a1069e8e9947100892061ac46c6c51df289f167139bb"
     }
   },
-  "contractHash": "3ea6a36f0018299305b46255dbdeb860736005f507215717f8e33d40a69dc718"
+  "contractHash": "b2775113d9921ad83e7c087f8feea37f0169ff384083f94fdeee66eaf28f8a09"
 }

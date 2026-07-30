@@ -5,8 +5,13 @@
     "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
     "access": "read-only",
     "directories": [
-      "src/main/java",
-      "src/main/resources"
+      "zboss-module-data-api/src/main/java",
+      "zboss-module-data-domain/src/main/java",
+      "zboss-module-data-infrastructure/src/main/java",
+      "zboss-module-data-infrastructure/src/main/resources",
+      "zboss-module-data-service/src/main/java",
+      "zboss-module-data-service/src/main/resources",
+      "zboss-module-data-type/src/main/java"
     ],
     "language": "java",
     "framework": "spring",
@@ -51,8 +56,17 @@
   },
   "target": {
     "language": "rust",
-    "root": "D:\\learn\\migration-guard\\out-of-scope\\zboss-page",
-    "serviceName": "zboss-page-migration"
+    "root": "../../rust/zboss-rust/internal/dynamic-engine-runtime",
+    "serviceName": "zboss-page",
+    "productionPath": {
+      "requiredTraits": [
+        "MysqlStatementExecutor",
+        "RedisLeaseExecutor"
+      ],
+      "requiredRouteFragments": [
+        "/zboss/data/view/dynamic/engine/use/engine-use-page/page"
+      ]
+    }
   },
   "compatibility": {
     "strict": true,

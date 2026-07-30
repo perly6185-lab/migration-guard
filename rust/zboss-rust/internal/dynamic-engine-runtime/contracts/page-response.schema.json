@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migration-guard://zboss-page/page-response-v1",
+  "title": "ZBoss page response envelope",
+  "type": "object",
+  "required": ["code", "msg", "data"],
+  "properties": {
+    "code": { "type": "integer" },
+    "msg": { "type": "string" },
+    "data": {
+      "type": ["object", "null"],
+      "properties": {
+        "reqId": { "type": "string" },
+        "defRespKey": { "type": "string" },
+        "respData": { "type": "array" },
+        "headList": { "type": "array" },
+        "valueSyncStatusList": { "type": "array" },
+        "valueSyncStatusMap": { "type": "object" },
+        "uploadTmpTableName": { "type": ["string", "null"] },
+        "batchId": { "type": ["string", "null"] }
+      },
+      "required": ["reqId", "defRespKey", "respData", "headList"],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

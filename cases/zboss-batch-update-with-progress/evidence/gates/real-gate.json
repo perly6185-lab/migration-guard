@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "gate": "real",
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "status": "blocked",
+  "findings": [
+    "MG-REAL-UPSTREAM-GATE-STALE"
+  ],
+  "evidence": [
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\gates\\offline-gate.json"
+  ],
+  "evidenceDigests": {
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\gates\\offline-gate.json": "d100f2401d677f54d98342516ce288a6f15bec78f2f8f3c704fbb7b72016548a"
+  },
+  "upstream": [
+    {
+      "gate": "offline",
+      "path": "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\gates\\offline-gate.json",
+      "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+      "reportHash": "de11cbab1c7062dcb799f422bdcc581ffe108c9a8af364e1812700c665d9e890",
+      "status": "passed"
+    }
+  ],
+  "generatedAt": "2026-07-30T10:58:40.720Z",
+  "freshness": "stale",
+  "reportHash": "3add7804c0279803321f10e2a21050da18edb902e528a3957f6d7b2c8a1f4d9a"
+}

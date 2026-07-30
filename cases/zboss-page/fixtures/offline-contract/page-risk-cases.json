@@ -11,6 +11,7 @@
     "refresh-operator",
     "child-form-page",
     "horizontal-page",
+    "calendar-view",
     "quality-text-filter",
     "upload-preview-page",
     "tenant-auth-context",
@@ -22,6 +23,8 @@
     "tenant, user, device, request and datasource context",
     "ordinary quality predicates in WHERE and aggregate predicates in HAVING",
     "horizontal business-key pagination preserves HAVING and distinct total",
+    "calendar view type is proven by query metadata and query/page identities remain coherent",
+    "calendar temporal fields preserve timezone, all-day, interval and null semantics",
     "REFRESH sync, effects, query and owner-token unlock ordering",
     "REQUIRES_NEW self-call review and transaction evidence",
     "MySQL before/after state, Redis lease trace and refresh event sequence"

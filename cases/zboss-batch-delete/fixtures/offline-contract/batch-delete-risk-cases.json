@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "specification",
+  "status": "ready",
+  "realEvidenceEligible": false,
+  "endpoint": "POST /zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchDelete",
+  "realFixture": "../real-runtime-candidates/ledger-three-row-delete.json",
+  "cases": [
+    {
+      "id": "success",
+      "contract": "Three active rows are snapshotted, soft-deleted, linked to undo and compensated in order."
+    },
+    {
+      "id": "partial-reference-skip",
+      "contract": "Referenced rows are returned in skippedRowIds while every deletable row commits atomically."
+    },
+    {
+      "id": "all-reference-skip",
+      "contract": "An all-blocked request succeeds without snapshots, undo anchors, delete writes or compensation."
+    },
+    {
+      "id": "missing-active-row",
+      "contract": "Any missing or already-deleted requested row rejects the whole first execution before writes."
+    },
+    {
+      "id": "snapshot-failure",
+      "contract": "Snapshot failure rolls back every main-transaction effect."
+    },
+    {
+      "id": "undo-failure",
+      "contract": "Undo-anchor failure rolls back soft delete and snapshots."
+    },
+    {
+      "id": "duplicate-replay",
+      "contract": "An identical idempotency-key/hash replay returns the stored terminal decision without repeating effects.",
+      "decisionId": "BD-DEC-DUPLICATE-REPLAY"
+    },
+    {
+      "id": "compensation-failure",
+      "contract": "A failed ordered compensation remains durable, observable and resumable.",
+      "decisionIds": [
+        "BD-DEC-COMPENSATION-DURABILITY",
+        "BD-DEC-PROGRESS-COMPLETENESS"
+      ]
+    },
+    {
+      "id": "same-delete-concurrency",
+      "contract": "Concurrent same-panel deletes are serialized by tenant-panel mutation ownership."
+    },
+    {
+      "id": "update-delete-concurrency",
+      "contract": "An in-flight same-panel update excludes delete until the owner releases the gate."
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "status": "draft",
+  "fixtureKind": "draft-runtime",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-page",
+  "projectHash": "8b6382cf41106314ee91a17f6c38ee77547e8302ed9c58da8f4a157e8a67ad91",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+  "scenarioId": "calendar-view",
+  "category": "compatibility",
+  "request": {
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-tenant-id": "<tenant-id>"
+    },
+    "body": {
+      "pageNo": 1,
+      "pageSize": 10000,
+      "interId": "2059838045928468482",
+      "orderValues": [],
+      "headerValues": {},
+      "postValues": {},
+      "panelId": "2059838046666665986",
+      "pageId": "2059838046687637506",
+      "httpId": "2059838047035764738",
+      "selectValues": {
+        "custField59622": "custField59622",
+        "custField59623": "custField59623",
+        "custField59624": "custField59624",
+        "custField59625": "custField59625",
+        "custField59627": "custField59627",
+        "custField59633": "custField59633",
+        "custField59634": "custField59634",
+        "custField59635": "custField59635",
+        "custField59714": "custField59714",
+        "custField59715": "custField59715",
+        "custField59940": "custField59940",
+        "custField59941": "custField59941",
+        "custField59942": "custField59942",
+        "custField59943": "custField59943",
+        "custField59967": "custField59967",
+        "custField60040": "custField60040",
+        "custField60100": "custField60100",
+        "custField60101": "custField60101",
+        "custField60102": "custField60102",
+        "custField60103": "custField60103",
+        "custField60105": "custField60105",
+        "custField60106": "custField60106",
+        "custField60172": "custField60172",
+        "custField60218": "custField60218",
+        "custField61017": "custField61017",
+        "custField61018": "custField61018"
+      },
+      "showArchived": false,
+      "usePageId": "2059838047023181826"
+    }
+  },
+  "requestFocus": [],
+  "expectedComparison": [
+    "http",
+    "context",
+    "decisions",
+    "state",
+    "performance"
+  ],
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "state",
+    "performance"
+  ],
+  "collectorSpecs": {
+    "mysql": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/calendar-view/collectors/mysql.draft.json",
+      "hash": "4b213cba2e1345a9ba201c7466614c931ae61af91b23410b34872c13c068cbe1"
+    },
+    "sql-trace": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/calendar-view/collectors/sql-trace.draft.json",
+      "hash": "26edb37f014992f492327b9c6c5859d2c7e8c7529112b28e19ce2f2933c2b5c2"
+    }
+  },
+  "expectations": {
+    "page": {
+      "expectedStatus": 200,
+      "requirePagination": true,
+      "preserveRowOrder": true,
+      "requireTotalFilterParity": true
+    }
+  },
+  "compatibilityDecisionIds": [
+    "PAGE-DEC-CALENDAR-PAGE-SIZE-10000",
+    "PAGE-DEC-CALENDAR-QUERY-PAGE-BINDING",
+    "PAGE-DEC-CALENDAR-TEMPORAL-SEMANTICS",
+    "PAGE-DEC-CALENDAR-VIEW-TYPE-SOURCE"
+  ],
+  "environmentBindings": [
+    {
+      "path": "request.headers.authorization",
+      "environment": "MG_JAVA_TOKEN"
+    }
+  ],
+  "authoring": {
+    "reviewed": false,
+    "instructions": "Exact request is authored. Do not promote or execute as read-only until page-size preference persistence is decided; a diagnostic-only variant may add skipSavePageSize=true."
+  }
+}

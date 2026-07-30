@@ -4,7 +4,31 @@
     "version": 1,
     "rules": []
   },
-  "classifications": [],
+  "classifications": [
+    {
+      "id": "query-sync-stage-presence-value",
+      "symbolPattern": "SyncStagePresence\\.of",
+      "behavior": "calculation",
+      "reason": "Constructs an immutable sync-stage presence value from already loaded metadata without performing I/O or durable mutation."
+    }
+  ],
+  "runtimeScenarios": [
+    {
+      "id": "calendar-view-query",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+      "title": "Calendar view metadata phase",
+      "category": "compatibility",
+      "requiredDimensions": [
+        "http",
+        "context",
+        "decisions",
+        "effects",
+        "state",
+        "failures"
+      ],
+      "reason": "Verify explicit usePageId/viewId binding, calendar type metadata, cache isolation and observable query-time self-healing effects."
+    }
+  ],
   "runtimeGates": [
     {
       "id": "query-page-baseline",
@@ -35,6 +59,25 @@
           "requireCacheIsolation": true
         }
       }
+    },
+    {
+      "id": "query-calendar-view",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+      "scenarioPattern": "^calendar-view-query$",
+      "collectors": [
+        "mysql",
+        "sql-trace"
+      ],
+      "gates": {
+        "query": {
+          "requireCacheIsolation": true,
+          "requireRequestSemanticParity": true
+        }
+      },
+      "decisionIds": [
+        "QUERY-DEC-CALENDAR-VIEW-BINDING",
+        "QUERY-DEC-CALENDAR-CACHE-ISOLATION"
+      ]
     },
     {
       "id": "query-timeout-quiescence",

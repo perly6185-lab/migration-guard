@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "projectId": "zboss-batch-delete",
+  "projectHash": "9d47c281e6b3bf157450e168d14c7018ccaa518ba960bc3de0b112dc6a58f226",
+  "generatedAt": "2026-07-30T10:58:45.234Z",
+  "controls": {
+    "source.read-only-snapshot": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach source-snapshot evidence and set status to passed after review."
+    },
+    "analysis.complete": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach analysis-report evidence and set status to passed after review."
+    },
+    "offline.contract": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach analysis-report evidence and set status to passed after review."
+    },
+    "implementation.checks": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach test-report evidence and set status to passed after review."
+    },
+    "scenario.contract": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach test-report evidence and set status to passed after review."
+    },
+    "dependency.protocol": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach container-integration evidence and set status to passed after review."
+    },
+    "production.adapter.batch-delete-store": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach static-attestation evidence and set status to passed after review."
+    },
+    "production.adapter.progress-sink": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach static-attestation evidence and set status to passed after review."
+    },
+    "production.adapter.compensation-outbox": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach static-attestation evidence and set status to passed after review."
+    },
+    "production.http-service": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach static-attestation evidence and set status to passed after review."
+    },
+    "production.configuration": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach container-integration evidence and set status to passed after review."
+    },
+    "production.health-readiness": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach container-integration evidence and set status to passed after review."
+    },
+    "real.runtime-evidence": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach runtime-replay evidence and set status to passed after review."
+    },
+    "real.dual-replay": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach runtime-replay evidence and set status to passed after review."
+    },
+    "release.unified-real-gate": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach runtime-replay evidence and set status to passed after review."
+    },
+    "release.observability": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach operational-drill evidence and set status to passed after review."
+    },
+    "release.canary": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach operational-drill evidence and set status to passed after review."
+    },
+    "release.rollback-rehearsal": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach operational-drill evidence and set status to passed after review."
+    },
+    "release.source-off": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:45.234Z",
+      "artifacts": [],
+      "note": "Attach operational-drill evidence and set status to passed after review."
+    }
+  }
+}

@@ -132,7 +132,10 @@
             "mysql",
             "redis",
             "events",
-            "sql-trace"
+            "sql-trace",
+            "ai-trace",
+            "stream-trace",
+            "tool-trace"
           ]
         },
         "status": {
@@ -208,6 +211,9 @@
         "undoRows": {
           "$ref": "#/$defs/indexes"
         },
+        "responseFailedRows": {
+          "$ref": "#/$defs/indexes"
+        },
         "progress": {
           "type": "array",
           "items": {
@@ -217,7 +223,44 @@
               "processed",
               "failed",
               "total"
-            ]
+            ],
+            "properties": {
+              "stage": {
+                "enum": [
+                  "accepted",
+                  "validating",
+                  "writing",
+                  "committed",
+                  "success",
+                  "partial-failed",
+                  "failed"
+                ]
+              },
+              "processed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "eventId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "deliveryAttempt": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
           }
         },
         "lockRecords": {
@@ -239,7 +282,8 @@
               "accepted",
               "replayed",
               "conflict",
-              "out-of-order"
+              "out-of-order",
+              "missing"
             ]
           }
         },
@@ -251,7 +295,192 @@
               "transactionId",
               "event",
               "sequence"
-            ]
+            ],
+            "properties": {
+              "transactionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "event": {
+                "enum": [
+                  "begin",
+                  "commit",
+                  "rollback"
+                ]
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rowIndex": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "requestValidations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "caseId",
+              "postRowCount",
+              "headerRowCount",
+              "rowLimit",
+              "outcome",
+              "writeCount",
+              "progressEventCount",
+              "coordinationEventCount",
+              "transactionEventCount",
+              "undoIntentCount"
+            ],
+            "properties": {
+              "caseId": {
+                "enum": [
+                  "post-over-limit",
+                  "post-at-limit",
+                  "header-non-empty"
+                ]
+              },
+              "postRowCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "headerRowCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rowLimit": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "outcome": {
+                "enum": [
+                  "accepted",
+                  "rejected"
+                ]
+              },
+              "writeCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "progressEventCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "coordinationEventCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "transactionEventCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "undoIntentCount": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "chunkAttempts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tenantId",
+              "sessionId",
+              "chunkNo",
+              "requestHash",
+              "isLast",
+              "outcome",
+              "ledgerPersisted",
+              "effectsApplied"
+            ],
+            "properties": {
+              "tenantId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sessionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "chunkNo": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "requestHash": {
+                "$ref": "#/$defs/hash"
+              },
+              "isLast": {
+                "type": "boolean"
+              },
+              "outcome": {
+                "enum": [
+                  "accepted",
+                  "replayed",
+                  "conflict",
+                  "out-of-order",
+                  "missing"
+                ]
+              },
+              "ledgerPersisted": {
+                "type": "boolean"
+              },
+              "effectsApplied": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "resultHash": {
+                "$ref": "#/$defs/hash"
+              }
+            }
+          }
+        },
+        "undoIntents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "rowIndex",
+              "idempotencyKey",
+              "transactionId",
+              "sequence",
+              "status"
+            ],
+            "properties": {
+              "rowIndex": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "idempotencyKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "transactionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "status": {
+                "enum": [
+                  "persisted",
+                  "materialized",
+                  "permanent-failure"
+                ]
+              },
+              "observable": {
+                "type": "boolean"
+              }
+            }
           }
         }
       }
@@ -542,6 +771,15 @@
             },
             "sql-trace": {
               "$ref": "#/$defs/collectorEvidence"
+            },
+            "ai-trace": {
+              "$ref": "#/$defs/collectorEvidence"
+            },
+            "stream-trace": {
+              "$ref": "#/$defs/collectorEvidence"
+            },
+            "tool-trace": {
+              "$ref": "#/$defs/collectorEvidence"
             }
           }
         },
@@ -607,7 +845,10 @@
                   "mysql",
                   "redis",
                   "events",
-                  "sql-trace"
+                  "sql-trace",
+                  "ai-trace",
+                  "stream-trace",
+                  "tool-trace"
                 ]
               },
               "scenarioId": {

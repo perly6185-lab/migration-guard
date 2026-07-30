@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "projectId": "zboss-horizontal-list",
+  "projectHash": "81997d203d4fe61758e354622105d4b38e7d635eadb2509b270e503ac9fa82e3",
+  "generatedAt": "2026-07-30T10:58:37.214Z",
+  "controls": {
+    "source.read-only-snapshot": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "analysis.complete": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "offline.contract": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "implementation.checks": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "scenario.contract": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "dependency.protocol": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "production.adapter.mysql-horizontal-query-executor": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "production.adapter.horizontal-refresh-coordinator": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "production.http-service": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "production.configuration": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "production.health-readiness": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "real.runtime-evidence": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "real.dual-replay": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.unified-real-gate": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.observability": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.canary": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.rollback-rehearsal": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    },
+    "release.source-off": {
+      "status": "blocked",
+      "observedAt": "2026-07-30T10:58:37.214Z",
+      "artifacts": [],
+      "note": "No fresh qualifying upstream gate proves this control."
+    }
+  }
+}

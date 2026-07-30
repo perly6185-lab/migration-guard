@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migration-guard://zboss-page/page-request-v1",
+  "title": "ZBoss page request",
+  "type": "object",
+  "anyOf": [
+    { "required": ["usePageId"] },
+    { "required": ["pageId"] }
+  ],
+  "properties": {
+    "reqId": { "type": "string" },
+    "operator": { "type": ["string", "null"] },
+    "pageNo": { "type": ["integer", "null"], "minimum": 1 },
+    "pageSize": { "type": ["integer", "null"], "minimum": 1, "maximum": 10000 },
+    "usePageId": { "type": ["integer", "null"], "minimum": 1 },
+    "pageId": { "type": ["integer", "null"], "minimum": 1 },
+    "panelId": { "type": ["integer", "null"], "minimum": 1 },
+    "interId": { "type": ["integer", "null"], "minimum": 1 },
+    "httpId": { "type": ["integer", "null"], "minimum": 1 },
+    "headerValues": { "type": "object" },
+    "layoutGlobalCondition": { "type": ["string", "null"] },
+    "postValues": { "type": "object" },
+    "selectValues": { "type": "object" },
+    "orderValues": { "type": "array" },
+    "qualityValues": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": ["string", "integer", "boolean", "null"] },
+          {
+            "type": "object",
+            "required": ["operator"],
+            "properties": {
+              "operator": {
+                "enum": [
+                  "EQ", "EQUAL", "NE", "NOT_EQUAL",
+                  "GT", "GREATER_THAN", "GTE", "GREATER_THAN_OR_EQUAL",
+                  "LT", "LESS_THAN", "LTE", "LESS_THAN_OR_EQUAL",
+                  "IN", "IS_NULL", "IS_NOT_NULL"
+                ]
+              },
+              "value": { "type": ["string", "integer", "boolean", "null"] },
+              "values": {
+                "type": "array",
+                "items": { "type": ["string", "integer", "boolean", "null"] }
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "textFilterValue": { "type": ["string", "null"] },
+    "horizontalValues": { "type": "object" },
+    "horizontalKeyValues": { "type": "array" },
+    "horizontalDataPageTreeReqVOs": { "type": "array" },
+    "uploadTmpTableName": { "type": ["string", "null"] },
+    "uploadTmpFlag": { "type": ["integer", "null"] },
+    "pageCreateMode": { "type": ["integer", "null"] },
+    "usePageTemplatePage": { "type": ["integer", "null"] },
+    "fieldId": { "type": ["integer", "null"] },
+    "dataId": { "type": ["integer", "null"] },
+    "childFormFieldId": { "type": ["integer", "null"] },
+    "skipSavePageSize": { "type": ["boolean", "null"] },
+    "showArchived": { "type": ["boolean", "null"] },
+    "relateFieldId": { "type": ["integer", "null"] },
+    "primaryKeyId": { "type": ["integer", "null"] },
+    "locatePrimaryKeyId": { "type": ["integer", "null"] }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "driverId": "java-batch-delete-reference-stub",
+  "provenance": "synthetic-frozen-stub-not-real-java-runtime-evidence",
+  "sourceIdentity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768",
+  "cases": [
+    {
+      "caseId": "success",
+      "observation": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [2082397610825953281, 2082397610809176066, 2082397610804981762],
+        "skippedRowIds": [],
+        "activeRowIds": [],
+        "snapshotCount": 3,
+        "undoCount": 3,
+        "outboxState": "COMPLETED",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      }
+    },
+    {
+      "caseId": "partial-reference-skip",
+      "observation": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [2082397610825953281, 2082397610804981762],
+        "skippedRowIds": [2082397610809176066],
+        "activeRowIds": [2082397610809176066],
+        "snapshotCount": 2,
+        "undoCount": 2,
+        "outboxState": "COMPLETED",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      }
+    },
+    {
+      "caseId": "all-reference-skip",
+      "observation": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [],
+        "skippedRowIds": [2082397610825953281, 2082397610809176066, 2082397610804981762],
+        "activeRowIds": [2082397610804981762, 2082397610809176066, 2082397610825953281],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      }
+    },
+    {
+      "caseId": "missing-active-row",
+      "observation": {
+        "httpStatus": 409,
+        "code": "MISSINGACTIVEROW",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [2082397610809176066, 2082397610825953281],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      }
+    },
+    {
+      "caseId": "snapshot-failure",
+      "observation": {
+        "httpStatus": 500,
+        "code": "SNAPSHOTWRITEFAILED",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [2082397610804981762, 2082397610809176066, 2082397610825953281],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      }
+    },
+    {
+      "caseId": "undo-failure",
+      "observation": {
+        "httpStatus": 500,
+        "code": "UNDOWRITEFAILED",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [2082397610804981762, 2082397610809176066, 2082397610825953281],
+        "snapshotCount": 0,
+        "undoCount": 0,
+        "outboxState": "NONE",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      }
+    },
+    {
+      "caseId": "duplicate-replay",
+      "observation": {
+        "httpStatus": 409,
+        "code": "MISSINGACTIVEROW",
+        "deletedRowIds": [],
+        "skippedRowIds": [],
+        "activeRowIds": [],
+        "snapshotCount": 3,
+        "undoCount": 3,
+        "outboxState": "COMPLETED",
+        "progressTerminal": "FAILED",
+        "replayed": false
+      }
+    },
+    {
+      "caseId": "compensation-failure",
+      "observation": {
+        "httpStatus": 200,
+        "code": "OK",
+        "deletedRowIds": [2082397610825953281, 2082397610809176066, 2082397610804981762],
+        "skippedRowIds": [],
+        "activeRowIds": [],
+        "snapshotCount": 3,
+        "undoCount": 3,
+        "outboxState": "LOG_ONLY_FAILURE",
+        "progressTerminal": "SUCCESS",
+        "replayed": false
+      }
+    }
+  ]
+}

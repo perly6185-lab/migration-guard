@@ -32,6 +32,30 @@
       "reason": "Approved contract: enforce sync, post-effects, query and owner-token release ordering; every terminal path must release the owned lease and retain failure evidence.",
       "approvedBy": "user",
       "approvedAt": "2026-07-27T20:48:24.3697282+08:00"
+    },
+    {
+      "id": "PAGE-DEC-CALENDAR-VIEW-TYPE-SOURCE",
+      "status": "pending",
+      "scope": "calendar view classification",
+      "reason": "The user identified usePageId 2059838047023181826 as a calendar view. Runtime query metadata must be the authoritative source; field or response shape must not classify the view."
+    },
+    {
+      "id": "PAGE-DEC-CALENDAR-QUERY-PAGE-BINDING",
+      "status": "pending",
+      "scope": "query response to page request identity binding",
+      "reason": "Freeze how usePageId, viewId, panelId, pageId, interId and httpId from the metadata phase select the page execution path."
+    },
+    {
+      "id": "PAGE-DEC-CALENDAR-PAGE-SIZE-10000",
+      "status": "pending",
+      "scope": "calendar pageSize 10000 and page-size preference persistence",
+      "reason": "Approve only after latency, memory, response-size and total-count budgets are measured, and after deciding whether page-size preference writes are compatible."
+    },
+    {
+      "id": "PAGE-DEC-CALENDAR-TEMPORAL-SEMANTICS",
+      "status": "pending",
+      "scope": "calendar date/time projection",
+      "reason": "The source and target must agree on start/end boundaries, all-day values, timezone conversion, null values and daylight-saving behavior."
     }
   ]
 }

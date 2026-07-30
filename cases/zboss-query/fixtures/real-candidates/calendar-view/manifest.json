@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "real-runtime-candidate",
+  "status": "draft",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-query",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-query",
+  "scenarioId": "calendar-view-query",
+  "provenance": "user-provided-request",
+  "baseUrl": "https://test.ia-gz.com/admin-api",
+  "credentialsIncluded": false,
+  "rawResponsesIncluded": false,
+  "request": {
+    "method": "POST",
+    "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/query",
+    "file": "request.json",
+    "effect": "query-with-possible-self-healing-writes",
+    "executionAuthorized": false
+  },
+  "requiredEvidence": [
+    "response usePageId and viewId identity",
+    "calendar view-type metadata",
+    "cache isolation between different viewId values",
+    "MySQL before/after snapshot and SQL trace",
+    "async timeout quiescence"
+  ]
+}

@@ -4,7 +4,7 @@
   "fixtureKind": "template",
   "realEvidenceEligible": false,
   "projectId": "zboss-page",
-  "projectHash": "56aa35908691d3260c90a8d7a1023252ac931dc1b786dcb2f5c34eac20d3229b",
+  "projectHash": "8b6382cf41106314ee91a17f6c38ee77547e8302ed9c58da8f4a157e8a67ad91",
   "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
   "scenarioId": "quality-text-filter",
   "category": "scale",

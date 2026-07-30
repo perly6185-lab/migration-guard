@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "ownershipPolicy": {
+    "version": 1,
+    "rules": []
+  },
+  "classifications": [
+    {
+      "id": "horizontal-temporal-calculation",
+      "symbolPattern": "(?:DynamicDateOptionEnum\\.(?:mondayOf|point|quarter|range)|DynamicDateResolver\\.(?:chineseMonth|chineseYear|endOfDay|startOfDay)|LocalDate\\.with|TemporalAdjusters\\.lastDayOfMonth)",
+      "behavior": "calculation",
+      "reason": "Performs deterministic date-range and calendar-boundary calculations over supplied values."
+    },
+    {
+      "id": "horizontal-refresh-effect",
+      "symbolPattern": "(?:ViewDynamicHorizontalSyncEngineService|ViewDynamicHorizontalSyncEngineServiceImpl)\\.syncColDataUpdate",
+      "behavior": "state-write",
+      "reason": "REFRESH requests mutate horizontal column state before list evaluation."
+    },
+    {
+      "id": "horizontal-calculated-field-processing",
+      "symbolPattern": "(?:ViewDynamicHorizontalCalcFieldDataService|ViewDynamicHorizontalCalcFieldDataServiceImpl)\\.processCalcFieldData",
+      "behavior": "calculation",
+      "reason": "Calculated horizontal fields are part of the externally visible list response."
+    }
+  ],
+  "runtimeGates": [
+    {
+      "id": "horizontal-list-baseline",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioPattern": ".*",
+      "collectors": [],
+      "gates": {
+        "page": {
+          "expectedStatus": 200,
+          "requirePagination": true,
+          "preserveRowOrder": true
+        }
+      },
+      "decisionIds": []
+    },
+    {
+      "id": "horizontal-list-pagination",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioPattern": "^(?:provided-horizontal-list|page-size-boundary)$",
+      "collectors": [
+        "sql-trace"
+      ],
+      "gates": {
+        "page": {
+          "expectedStatus": 200,
+          "requirePagination": true,
+          "preserveRowOrder": true,
+          "requireTotalFilterParity": true,
+          "requireHorizontalConsistency": true
+        }
+      },
+      "decisionIds": [
+        "HORIZONTAL-LIST-DEC-PAGE-SIZE-10000",
+        "HORIZONTAL-LIST-DEC-COMPOSITE-SELECT-KEY"
+      ]
+    },
+    {
+      "id": "horizontal-list-refresh-effects",
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-horizontal-list",
+      "scenarioPattern": "^refresh-operator$",
+      "collectors": [
+        "mysql",
+        "redis",
+        "sql-trace"
+      ],
+      "gates": {
+        "page": {
+          "expectedStatus": 200,
+          "requirePagination": true,
+          "preserveRowOrder": true,
+          "requireRefreshTrace": true,
+          "requireRefreshTerminal": true,
+          "requireRefreshLock": true
+        }
+      },
+      "decisionIds": [
+        "HORIZONTAL-LIST-DEC-REFRESH-EFFECT-ORDER"
+      ]
+    }
+  ]
+}

@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-27T13:43:26.217Z",
+  "generatedAt": "2026-07-30T01:59:01.734Z",
   "projectId": "zboss-page",
-  "projectHash": "56aa35908691d3260c90a8d7a1023252ac931dc1b786dcb2f5c34eac20d3229b",
-  "contractHash": "3ea6a36f0018299305b46255dbdeb860736005f507215717f8e33d40a69dc718",
-  "scenarioCount": 16,
-  "draftCount": 16,
+  "projectHash": "8b6382cf41106314ee91a17f6c38ee77547e8302ed9c58da8f4a157e8a67ad91",
+  "contractHash": "b2775113d9921ad83e7c087f8feea37f0169ff384083f94fdeee66eaf28f8a09",
+  "scenarioCount": 20,
+  "draftCount": 20,
   "authoringReady": true,
   "environmentContract": "evidence/runtime/java/environment-contract.json",
   "environmentExample": "evidence/runtime/java/.env.example",
@@ -159,6 +159,28 @@
     },
     {
       "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "query-cache-isolation",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/query-cache-isolation/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "query-timeout-quiescence",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/query-timeout-quiescence/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
       "scenarioId": "refresh-operator",
       "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/refresh-operator/fixture.draft.json",
       "requiredCollectors": [
@@ -177,6 +199,17 @@
         "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
         "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
         "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "request-semantic-parity",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/request-semantic-parity/fixture.draft.json",
+      "requiredCollectors": [],
+      "collectorSpecs": {},
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
       ],
       "promotable": false
     },
@@ -255,6 +288,24 @@
       "collectorSpecs": {},
       "placeholderFindings": [
         "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
+      ],
+      "promotable": false
+    },
+    {
+      "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-page-page",
+      "scenarioId": "calendar-view",
+      "draftFixture": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/calendar-view/fixture.draft.json",
+      "requiredCollectors": [
+        "mysql",
+        "sql-trace"
+      ],
+      "collectorSpecs": {
+        "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/calendar-view/collectors/mysql.draft.json",
+        "sql-trace": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-page-page/calendar-view/collectors/sql-trace.draft.json"
+      },
+      "placeholderFindings": [
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
+        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot"
       ],
       "promotable": false
     }

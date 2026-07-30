@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "template",
+  "status": "template",
+  "realEvidenceEligible": false,
+  "candidateId": "attendance-parent-child-read",
+  "classification": "authenticated-read-only-replay",
+  "gatewayBaseUrl": "https://test.ia-gz.com/admin-api",
+  "requests": {
+    "query": {
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/query",
+      "body": {
+        "usePageId": "2059838082205003777"
+      }
+    },
+    "page": {
+      "method": "POST",
+      "path": "/zboss/data/view/dynamic/engine/use/engine-use-page/page",
+      "body": {
+        "pageNo": 1,
+        "pageSize": 1000,
+        "interId": "2059838081038987266",
+        "orderValues": [],
+        "headerValues": {},
+        "postValues": {},
+        "panelId": "2059838081856876546",
+        "pageId": "2059838081877848066",
+        "httpId": "2059838082217586690",
+        "selectValues": {
+          "custField60047": "custField60047",
+          "custField60048": "custField60048",
+          "custField60049": "custField60049",
+          "custField60050": "custField60050",
+          "custField60051": "custField60051",
+          "custField60073": "custField60073",
+          "custField60173": "custField60173",
+          "custField60072": "custField60072",
+          "group_2064532609377431553": "group_2064532609377431553",
+          "custField60046": "custField60046",
+          "custField60064": "custField60064",
+          "group_2064532694618271745": "group_2064532694618271745",
+          "custField60045": "custField60045",
+          "custField60065": "custField60065",
+          "group_2064532786414809090": "group_2064532786414809090",
+          "custField60066": "custField60066",
+          "custField60067": "custField60067",
+          "custField60052": "custField60052"
+        },
+        "showArchived": false,
+        "usePageId": "2059838082205003777"
+      }
+    }
+  },
+  "blockedMutation": {
+    "method": "POST",
+    "path": "/zboss/data/view/dynamic-use-group-data/confirm-sync",
+    "body": {
+      "usePageId": "2059838082205003777"
+    },
+    "invocationAllowed": false,
+    "reason": "The active relation stage mutates an existing attendance summary and triggers derived-field refresh side effects."
+  },
+  "requiredBeforeReadReplay": [
+    "dedicated test token",
+    "matching userId",
+    "response redaction policy"
+  ],
+  "requiredBeforeMutation": [
+    "isolated copied dataset or disposable panel",
+    "explicit write approval",
+    "before/after snapshot",
+    "verified rollback and cleanup predicate"
+  ]
+}

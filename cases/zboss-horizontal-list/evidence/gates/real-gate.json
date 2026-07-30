@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "gate": "real",
+  "projectId": "zboss-horizontal-list",
+  "projectHash": "81997d203d4fe61758e354622105d4b38e7d635eadb2509b270e503ac9fa82e3",
+  "status": "blocked",
+  "findings": [
+    "MG-REAL-UPSTREAM-GATE-STALE"
+  ],
+  "evidence": [
+    "D:\\learn\\migration-guard\\cases\\zboss-horizontal-list\\evidence\\gates\\offline-gate.json"
+  ],
+  "evidenceDigests": {
+    "D:\\learn\\migration-guard\\cases\\zboss-horizontal-list\\evidence\\gates\\offline-gate.json": "3b48913faaddf9595f2e327330e4e7e12c3d0ea95c64e671f0430949c2a16357"
+  },
+  "upstream": [
+    {
+      "gate": "offline",
+      "path": "D:\\learn\\migration-guard\\cases\\zboss-horizontal-list\\evidence\\gates\\offline-gate.json",
+      "projectHash": "81997d203d4fe61758e354622105d4b38e7d635eadb2509b270e503ac9fa82e3",
+      "reportHash": "669478f1166d7b2f714d44b4f95650ffd4ada7040087eab7e3765e14c9e4761a",
+      "status": "blocked"
+    }
+  ],
+  "generatedAt": "2026-07-30T10:58:36.637Z",
+  "freshness": "stale",
+  "reportHash": "ad6f5f505438d15b4b7560c3cec3f41bec9ef7dd3f76aae735ebcebeb28d0b6f"
+}
