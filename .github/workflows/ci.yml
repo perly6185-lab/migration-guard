@@ -41,6 +41,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: ZBoss batch-update L4-C orchestration self-test
+        run: npm run batch-rust:l4c-ci
+
       - name: VMP offline gate
         run: npm run vmp:gate
 

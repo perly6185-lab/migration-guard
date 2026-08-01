@@ -14,7 +14,16 @@ use axum::{
 use serde::Serialize;
 use serde_json::{Value, json};
 use zboss_dynamic_engine::{
-    application::data::delete::runtime::{EmbeddedRuntime, ReadinessProbe, ServiceConfig},
+    application::data::{
+        delete::runtime::{
+            EmbeddedRuntime as BatchDeleteRuntime, ReadinessProbe as BatchDeleteReadinessProbe,
+            ServiceConfig as BatchDeleteServiceConfig,
+        },
+        update::runtime::{
+            EmbeddedRuntime as BatchUpdateRuntime, ReadinessProbe as BatchUpdateReadinessProbe,
+            ServiceConfig as BatchUpdateServiceConfig,
+        },
+    },
     config::{Config as DynamicEngineConfig, Profile as DynamicEngineProfile},
     runtime::RuntimeState as DynamicEngineRuntimeState,
 };
@@ -51,11 +60,34 @@ impl BatchDeleteMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BatchUpdateMode {
+    Disabled,
+    Production,
+}
+
+impl BatchUpdateMode {
+    fn from_env() -> Result<Self, String> {
+        match std::env::var("ZBOSS_UNIFIED_BATCH_UPDATE_MODE")
+            .unwrap_or_else(|_| "disabled".to_owned())
+            .as_str()
+        {
+            "disabled" => Ok(Self::Disabled),
+            "production" => Ok(Self::Production),
+            value => Err(format!(
+                "unsupported ZBOSS_UNIFIED_BATCH_UPDATE_MODE: {value}"
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct UnifiedConfig {
     pub bind: SocketAddr,
     pub dynamic_engine: DynamicEngineConfig,
     pub batch_delete_mode: BatchDeleteMode,
+    pub batch_update_mode: BatchUpdateMode,
     pub proxy_shared_secret: Option<String>,
 }
 
@@ -69,6 +101,7 @@ impl UnifiedConfig {
             bind,
             dynamic_engine: DynamicEngineConfig::from_env()?,
             batch_delete_mode: BatchDeleteMode::from_env()?,
+            batch_update_mode: BatchUpdateMode::from_env()?,
             proxy_shared_secret: optional_secret("ZBOSS_UNIFIED_PROXY_SHARED_SECRET")?,
         };
         config.validate()?;
@@ -92,6 +125,7 @@ impl Default for UnifiedConfig {
             bind: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 18080),
             dynamic_engine: DynamicEngineConfig::default(),
             batch_delete_mode: BatchDeleteMode::Disabled,
+            batch_update_mode: BatchUpdateMode::Disabled,
             proxy_shared_secret: None,
         }
     }
@@ -107,12 +141,16 @@ struct CapabilityStatus {
 }
 
 pub struct UnifiedRuntime {
-    batch_delete: Option<EmbeddedRuntime>,
+    batch_delete: Option<BatchDeleteRuntime>,
+    batch_update: Option<BatchUpdateRuntime>,
 }
 
 impl UnifiedRuntime {
     pub async fn shutdown(self) {
         if let Some(runtime) = self.batch_delete {
+            runtime.shutdown().await;
+        }
+        if let Some(runtime) = self.batch_update {
             runtime.shutdown().await;
         }
     }
@@ -138,7 +176,7 @@ pub async fn build(config: UnifiedConfig) -> Result<(Router, UnifiedRuntime), St
             ),
             BatchDeleteMode::Production => {
                 let runtime = zboss_dynamic_engine::application::data::delete::runtime::embedded(
-                    ServiceConfig::from_env_embedded()?,
+                    BatchDeleteServiceConfig::from_env_embedded()?,
                 )
                 .await?;
                 let probe = runtime.readiness_probe();
@@ -148,13 +186,28 @@ pub async fn build(config: UnifiedConfig) -> Result<(Router, UnifiedRuntime), St
         };
     app = app.merge(delete_router);
 
-    // batch-update currently has verified domain and adapter contracts but no
-    // concrete network persistence implementation. Registering the exact route
-    // with a 503 keeps the combined process source-compatible and fail-closed.
-    app = app.merge(unavailable_router(
-        zboss_dynamic_engine::application::data::update::entrypoint::HTTP_PATH,
-        "batch-update network persistence adapter is not implemented",
-    ));
+    let (update_router, update_runtime, update_probe, update_status) =
+        match config.batch_update_mode {
+            BatchUpdateMode::Disabled => (
+                unavailable_router(
+                    zboss_dynamic_engine::application::data::update::entrypoint::HTTP_PATH,
+                    "batch-update production runtime is disabled",
+                ),
+                None,
+                None,
+                "contract-only",
+            ),
+            BatchUpdateMode::Production => {
+                let runtime = zboss_dynamic_engine::application::data::update::runtime::embedded(
+                    BatchUpdateServiceConfig::from_env_embedded()?,
+                )
+                .await?;
+                let probe = runtime.readiness_probe();
+                let router = runtime.unified_router();
+                (router, Some(runtime), Some(probe), "production")
+            }
+        };
+    app = app.merge(update_router);
 
     let capability_status = Arc::new(CapabilityStatus {
         dynamic_engine: match dynamic_engine_profile {
@@ -162,7 +215,7 @@ pub async fn build(config: UnifiedConfig) -> Result<(Router, UnifiedRuntime), St
             DynamicEngineProfile::Production => "production",
         },
         batch_delete: delete_status,
-        batch_update: "contract-only",
+        batch_update: update_status,
         batch_update_contract_version:
             zboss_dynamic_engine::application::data::update::CONTRACT_VERSION,
     });
@@ -176,13 +229,17 @@ pub async fn build(config: UnifiedConfig) -> Result<(Router, UnifiedRuntime), St
             }
         }),
     );
-    app = app.route(
-        READINESS_PATH,
-        get(move || {
-            let delete_probe = delete_probe.clone();
-            async move { unified_readiness(dynamic_engine_profile, delete_probe).await }
-        }),
-    );
+    app =
+        app.route(
+            READINESS_PATH,
+            get(move || {
+                let delete_probe = delete_probe.clone();
+                let update_probe = update_probe.clone();
+                async move {
+                    unified_readiness(dynamic_engine_profile, delete_probe, update_probe).await
+                }
+            }),
+        );
     if let Some(secret) = proxy_shared_secret {
         app = app.layer(middleware::from_fn_with_state(
             Arc::<str>::from(secret),
@@ -194,6 +251,7 @@ pub async fn build(config: UnifiedConfig) -> Result<(Router, UnifiedRuntime), St
         app,
         UnifiedRuntime {
             batch_delete: delete_runtime,
+            batch_update: update_runtime,
         },
     ))
 }
@@ -218,7 +276,8 @@ pub async fn serve(config: UnifiedConfig) -> Result<(), String> {
 
 async fn unified_readiness(
     dynamic_engine_profile: DynamicEngineProfile,
-    delete_probe: Option<ReadinessProbe>,
+    delete_probe: Option<BatchDeleteReadinessProbe>,
+    update_probe: Option<BatchUpdateReadinessProbe>,
 ) -> Response {
     let dynamic_engine_ready = zboss_dynamic_engine::profile_ready(dynamic_engine_profile);
     let delete_enabled = delete_probe.is_some();
@@ -226,7 +285,12 @@ async fn unified_readiness(
         Some(probe) => probe.check().await.err(),
         None => None,
     };
-    let ready = dynamic_engine_ready && delete_error.is_none();
+    let update_enabled = update_probe.is_some();
+    let update_error = match update_probe {
+        Some(probe) => probe.check().await.err(),
+        None => None,
+    };
+    let ready = dynamic_engine_ready && delete_error.is_none() && update_error.is_none();
     (
         if ready {
             StatusCode::OK
@@ -248,8 +312,9 @@ async fn unified_readiness(
                 "error": delete_error,
             },
             "batchUpdate": {
-                "mode": "contract-only",
-                "requiredForReadiness": false,
+                "enabled": update_enabled,
+                "ready": update_error.is_none(),
+                "error": update_error,
             },
         })),
     )
@@ -291,6 +356,8 @@ fn is_probe_path(path: &str) -> bool {
             | "/ready"
             | "/health/live"
             | "/health/ready"
+            | "/internal/batch-update/health/live"
+            | "/internal/batch-update/health/ready"
             | CAPABILITIES_PATH
             | READINESS_PATH
     )

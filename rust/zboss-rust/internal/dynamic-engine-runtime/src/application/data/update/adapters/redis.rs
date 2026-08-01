@@ -3,6 +3,7 @@ use crate::application::data::update::coordination::{CoordinationKey, LeaseError
 pub const ACQUIRE_SCRIPT: &str = include_str!("../../../../../update/scripts/redis/acquire.lua");
 pub const RENEW_SCRIPT: &str = include_str!("../../../../../update/scripts/redis/renew.lua");
 pub const RELEASE_SCRIPT: &str = include_str!("../../../../../update/scripts/redis/release.lua");
+pub const PROGRESS_SCRIPT: &str = include_str!("../../../../../update/scripts/redis/progress.lua");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RedisAdapterConfig {
@@ -12,7 +13,7 @@ pub struct RedisAdapterConfig {
 impl Default for RedisAdapterConfig {
     fn default() -> Self {
         Self {
-            url_env: "ZBOSS_BATCH_REDIS_URL".to_owned(),
+            url_env: "ZBOSS_BATCH_UPDATE_REDIS_URL".to_owned(),
         }
     }
 }

@@ -1,0 +1,25 @@
+ARG ZBOSS_L4C_IMAGE_REGISTRY=docker.m.daocloud.io/library
+FROM ${ZBOSS_L4C_IMAGE_REGISTRY}/rust:1.89-bookworm AS builder
+
+WORKDIR /workspace
+COPY . .
+RUN cargo build \
+    --locked \
+    --release \
+    --manifest-path internal/dynamic-engine-runtime/Cargo.toml \
+    --bin zboss-batch-update
+
+FROM ${ZBOSS_L4C_IMAGE_REGISTRY}/debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --uid 10001 zboss
+COPY --from=builder \
+    /workspace/target/release/zboss-batch-update \
+    /usr/local/bin/zboss-batch-update
+
+USER zboss
+EXPOSE 18089
+ENTRYPOINT ["/usr/local/bin/zboss-batch-update"]

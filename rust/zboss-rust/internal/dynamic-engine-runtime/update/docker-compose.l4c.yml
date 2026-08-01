@@ -1,0 +1,87 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: "no"
+    environment:
+      MYSQL_DATABASE: zz_boss_test
+      MYSQL_USER: batch_update
+      MYSQL_PASSWORD: ${ZBOSS_L4C_MYSQL_PASSWORD:?required}
+      MYSQL_ROOT_PASSWORD: ${ZBOSS_L4C_MYSQL_ROOT_PASSWORD:?required}
+    ports:
+      - "127.0.0.1:${ZBOSS_L4C_MYSQL_PORT:-13306}:3306"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -uroot -p"$${MYSQL_ROOT_PASSWORD}"
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    volumes:
+      - l4c-mysql-data:/var/lib/mysql
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7.0-alpine
+    restart: "no"
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    ports:
+      - "127.0.0.1:${ZBOSS_L4C_REDIS_PORT:-16379}:6379"
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    tmpfs:
+      - /data
+    security_opt:
+      - no-new-privileges:true
+
+  target:
+    build:
+      context: ../../..
+      dockerfile: internal/dynamic-engine-runtime/update/Dockerfile.l4c
+      args:
+        ZBOSS_L4C_IMAGE_REGISTRY: ${ZBOSS_L4C_IMAGE_REGISTRY:-docker.m.daocloud.io/library}
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ZBOSS_BATCH_UPDATE_BIND_ADDR: 0.0.0.0:18089
+      ZBOSS_BATCH_UPDATE_MYSQL_URL: mysql://batch_update:${ZBOSS_L4C_MYSQL_PASSWORD:?required}@mysql:3306/zz_boss_test
+      ZBOSS_BATCH_UPDATE_REDIS_URL: redis://redis:6379/
+      ZBOSS_BATCH_UPDATE_TABLE: cust_table7272
+      ZBOSS_BATCH_UPDATE_LEASE_TTL_MS: "30000"
+      ZBOSS_BATCH_UPDATE_WORKER_INTERVAL_MS: "100"
+    ports:
+      - "127.0.0.1:${ZBOSS_L4C_TARGET_PORT:-18089}:18089"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - http://127.0.0.1:18089/internal/ready
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  l4c-mysql-data:

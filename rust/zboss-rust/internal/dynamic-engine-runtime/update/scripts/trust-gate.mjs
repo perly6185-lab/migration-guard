@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -56,6 +57,24 @@ const scenarioCount = Number(l3?.evidence?.scenarioCount ?? 0);
 const realGate = await readJson(
   path.join(caseDir, "evidence", "gates", "real-gate.json"),
 );
+const l4cGate = await readJson(
+  path.join(artifactDirectory, "l4c-gate.json"),
+);
+const l4cExecutedAt = Date.parse(l4cGate?.executedAt ?? "");
+const l4cReviewedAt = Date.parse(l4cGate?.review?.reviewedAt ?? "");
+const l4cValid =
+  l4cGate?.status === "pass"
+  && l4cGate?.decision === "L4-C"
+  && l4cGate?.reportHash
+  && l4cGate.reportHash === stableHash({
+    ...l4cGate,
+    reportHash: undefined,
+  })
+  && Number.isFinite(l4cExecutedAt)
+  && Number.isFinite(l4cReviewedAt)
+  && l4cReviewedAt >= l4cExecutedAt
+  && l4cReviewedAt <= Date.now() + 300_000
+  && Date.now() - l4cExecutedAt <= 86_400_000;
 const capability = assessMigrationCapability({
   sourceReadOnlyGuardPassed:
     checkPassed(l3, "reference-source-unchanged"),
@@ -77,9 +96,8 @@ const capability = assessMigrationCapability({
   concreteAdaptersAttested: productionPath.concreteAdapters,
   deployableServiceAttested: productionPath.deployableService,
   realEvidencePassed:
-    realGate?.status === "passed"
-      && realFreshness.length === 0,
-  dualReplayPassed: false,
+    l4cValid,
+  dualReplayPassed: l4cValid,
   unifiedRealGatePassed:
     realGate?.status === "passed"
       && realFreshness.length === 0,
@@ -149,4 +167,25 @@ function checkPassed(reportValue, id) {
 
 function relative(file) {
   return path.relative(repositoryRoot, file).replaceAll("\\", "/");
+}
+
+function stableHash(value) {
+  return createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function stableStringify(value) {
+  return JSON.stringify(sortValue(value));
+}
+
+function sortValue(value) {
+  if (Array.isArray(value)) return value.map(sortValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .filter((key) => value[key] !== undefined)
+        .sort()
+        .map((key) => [key, sortValue(value[key])]),
+    );
+  }
+  return value;
 }

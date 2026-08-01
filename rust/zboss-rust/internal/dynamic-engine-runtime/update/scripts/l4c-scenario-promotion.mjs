@@ -1,0 +1,654 @@
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+export const PROMOTION_PROTOCOL =
+  "migration-guard.batch-update-l4c-scenario-package/v1";
+export const FIRST_WAVE = [
+  "primary-success",
+  "validation-failure",
+  "batch-partial-failure",
+  "dependency-failure",
+  "concurrent-write",
+];
+
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = path.resolve(
+  scriptDirectory,
+  "..",
+  "..",
+  "..",
+  "..",
+  "..",
+  "..",
+);
+const caseDirectory = path.join(
+  repositoryRoot,
+  "cases",
+  "zboss-batch-update-with-progress",
+);
+const entrypointId =
+  "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress";
+const contractPath = path.join(
+  caseDirectory,
+  "evidence",
+  "runtime",
+  "java",
+  "runtime-contract.json",
+);
+const stateProfileTemplatePath = path.join(
+  caseDirectory,
+  "evidence",
+  "runtime",
+  "l4c",
+  "java-state-profile.template.json",
+);
+const primaryStateProfilePath = path.join(
+  caseDirectory,
+  "evidence",
+  "runtime",
+  "l4c",
+  "java-state-profile.primary-success.approved.json",
+);
+const primaryBindingPath = path.join(
+  caseDirectory,
+  "evidence",
+  "runtime",
+  "l4c",
+  "bindings.primary-success.approved.json",
+);
+const primaryJavaSeedPath = path.join(
+  caseDirectory,
+  "evidence",
+  "runtime",
+  "l4c",
+  "seeds",
+  "primary-success.java-seed.json",
+);
+const primaryRustSeedPath = path.join(
+  caseDirectory,
+  "evidence",
+  "runtime",
+  "l4c",
+  "seeds",
+  "primary-success.rust-seed.json",
+);
+const outputDirectory = path.join(
+  caseDirectory,
+  "evidence",
+  "runtime",
+  "l4c",
+  "scenario-promotion",
+);
+const packageDirectory = path.join(outputDirectory, "packages");
+const manifestPath = path.join(outputDirectory, "manifest.json");
+
+const blueprints = {
+  "primary-success": {
+    plannedSeedRows: 2,
+    intent: "all-requested-rows-commit",
+    invariants: [
+      "complete-row-classification",
+      "terminal-progress-after-effects",
+      "undo-only-for-successful-updates",
+    ],
+  },
+  "validation-failure": {
+    plannedSeedRows: 1,
+    intent: "request-is-rejected-before-write",
+    invariants: [
+      "zero-projection-delta",
+      "zero-undo-delta",
+      "terminal-failure-progress",
+    ],
+  },
+  "batch-partial-failure": {
+    plannedSeedRows: 2,
+    intent: "valid-row-commits-and-invalid-row-is-rejected",
+    invariants: [
+      "complete-row-classification",
+      "failed-row-excluded-from-undo",
+      "single-terminal-progress-identity",
+    ],
+  },
+  "dependency-failure": {
+    plannedSeedRows: 2,
+    intent: "approved-dependency-fault-is-observable-and-reversible",
+    invariants: [
+      "fault-apply-active-revert-inactive",
+      "no-unapproved-cross-scope-effects",
+      "fault-artifacts-zero-after-cleanup",
+    ],
+  },
+  "concurrent-write": {
+    plannedSeedRows: 1,
+    intent: "two-writers-have-a-reviewed-deterministic-outcome",
+    invariants: [
+      "two-invocations-share-one-seeded-row",
+      "final-projection-is-deterministic",
+      "no-stale-owner-release",
+    ],
+  },
+};
+
+const mode = process.argv[2] ?? "--check";
+const built = await buildPromotionSet();
+if (mode === "--write") {
+  await writePromotionSet(built);
+  console.log(JSON.stringify(summary(built, "written"), null, 2));
+} else if (mode === "--check") {
+  const findings = await checkPersistedPromotionSet(built);
+  console.log(JSON.stringify({
+    ...summary(built, findings.length === 0 ? "passed" : "blocked"),
+    findings,
+  }, null, 2));
+  if (findings.length > 0) process.exitCode = 1;
+} else if (mode === "--self-test") {
+  const findings = validatePromotionSet(built);
+  if (findings.length > 0) throw new Error(findings.join(", "));
+  const eligible = structuredClone(built.packages[1]);
+  eligible.realEvidenceEligible = true;
+  const eligibleFindings = validatePackage(eligible);
+  if (!eligibleFindings.includes("MG-SH3C-PREMATURE-REAL-ELIGIBILITY")) {
+    throw new Error("premature real eligibility was not rejected");
+  }
+  const tampered = structuredClone(built.packages[0]);
+  tampered.semanticIntent.intent = "tampered";
+  if (!validatePackage(tampered).includes("MG-SH3C-PACKAGE-HASH-MISMATCH")) {
+    throw new Error("package hash tampering was not rejected");
+  }
+  const incompleteReady = structuredClone(built.packages[1]);
+  incompleteReady.status = "ready-for-review";
+  incompleteReady.blockers = [];
+  incompleteReady.seedPlan.status = "review-required";
+  incompleteReady.packageHash = packageHash(incompleteReady);
+  if (!validatePackage(incompleteReady).includes("MG-SH3C-READY-STATE-INVALID")) {
+    throw new Error("incomplete package cannot be marked ready for review");
+  }
+  console.log(JSON.stringify({
+    status: "pass",
+    checks: 12,
+    coverage: [
+      "first-wave-exactly-five",
+      "contract-scenario-binding",
+      "draft-fixture-hash-binding",
+      "collector-hash-binding",
+      "state-profile-hash-binding",
+      "request-placeholder-inventory",
+      "java-seed-review-plan",
+      "rust-seed-adapter-blocker",
+      "websocket-collector-blocker",
+      "premature-real-eligibility-rejected",
+      "package-tamper-rejected",
+      "incomplete-ready-state-rejected",
+    ],
+  }, null, 2));
+} else {
+  throw new Error("usage: l4c-scenario-promotion.mjs --write|--check|--self-test");
+}
+
+export async function buildPromotionSet() {
+  const contract = await readJson(contractPath);
+  const primaryBinding = await readJson(primaryBindingPath);
+  const primaryJavaSeed = await readJson(primaryJavaSeedPath);
+  const primaryRustSeed = await readJson(primaryRustSeedPath);
+  const entry = contract.entries.find((item) => item.id === entrypointId);
+  if (!entry) throw new Error(`runtime contract entry is missing: ${entrypointId}`);
+  const packages = [];
+  for (const scenarioId of FIRST_WAVE) {
+    const stateProfilePath = scenarioId === "primary-success"
+      ? primaryStateProfilePath
+      : stateProfileTemplatePath;
+    const stateProfile = await readJson(stateProfilePath);
+    const scenario = entry.scenarios.find((item) => item.id === scenarioId);
+    if (!scenario) throw new Error(`runtime scenario is missing: ${scenarioId}`);
+    const draftPath = path.join(
+      caseDirectory,
+      "fixtures",
+      "java-runtime-drafts",
+      entrypointId,
+      scenarioId,
+      "fixture.draft.json",
+    );
+    const draft = await readJson(draftPath);
+    const promotedFixturePath = path.join(
+      caseDirectory,
+      "fixtures",
+      "java-runtime",
+      entrypointId,
+      `${scenarioId}.json`,
+    );
+    const promotedFixture = await readJsonIfPresent(promotedFixturePath);
+    const collectors = {};
+    for (const collector of scenario.requiredCollectors) {
+      const collectorPath = path.join(
+        path.dirname(draftPath),
+        "collectors",
+        `${collector}.draft.json`,
+      );
+      const document = await readJson(collectorPath);
+      collectors[collector] = {
+        path: relativeCasePath(collectorPath),
+        sha256: documentHash(document),
+        status: document.status,
+        reviewFindings: collectorFindings(document),
+      };
+    }
+    const placeholderPaths = placeholderLocations(draft.request);
+    const primary = scenarioId === "primary-success";
+    const stateProfileFileHash = await fileHash(stateProfilePath);
+    const javaSeedFileHash = await fileHash(primaryJavaSeedPath);
+    const rustSeedFileHash = await fileHash(primaryRustSeedPath);
+    const scenarioBinding = primaryBinding.scenarios?.[scenarioId];
+    const stateProfileReady = primary
+      && stateProfile.status === "approved"
+      && primaryBinding.status === "approved"
+      && primaryBinding.targets?.source?.stateProfileSha256
+        === stateProfileFileHash;
+    const javaSeedReady = primary
+      && primaryJavaSeed.status === "approved"
+      && primaryJavaSeed.scenarioId === scenarioId
+      && primaryJavaSeed.stateProfileSha256 === stateProfileFileHash
+      && scenarioBinding?.seedProfiles?.source?.sha256 === javaSeedFileHash;
+    const rustSeedReady = primary
+      && primaryRustSeed.status === "approved"
+      && primaryRustSeed.scenarioId === scenarioId
+      && scenarioBinding?.seedProfiles?.target?.sha256 === rustSeedFileHash
+      && primaryBinding.targets?.target?.hooks?.seed
+        ?.requiresSeedProfileHash === true;
+    const websocketReady = primary
+      && scenarioBinding?.eventCollectors?.source?.kind === "websocket"
+      && scenarioBinding.eventCollectors.source.path === "/ws/zboss";
+    const writeSafetyReady = primary
+      && draft.writeSafety?.mode === "disposable"
+      && draft.writeSafety?.disposable === true
+      && draft.writeSafety?.writeApproved === true
+      && Date.parse(draft.writeSafety?.expiresAt ?? "") > Date.now();
+    const technicalBlockers = [
+      ...(!stateProfileReady
+        ? ["MG-SH3C-STATE-PROFILE-NOT-APPROVED"]
+        : []),
+      ...(!javaSeedReady
+        ? ["MG-SH3C-JAVA-SEED-NOT-AUTHORED"]
+        : []),
+      ...(!rustSeedReady
+        ? ["MG-SH3C-RUST-SEED-ADAPTER-NOT-BOUND"]
+        : []),
+      ...(!websocketReady
+        ? ["MG-SH3C-WEBSOCKET-EVENT-COLLECTOR-NOT-BOUND"]
+        : []),
+      ...(primary && !writeSafetyReady
+        ? ["MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED"]
+        : []),
+      ...placeholderPaths.map((item) => `MG-SH3C-REQUEST-REVIEW:${item}`),
+      ...Object.entries(collectors).flatMap(([collector, value]) =>
+        value.reviewFindings.map((finding) =>
+          `MG-SH3C-COLLECTOR-REVIEW:${collector}:${finding}`)),
+      ...(scenarioId === "dependency-failure"
+        ? ["MG-SH3C-FAULT-CONTROLLER-NOT-BOUND"]
+        : []),
+      ...(scenarioId === "concurrent-write"
+        ? ["MG-SH3C-CONCURRENCY-DRIVER-NOT-BOUND"]
+        : []),
+    ];
+    const blockers = [...new Set(technicalBlockers)].sort();
+    const readyForReview = blockers.length === 0;
+    const formallyPromoted = primary
+      && promotedFixture?.fixtureKind === "real-runtime"
+      && promotedFixture?.status === "ready"
+      && promotedFixture?.realEvidenceEligible === true
+      && promotedFixture?.authoring?.reviewed === true
+      && promotedFixture?.authoring?.sourceDraftHash === documentHash(draft)
+      && Object.entries(collectors).every(([collector, value]) =>
+        promotedFixture?.collectorSpecs?.[collector]?.hash === value.sha256);
+    const document = {
+      schemaVersion: 1,
+      protocol: PROMOTION_PROTOCOL,
+      status: formallyPromoted
+        ? "promoted"
+        : readyForReview
+          ? "ready-for-review"
+          : "review-required",
+      realEvidenceEligible: formallyPromoted,
+      projectId: contract.projectId,
+      projectHash: contract.projectHash,
+      runtimeContractHash: contract.contractHash,
+      sourceIdentity: contract.sourceIdentity,
+      promotionWave: "sh3c-first-wave",
+      entrypointId,
+      scenarioId,
+      category: scenario.category,
+      requiredDimensions: scenario.requiredDimensions,
+      decisionIds: scenario.decisionIds,
+      sourceDraft: {
+        path: relativeCasePath(draftPath),
+        sha256: documentHash(draft),
+      },
+      stateProfile: {
+        path: relativeCasePath(stateProfilePath),
+        sha256: stateProfileFileHash,
+        status: stateProfile.status,
+      },
+      collectors,
+      requestPlan: {
+        status: placeholderPaths.length === 0 ? "authored" : "review-required",
+        placeholderPaths,
+        environmentBindings: draft.environmentBindings ?? [],
+      },
+      seedPlan: {
+        status: javaSeedReady && rustSeedReady ? "authored" : "review-required",
+        plannedRows: blueprints[scenarioId].plannedSeedRows,
+        java: {
+          protocol: "migration-guard.batch-update-l4c-java-seed/v1",
+          resourceRole: "projection",
+          binding: "scenario.seedProfiles.source",
+          ...(javaSeedReady
+            ? {
+                path: relativeCasePath(primaryJavaSeedPath),
+                sha256: javaSeedFileHash,
+              }
+            : {}),
+        },
+        rust: {
+          status: rustSeedReady ? "adapter-bound" : "adapter-required",
+          resourceRole: "projection",
+          binding: "scenario.seedProfiles.target",
+          ...(rustSeedReady
+            ? {
+                path: relativeCasePath(primaryRustSeedPath),
+                sha256: rustSeedFileHash,
+              }
+            : {}),
+        },
+      },
+      expectedObservation: {
+        status: websocketReady && stateProfileReady
+          ? "authored"
+          : "review-required",
+        dimensions: scenario.requiredDimensions,
+        invariants: blueprints[scenarioId].invariants,
+      },
+      semanticIntent: {
+        intent: blueprints[scenarioId].intent,
+        contractExpectations: draft.expectations,
+      },
+      formalPromotion: {
+        command:
+          `migration-guard migrate runtime-fixture-promote --case-dir ` +
+          `cases/zboss-batch-update-with-progress --entrypoint ${entrypointId} ` +
+          `--scenario ${scenarioId} --reviewed-by <reviewer>`,
+        allowedOnlyWhenBlockersEmpty: true,
+        status: formallyPromoted ? "promoted" : "pending",
+        ...(formallyPromoted
+          ? {
+              reviewedBy: promotedFixture.authoring.reviewedBy,
+              reviewedAt: promotedFixture.authoring.reviewedAt,
+              fixturePath: relativeCasePath(promotedFixturePath),
+              fixtureSha256: documentHash(promotedFixture),
+            }
+          : {}),
+      },
+      blockers,
+      packageHash: "",
+    };
+    document.packageHash = packageHash(document);
+    packages.push(document);
+  }
+  const manifest = {
+    schemaVersion: 1,
+    protocol: "migration-guard.batch-update-l4c-scenario-promotion-manifest/v1",
+    status: "review-required",
+    realEvidenceEligible: false,
+    projectId: contract.projectId,
+    projectHash: contract.projectHash,
+    runtimeContractHash: contract.contractHash,
+    promotionWave: "sh3c-first-wave",
+    scenarioOrder: FIRST_WAVE,
+    packages: packages.map((item) => ({
+      scenarioId: item.scenarioId,
+      path: `evidence/runtime/l4c/scenario-promotion/packages/${item.scenarioId}.json`,
+      hash: item.packageHash,
+      blockerCount: item.blockers.length,
+    })),
+    readyForHumanReview: true,
+    readyForRealPromotion: packages.some((item) => item.status === "promoted"),
+    manifestHash: "",
+  };
+  manifest.manifestHash = manifestHash(manifest);
+  return { packages, manifest };
+}
+
+export function validatePromotionSet(value) {
+  const findings = [];
+  if (
+    value.packages.length !== FIRST_WAVE.length
+    || JSON.stringify(value.packages.map((item) => item.scenarioId))
+      !== JSON.stringify(FIRST_WAVE)
+  ) {
+    findings.push("MG-SH3C-FIRST-WAVE-MISMATCH");
+  }
+  for (const item of value.packages) {
+    findings.push(...validatePackage(item).map((finding) =>
+      `${finding}:${item.scenarioId}`));
+  }
+  if (
+    value.manifest.realEvidenceEligible !== false
+    || value.manifest.readyForRealPromotion
+      !== value.packages.some((item) => item.status === "promoted")
+    || value.manifest.manifestHash !== manifestHash(value.manifest)
+    || value.manifest.packages.some((reference, index) =>
+      reference.scenarioId !== value.packages[index]?.scenarioId
+      || reference.hash !== value.packages[index]?.packageHash)
+  ) {
+    findings.push("MG-SH3C-MANIFEST-INVALID");
+  }
+  return [...new Set(findings)].sort();
+}
+
+export function validatePackage(value) {
+  const findings = [];
+  if (
+    value?.schemaVersion !== 1
+    || value?.protocol !== PROMOTION_PROTOCOL
+    || !["review-required", "ready-for-review", "promoted"].includes(
+      value?.status,
+    )
+  ) {
+    findings.push("MG-SH3C-PACKAGE-PROTOCOL-INVALID");
+  }
+  if (
+    value?.status !== "promoted"
+    && value?.realEvidenceEligible !== false
+  ) {
+    findings.push("MG-SH3C-PREMATURE-REAL-ELIGIBILITY");
+  }
+  if (
+    value?.status === "promoted"
+    && (
+      value.realEvidenceEligible !== true
+      || value.blockers?.length !== 0
+      || value.formalPromotion?.status !== "promoted"
+      || typeof value.formalPromotion?.reviewedBy !== "string"
+      || !value.formalPromotion.reviewedBy.trim()
+      || !/^[a-f0-9]{64}$/.test(
+        value.formalPromotion?.fixtureSha256 ?? "",
+      )
+    )
+  ) {
+    findings.push("MG-SH3C-PROMOTION-EVIDENCE-INVALID");
+  }
+  if (!Array.isArray(value?.blockers)) {
+    findings.push("MG-SH3C-REVIEW-BLOCKERS-INVALID");
+  }
+  if (
+    !Array.isArray(value?.requestPlan?.placeholderPaths)
+    || !["review-required", "authored"].includes(value?.seedPlan?.status)
+    || !["adapter-required", "adapter-bound"].includes(
+      value?.seedPlan?.rust?.status,
+    )
+    || !["review-required", "authored"].includes(
+      value?.expectedObservation?.status,
+    )
+  ) {
+    findings.push("MG-SH3C-REVIEW-PLAN-INCOMPLETE");
+  }
+  if (
+    value?.status === "ready-for-review"
+    && (
+      value.blockers?.length !== 0
+      || value.requestPlan?.status !== "authored"
+      || value.seedPlan?.status !== "authored"
+      || value.seedPlan?.rust?.status !== "adapter-bound"
+      || value.expectedObservation?.status !== "authored"
+      || value.stateProfile?.status !== "approved"
+    )
+  ) {
+    findings.push("MG-SH3C-READY-STATE-INVALID");
+  }
+  if (
+    value?.status === "review-required"
+    && value.blockers?.length === 0
+  ) {
+    findings.push("MG-SH3C-REVIEW-BLOCKERS-MISSING");
+  }
+  if (value?.packageHash !== packageHash(value)) {
+    findings.push("MG-SH3C-PACKAGE-HASH-MISMATCH");
+  }
+  return findings;
+}
+
+async function writePromotionSet(value) {
+  const findings = validatePromotionSet(value);
+  if (findings.length > 0) throw new Error(findings.join(", "));
+  await mkdir(packageDirectory, { recursive: true });
+  for (const item of value.packages) {
+    await writeJson(path.join(packageDirectory, `${item.scenarioId}.json`), item);
+  }
+  await writeJson(manifestPath, value.manifest);
+}
+
+async function checkPersistedPromotionSet(expected) {
+  const findings = validatePromotionSet(expected);
+  for (const item of expected.packages) {
+    const persistedPath = path.join(packageDirectory, `${item.scenarioId}.json`);
+    try {
+      const persisted = await readJson(persistedPath);
+      findings.push(...validatePackage(persisted).map((finding) =>
+        `${finding}:${item.scenarioId}`));
+      if (stableStringify(persisted) !== stableStringify(item)) {
+        findings.push(`MG-SH3C-PACKAGE-STALE:${item.scenarioId}`);
+      }
+    } catch {
+      findings.push(`MG-SH3C-PACKAGE-MISSING:${item.scenarioId}`);
+    }
+  }
+  try {
+    const persistedManifest = await readJson(manifestPath);
+    if (stableStringify(persistedManifest) !== stableStringify(expected.manifest)) {
+      findings.push("MG-SH3C-MANIFEST-STALE");
+    }
+  } catch {
+    findings.push("MG-SH3C-MANIFEST-MISSING");
+  }
+  return [...new Set(findings)].sort();
+}
+
+function collectorFindings(value) {
+  const findings = [];
+  if (!["ready", "not-applicable"].includes(value.status)) {
+    findings.push("STATUS-NOT-READY");
+  }
+  const serialized = JSON.stringify(value);
+  if (/replace[-_: ]?me/i.test(serialized)) findings.push("PLACEHOLDER-PROBE");
+  if (value.collector === "redis" && value.notApplicable !== true) {
+    findings.push("JAVA-PROGRESS-IS-NOT-REDIS-BACKED");
+  }
+  if (value.collector === "events" && value.status !== "ready") {
+    findings.push("WEBSOCKET-CAPTURE-NOT-CONFIRMED");
+  }
+  return findings;
+}
+
+function placeholderLocations(value, current = "$", output = []) {
+  if (typeof value === "string" && /<[^>]+>/.test(value)) {
+    output.push(current);
+  } else if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      placeholderLocations(item, `${current}[${index}]`, output));
+  } else if (value && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      placeholderLocations(item, `${current}.${key}`, output);
+    }
+  }
+  return output.sort();
+}
+
+function packageHash(value) {
+  return hashValue({ ...value, packageHash: undefined });
+}
+
+function manifestHash(value) {
+  return hashValue({ ...value, manifestHash: undefined });
+}
+
+function documentHash(value) {
+  return hashValue(value);
+}
+
+function hashValue(value) {
+  return createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function stableStringify(value) {
+  return JSON.stringify(sortValue(value));
+}
+
+function sortValue(value) {
+  if (Array.isArray(value)) return value.map(sortValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.keys(value).sort().map((key) => [key, sortValue(value[key])]),
+  );
+}
+
+function relativeCasePath(value) {
+  const relative = path.relative(caseDirectory, value);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("scenario promotion source escapes case directory");
+  }
+  return relative.replaceAll("\\", "/");
+}
+
+async function readJson(value) {
+  return JSON.parse(await readFile(value, "utf8"));
+}
+
+async function readJsonIfPresent(value) {
+  try {
+    return await readJson(value);
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+async function fileHash(value) {
+  return createHash("sha256").update(await readFile(value)).digest("hex");
+}
+
+async function writeJson(file, value) {
+  await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function summary(value, status) {
+  return {
+    status,
+    stage: "SH-3C",
+    promotionWave: "sh3c-first-wave",
+    scenarioCount: value.packages.length,
+    readyForHumanReview: true,
+    readyForRealPromotion: value.manifest.readyForRealPromotion,
+    manifestPath: path.relative(repositoryRoot, manifestPath),
+  };
+}

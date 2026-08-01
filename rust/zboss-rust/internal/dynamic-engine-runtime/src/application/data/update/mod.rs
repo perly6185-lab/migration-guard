@@ -5,7 +5,9 @@ pub mod coordination;
 pub mod entrypoint;
 pub mod execution;
 pub mod progress;
+pub mod runtime;
 pub mod scenario_contract;
+pub mod schema_service;
 pub mod schema_transition;
 
 #[cfg(test)]

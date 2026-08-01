@@ -32,6 +32,18 @@ name = "zboss-batch-update"
 path = "src/bin/zboss-batch-update.rs"
 
 [[bin]]
+name = "zboss-schema-transition"
+path = "src/bin/zboss-schema-transition.rs"
+
+[[bin]]
+name = "zboss-l4c-state-hook"
+path = "src/bin/zboss-l4c-state-hook.rs"
+
+[[bin]]
+name = "zboss-l4c-java-state-hook"
+path = "src/bin/zboss-l4c-java-state-hook.rs"
+
+[[bin]]
 name = "zboss-batch-delete-rust"
 path = "src/bin/zboss-batch-delete.rs"
 

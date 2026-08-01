@@ -10,7 +10,7 @@ pub struct MysqlAdapterConfig {
 impl Default for MysqlAdapterConfig {
     fn default() -> Self {
         Self {
-            url_env: "ZBOSS_BATCH_MYSQL_URL".to_owned(),
+            url_env: "ZBOSS_BATCH_UPDATE_MYSQL_URL".to_owned(),
         }
     }
 }

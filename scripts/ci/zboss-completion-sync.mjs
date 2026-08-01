@@ -11,6 +11,13 @@ const producer = {
   command: "npm run zboss-rust:completion-sync",
   identity: "migration-guard:zboss-evidence-bridge",
 };
+const projectArgumentIndex = process.argv.indexOf("--project");
+const selectedProjectId = projectArgumentIndex >= 0
+  ? process.argv[projectArgumentIndex + 1]
+  : undefined;
+if (projectArgumentIndex >= 0 && !selectedProjectId) {
+  throw new Error("--project requires a project id");
+}
 
 const projects = [
   {
@@ -27,10 +34,12 @@ const projects = [
   },
   {
     id: "zboss-batch-update-with-progress",
-    expected: "L4-A",
+    expected: "L4-B",
     reports: {
       l3: "artifacts/batch-update-rust/l3-gate.json",
       dependency: "artifacts/batch-update-rust/container-adapter-gate.json",
+      production: "artifacts/batch-update-rust/l4b-gate.json",
+      real: "artifacts/batch-update-rust/l4c-gate.json",
     },
   },
   {
@@ -45,7 +54,13 @@ const projects = [
 ];
 
 const summaries = [];
-for (const project of projects) {
+const selectedProjects = selectedProjectId
+  ? projects.filter((project) => project.id === selectedProjectId)
+  : projects;
+if (selectedProjects.length === 0) {
+  throw new Error(`unknown completion-sync project: ${selectedProjectId}`);
+}
+for (const project of selectedProjects) {
   const caseDir = path.join(repositoryRoot, "cases", project.id);
   runCli(
     ["migrate", "offline-gate", "--case-dir", caseDir],
@@ -76,6 +91,13 @@ for (const project of projects) {
   const production = offline
     ? await optionalReport(project.reports?.production, ["pass"])
     : undefined;
+  const realCandidate = offline
+    ? await optionalReport(project.reports?.real, ["pass"])
+    : undefined;
+  const real = realCandidate && freshRealReport(realCandidate.report)
+    ? realCandidate
+    : undefined;
+  const expectedCapability = real ? "L4-C" : project.expected;
   const now = new Date().toISOString();
   const completionDir = path.join(caseDir, "evidence", "completion");
   await mkdir(completionDir, { recursive: true });
@@ -88,6 +110,7 @@ for (const project of projects) {
       l3,
       dependency,
       production,
+      real,
       project.id,
     );
     if (!upstream) {
@@ -99,6 +122,7 @@ for (const project of projects) {
       };
       continue;
     }
+    const l4cOrRelease = control.level === "L4-C" || control.level === "L4";
     const proof = {
       schemaVersion: 1,
       protocol: "migration-guard.completion-control-evidence/v1",
@@ -107,7 +131,10 @@ for (const project of projects) {
       controlId: control.id,
       evidenceKind: control.evidenceKind,
       status: "passed",
-      observedAt: now,
+      observedAt:
+        l4cOrRelease && upstream.report.executedAt
+          ? upstream.report.executedAt
+          : now,
       synthetic: false,
       realEligible: true,
       producer,
@@ -117,6 +144,15 @@ for (const project of projects) {
         upstreamDecision: String(upstream.report.decision ?? ""),
         upstreamReportHash: String(upstream.report.reportHash),
       },
+      ...(l4cOrRelease
+        ? {
+            review: {
+              decision: upstream.report.review?.decision,
+              identity: upstream.report.review?.identity,
+              reviewedAt: upstream.report.review?.reviewedAt,
+            },
+          }
+        : {}),
     };
     const proofPath = path.join(completionDir, `${control.id}.json`);
     const content = `${JSON.stringify(proof, null, 2)}\n`;
@@ -145,14 +181,14 @@ for (const project of projects) {
   });
   runCli(
     ["migrate", "completion-gate", "--case-dir", caseDir],
-    project.expected === "L4" ? [0] : [1],
+    expectedCapability === "L4" ? [0] : [1],
   );
   const gate = await readJson(
     path.join(caseDir, "evidence", "gates", "completion-gate.json"),
   );
-  if (gate.capability?.achieved !== project.expected) {
+  if (gate.capability?.achieved !== expectedCapability) {
     throw new Error(
-      `${project.id} completion level mismatch: expected ${project.expected}, got ${gate.capability?.achieved}`,
+      `${project.id} completion level mismatch: expected ${expectedCapability}, got ${gate.capability?.achieved}`,
     );
   }
   summaries.push({
@@ -173,6 +209,7 @@ function qualifyingReport(
   l3,
   dependency,
   production,
+  real,
   projectId,
 ) {
   if (
@@ -206,12 +243,26 @@ function qualifyingReport(
     || controlId === "production.configuration"
     || controlId === "production.health-readiness"
   ) {
-    return projectId === "zboss-batch-delete"
+    return (
+      projectId === "zboss-batch-delete"
+      || projectId === "zboss-batch-update-with-progress"
+    )
       && offline
       && l3
       && dependency
       && production
       ? production
+      : undefined;
+  }
+  if (controlId.startsWith("real.")) {
+    return projectId === "zboss-batch-update-with-progress"
+      && offline
+      && l3
+      && dependency
+      && production
+      && real
+      && real.report.controls?.[controlId] === true
+      ? real
       : undefined;
   }
   return undefined;
@@ -234,6 +285,10 @@ function requiredClaim(controlId) {
     "schema-transition.idempotency": "integrationPassed",
     "schema-transition.resume": "integrationPassed",
     "schema-transition.ddl-fault": "integrationPassed",
+    "real.runtime-evidence": "realEvidencePassed",
+    "real.dual-replay": "dualReplayPassed",
+    "real.disposable-write-scope": "disposableWriteScopePassed",
+    "real.cleanup-verification": "cleanupVerified",
   };
   if (controlId.startsWith("production.adapter.")) {
     return "productionEligible";
@@ -243,6 +298,18 @@ function requiredClaim(controlId) {
     throw new Error(`unsupported passing completion control: ${controlId}`);
   }
   return claim;
+}
+
+function freshRealReport(report) {
+  const executedAt = Date.parse(report.executedAt ?? "");
+  const reviewedAt = Date.parse(report.review?.reviewedAt ?? "");
+  const now = Date.now();
+  return Number.isFinite(executedAt)
+    && Number.isFinite(reviewedAt)
+    && executedAt <= now + 300_000
+    && reviewedAt <= now + 300_000
+    && reviewedAt >= executedAt
+    && now - executedAt <= 86_400_000;
 }
 
 async function optionalReport(relativePath, statuses) {
