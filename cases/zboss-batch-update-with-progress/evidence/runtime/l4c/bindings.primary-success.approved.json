@@ -347,6 +347,85 @@
           "sha256": "9c869f8af2fa21a8b11cb0d266990bb4c1d597842ad6da45be999aae729753a0"
         }
       },
+      "request": {
+        "source": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "authorization": "${MG_JAVA_TOKEN}",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "reqId": "{marker}",
+            "pageNo": 1,
+            "pageSize": 100,
+            "usePageId": "2083035054931869698",
+            "pageId": "2083035054357250050",
+            "panelId": "2083035054134951937",
+            "interId": "2083035050402021377",
+            "clientSessionId": "{marker}",
+            "enableProgress": true,
+            "expectedTotalRows": 1,
+            "isLastChunk": true,
+            "undo": true,
+            "operationKind": "ROW_UPDATE",
+            "operationLabel": "SH-3C validation failure",
+            "batchHeaderValueList": [],
+            "batchPostValueList": [
+              {
+                "id": "invalid-primary-key",
+                "custField66745": "SH-3C rejected validation row",
+                "custField66746": 101
+              }
+            ]
+          },
+          "acceptedStatuses": [200],
+          "expectedRowCount": 0,
+          "responseFields": {
+            "code": "code"
+          }
+        },
+        "target": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "interId": "2083035050402021377",
+            "httpId": "2083035050402021377",
+            "usePageId": "2083035054931869698",
+            "panelId": "{panelId}",
+            "clientSessionId": "{marker}",
+            "chunkNo": 0,
+            "isLastChunk": true,
+            "batchId": "{marker}",
+            "batchPostValueList": [
+              {
+                "id": "invalid-primary-key",
+                "validationError": "primary key format invalid",
+                "values": {
+                  "value": "SH-3C rejected validation row",
+                  "quantity": 101
+                }
+              }
+            ]
+          },
+          "acceptedStatuses": [200],
+          "expectedRowCount": 0,
+          "responseFields": {
+            "code": "code"
+          }
+        }
+      },
       "eventCollectors": {
         "source": {
           "kind": "websocket",
@@ -384,6 +463,97 @@
         "target": {
           "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/batch-partial-failure.rust-seed.json",
           "sha256": "6d934a042717280db4432bf1806d8fb944ed18eb0031a0ac9d8b1a0d86b5747b"
+        }
+      },
+      "request": {
+        "source": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "authorization": "${MG_JAVA_TOKEN}",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "reqId": "{marker}",
+            "pageNo": 1,
+            "pageSize": 100,
+            "usePageId": "2083035054931869698",
+            "pageId": "2083035054357250050",
+            "panelId": "2083035054134951937",
+            "interId": "2083035050402021377",
+            "clientSessionId": "{marker}",
+            "enableProgress": true,
+            "expectedTotalRows": 2,
+            "isLastChunk": true,
+            "undo": true,
+            "operationKind": "ROW_UPDATE",
+            "operationLabel": "SH-3C batch partial failure",
+            "batchHeaderValueList": [],
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "custField66745": "SH-3C partial updated row 001",
+                "custField66746": 101
+              },
+              {
+                "id": "invalid-primary-key",
+                "custField66745": "SH-3C partial rejected row 002",
+                "custField66746": 102
+              }
+            ]
+          },
+          "acceptedStatuses": [200],
+          "expectedRowCount": 1,
+          "responseFields": {
+            "code": "code"
+          }
+        },
+        "target": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "interId": "2083035050402021377",
+            "httpId": "2083035050402021377",
+            "usePageId": "2083035054931869698",
+            "panelId": "{panelId}",
+            "clientSessionId": "{marker}",
+            "chunkNo": 0,
+            "isLastChunk": true,
+            "batchId": "{marker}",
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "values": {
+                  "value": "SH-3C partial updated row 001",
+                  "quantity": 101
+                }
+              },
+              {
+                "id": "invalid-primary-key",
+                "validationError": "primary key format invalid",
+                "values": {
+                  "value": "SH-3C partial rejected row 002",
+                  "quantity": 102
+                }
+              }
+            ]
+          },
+          "acceptedStatuses": [200],
+          "expectedRowCount": 1,
+          "responseFields": {
+            "code": "code"
+          }
         }
       },
       "eventCollectors": {

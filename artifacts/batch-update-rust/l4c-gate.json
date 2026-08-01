@@ -66,7 +66,7 @@
   "evidence": {
     "replayPath": "artifacts/batch-update-rust/l4c-real-replay.json",
     "reviewPath": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/review.json",
-    "l3ReportHash": "f70865ba794fa3e8034e63e59ad246c581b0db069313bdd2269de9c4393e2516",
+    "l3ReportHash": "eb521728229e67439824121d2d02e00a60bfcd74d07f5e60961c3f7e9ea1fcba",
     "dependencyReportHash": "4b146b7c7d70ac00918fc656794c4c1070b6cc36f7def8ab830cb97c8a30d163",
     "productionReportHash": "656ef14382af0d814a4989b6a7ed6d840b32107bf068d1d76f94bc1f0006f76c",
     "scenarioCount": 0,
@@ -76,5 +76,5 @@
   "findings": [
     "MG-L4C-REPORT-MISSING"
   ],
-  "reportHash": "80c46167fafcdd5b08b575cf9dd26219282af9fca46715b8cb265492de21e100"
+  "reportHash": "e1de6a28107c8b1aa1c5db9683a50884c4c0bb425ad802bf4df9a59739ba9e7e"
 }

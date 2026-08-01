@@ -5,7 +5,7 @@
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "90e511666dd0cf0f4bc780c12995bda6680ea8d24bd0ce33cb043c0963cdb784",
+  "runtimeContractHash": "a4c5baa3ae205071a97925f599cc681c35a7600c530fef6ca5744acdc1cae07e",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -30,7 +30,7 @@
   ],
   "sourceDraft": {
     "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/validation-failure/fixture.draft.json",
-    "sha256": "fd966c4d3f7ca4675ed44f2660dc0f99cce835a764bd0a4c05a1fa32d2266151"
+    "sha256": "a155d3ded3ec6ff5fb5ed720aad9d4e223ff949da9a0f213a26c99b25dea83b9"
   },
   "stateProfile": {
     "path": "evidence/runtime/l4c/java-state-profile.primary-success.approved.json",
@@ -65,21 +65,8 @@
     }
   },
   "requestPlan": {
-    "status": "review-required",
-    "placeholderPaths": [
-      "$.body.batchPkFieldValue",
-      "$.body.clientSessionId",
-      "$.body.domain",
-      "$.body.horizontalId",
-      "$.body.interId",
-      "$.body.operationKind",
-      "$.body.operationLabel",
-      "$.body.pageId",
-      "$.body.panelId",
-      "$.body.reqId",
-      "$.body.usePageId",
-      "$.headers.x-tenant-id"
-    ],
+    "status": "authored",
+    "placeholderPaths": [],
     "environmentBindings": [
       {
         "path": "request.headers.authorization",
@@ -119,7 +106,7 @@
     "invariants": [
       "zero-projection-delta",
       "zero-undo-delta",
-      "terminal-failure-progress"
+      "no-progress-created-for-all-precheck-failures"
     ]
   },
   "semanticIntent": {
@@ -145,18 +132,8 @@
     "status": "pending"
   },
   "blockers": [
-    "MG-SH3C-REQUEST-REVIEW:$.body.batchPkFieldValue",
-    "MG-SH3C-REQUEST-REVIEW:$.body.clientSessionId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.domain",
-    "MG-SH3C-REQUEST-REVIEW:$.body.horizontalId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.interId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.operationKind",
-    "MG-SH3C-REQUEST-REVIEW:$.body.operationLabel",
-    "MG-SH3C-REQUEST-REVIEW:$.body.pageId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.panelId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.reqId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.usePageId",
-    "MG-SH3C-REQUEST-REVIEW:$.headers.x-tenant-id"
+    "MG-SH3C-EVENT-SEMANTICS-DECISION-REQUIRED",
+    "MG-SH3C-NO-EVENT-COMPLETION-NOT-SUPPORTED"
   ],
-  "packageHash": "14d6ea3754e5296ec46267a29b756ea85eb6d28ffae9563c77bb5b32a085df36"
+  "packageHash": "c605fa5f0bb10155c959272223c1e1587f33142971c869f47041d065cd05de88"
 }

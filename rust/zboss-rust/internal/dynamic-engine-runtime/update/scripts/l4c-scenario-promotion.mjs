@@ -91,7 +91,11 @@ const blueprints = {
     invariants: [
       "zero-projection-delta",
       "zero-undo-delta",
-      "terminal-failure-progress",
+      "no-progress-created-for-all-precheck-failures",
+    ],
+    compatibilityBlockers: [
+      "MG-SH3C-NO-EVENT-COMPLETION-NOT-SUPPORTED",
+      "MG-SH3C-EVENT-SEMANTICS-DECISION-REQUIRED",
     ],
   },
   "batch-partial-failure": {
@@ -100,7 +104,10 @@ const blueprints = {
     invariants: [
       "complete-row-classification",
       "failed-row-excluded-from-undo",
-      "single-terminal-progress-identity",
+      "single-source-terminal-progress-identity",
+    ],
+    compatibilityBlockers: [
+      "MG-SH3C-EVENT-SEMANTICS-DECISION-REQUIRED",
     ],
   },
   "dependency-failure": {
@@ -155,6 +162,16 @@ if (mode === "--write") {
       }`,
     );
   }
+  const requestAuthoredScenarios = built.packages.filter((item) =>
+    ["validation-failure", "batch-partial-failure"].includes(item.scenarioId));
+  if (requestAuthoredScenarios.some((item) =>
+    item.requestPlan.status !== "authored"
+    || item.blockers.some((blocker) => blocker.startsWith("MG-SH3C-REQUEST-REVIEW"))
+    || !item.blockers.includes("MG-SH3C-EVENT-SEMANTICS-DECISION-REQUIRED"))) {
+    throw new Error(
+      "validation and partial-failure requests must be authored with explicit event-semantic blockers",
+    );
+  }
   const eligible = structuredClone(built.packages[1]);
   eligible.realEvidenceEligible = true;
   const eligibleFindings = validatePackage(eligible);
@@ -184,7 +201,7 @@ if (mode === "--write") {
   }
   console.log(JSON.stringify({
     status: "pass",
-    checks: 14,
+    checks: 15,
     coverage: [
       "first-wave-exactly-five",
       "contract-scenario-binding",
@@ -200,6 +217,7 @@ if (mode === "--write") {
       "incomplete-ready-state-rejected",
       "state-profile-scenario-approval-enforced",
       "first-wave-seed-and-collector-bindings",
+      "validation-and-partial-request-contracts",
     ],
   }, null, 2));
 } else {
@@ -329,6 +347,7 @@ export async function buildPromotionSet() {
       ...(scenarioId === "concurrent-write"
         ? ["MG-SH3C-CONCURRENCY-DRIVER-NOT-BOUND"]
         : []),
+      ...(blueprints[scenarioId].compatibilityBlockers ?? []),
     ];
     const blockers = [...new Set(technicalBlockers)].sort();
     const readyForReview = blockers.length === 0;

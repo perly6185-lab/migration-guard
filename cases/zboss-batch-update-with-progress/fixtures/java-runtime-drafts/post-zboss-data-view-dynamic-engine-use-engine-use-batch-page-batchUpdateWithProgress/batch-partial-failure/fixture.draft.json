@@ -12,29 +12,36 @@
     "headers": {
       "content-type": "application/json",
       "accept": "application/json",
-      "x-tenant-id": "<tenant-id>"
+      "x-tenant-id": "{tenantId}"
     },
     "body": {
-      "reqId": "<case-id>",
-      "domain": "<domain>",
-      "usePageId": "<usePageId>",
-      "pageId": "<pageId>",
-      "panelId": "<panelId>",
-      "interId": "<interId>",
-      "clientSessionId": "<client-session-id>",
+      "reqId": "{marker}",
+      "pageNo": 1,
+      "pageSize": 100,
+      "usePageId": "2083035054931869698",
+      "pageId": "2083035054357250050",
+      "panelId": "2083035054134951937",
+      "interId": "2083035050402021377",
+      "clientSessionId": "{marker}",
       "enableProgress": true,
       "expectedTotalRows": 2,
       "isLastChunk": true,
       "undo": true,
-      "operationKind": "<operation-kind>",
-      "operationLabel": "<operation-label>",
-      "batchPkFieldValue": "<pk-field>",
+      "operationKind": "ROW_UPDATE",
+      "operationLabel": "SH-3C batch partial failure",
       "batchHeaderValueList": [],
-      "batchPostValueList": [],
-      "headerValues": {},
-      "postValues": {},
-      "qualityValues": {},
-      "horizontalId": "<horizontal-id>",
+      "batchPostValueList": [
+        {
+          "id": "{seed.row-001.generatedId}",
+          "custField66745": "SH-3C partial updated row 001",
+          "custField66746": 101
+        },
+        {
+          "id": "invalid-primary-key",
+          "custField66745": "SH-3C partial rejected row 002",
+          "custField66746": 102
+        }
+      ],
       "_scenario": "batch-partial-failure"
     }
   },
