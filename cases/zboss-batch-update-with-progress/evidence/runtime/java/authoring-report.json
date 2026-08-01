@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T08:55:47.180Z",
+  "generatedAt": "2026-08-01T09:15:25.782Z",
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "contractHash": "5a9fc1dad2bfde35945f2aabdc38241892b0a7396bb95c287355390bcb8c817a",
+  "contractHash": "ad94a433a79d7c776e7699a2e6aeedbd28faf3824d8452beca3e9af7744c4e81",
   "scenarioCount": 19,
   "draftCount": 19,
   "authoringReady": true,
@@ -129,10 +129,8 @@
         "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write/collectors/mysql.draft.json",
         "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write/collectors/redis.draft.json"
       },
-      "placeholderFindings": [
-        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
-      ],
-      "promotable": false
+      "placeholderFindings": [],
+      "promotable": true
     },
     {
       "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
@@ -169,10 +167,8 @@
         "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/dependency-failure/collectors/mysql.draft.json",
         "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/dependency-failure/collectors/redis.draft.json"
       },
-      "placeholderFindings": [
-        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
-      ],
-      "promotable": false
+      "placeholderFindings": [],
+      "promotable": true
     },
     {
       "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",

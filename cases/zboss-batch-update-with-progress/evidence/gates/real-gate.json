@@ -11,18 +11,18 @@
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\gates\\offline-gate.json"
   ],
   "evidenceDigests": {
-    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\gates\\offline-gate.json": "05179a5eb4cf9e97d5f917d3c466985386a7cad0fe028052c7e16887bc7ea47c"
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\gates\\offline-gate.json": "318252356069aebb4e09c3ede2af02f8b1d4834436a4b2727c852ba04683d678"
   },
   "upstream": [
     {
       "gate": "offline",
       "path": "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\gates\\offline-gate.json",
       "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-      "reportHash": "d30add380c666e9d9a64dd07913105a4481efce315600244bb3836ef64f58fc4",
+      "reportHash": "172f5ee233ae997d3c7be92ba49dd6588e1198a4b022e9738430d03532957a37",
       "status": "passed"
     }
   ],
-  "generatedAt": "2026-08-01T08:55:49.924Z",
+  "generatedAt": "2026-08-01T09:15:27.669Z",
   "freshness": "stale",
-  "reportHash": "2f6da2e0e528604a29fd360512608807077e014a977b5ab859b42b9febe8cf90"
+  "reportHash": "462889b507372f4c5a3e2f1dcd51c55a69b6f2dc67ff3b719926f6f628aad3ca"
 }

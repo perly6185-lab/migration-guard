@@ -57,9 +57,11 @@ SH-3A/SH-3B are implemented: semantic roles can now be classified as physical,
 volatile-event or absent, and scenario-specific declarative Seed files are
 transactional, marker-scoped and SHA-256-bound. SH-3C concrete promotion of the
 19 scenario fixtures is in progress. The first five scenarios now have
-deterministic, hash-bound `review-required` packages; none is marked real
-eligible while deployment values, Seed adapters, WebSocket capture or fault
-controls remain unresolved.
+deterministic, hash-bound `review-required` packages plus a tamper-evident
+automated technical review. Their requests, Seed adapters and WebSocket capture
+are bound; all five still require a fresh disposable-write approval, while the
+dependency and concurrency scenarios additionally require approved external
+drivers. None is marked real eligible.
 
 The approved state/fault boundary, canonical observation model, cleanup order,
 scenario allocation and delivery slices are defined in
@@ -103,8 +105,9 @@ Status: structural and batch semantic gates implemented; endpoint evidence pendi
 
 1. Review the deployed Java resource metadata and approve the now-explicit
    physical/volatile/absent classifications in `java-state-profile.json`.
-2. Resolve the first-wave SH-3C package blockers, formally promote those five
-   request/Seed profiles, then repeat for the remaining 14 scenarios.
+2. Obtain fresh write-safety approval for all first-wave packages, bind the
+   dependency fault controller and concurrency driver, formally promote those
+   five fixtures, then repeat for the remaining 14 scenarios.
 3. Pass structural and read-only connectivity preflight, then pilot
    `primary-success` and `dependency-failure`.
 4. Obtain an expiring disposable-write approval and run the complete source and

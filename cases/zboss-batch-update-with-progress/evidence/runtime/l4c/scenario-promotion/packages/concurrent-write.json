@@ -5,7 +5,7 @@
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "5a9fc1dad2bfde35945f2aabdc38241892b0a7396bb95c287355390bcb8c817a",
+  "runtimeContractHash": "ad94a433a79d7c776e7699a2e6aeedbd28faf3824d8452beca3e9af7744c4e81",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -30,7 +30,7 @@
   ],
   "sourceDraft": {
     "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write/fixture.draft.json",
-    "sha256": "be0ce6df04b880e77c3c855165723007394b18dc9dc6c465afa56e93f2cc6a71"
+    "sha256": "85b120535dd84bdee02ecf376ddbbc2b694987c9330ebaa8f6f3e2d0099a9c1a"
   },
   "stateProfile": {
     "path": "evidence/runtime/l4c/java-state-profile.primary-success.approved.json",
@@ -65,21 +65,8 @@
     }
   },
   "requestPlan": {
-    "status": "review-required",
-    "placeholderPaths": [
-      "$.body.batchPkFieldValue",
-      "$.body.clientSessionId",
-      "$.body.domain",
-      "$.body.horizontalId",
-      "$.body.interId",
-      "$.body.operationKind",
-      "$.body.operationLabel",
-      "$.body.pageId",
-      "$.body.panelId",
-      "$.body.reqId",
-      "$.body.usePageId",
-      "$.headers.x-tenant-id"
-    ],
+    "status": "authored",
+    "placeholderPaths": [],
     "environmentBindings": [
       {
         "path": "request.headers.authorization",
@@ -146,18 +133,7 @@
   },
   "blockers": [
     "MG-SH3C-CONCURRENCY-DRIVER-NOT-BOUND",
-    "MG-SH3C-REQUEST-REVIEW:$.body.batchPkFieldValue",
-    "MG-SH3C-REQUEST-REVIEW:$.body.clientSessionId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.domain",
-    "MG-SH3C-REQUEST-REVIEW:$.body.horizontalId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.interId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.operationKind",
-    "MG-SH3C-REQUEST-REVIEW:$.body.operationLabel",
-    "MG-SH3C-REQUEST-REVIEW:$.body.pageId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.panelId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.reqId",
-    "MG-SH3C-REQUEST-REVIEW:$.body.usePageId",
-    "MG-SH3C-REQUEST-REVIEW:$.headers.x-tenant-id"
+    "MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED"
   ],
-  "packageHash": "00e35e01885372cc412e56df80223b3d19ff22189a5ed1d5ea63af4994d5f401"
+  "packageHash": "11ccd2ba9f64b3255acd7e584c49a971f2d1e39dc22e2c42476e54cfc78757ff"
 }

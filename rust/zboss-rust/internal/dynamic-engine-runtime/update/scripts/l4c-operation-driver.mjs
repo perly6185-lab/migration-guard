@@ -207,6 +207,11 @@ async function runHealth(targetValue, contextValue) {
 }
 
 async function runInvoke(targetValue, scenarioValue, contextValue) {
+  if (contextValue.category === "concurrency") {
+    throw new Error(
+      `approved concurrency driver is missing: ${contextValue.scenarioId}`,
+    );
+  }
   if (!scenarioValue?.request) {
     throw new Error(`request binding is missing: ${contextValue.scenarioId}`);
   }

@@ -143,6 +143,7 @@ try {
     scenarios: {
       "primary-success": scenarioBinding(),
       "dependency-failure": scenarioBinding(),
+      "concurrent-write": scenarioBinding(),
     },
   };
   await writeFile(bindingPath, `${JSON.stringify(binding, null, 2)}\n`, "utf8");
@@ -159,6 +160,13 @@ try {
     assert.equal(directSeed.status, "passed");
     assert.equal(directSeed.scope.marker, "mg-l4c-process-marker");
     assert.equal(directSeed.seedHash, "a".repeat(64));
+    await assert.rejects(
+      runDriver("invoke", baseUrl, {
+        MG_L4C_CATEGORY: "concurrency",
+        MG_L4C_SCENARIO_ID: "concurrent-write",
+      }),
+      /approved concurrency driver is missing: concurrent-write/,
+    );
 
     const contract = {
       projectId: "zboss-batch-update-with-progress",
@@ -264,7 +272,7 @@ try {
 
   console.log(JSON.stringify({
     status: "pass",
-    checks: 20,
+    checks: 21,
     coverage: [
       "real-child-process-spawn",
       "built-in-http-health",
@@ -280,6 +288,7 @@ try {
       "fault-controller-revert",
       "fault-controller-inactive-verification",
       "fault-artifact-zero-residue",
+      "unbound-concurrency-driver-fail-closed",
     ],
   }, null, 2));
 } finally {
@@ -314,7 +323,7 @@ function targetBinding(kind) {
   };
 }
 
-async function runDriver(operation, baseUrl) {
+async function runDriver(operation, baseUrl, overrides = {}) {
   const environment = {
     ...process.env,
     MG_L4C_BASE_URL: baseUrl,
@@ -329,6 +338,7 @@ async function runDriver(operation, baseUrl) {
     MG_L4C_TABLE: "cust_table9002",
     MG_L4C_TARGET_KIND: "source",
     MG_L4C_TENANT_ID: "process-tenant",
+    ...overrides,
   };
   return spawnJson(process.execPath, [relative(driverPath), operation], environment);
 }

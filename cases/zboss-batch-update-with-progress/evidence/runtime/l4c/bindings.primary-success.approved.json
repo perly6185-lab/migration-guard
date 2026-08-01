@@ -597,6 +597,92 @@
           "sha256": "15b4d2d4768afca17e5380dd8c8fd0c9bf412388c9892a2ab596e66a89d0dd42"
         }
       },
+      "request": {
+        "source": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "authorization": "${MG_JAVA_TOKEN}",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "reqId": "{marker}",
+            "pageNo": 1,
+            "pageSize": 100,
+            "usePageId": "2083035054931869698",
+            "pageId": "2083035054357250050",
+            "panelId": "2083035054134951937",
+            "interId": "2083035050402021377",
+            "clientSessionId": "{marker}",
+            "enableProgress": true,
+            "expectedTotalRows": 2,
+            "isLastChunk": true,
+            "undo": true,
+            "operationKind": "ROW_UPDATE",
+            "operationLabel": "SH-3C dependency failure",
+            "batchHeaderValueList": [],
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "custField66745": "SH-3C dependency failure row 001",
+                "custField66746": 101
+              },
+              {
+                "id": "{seed.row-002.generatedId}",
+                "custField66745": "SH-3C dependency failure row 002",
+                "custField66746": 102
+              }
+            ]
+          },
+          "acceptedStatuses": [200, 500],
+          "expectedRowCount": 0,
+          "responseFields": { "code": "code" }
+        },
+        "target": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "interId": "2083035050402021377",
+            "httpId": "2083035050402021377",
+            "usePageId": "2083035054931869698",
+            "panelId": "{panelId}",
+            "clientSessionId": "{marker}",
+            "chunkNo": 0,
+            "isLastChunk": true,
+            "batchId": "{marker}",
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "values": {
+                  "value": "SH-3C dependency failure row 001",
+                  "quantity": 101
+                }
+              },
+              {
+                "id": "{seed.row-002.generatedId}",
+                "values": {
+                  "value": "SH-3C dependency failure row 002",
+                  "quantity": 102
+                }
+              }
+            ]
+          },
+          "acceptedStatuses": [200, 500],
+          "expectedRowCount": 0,
+          "responseFields": { "code": "code" }
+        }
+      },
       "eventCollectors": {
         "source": {
           "kind": "websocket",
@@ -635,6 +721,89 @@
           "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/concurrent-write.rust-seed.json",
           "sha256": "dacf10d0617cde6bd3a3c4f4749570df940e78979d1cdcf6cdf2ba12f7ea4af7"
         }
+      },
+      "request": {
+        "source": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "authorization": "${MG_JAVA_TOKEN}",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "reqId": "{marker}",
+            "pageNo": 1,
+            "pageSize": 100,
+            "usePageId": "2083035054931869698",
+            "pageId": "2083035054357250050",
+            "panelId": "2083035054134951937",
+            "interId": "2083035050402021377",
+            "clientSessionId": "{marker}",
+            "enableProgress": true,
+            "expectedTotalRows": 1,
+            "isLastChunk": true,
+            "undo": true,
+            "operationKind": "ROW_UPDATE",
+            "operationLabel": "SH-3C concurrent write",
+            "batchHeaderValueList": [],
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "custField66745": "SH-3C concurrent writer A",
+                "custField66746": 101
+              }
+            ]
+          },
+          "acceptedStatuses": [200],
+          "expectedRowCount": 1,
+          "responseFields": { "code": "code" }
+        },
+        "target": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "interId": "2083035050402021377",
+            "httpId": "2083035050402021377",
+            "usePageId": "2083035054931869698",
+            "panelId": "{panelId}",
+            "clientSessionId": "{marker}",
+            "chunkNo": 0,
+            "isLastChunk": true,
+            "batchId": "{marker}",
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "values": {
+                  "value": "SH-3C concurrent writer A",
+                  "quantity": 101
+                }
+              }
+            ]
+          },
+          "acceptedStatuses": [200],
+          "expectedRowCount": 1,
+          "responseFields": { "code": "code" }
+        }
+      },
+      "concurrencyPlan": {
+        "writerCount": 2,
+        "startMode": "barrier",
+        "sharedSeedBinding": "row-001",
+        "writerValues": [
+          "SH-3C concurrent writer A",
+          "SH-3C concurrent writer B"
+        ]
       },
       "eventCollectors": {
         "source": {

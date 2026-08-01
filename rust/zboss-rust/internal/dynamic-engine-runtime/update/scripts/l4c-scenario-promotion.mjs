@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 
 export const PROMOTION_PROTOCOL =
   "migration-guard.batch-update-l4c-scenario-package/v1";
+export const TECHNICAL_REVIEW_PROTOCOL =
+  "migration-guard.batch-update-l4c-scenario-technical-review/v1";
 export const FIRST_WAVE = [
   "primary-success",
   "validation-failure",
@@ -74,6 +76,7 @@ const outputDirectory = path.join(
 );
 const packageDirectory = path.join(outputDirectory, "packages");
 const manifestPath = path.join(outputDirectory, "manifest.json");
+const technicalReviewPath = path.join(outputDirectory, "technical-review.json");
 
 const blueprints = {
   "primary-success": {
@@ -161,11 +164,17 @@ if (mode === "--write") {
     item.requestPlan.status !== "authored"
     || item.blockers.some((blocker) => blocker.startsWith("MG-SH3C-REQUEST-REVIEW"))
     || item.blockers.includes("MG-SH3C-EVENT-SEMANTICS-DECISION-REQUIRED")
-    || item.blockers.includes("MG-SH3C-NO-EVENT-COMPLETION-NOT-SUPPORTED")
-    || item.status !== "ready-for-review")) {
+    || item.blockers.includes("MG-SH3C-NO-EVENT-COMPLETION-NOT-SUPPORTED"))) {
     throw new Error(
-      "validation and partial-failure event semantics must be resolved and ready for review",
+      "validation and partial-failure request and event semantics must be resolved",
     );
+  }
+  if (built.packages.some((item) =>
+    item.status !== "promoted"
+    && !item.blockers.includes(
+      "MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED",
+    ))) {
+    throw new Error("every unpromoted first-wave package must require write safety");
   }
   const eligible = structuredClone(built.packages[1]);
   eligible.realEvidenceEligible = true;
@@ -194,9 +203,16 @@ if (mode === "--write") {
   )) {
     throw new Error("state profile scenario approval was not enforced");
   }
+  const tamperedReview = structuredClone(built.technicalReview);
+  tamperedReview.packages[0].decision = "ready-for-human-approval";
+  if (!validateTechnicalReview(tamperedReview, built.packages).includes(
+    "MG-SH3C-TECHNICAL-REVIEW-HASH-MISMATCH",
+  )) {
+    throw new Error("technical review tampering was not rejected");
+  }
   console.log(JSON.stringify({
     status: "pass",
-    checks: 15,
+    checks: 17,
     coverage: [
       "first-wave-exactly-five",
       "contract-scenario-binding",
@@ -213,6 +229,8 @@ if (mode === "--write") {
       "state-profile-scenario-approval-enforced",
       "first-wave-seed-and-collector-bindings",
       "validation-and-partial-event-semantics-resolved",
+      "first-wave-write-safety-enforced",
+      "technical-review-tamper-rejected",
     ],
   }, null, 2));
 } else {
@@ -272,7 +290,6 @@ export async function buildPromotionSet() {
       };
     }
     const placeholderPaths = placeholderLocations(draft.request);
-    const primary = scenarioId === "primary-success";
     const stateProfileFileHash = await fileHash(stateProfilePath);
     const javaSeedFileHash = await fileHash(javaSeedPath);
     const rustSeedFileHash = await fileHash(rustSeedPath);
@@ -314,13 +331,11 @@ export async function buildPromotionSet() {
           && websocketBinding.noEventWindowMs <= 5_000
         )
       );
-    const writeSafetyReady = primary
-      && draft.writeSafety?.mode === "disposable"
+    const writeSafetyReady = draft.writeSafety?.mode === "disposable"
       && draft.writeSafety?.disposable === true
       && draft.writeSafety?.writeApproved === true
       && Date.parse(draft.writeSafety?.expiresAt ?? "") > Date.now();
-    const formallyPromoted = primary
-      && promotedFixture?.fixtureKind === "real-runtime"
+    const formallyPromoted = promotedFixture?.fixtureKind === "real-runtime"
       && promotedFixture?.status === "ready"
       && promotedFixture?.realEvidenceEligible === true
       && promotedFixture?.authoring?.reviewed === true
@@ -340,7 +355,7 @@ export async function buildPromotionSet() {
       ...(!websocketReady
         ? ["MG-SH3C-WEBSOCKET-EVENT-COLLECTOR-NOT-BOUND"]
         : []),
-      ...(primary && !formallyPromoted && !writeSafetyReady
+      ...(!formallyPromoted && !writeSafetyReady
         ? ["MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED"]
         : []),
       ...placeholderPaths.map((item) => `MG-SH3C-REQUEST-REVIEW:${item}`),
@@ -451,6 +466,35 @@ export async function buildPromotionSet() {
     document.packageHash = packageHash(document);
     packages.push(document);
   }
+  const technicalReview = {
+    schemaVersion: 1,
+    protocol: TECHNICAL_REVIEW_PROTOCOL,
+    status: packages.every((item) => item.blockers.length === 0)
+      ? "ready-for-human-approval"
+      : "changes-required",
+    reviewKind: "automated-technical",
+    humanApprovalClaimed: false,
+    projectId: contract.projectId,
+    projectHash: contract.projectHash,
+    runtimeContractHash: contract.contractHash,
+    promotionWave: "sh3c-first-wave",
+    packages: packages.map((item) => ({
+      scenarioId: item.scenarioId,
+      packageHash: item.packageHash,
+      decision: item.blockers.length === 0
+        ? "ready-for-human-approval"
+        : "changes-required",
+      blockers: item.blockers,
+    })),
+    summary: {
+      scenarioCount: packages.length,
+      readyCount: packages.filter((item) => item.blockers.length === 0).length,
+      changesRequiredCount:
+        packages.filter((item) => item.blockers.length > 0).length,
+    },
+    reviewHash: "",
+  };
+  technicalReview.reviewHash = technicalReviewHash(technicalReview);
   const manifest = {
     schemaVersion: 1,
     protocol: "migration-guard.batch-update-l4c-scenario-promotion-manifest/v1",
@@ -467,12 +511,17 @@ export async function buildPromotionSet() {
       hash: item.packageHash,
       blockerCount: item.blockers.length,
     })),
+    technicalReview: {
+      path: "evidence/runtime/l4c/scenario-promotion/technical-review.json",
+      hash: technicalReview.reviewHash,
+      status: technicalReview.status,
+    },
     readyForHumanReview: true,
     readyForRealPromotion: packages.some((item) => item.status === "promoted"),
     manifestHash: "",
   };
   manifest.manifestHash = manifestHash(manifest);
-  return { packages, manifest };
+  return { packages, manifest, technicalReview };
 }
 
 export function validatePromotionSet(value) {
@@ -488,11 +537,19 @@ export function validatePromotionSet(value) {
     findings.push(...validatePackage(item).map((finding) =>
       `${finding}:${item.scenarioId}`));
   }
+  findings.push(...validateTechnicalReview(
+    value.technicalReview,
+    value.packages,
+  ));
   if (
     value.manifest.realEvidenceEligible !== false
     || value.manifest.readyForRealPromotion
       !== value.packages.some((item) => item.status === "promoted")
     || value.manifest.manifestHash !== manifestHash(value.manifest)
+    || value.manifest.technicalReview?.hash
+      !== value.technicalReview?.reviewHash
+    || value.manifest.technicalReview?.status
+      !== value.technicalReview?.status
     || value.manifest.packages.some((reference, index) =>
       reference.scenarioId !== value.packages[index]?.scenarioId
       || reference.hash !== value.packages[index]?.packageHash)
@@ -500,6 +557,54 @@ export function validatePromotionSet(value) {
     findings.push("MG-SH3C-MANIFEST-INVALID");
   }
   return [...new Set(findings)].sort();
+}
+
+export function validateTechnicalReview(value, packages) {
+  const findings = [];
+  if (
+    value?.schemaVersion !== 1
+    || value?.protocol !== TECHNICAL_REVIEW_PROTOCOL
+    || !["changes-required", "ready-for-human-approval"].includes(
+      value?.status,
+    )
+    || value?.reviewKind !== "automated-technical"
+    || value?.humanApprovalClaimed !== false
+    || !Array.isArray(value?.packages)
+    || value.packages.length !== FIRST_WAVE.length
+  ) {
+    findings.push("MG-SH3C-TECHNICAL-REVIEW-PROTOCOL-INVALID");
+  }
+  for (const [index, item] of (value?.packages ?? []).entries()) {
+    const expected = packages[index];
+    if (
+      !expected
+      || item.scenarioId !== expected.scenarioId
+      || item.packageHash !== expected.packageHash
+      || item.decision !== (expected.blockers.length === 0
+        ? "ready-for-human-approval"
+        : "changes-required")
+      || stableStringify(item.blockers) !== stableStringify(expected.blockers)
+    ) {
+      findings.push(`MG-SH3C-TECHNICAL-REVIEW-PACKAGE-MISMATCH:${
+        expected?.scenarioId ?? index
+      }`);
+    }
+  }
+  const expectedReady = packages.filter((item) => item.blockers.length === 0).length;
+  if (
+    value?.status !== (expectedReady === packages.length
+      ? "ready-for-human-approval"
+      : "changes-required")
+    || value?.summary?.scenarioCount !== packages.length
+    || value?.summary?.readyCount !== expectedReady
+    || value?.summary?.changesRequiredCount !== packages.length - expectedReady
+  ) {
+    findings.push("MG-SH3C-TECHNICAL-REVIEW-SUMMARY-INVALID");
+  }
+  if (value?.reviewHash !== technicalReviewHash(value)) {
+    findings.push("MG-SH3C-TECHNICAL-REVIEW-HASH-MISMATCH");
+  }
+  return findings;
 }
 
 export function validatePackage(value) {
@@ -588,6 +693,7 @@ async function writePromotionSet(value) {
     await writeJson(path.join(packageDirectory, `${item.scenarioId}.json`), item);
   }
   await writeJson(manifestPath, value.manifest);
+  await writeJson(technicalReviewPath, value.technicalReview);
 }
 
 async function checkPersistedPromotionSet(expected) {
@@ -612,6 +718,19 @@ async function checkPersistedPromotionSet(expected) {
     }
   } catch {
     findings.push("MG-SH3C-MANIFEST-MISSING");
+  }
+  try {
+    const persistedReview = await readJson(technicalReviewPath);
+    findings.push(...validateTechnicalReview(
+      persistedReview,
+      expected.packages,
+    ));
+    if (stableStringify(persistedReview)
+      !== stableStringify(expected.technicalReview)) {
+      findings.push("MG-SH3C-TECHNICAL-REVIEW-STALE");
+    }
+  } catch {
+    findings.push("MG-SH3C-TECHNICAL-REVIEW-MISSING");
   }
   return [...new Set(findings)].sort();
 }
@@ -652,6 +771,10 @@ function packageHash(value) {
 
 function manifestHash(value) {
   return hashValue({ ...value, manifestHash: undefined });
+}
+
+function technicalReviewHash(value) {
+  return hashValue({ ...value, reviewHash: undefined });
 }
 
 function documentHash(value) {
@@ -717,6 +840,7 @@ function summary(value, status) {
     scenarioCount: value.packages.length,
     readyForHumanReview: true,
     readyForRealPromotion: value.manifest.readyForRealPromotion,
+    technicalReviewStatus: value.technicalReview.status,
     manifestPath: path.relative(repositoryRoot, manifestPath),
   };
 }

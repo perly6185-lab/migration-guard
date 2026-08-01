@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "protocol": "migration-guard.batch-update-l4c-scenario-package/v1",
-  "status": "ready-for-review",
+  "status": "review-required",
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "5a9fc1dad2bfde35945f2aabdc38241892b0a7396bb95c287355390bcb8c817a",
+  "runtimeContractHash": "ad94a433a79d7c776e7699a2e6aeedbd28faf3824d8452beca3e9af7744c4e81",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -133,6 +133,8 @@
     "allowedOnlyWhenBlockersEmpty": true,
     "status": "pending"
   },
-  "blockers": [],
-  "packageHash": "2b0bcd8beb541d378462274e0c51bbcc9a10d417e018ad6ef508ae438fa86953"
+  "blockers": [
+    "MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED"
+  ],
+  "packageHash": "b1f84642645c4d7a649efd8e8efea7a815ed69b8f6fb33d10d1fc29d23ac6c0a"
 }
