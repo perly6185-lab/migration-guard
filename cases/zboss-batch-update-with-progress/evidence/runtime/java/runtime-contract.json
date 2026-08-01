@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T07:54:58.084Z",
+  "generatedAt": "2026-08-01T08:09:27.341Z",
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
   "sourceIdentity": {
@@ -40,7 +40,7 @@
         "mysql",
         "redis"
       ],
-      "analysisHash": "7c4034d8c3448b2a65f76b7676a3309617e4400b4d44bb4b42f252925d3a5d35",
+      "analysisHash": "6c3bfa0a595d7fb17497e01816d802df6a9657e8caae37e8c3d211bcdeeca0f2",
       "planHash": "2285a6e1916f2e924f9d733b95d8389ec8a22a58f5166b2a83f62403c54b9efc",
       "scenarios": [
         {
@@ -633,5 +633,5 @@
       "hash": "77aa85acb1bf44606e90f0dfd0ce60158cd0f7745abf77df5f8302d3bbba91fd"
     }
   },
-  "contractHash": "0e2f0d0d57727e71143f746a41f3e216d3eb7ec7fd1765818b5c92c332c730d8"
+  "contractHash": "90e511666dd0cf0f4bc780c12995bda6680ea8d24bd0ce33cb043c0963cdb784"
 }

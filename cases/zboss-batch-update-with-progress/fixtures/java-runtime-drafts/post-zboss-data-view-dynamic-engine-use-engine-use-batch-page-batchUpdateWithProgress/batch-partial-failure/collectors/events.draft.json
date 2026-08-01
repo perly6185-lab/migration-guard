@@ -1,20 +1,30 @@
 {
   "version": 1,
   "collector": "events",
-  "status": "draft",
+  "status": "ready",
+  "transport": "websocket",
+  "endpoint": "/ws/zboss",
+  "binding": "scenarios.batch-partial-failure.eventCollectors.source",
+  "protocol": "migration-guard.batch-update-l4c-websocket-event/v1",
+  "messageType": "panel-data-update",
+  "subscriptionType": "panel-subscribe",
+  "terminalStatuses": ["SUCCESS", "FAILED", "PARTIAL_FAILED"],
   "file": "evidence/runtime/java/events/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-partial-failure.jsonl",
   "correlationFields": [
     "scenarioId",
-    "requestId",
+    "marker",
+    "panelId",
     "batchId"
   ],
   "includeFields": [
     "scenarioId",
-    "requestId",
+    "marker",
+    "panelId",
     "batchId",
     "type",
-    "stage",
-    "sequence"
+    "status",
+    "percentage",
+    "terminal"
   ],
   "scenarioId": "batch-partial-failure"
 }

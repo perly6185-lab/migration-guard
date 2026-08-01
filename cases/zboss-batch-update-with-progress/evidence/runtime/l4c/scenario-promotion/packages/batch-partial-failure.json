@@ -5,7 +5,7 @@
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "0e2f0d0d57727e71143f746a41f3e216d3eb7ec7fd1765818b5c92c332c730d8",
+  "runtimeContractHash": "90e511666dd0cf0f4bc780c12995bda6680ea8d24bd0ce33cb043c0963cdb784",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -32,7 +32,7 @@
   ],
   "sourceDraft": {
     "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-partial-failure/fixture.draft.json",
-    "sha256": "d1e7be18ed7af2539811f04b297ed7f4c9aeae9d52dca5697d3b8fdef756de06"
+    "sha256": "9c35bb29dd5369215648deaefe65ff137e9a122cef1d70202f3f1883104d0b07"
   },
   "stateProfile": {
     "path": "evidence/runtime/l4c/java-state-profile.primary-success.approved.json",
@@ -49,31 +49,21 @@
   "collectors": {
     "events": {
       "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-partial-failure/collectors/events.draft.json",
-      "sha256": "11f74b008e8e5c6aa354e0e23ebd91906d816b525d63b1e647f4e5149724e9b0",
-      "status": "draft",
-      "reviewFindings": [
-        "STATUS-NOT-READY",
-        "WEBSOCKET-CAPTURE-NOT-CONFIRMED"
-      ]
+      "sha256": "b5b1b367f14f54f93724dfb7718d39eba163caa3bb730c153903e07d412a7fe8",
+      "status": "ready",
+      "reviewFindings": []
     },
     "mysql": {
       "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-partial-failure/collectors/mysql.draft.json",
-      "sha256": "4b213cba2e1345a9ba201c7466614c931ae61af91b23410b34872c13c068cbe1",
-      "status": "draft",
-      "reviewFindings": [
-        "STATUS-NOT-READY",
-        "PLACEHOLDER-PROBE"
-      ]
+      "sha256": "42de8c893f1b6b0afdebed29125ac96aa46729501228b3f2fc71afeaa9dcc9c1",
+      "status": "ready",
+      "reviewFindings": []
     },
     "redis": {
       "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-partial-failure/collectors/redis.draft.json",
-      "sha256": "f5953888bc6bca7a954a08f4959211cf618e65755e77af32a7f4fb060a7109c8",
-      "status": "draft",
-      "reviewFindings": [
-        "STATUS-NOT-READY",
-        "PLACEHOLDER-PROBE",
-        "JAVA-PROGRESS-IS-NOT-REDIS-BACKED"
-      ]
+      "sha256": "ae5902bccb5a46c6f800bf114557a91ffa3da3a80d9ca60b48457c9ff25ce071",
+      "status": "ready",
+      "reviewFindings": []
     }
   },
   "requestPlan": {
@@ -100,21 +90,25 @@
     ]
   },
   "seedPlan": {
-    "status": "review-required",
+    "status": "authored",
     "plannedRows": 2,
     "java": {
       "protocol": "migration-guard.batch-update-l4c-java-seed/v1",
       "resourceRole": "projection",
-      "binding": "scenario.seedProfiles.source"
+      "binding": "scenario.seedProfiles.source",
+      "path": "evidence/runtime/l4c/seeds/batch-partial-failure.java-seed.json",
+      "sha256": "b823e374a8f8a0a667900aa0ddd5196e0c22ba65f120b4aff01bdddba93ba007"
     },
     "rust": {
-      "status": "adapter-required",
+      "status": "adapter-bound",
       "resourceRole": "projection",
-      "binding": "scenario.seedProfiles.target"
+      "binding": "scenario.seedProfiles.target",
+      "path": "evidence/runtime/l4c/seeds/batch-partial-failure.rust-seed.json",
+      "sha256": "6d934a042717280db4432bf1806d8fb944ed18eb0031a0ac9d8b1a0d86b5747b"
     }
   },
   "expectedObservation": {
-    "status": "review-required",
+    "status": "authored",
     "dimensions": [
       "http",
       "context",
@@ -153,14 +147,6 @@
     "status": "pending"
   },
   "blockers": [
-    "MG-SH3C-COLLECTOR-REVIEW:events:STATUS-NOT-READY",
-    "MG-SH3C-COLLECTOR-REVIEW:events:WEBSOCKET-CAPTURE-NOT-CONFIRMED",
-    "MG-SH3C-COLLECTOR-REVIEW:mysql:PLACEHOLDER-PROBE",
-    "MG-SH3C-COLLECTOR-REVIEW:mysql:STATUS-NOT-READY",
-    "MG-SH3C-COLLECTOR-REVIEW:redis:JAVA-PROGRESS-IS-NOT-REDIS-BACKED",
-    "MG-SH3C-COLLECTOR-REVIEW:redis:PLACEHOLDER-PROBE",
-    "MG-SH3C-COLLECTOR-REVIEW:redis:STATUS-NOT-READY",
-    "MG-SH3C-JAVA-SEED-NOT-AUTHORED",
     "MG-SH3C-REQUEST-REVIEW:$.body.batchPkFieldValue",
     "MG-SH3C-REQUEST-REVIEW:$.body.clientSessionId",
     "MG-SH3C-REQUEST-REVIEW:$.body.domain",
@@ -172,9 +158,7 @@
     "MG-SH3C-REQUEST-REVIEW:$.body.panelId",
     "MG-SH3C-REQUEST-REVIEW:$.body.reqId",
     "MG-SH3C-REQUEST-REVIEW:$.body.usePageId",
-    "MG-SH3C-REQUEST-REVIEW:$.headers.x-tenant-id",
-    "MG-SH3C-RUST-SEED-ADAPTER-NOT-BOUND",
-    "MG-SH3C-WEBSOCKET-EVENT-COLLECTOR-NOT-BOUND"
+    "MG-SH3C-REQUEST-REVIEW:$.headers.x-tenant-id"
   ],
-  "packageHash": "1a8ebaacf069db6b96e387002ba41c5df4b4568858a0d714f4ca937cf396b252"
+  "packageHash": "e1944b00304a01f00de338cf1f2e184d2779343c118bfe8488ff20c8369dd947"
 }

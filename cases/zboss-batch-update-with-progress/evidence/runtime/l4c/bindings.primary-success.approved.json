@@ -335,6 +335,162 @@
         }
       },
       "hooks": {}
+    },
+    "validation-failure": {
+      "seedProfiles": {
+        "source": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/validation-failure.java-seed.json",
+          "sha256": "5390f6d0478cf321e449ff6ff7be80ce4a712640ea48eb5f3bdffbdedf555466"
+        },
+        "target": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/validation-failure.rust-seed.json",
+          "sha256": "9c869f8af2fa21a8b11cb0d266990bb4c1d597842ad6da45be999aae729753a0"
+        }
+      },
+      "eventCollectors": {
+        "source": {
+          "kind": "websocket",
+          "path": "/ws/zboss",
+          "openTimeoutMs": 10000,
+          "terminalTimeoutMs": 30000,
+          "maxEvents": 1000,
+          "maxBytes": 1048576,
+          "subscribe": {
+            "type": "panel-subscribe",
+            "stringifyContent": true,
+            "content": {
+              "panelId": "{panelId}",
+              "subscribe": true
+            }
+          },
+          "messageType": "panel-data-update",
+          "contentEncoding": "json-string",
+          "panelIdPath": "panelId",
+          "batchIdPath": "batchId",
+          "statusPath": "status",
+          "percentagePath": "percentage",
+          "terminalStatuses": ["SUCCESS", "FAILED", "PARTIAL_FAILED"],
+          "responseBatchIdPaths": ["data.batchId"]
+        }
+      },
+      "hooks": {}
+    },
+    "batch-partial-failure": {
+      "seedProfiles": {
+        "source": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/batch-partial-failure.java-seed.json",
+          "sha256": "b823e374a8f8a0a667900aa0ddd5196e0c22ba65f120b4aff01bdddba93ba007"
+        },
+        "target": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/batch-partial-failure.rust-seed.json",
+          "sha256": "6d934a042717280db4432bf1806d8fb944ed18eb0031a0ac9d8b1a0d86b5747b"
+        }
+      },
+      "eventCollectors": {
+        "source": {
+          "kind": "websocket",
+          "path": "/ws/zboss",
+          "openTimeoutMs": 10000,
+          "terminalTimeoutMs": 30000,
+          "maxEvents": 1000,
+          "maxBytes": 1048576,
+          "subscribe": {
+            "type": "panel-subscribe",
+            "stringifyContent": true,
+            "content": {
+              "panelId": "{panelId}",
+              "subscribe": true
+            }
+          },
+          "messageType": "panel-data-update",
+          "contentEncoding": "json-string",
+          "panelIdPath": "panelId",
+          "batchIdPath": "batchId",
+          "statusPath": "status",
+          "percentagePath": "percentage",
+          "terminalStatuses": ["SUCCESS", "FAILED", "PARTIAL_FAILED"],
+          "responseBatchIdPaths": ["data.batchId"]
+        }
+      },
+      "hooks": {}
+    },
+    "dependency-failure": {
+      "seedProfiles": {
+        "source": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/dependency-failure.java-seed.json",
+          "sha256": "80282ca5584a5c8fad0ea98255552d7fa6d0701f2abbf5bcd3f9f1e35b3ab897"
+        },
+        "target": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/dependency-failure.rust-seed.json",
+          "sha256": "15b4d2d4768afca17e5380dd8c8fd0c9bf412388c9892a2ab596e66a89d0dd42"
+        }
+      },
+      "eventCollectors": {
+        "source": {
+          "kind": "websocket",
+          "path": "/ws/zboss",
+          "openTimeoutMs": 10000,
+          "terminalTimeoutMs": 30000,
+          "maxEvents": 1000,
+          "maxBytes": 1048576,
+          "subscribe": {
+            "type": "panel-subscribe",
+            "stringifyContent": true,
+            "content": {
+              "panelId": "{panelId}",
+              "subscribe": true
+            }
+          },
+          "messageType": "panel-data-update",
+          "contentEncoding": "json-string",
+          "panelIdPath": "panelId",
+          "batchIdPath": "batchId",
+          "statusPath": "status",
+          "percentagePath": "percentage",
+          "terminalStatuses": ["SUCCESS", "FAILED", "PARTIAL_FAILED"],
+          "responseBatchIdPaths": ["data.batchId"]
+        }
+      },
+      "hooks": {}
+    },
+    "concurrent-write": {
+      "seedProfiles": {
+        "source": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/concurrent-write.java-seed.json",
+          "sha256": "e60a7352fc9890ef940b08c02cfca0e07c1a0d1b07d040af6144a526133c9c5a"
+        },
+        "target": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/concurrent-write.rust-seed.json",
+          "sha256": "dacf10d0617cde6bd3a3c4f4749570df940e78979d1cdcf6cdf2ba12f7ea4af7"
+        }
+      },
+      "eventCollectors": {
+        "source": {
+          "kind": "websocket",
+          "path": "/ws/zboss",
+          "openTimeoutMs": 10000,
+          "terminalTimeoutMs": 30000,
+          "maxEvents": 1000,
+          "maxBytes": 1048576,
+          "subscribe": {
+            "type": "panel-subscribe",
+            "stringifyContent": true,
+            "content": {
+              "panelId": "{panelId}",
+              "subscribe": true
+            }
+          },
+          "messageType": "panel-data-update",
+          "contentEncoding": "json-string",
+          "panelIdPath": "panelId",
+          "batchIdPath": "batchId",
+          "statusPath": "status",
+          "percentagePath": "percentage",
+          "terminalStatuses": ["SUCCESS", "FAILED", "PARTIAL_FAILED"],
+          "responseBatchIdPaths": ["data.batchId"]
+        }
+      },
+      "hooks": {}
     }
   }
 }

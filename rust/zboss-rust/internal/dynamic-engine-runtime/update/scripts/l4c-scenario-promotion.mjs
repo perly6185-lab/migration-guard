@@ -51,28 +51,19 @@ const primaryStateProfilePath = path.join(
   "l4c",
   "java-state-profile.primary-success.approved.json",
 );
-const primaryBindingPath = path.join(
+const approvedBindingPath = path.join(
   caseDirectory,
   "evidence",
   "runtime",
   "l4c",
   "bindings.primary-success.approved.json",
 );
-const primaryJavaSeedPath = path.join(
+const seedDirectory = path.join(
   caseDirectory,
   "evidence",
   "runtime",
   "l4c",
   "seeds",
-  "primary-success.java-seed.json",
-);
-const primaryRustSeedPath = path.join(
-  caseDirectory,
-  "evidence",
-  "runtime",
-  "l4c",
-  "seeds",
-  "primary-success.rust-seed.json",
 );
 const outputDirectory = path.join(
   caseDirectory,
@@ -147,6 +138,23 @@ if (mode === "--write") {
 } else if (mode === "--self-test") {
   const findings = validatePromotionSet(built);
   if (findings.length > 0) throw new Error(findings.join(", "));
+  const incompleteFirstWaveBindings = built.packages.filter((item) =>
+    item.seedPlan.status !== "authored"
+    || item.seedPlan.rust.status !== "adapter-bound"
+    || item.expectedObservation.status !== "authored"
+    || item.blockers.some((blocker) =>
+      blocker.startsWith("MG-SH3C-JAVA-SEED")
+      || blocker.startsWith("MG-SH3C-RUST-SEED")
+      || blocker.startsWith("MG-SH3C-WEBSOCKET")
+      || blocker.startsWith("MG-SH3C-COLLECTOR-REVIEW"))
+  );
+  if (incompleteFirstWaveBindings.length > 0) {
+    throw new Error(
+      `first-wave seed/event bindings are incomplete: ${
+        incompleteFirstWaveBindings.map((item) => item.scenarioId).join(",")
+      }`,
+    );
+  }
   const eligible = structuredClone(built.packages[1]);
   eligible.realEvidenceEligible = true;
   const eligibleFindings = validatePackage(eligible);
@@ -176,7 +184,7 @@ if (mode === "--write") {
   }
   console.log(JSON.stringify({
     status: "pass",
-    checks: 13,
+    checks: 14,
     coverage: [
       "first-wave-exactly-five",
       "contract-scenario-binding",
@@ -191,6 +199,7 @@ if (mode === "--write") {
       "package-tamper-rejected",
       "incomplete-ready-state-rejected",
       "state-profile-scenario-approval-enforced",
+      "first-wave-seed-and-collector-bindings",
     ],
   }, null, 2));
 } else {
@@ -199,9 +208,7 @@ if (mode === "--write") {
 
 export async function buildPromotionSet() {
   const contract = await readJson(contractPath);
-  const primaryBinding = await readJson(primaryBindingPath);
-  const primaryJavaSeed = await readJson(primaryJavaSeedPath);
-  const primaryRustSeed = await readJson(primaryRustSeedPath);
+  const approvedBinding = await readJson(approvedBindingPath);
   const approvedStateProfile = await readJson(primaryStateProfilePath);
   const entry = contract.entries.find((item) => item.id === entrypointId);
   if (!entry) throw new Error(`runtime contract entry is missing: ${entrypointId}`);
@@ -215,6 +222,10 @@ export async function buildPromotionSet() {
     const stateProfile = await readJson(stateProfilePath);
     const scenario = entry.scenarios.find((item) => item.id === scenarioId);
     if (!scenario) throw new Error(`runtime scenario is missing: ${scenarioId}`);
+    const javaSeedPath = path.join(seedDirectory, `${scenarioId}.java-seed.json`);
+    const rustSeedPath = path.join(seedDirectory, `${scenarioId}.rust-seed.json`);
+    const javaSeed = await readJson(javaSeedPath);
+    const rustSeed = await readJson(rustSeedPath);
     const draftPath = path.join(
       caseDirectory,
       "fixtures",
@@ -250,28 +261,35 @@ export async function buildPromotionSet() {
     const placeholderPaths = placeholderLocations(draft.request);
     const primary = scenarioId === "primary-success";
     const stateProfileFileHash = await fileHash(stateProfilePath);
-    const javaSeedFileHash = await fileHash(primaryJavaSeedPath);
-    const rustSeedFileHash = await fileHash(primaryRustSeedPath);
-    const scenarioBinding = primaryBinding.scenarios?.[scenarioId];
+    const javaSeedFileHash = await fileHash(javaSeedPath);
+    const rustSeedFileHash = await fileHash(rustSeedPath);
+    const scenarioBinding = approvedBinding.scenarios?.[scenarioId];
     const stateProfileReady = stateProfileApprovedForScenario
       && stateProfile.status === "approved"
-      && primaryBinding.status === "approved"
-      && primaryBinding.targets?.source?.stateProfileSha256
+      && approvedBinding.status === "approved"
+      && approvedBinding.targets?.source?.stateProfileSha256
         === stateProfileFileHash;
-    const javaSeedReady = primary
-      && primaryJavaSeed.status === "approved"
-      && primaryJavaSeed.scenarioId === scenarioId
-      && primaryJavaSeed.stateProfileSha256 === stateProfileFileHash
+    const javaSeedReady = javaSeed.status === "approved"
+      && javaSeed.scenarioId === scenarioId
+      && javaSeed.stateProfileSha256 === stateProfileFileHash
+      && javaSeed.resources?.reduce(
+        (count, resource) => count + (resource.rows?.length ?? 0),
+        0,
+      ) === blueprints[scenarioId].plannedSeedRows
       && scenarioBinding?.seedProfiles?.source?.sha256 === javaSeedFileHash;
-    const rustSeedReady = primary
-      && primaryRustSeed.status === "approved"
-      && primaryRustSeed.scenarioId === scenarioId
+    const rustSeedReady = rustSeed.status === "approved"
+      && rustSeed.scenarioId === scenarioId
+      && rustSeed.rows?.length === blueprints[scenarioId].plannedSeedRows
       && scenarioBinding?.seedProfiles?.target?.sha256 === rustSeedFileHash
-      && primaryBinding.targets?.target?.hooks?.seed
+      && approvedBinding.targets?.target?.hooks?.seed
         ?.requiresSeedProfileHash === true;
-    const websocketReady = primary
-      && scenarioBinding?.eventCollectors?.source?.kind === "websocket"
-      && scenarioBinding.eventCollectors.source.path === "/ws/zboss";
+    const websocketBinding = scenarioBinding?.eventCollectors?.source;
+    const websocketReady = websocketBinding?.kind === "websocket"
+      && websocketBinding.path === "/ws/zboss"
+      && websocketBinding.messageType === "panel-data-update"
+      && websocketBinding.subscribe?.type === "panel-subscribe"
+      && websocketBinding.subscribe?.content?.subscribe === true
+      && websocketBinding.terminalStatuses?.length > 0;
     const writeSafetyReady = primary
       && draft.writeSafety?.mode === "disposable"
       && draft.writeSafety?.disposable === true
@@ -358,7 +376,7 @@ export async function buildPromotionSet() {
           binding: "scenario.seedProfiles.source",
           ...(javaSeedReady
             ? {
-                path: relativeCasePath(primaryJavaSeedPath),
+                path: relativeCasePath(javaSeedPath),
                 sha256: javaSeedFileHash,
               }
             : {}),
@@ -369,7 +387,7 @@ export async function buildPromotionSet() {
           binding: "scenario.seedProfiles.target",
           ...(rustSeedReady
             ? {
-                path: relativeCasePath(primaryRustSeedPath),
+                path: relativeCasePath(rustSeedPath),
                 sha256: rustSeedFileHash,
               }
             : {}),

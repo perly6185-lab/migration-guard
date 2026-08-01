@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-java-seed/v1",
+  "status": "approved",
+  "projectId": "zboss-batch-update-with-progress",
+  "targetKind": "source",
+  "scenarioId": "validation-failure",
+  "stateProfileSha256": "3c057181a6f94d299b42fa32cadba14acdd4aa57b05b44d866a02f876cdbbe4a",
+  "resources": [
+    {
+      "resourceId": "projection",
+      "rows": [
+        {
+          "markerSuffix": "row-001",
+          "values": {
+            "value": "SH-3C validation seed row 001",
+            "quantity": 1
+          }
+        }
+      ]
+    }
+  ]
+}

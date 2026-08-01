@@ -5,7 +5,7 @@
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "0e2f0d0d57727e71143f746a41f3e216d3eb7ec7fd1765818b5c92c332c730d8",
+  "runtimeContractHash": "90e511666dd0cf0f4bc780c12995bda6680ea8d24bd0ce33cb043c0963cdb784",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -30,7 +30,7 @@
   ],
   "sourceDraft": {
     "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write/fixture.draft.json",
-    "sha256": "e540f8aeb79152b9ac81d06d356fb0d8c191370096874caeab236262708efb1f"
+    "sha256": "be0ce6df04b880e77c3c855165723007394b18dc9dc6c465afa56e93f2cc6a71"
   },
   "stateProfile": {
     "path": "evidence/runtime/l4c/java-state-profile.primary-success.approved.json",
@@ -47,31 +47,21 @@
   "collectors": {
     "events": {
       "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write/collectors/events.draft.json",
-      "sha256": "ab07453381f00ef801c2cdd548ba30bb0ccbbbd105ccd1d5cbb4b89ae715344f",
-      "status": "draft",
-      "reviewFindings": [
-        "STATUS-NOT-READY",
-        "WEBSOCKET-CAPTURE-NOT-CONFIRMED"
-      ]
+      "sha256": "2403cb6e95f10b963cff8e34f8947d6197a7844adeb4745c0204c7ab3d7d8d48",
+      "status": "ready",
+      "reviewFindings": []
     },
     "mysql": {
       "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write/collectors/mysql.draft.json",
-      "sha256": "4b213cba2e1345a9ba201c7466614c931ae61af91b23410b34872c13c068cbe1",
-      "status": "draft",
-      "reviewFindings": [
-        "STATUS-NOT-READY",
-        "PLACEHOLDER-PROBE"
-      ]
+      "sha256": "42de8c893f1b6b0afdebed29125ac96aa46729501228b3f2fc71afeaa9dcc9c1",
+      "status": "ready",
+      "reviewFindings": []
     },
     "redis": {
       "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write/collectors/redis.draft.json",
-      "sha256": "f5953888bc6bca7a954a08f4959211cf618e65755e77af32a7f4fb060a7109c8",
-      "status": "draft",
-      "reviewFindings": [
-        "STATUS-NOT-READY",
-        "PLACEHOLDER-PROBE",
-        "JAVA-PROGRESS-IS-NOT-REDIS-BACKED"
-      ]
+      "sha256": "5e22abe7dff591ff63e8ee3c63fb8e2b0a83278fd5beed69ccb853e3eec2a9fe",
+      "status": "ready",
+      "reviewFindings": []
     }
   },
   "requestPlan": {
@@ -98,21 +88,25 @@
     ]
   },
   "seedPlan": {
-    "status": "review-required",
+    "status": "authored",
     "plannedRows": 1,
     "java": {
       "protocol": "migration-guard.batch-update-l4c-java-seed/v1",
       "resourceRole": "projection",
-      "binding": "scenario.seedProfiles.source"
+      "binding": "scenario.seedProfiles.source",
+      "path": "evidence/runtime/l4c/seeds/concurrent-write.java-seed.json",
+      "sha256": "e60a7352fc9890ef940b08c02cfca0e07c1a0d1b07d040af6144a526133c9c5a"
     },
     "rust": {
-      "status": "adapter-required",
+      "status": "adapter-bound",
       "resourceRole": "projection",
-      "binding": "scenario.seedProfiles.target"
+      "binding": "scenario.seedProfiles.target",
+      "path": "evidence/runtime/l4c/seeds/concurrent-write.rust-seed.json",
+      "sha256": "dacf10d0617cde6bd3a3c4f4749570df940e78979d1cdcf6cdf2ba12f7ea4af7"
     }
   },
   "expectedObservation": {
-    "status": "review-required",
+    "status": "authored",
     "dimensions": [
       "http",
       "context",
@@ -151,15 +145,7 @@
     "status": "pending"
   },
   "blockers": [
-    "MG-SH3C-COLLECTOR-REVIEW:events:STATUS-NOT-READY",
-    "MG-SH3C-COLLECTOR-REVIEW:events:WEBSOCKET-CAPTURE-NOT-CONFIRMED",
-    "MG-SH3C-COLLECTOR-REVIEW:mysql:PLACEHOLDER-PROBE",
-    "MG-SH3C-COLLECTOR-REVIEW:mysql:STATUS-NOT-READY",
-    "MG-SH3C-COLLECTOR-REVIEW:redis:JAVA-PROGRESS-IS-NOT-REDIS-BACKED",
-    "MG-SH3C-COLLECTOR-REVIEW:redis:PLACEHOLDER-PROBE",
-    "MG-SH3C-COLLECTOR-REVIEW:redis:STATUS-NOT-READY",
     "MG-SH3C-CONCURRENCY-DRIVER-NOT-BOUND",
-    "MG-SH3C-JAVA-SEED-NOT-AUTHORED",
     "MG-SH3C-REQUEST-REVIEW:$.body.batchPkFieldValue",
     "MG-SH3C-REQUEST-REVIEW:$.body.clientSessionId",
     "MG-SH3C-REQUEST-REVIEW:$.body.domain",
@@ -171,9 +157,7 @@
     "MG-SH3C-REQUEST-REVIEW:$.body.panelId",
     "MG-SH3C-REQUEST-REVIEW:$.body.reqId",
     "MG-SH3C-REQUEST-REVIEW:$.body.usePageId",
-    "MG-SH3C-REQUEST-REVIEW:$.headers.x-tenant-id",
-    "MG-SH3C-RUST-SEED-ADAPTER-NOT-BOUND",
-    "MG-SH3C-WEBSOCKET-EVENT-COLLECTOR-NOT-BOUND"
+    "MG-SH3C-REQUEST-REVIEW:$.headers.x-tenant-id"
   ],
-  "packageHash": "87cb215ca0b0b07ae20c4cd011462d146cbfc5319ec6d0a5a6351caeb6d64fb3"
+  "packageHash": "59b364dade01eea9f0a52b641f2dc7789909952ae7212f639f741f4ffdb89b77"
 }

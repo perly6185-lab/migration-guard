@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-01T07:54:59.223Z",
+  "generatedAt": "2026-08-01T08:09:28.969Z",
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "contractHash": "0e2f0d0d57727e71143f746a41f3e216d3eb7ec7fd1765818b5c92c332c730d8",
+  "contractHash": "90e511666dd0cf0f4bc780c12995bda6680ea8d24bd0ce33cb043c0963cdb784",
   "scenarioCount": 19,
   "draftCount": 19,
   "authoringReady": true,
@@ -29,9 +29,7 @@
         "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-partial-failure/collectors/redis.draft.json"
       },
       "placeholderFindings": [
-        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
-        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
-        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
       ],
       "promotable": false
     },
@@ -134,9 +132,7 @@
         "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write/collectors/redis.draft.json"
       },
       "placeholderFindings": [
-        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
-        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
-        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
       ],
       "promotable": false
     },
@@ -176,9 +172,7 @@
         "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/dependency-failure/collectors/redis.draft.json"
       },
       "placeholderFindings": [
-        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
-        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
-        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
       ],
       "promotable": false
     },
@@ -382,9 +376,7 @@
         "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/validation-failure/collectors/redis.draft.json"
       },
       "placeholderFindings": [
-        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
-        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
-        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
+        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER"
       ],
       "promotable": false
     },

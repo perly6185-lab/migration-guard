@@ -5,7 +5,7 @@
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "0e2f0d0d57727e71143f746a41f3e216d3eb7ec7fd1765818b5c92c332c730d8",
+  "runtimeContractHash": "90e511666dd0cf0f4bc780c12995bda6680ea8d24bd0ce33cb043c0963cdb784",
   "promotionWave": "sh3c-first-wave",
   "scenarioOrder": [
     "primary-success",
@@ -18,35 +18,35 @@
     {
       "scenarioId": "primary-success",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/primary-success.json",
-      "hash": "8ef769f1dae54bc2dc11dea247b2803942883cd16fb811506a1d8e6f9eaf4fe0",
-      "blockerCount": 0
+      "hash": "43fb204021354bddd88d7154e7506f8397b5309a55f695c30e531c398521148e",
+      "blockerCount": 1
     },
     {
       "scenarioId": "validation-failure",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/validation-failure.json",
-      "hash": "9260624ce365b93dcd5b63f37cae2282ec365b21b6e65f23c5853e74539a6b64",
-      "blockerCount": 22
+      "hash": "14d6ea3754e5296ec46267a29b756ea85eb6d28ffae9563c77bb5b32a085df36",
+      "blockerCount": 12
     },
     {
       "scenarioId": "batch-partial-failure",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/batch-partial-failure.json",
-      "hash": "1a8ebaacf069db6b96e387002ba41c5df4b4568858a0d714f4ca937cf396b252",
-      "blockerCount": 22
+      "hash": "e1944b00304a01f00de338cf1f2e184d2779343c118bfe8488ff20c8369dd947",
+      "blockerCount": 12
     },
     {
       "scenarioId": "dependency-failure",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/dependency-failure.json",
-      "hash": "7c3958e3dd58849a9a3d7f2bcd03b3f9cc5313e2b33655ad8748c401f86874a0",
-      "blockerCount": 23
+      "hash": "1d5c44a65171f14988c336fcedb6a358a8d815d52e7cbb4ea87ae78d882f0586",
+      "blockerCount": 13
     },
     {
       "scenarioId": "concurrent-write",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/concurrent-write.json",
-      "hash": "87cb215ca0b0b07ae20c4cd011462d146cbfc5319ec6d0a5a6351caeb6d64fb3",
-      "blockerCount": 23
+      "hash": "59b364dade01eea9f0a52b641f2dc7789909952ae7212f639f741f4ffdb89b77",
+      "blockerCount": 13
     }
   ],
   "readyForHumanReview": true,
   "readyForRealPromotion": false,
-  "manifestHash": "71ebe88befa48004427a383091fd8b35d1c507fd70b2878bafc9b318515a2f6c"
+  "manifestHash": "7674444d09b4c505a8624948e5d6c6e8ba39cefc2ad481da287abd39bd9c9b2d"
 }

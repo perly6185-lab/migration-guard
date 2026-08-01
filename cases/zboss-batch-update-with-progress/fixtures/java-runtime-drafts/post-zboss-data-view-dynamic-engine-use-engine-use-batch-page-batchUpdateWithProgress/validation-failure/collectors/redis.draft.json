@@ -1,15 +1,17 @@
 {
   "version": 1,
   "collector": "redis",
-  "status": "draft",
+  "status": "ready",
   "connectionEnv": "MG_JAVA_REDIS_URL",
   "includeValues": false,
+  "notApplicable": true,
+  "rationale": "The reviewed Java validation-failure path stores progress in process-local memory and emits it through WebSocket; it has no Redis progress or lease resource.",
   "probes": [
     {
-      "id": "replace-with-lock-or-ledger-key",
+      "id": "confirm-no-java-progress-key",
       "command": [
-        "GET",
-        "migration-guard:replace-me"
+        "EXISTS",
+        "migration-guard:java-validation-failure:not-applicable"
       ]
     }
   ]

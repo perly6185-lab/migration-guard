@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-target-seed/v1",
+  "status": "approved",
+  "projectId": "zboss-batch-update-with-progress",
+  "targetKind": "target",
+  "scenarioId": "batch-partial-failure",
+  "rows": [
+    {
+      "markerSuffix": "row-001",
+      "values": {
+        "value": "SH-3C partial seed row 001",
+        "quantity": 1
+      }
+    },
+    {
+      "markerSuffix": "row-002",
+      "values": {
+        "value": "SH-3C partial seed row 002",
+        "quantity": 2
+      }
+    }
+  ]
+}
