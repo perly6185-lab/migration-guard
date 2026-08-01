@@ -5,7 +5,7 @@
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "ad94a433a79d7c776e7699a2e6aeedbd28faf3824d8452beca3e9af7744c4e81",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -135,5 +135,5 @@
     "MG-SH3C-FAULT-CONTROLLER-NOT-BOUND",
     "MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED"
   ],
-  "packageHash": "ab29091b813f5d4172326d8ad41c568d5fa9aa78285b91110b43b9f65548175b"
+  "packageHash": "719f400f44424ace02e41ff4e30da7446637765b37bbc703e9d6c53f922a06a1"
 }

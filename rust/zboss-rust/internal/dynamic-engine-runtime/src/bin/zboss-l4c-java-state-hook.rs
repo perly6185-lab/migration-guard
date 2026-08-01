@@ -1239,8 +1239,9 @@ fn decode_websocket_event_state(scope: &Scope, content: &[u8]) -> Result<Value, 
         .map_err(|_| "Java WebSocket evidence is not UTF-8".to_owned())?;
     let mut event_count = 0u64;
     let mut terminal_count = 0u64;
-    let mut batch_id = None;
-    let mut terminal_status = None;
+    let mut batch_ids = BTreeSet::new();
+    let mut terminal_batch_ids = BTreeSet::new();
+    let mut terminal_statuses = BTreeSet::new();
     let mut terminal_percentage = None;
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
         let event: Value = serde_json::from_str(line)
@@ -1259,37 +1260,51 @@ fn decode_websocket_event_state(scope: &Scope, content: &[u8]) -> Result<Value, 
             || event_batch_id.chars().any(|character| {
                 !character.is_ascii_alphanumeric() && !matches!(character, '.' | '_' | ':' | '-')
             })
-            || batch_id
-                .as_deref()
-                .is_some_and(|existing| existing != event_batch_id)
         {
             return Err("Java WebSocket event identity is invalid".to_owned());
         }
-        batch_id.get_or_insert_with(|| event_batch_id.to_owned());
+        batch_ids.insert(event_batch_id.to_owned());
+        if scope.scenario_id != "concurrent-write" && batch_ids.len() > 1 {
+            return Err("Java WebSocket event identity is invalid".to_owned());
+        }
         event_count += 1;
         if event.get("terminal").and_then(Value::as_bool) == Some(true) {
             terminal_count += 1;
-            terminal_status = event
-                .get("status")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            terminal_percentage = event.get("percentage").and_then(Value::as_f64);
+            terminal_batch_ids.insert(event_batch_id.to_owned());
+            if let Some(status) = event.get("status").and_then(Value::as_str) {
+                terminal_statuses.insert(status.to_owned());
+            }
+            if let Some(percentage) = event.get("percentage").and_then(Value::as_f64) {
+                terminal_percentage = Some(
+                    terminal_percentage.map_or(percentage, |current: f64| current.min(percentage)),
+                );
+            }
         }
         if event_count > 1000 {
             return Err("Java WebSocket evidence exceeds event limit".to_owned());
         }
     }
-    if event_count == 0 || terminal_count == 0 || batch_id.is_none() {
+    if event_count == 0
+        || terminal_count == 0
+        || batch_ids.is_empty()
+        || (scope.scenario_id == "concurrent-write" && batch_ids.len() != 2)
+        || terminal_batch_ids != batch_ids
+    {
         return Err("Java WebSocket terminal evidence is missing".to_owned());
     }
+    let batch_ids = batch_ids.into_iter().collect::<Vec<_>>();
+    let terminal_statuses = terminal_statuses.into_iter().collect::<Vec<_>>();
     Ok(json!({
         "verified": true,
         "collector": "websocket",
         "protocol": EVENT_PROTOCOL,
-        "batchId": batch_id,
+        "batchId": (batch_ids.len() == 1).then(|| batch_ids[0].clone()),
+        "batchIds": batch_ids,
         "eventCount": event_count,
         "terminalEventCount": terminal_count,
-        "terminalStatus": terminal_status,
+        "terminalStatus": (terminal_statuses.len() == 1)
+            .then(|| terminal_statuses[0].clone()),
+        "terminalStatuses": terminal_statuses,
         "terminalPercentage": terminal_percentage,
     }))
 }
@@ -1886,6 +1901,34 @@ mod tests {
 
         let primary = fixture_scope();
         assert!(decode_websocket_event_state(&primary, b"").is_err());
+    }
+
+    #[test]
+    fn concurrent_event_evidence_requires_terminal_events_for_both_batches() {
+        let mut scope = fixture_scope();
+        scope.scenario_id = "concurrent-write".to_owned();
+        let line = |batch_id: &str| {
+            serde_json::to_string(&json!({
+                "schemaVersion": 1,
+                "protocol": EVENT_PROTOCOL,
+                "scenarioId": scope.scenario_id,
+                "marker": scope.marker,
+                "panelId": scope.panel_id,
+                "type": "panel-data-update",
+                "batchId": batch_id,
+                "status": "SUCCESS",
+                "percentage": 100,
+                "terminal": true,
+            }))
+            .unwrap()
+        };
+        let content = format!("{}\n{}\n", line("batch-a"), line("batch-b"));
+        let evidence = decode_websocket_event_state(&scope, content.as_bytes()).unwrap();
+        assert_eq!(evidence["batchIds"].as_array().unwrap().len(), 2);
+        assert_eq!(evidence["terminalEventCount"], 2);
+        assert_eq!(evidence["terminalStatuses"][0], "SUCCESS");
+
+        assert!(decode_websocket_event_state(&scope, line("batch-a").as_bytes()).is_err());
     }
 
     #[test]

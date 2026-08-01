@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  CONCURRENCY_PROTOCOL,
   FAULT_PROTOCOL,
   OPERATION_PROTOCOL,
   stableHash,
@@ -165,6 +166,9 @@ const output = {
     : {}),
   ...(result.cleanup !== undefined ? { cleanup: result.cleanup } : {}),
   ...(result.fault !== undefined ? { fault: result.fault } : {}),
+  ...(result.concurrency !== undefined
+    ? { concurrency: result.concurrency }
+    : {}),
   ...(result.profileHash !== undefined
     ? { profileHash: result.profileHash }
     : {}),
@@ -207,11 +211,6 @@ async function runHealth(targetValue, contextValue) {
 }
 
 async function runInvoke(targetValue, scenarioValue, contextValue) {
-  if (contextValue.category === "concurrency") {
-    throw new Error(
-      `approved concurrency driver is missing: ${contextValue.scenarioId}`,
-    );
-  }
   if (!scenarioValue?.request) {
     throw new Error(`request binding is missing: ${contextValue.scenarioId}`);
   }
@@ -222,9 +221,15 @@ async function runInvoke(targetValue, scenarioValue, contextValue) {
       `request target binding is missing: ${contextValue.targetKind}/${contextValue.scenarioId}`,
     );
   }
+  if (contextValue.scenarioId === "concurrent-write") {
+    return runConcurrentInvoke(
+      targetValue,
+      scenarioValue,
+      request,
+      contextValue,
+    );
+  }
   const replacements = replacementValues(contextValue);
-  const body = materialize(request.body, replacements);
-  const headers = materializeHeaders(request.headers ?? {}, replacements);
   const collector = contextValue.eventCollector
     ? await openEventCollector(contextValue.eventCollector, contextValue)
     : undefined;
@@ -232,20 +237,12 @@ async function runInvoke(targetValue, scenarioValue, contextValue) {
   let responseBody;
   let eventCapture;
   try {
-    response = await fetchWithTimeout(
-      new URL(request.path ?? targetValue.invokePath, contextValue.baseUrl),
-      {
-        method: request.method ?? "POST",
-        headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
-      },
-      request.timeoutMs ?? targetValue.timeoutMs ?? 120_000,
-    );
-    responseBody = await readResponseBody(response);
-    const accepted = request.acceptedStatuses ?? [200];
-    if (!accepted.includes(response.status)) {
-      throw new Error(`invoke failed with HTTP ${response.status}`);
-    }
+    ({ response, responseBody } = await invokeRequest(
+      targetValue,
+      request,
+      contextValue,
+      replacements,
+    ));
     if (collector) {
       eventCapture = await collector.finish(responseBody);
     }
@@ -268,6 +265,128 @@ async function runInvoke(targetValue, scenarioValue, contextValue) {
     },
     ...(eventCapture ? { eventCapture } : {}),
   };
+}
+
+async function runConcurrentInvoke(
+  targetValue,
+  scenarioValue,
+  request,
+  contextValue,
+) {
+  const plan = scenarioValue.concurrencyPlan;
+  validateConcurrencyPlan(plan);
+  const collector = contextValue.eventCollector
+    ? await openEventCollector(contextValue.eventCollector, contextValue)
+    : undefined;
+  let results;
+  let eventCapture;
+  let arrivedWriterCount = 0;
+  try {
+    let releaseBarrier;
+    const barrier = new Promise((resolve) => {
+      releaseBarrier = resolve;
+    });
+    const pendingWriters = plan.writers.map(async (writer) => {
+      arrivedWriterCount += 1;
+      await barrier;
+      const writerMarker = `${contextValue.marker}:${writer.id}`;
+      const result = await invokeRequest(targetValue, request, contextValue, {
+        ...replacementValues(contextValue),
+        writerId: writer.id,
+        writerMarker,
+        writerValue: writer.value,
+      });
+      return { ...result, writer, writerMarker };
+    });
+    if (arrivedWriterCount !== plan.writerCount) {
+      throw new Error("concurrent writers did not reach the start barrier");
+    }
+    releaseBarrier();
+    const settledWriters = await Promise.allSettled(pendingWriters);
+    const failedWriter = settledWriters.find((item) =>
+      item.status === "rejected");
+    if (failedWriter) throw failedWriter.reason;
+    results = settledWriters.map((item) => item.value);
+    if (collector) {
+      eventCapture = await collector.finish(
+        results.map((item) => item.responseBody),
+      );
+    }
+  } finally {
+    collector?.close();
+  }
+  const statuses = [...new Set(results.map((item) => item.response.status))];
+  const codes = [...new Set(results.map((item) =>
+    readJsonPath(item.responseBody, request.responseFields?.code ?? "code")))];
+  const writerMarkers = results.map((item) => item.writerMarker);
+  if (new Set(writerMarkers).size !== plan.writerCount) {
+    throw new Error("concurrent writer markers are not distinct");
+  }
+  const evidence = {
+    schemaVersion: 1,
+    protocol: CONCURRENCY_PROTOCOL,
+    status: "passed",
+    scenarioId: contextValue.scenarioId,
+    marker: contextValue.marker,
+    driver: plan.driver,
+    startMode: plan.startMode,
+    barrier: {
+      status: "released",
+      participantCount: plan.writerCount,
+      arrivedWriterCount,
+      releaseCount: 1,
+    },
+    writerCount: plan.writerCount,
+    completedWriterCount: results.length,
+    writers: results.map((item) => ({
+      id: item.writer.id,
+      marker: item.writerMarker,
+      httpStatus: item.response.status,
+      code: readJsonPath(
+        item.responseBody,
+        request.responseFields?.code ?? "code",
+      ),
+    })),
+  };
+  return {
+    status: "passed",
+    rowCount: results.reduce((total, item) => total + Number(
+      readJsonPath(item.responseBody, request.rowCountPath ?? "")
+      ?? request.expectedRowCount
+      ?? 0,
+    ), 0),
+    response: {
+      httpStatus: statuses.length === 1 ? statuses[0] : undefined,
+      body: { code: codes.length === 1 ? codes[0] : undefined },
+    },
+    concurrency: evidence,
+    ...(eventCapture ? { eventCapture } : {}),
+  };
+}
+
+async function invokeRequest(
+  targetValue,
+  request,
+  contextValue,
+  replacements,
+) {
+  const body = materialize(request.body, replacements);
+  const headers = materializeHeaders(request.headers ?? {}, replacements);
+  const response = await fetchWithTimeout(
+    new URL(request.path ?? targetValue.invokePath, contextValue.baseUrl),
+    {
+      method: request.method ?? "POST",
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    request.timeoutMs ?? targetValue.timeoutMs ?? 120_000,
+  );
+  const responseBody = await readResponseBody(response);
+  const accepted = request.acceptedStatuses ?? [200];
+  if (!accepted.includes(response.status)) {
+    throw new Error(`invoke failed with HTTP ${response.status}`);
+  }
+  return { response, responseBody };
 }
 
 async function openEventCollector(configuration, contextValue) {
@@ -400,17 +519,29 @@ async function openEventCollector(configuration, contextValue) {
       let selected;
       while (Date.now() <= deadline) {
         if (socketError) throw socketError;
-        const responseBatchId = (configuration.responseBatchIdPaths ?? [])
-          .map((jsonPath) => readJsonPath(responseBody, jsonPath))
-          .find((value) => typeof value === "string" && value);
+        const responseBodies = Array.isArray(responseBody)
+          ? responseBody
+          : [responseBody];
+        const responseBatchIds = [...new Set(responseBodies.flatMap((body) =>
+          (configuration.responseBatchIdPaths ?? [])
+            .map((jsonPath) => readJsonPath(body, jsonPath))
+            .filter((value) => typeof value === "string" && value)))];
         const terminal = records.filter((record) => record.terminal);
         const terminalBatchIds = [...new Set(
           terminal.map((record) => record.batchId),
         )];
-        const batchId = responseBatchId
-          ?? (terminalBatchIds.length === 1 ? terminalBatchIds[0] : undefined);
-        if (batchId && terminal.some((record) => record.batchId === batchId)) {
-          selected = records.filter((record) => record.batchId === batchId);
+        const batchIds = responseBatchIds.length === responseBodies.length
+          ? responseBatchIds
+          : terminalBatchIds.length === responseBodies.length
+            ? terminalBatchIds
+            : [];
+        if (
+          batchIds.length > 0
+          && batchIds.every((batchId) =>
+            terminal.some((record) => record.batchId === batchId))
+        ) {
+          selected = records.filter((record) =>
+            batchIds.includes(record.batchId));
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, 25));
@@ -435,14 +566,24 @@ async function openEventCollector(configuration, contextValue) {
         `${selected.map((record) => JSON.stringify(record)).join("\n")}\n`,
         "utf8",
       );
-      const terminal = selected.findLast((record) => record.terminal);
+      const terminal = selected.filter((record) => record.terminal);
+      const terminalStatuses = [...new Set(
+        terminal.map((record) => record.status),
+      )].sort();
+      const terminalPercentages = terminal.map((record) => record.percentage);
+      const batchIds = [...new Set(terminal.map((record) => record.batchId))]
+        .sort();
       return {
         protocol: EVENT_PROTOCOL,
         collector: "websocket",
         eventCount: selected.length,
-        batchId: terminal.batchId,
-        terminalStatus: terminal.status,
-        terminalPercentage: terminal.percentage,
+        batchIds,
+        ...(batchIds.length === 1 ? { batchId: batchIds[0] } : {}),
+        terminalStatuses,
+        ...(terminalStatuses.length === 1
+          ? { terminalStatus: terminalStatuses[0] }
+          : {}),
+        terminalPercentage: Math.min(...terminalPercentages),
       };
     },
     close() {
@@ -700,6 +841,15 @@ function validateBinding(value) {
           );
         }
       }
+      if (scenarioId === "concurrent-write") {
+        try {
+          validateConcurrencyPlan(scenarioValue?.concurrencyPlan);
+        } catch {
+          findings.push(
+            "MG-L4C-BINDING-CONCURRENCY-PLAN-INVALID:concurrent-write",
+          );
+        }
+      }
     }
   }
   if (findings.length > 0) throw new Error(findings.sort().join(", "));
@@ -765,6 +915,27 @@ function validateEventCollector(value, contextValue = {}) {
 function validBoundedInteger(value, minimum, maximum) {
   return value === undefined
     || (Number.isInteger(value) && value >= minimum && value <= maximum);
+}
+
+function validateConcurrencyPlan(value) {
+  if (
+    value?.driver !== "built-in-barrier-v1"
+    || value?.startMode !== "barrier"
+    || value?.writerCount !== 2
+    || value?.sharedSeedBinding !== "row-001"
+    || !Array.isArray(value?.writers)
+    || value.writers.length !== value.writerCount
+    || new Set(value.writers.map((writer) => writer?.id)).size
+      !== value.writerCount
+    || value.writers.some((writer) =>
+      typeof writer?.id !== "string"
+      || !/^writer-[a-z0-9-]{1,32}$/.test(writer.id)
+      || typeof writer?.value !== "string"
+      || writer.value.length < 1
+      || writer.value.length > 256)
+  ) {
+    throw new Error("concurrency plan binding is invalid");
+  }
 }
 
 function validateHookDefinition(definition) {

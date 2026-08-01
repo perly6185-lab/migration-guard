@@ -265,6 +265,14 @@ function validateBinding(value, planValue, contractValue, targetFindings) {
         `MG-L4C-BINDING-SCENARIO-MISSING:${scenarioId}`,
       );
     }
+    if (
+      scenarioId === "concurrent-write"
+      && !validConcurrencyPlan(scenario?.concurrencyPlan)
+    ) {
+      targetFindings.push(
+        `MG-L4C-CONCURRENCY-PLAN-INVALID:${scenarioId}`,
+      );
+    }
   }
   for (const [targetKind, runtime] of [
     ["source", "java"],
@@ -309,6 +317,23 @@ function validateBinding(value, planValue, contractValue, targetFindings) {
       );
     }
   }
+}
+
+function validConcurrencyPlan(value) {
+  return value?.driver === "built-in-barrier-v1"
+    && value?.startMode === "barrier"
+    && value?.writerCount === 2
+    && value?.sharedSeedBinding === "row-001"
+    && Array.isArray(value?.writers)
+    && value.writers.length === value.writerCount
+    && new Set(value.writers.map((writer) => writer?.id)).size
+      === value.writerCount
+    && value.writers.every((writer) =>
+      typeof writer?.id === "string"
+      && /^writer-[a-z0-9-]{1,32}$/.test(writer.id)
+      && typeof writer?.value === "string"
+      && writer.value.length >= 1
+      && writer.value.length <= 256);
 }
 
 function validateHook(hook, label, targetFindings) {

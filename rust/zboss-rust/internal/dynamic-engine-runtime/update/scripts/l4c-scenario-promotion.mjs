@@ -176,6 +176,16 @@ if (mode === "--write") {
     ))) {
     throw new Error("every unpromoted first-wave package must require write safety");
   }
+  const concurrencyPackage = built.packages.find((item) =>
+    item.scenarioId === "concurrent-write");
+  if (
+    concurrencyPackage.requestPlan.status !== "authored"
+    || concurrencyPackage.blockers.includes(
+      "MG-SH3C-CONCURRENCY-DRIVER-NOT-BOUND",
+    )
+  ) {
+    throw new Error("first-wave concurrency driver must be bound");
+  }
   const eligible = structuredClone(built.packages[1]);
   eligible.realEvidenceEligible = true;
   const eligibleFindings = validatePackage(eligible);
@@ -212,7 +222,7 @@ if (mode === "--write") {
   }
   console.log(JSON.stringify({
     status: "pass",
-    checks: 17,
+    checks: 18,
     coverage: [
       "first-wave-exactly-five",
       "contract-scenario-binding",
@@ -231,6 +241,7 @@ if (mode === "--write") {
       "validation-and-partial-event-semantics-resolved",
       "first-wave-write-safety-enforced",
       "technical-review-tamper-rejected",
+      "concurrency-driver-bound",
     ],
   }, null, 2));
 } else {
@@ -331,6 +342,8 @@ export async function buildPromotionSet() {
           && websocketBinding.noEventWindowMs <= 5_000
         )
       );
+    const concurrencyReady = scenarioId !== "concurrent-write"
+      || validConcurrencyPlan(scenarioBinding?.concurrencyPlan);
     const writeSafetyReady = draft.writeSafety?.mode === "disposable"
       && draft.writeSafety?.disposable === true
       && draft.writeSafety?.writeApproved === true
@@ -366,6 +379,7 @@ export async function buildPromotionSet() {
         ? ["MG-SH3C-FAULT-CONTROLLER-NOT-BOUND"]
         : []),
       ...(scenarioId === "concurrent-write"
+        && !concurrencyReady
         ? ["MG-SH3C-CONCURRENCY-DRIVER-NOT-BOUND"]
         : []),
       ...(blueprints[scenarioId].compatibilityBlockers ?? []),
@@ -749,6 +763,23 @@ function collectorFindings(value) {
     findings.push("WEBSOCKET-CAPTURE-NOT-CONFIRMED");
   }
   return findings;
+}
+
+function validConcurrencyPlan(value) {
+  return value?.driver === "built-in-barrier-v1"
+    && value?.startMode === "barrier"
+    && value?.writerCount === 2
+    && value?.sharedSeedBinding === "row-001"
+    && Array.isArray(value?.writers)
+    && value.writers.length === value.writerCount
+    && new Set(value.writers.map((writer) => writer?.id)).size
+      === value.writerCount
+    && value.writers.every((writer) =>
+      typeof writer?.id === "string"
+      && /^writer-[a-z0-9-]{1,32}$/.test(writer.id)
+      && typeof writer?.value === "string"
+      && writer.value.length >= 1
+      && writer.value.length <= 256);
 }
 
 function placeholderLocations(value, current = "$", output = []) {

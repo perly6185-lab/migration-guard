@@ -353,9 +353,10 @@ Status: SH-3A and SH-3B code completed; concrete scenario promotion pending.
   draft, collector drafts and state-profile template by SHA-256.
 - The first wave has a machine-validated technical review that explicitly does
   not claim human approval. Request, Java/Rust Seed and WebSocket bindings are
-  complete. Every package requires fresh expiring write-safety approval;
-  dependency failure and concurrency additionally retain their explicit
-  controller/driver blockers.
+  complete. The concurrency package binds the built-in two-writer barrier
+  driver and requires distinct terminal evidence for both batch identities.
+  Every package requires fresh expiring write-safety approval; dependency
+  failure additionally retains its explicit fault-controller blocker.
 - Pending: resolve those approval and external-driver blockers and invoke the existing
   `runtime-fixture-promote` command with a reviewer identity; then repeat the
   same process for the remaining 14 scenarios.

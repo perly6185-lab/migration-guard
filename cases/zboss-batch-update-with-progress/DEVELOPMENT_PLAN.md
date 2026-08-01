@@ -59,9 +59,10 @@ transactional, marker-scoped and SHA-256-bound. SH-3C concrete promotion of the
 19 scenario fixtures is in progress. The first five scenarios now have
 deterministic, hash-bound `review-required` packages plus a tamper-evident
 automated technical review. Their requests, Seed adapters and WebSocket capture
-are bound; all five still require a fresh disposable-write approval, while the
-dependency and concurrency scenarios additionally require approved external
-drivers. None is marked real eligible.
+are bound; all five still require a fresh disposable-write approval. The
+concurrency scenario now uses the reviewed built-in two-writer barrier driver;
+dependency failure still requires an approved external fault controller. None
+is marked real eligible.
 
 The approved state/fault boundary, canonical observation model, cleanup order,
 scenario allocation and delivery slices are defined in
@@ -106,7 +107,7 @@ Status: structural and batch semantic gates implemented; endpoint evidence pendi
 1. Review the deployed Java resource metadata and approve the now-explicit
    physical/volatile/absent classifications in `java-state-profile.json`.
 2. Obtain fresh write-safety approval for all first-wave packages, bind the
-   dependency fault controller and concurrency driver, formally promote those
+   dependency fault controller, formally promote those
    five fixtures, then repeat for the remaining 14 scenarios.
 3. Pass structural and read-only connectivity preflight, then pilot
    `primary-success` and `dependency-failure`.

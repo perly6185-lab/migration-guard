@@ -22,8 +22,8 @@
   "evidence": {
     "rustTestCount": 43,
     "scenarioCount": 19,
-    "runtimeContractHash": "ad94a433a79d7c776e7699a2e6aeedbd28faf3824d8452beca3e9af7744c4e81",
-    "sourceHash": "e64b3556e7d054e421cdbd737263aa08e728e72cb05bf8155e5eb79761296d3f",
+    "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
+    "sourceHash": "76fc34b6e4be975d1b352c37eafd193f8f88e39a204831fe53d3b220c45f9688",
     "sourceSnapshot": {
       "root": "D:\\gitlab\\ia\\test_zboss\\zboss-cloud\\zboss-module-data",
       "directories": [
@@ -152,10 +152,10 @@
           "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\offline-contract\\batch-update-risk-cases.json"
         ],
         "evidenceDigests": {
-          "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\index.json": "882435e5f524a52a24db2de629cf2590d1ee53c91ac842788a7e60b6f7215e65",
-          "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\behavior-graph.json": "daf783f00282208429bcc4b428ae7bd41497e219cbd09aa8a37cac5a68245655",
-          "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\endpoint-replacement-plan.json": "51e429a12336438c5f182769990225b601341d3f7816900ad1935061529fc2d1",
-          "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\java-analysis.json": "5fb7e1f7a7a4594482a85f13340dab06bd06c8df391edf0679e07dc275ff398e",
+          "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\index.json": "28913e2d797b97734b4216fb6b9821fba9d338c1b1262384b9f77705e7e36a1b",
+          "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\behavior-graph.json": "4575cf4a27b05f8e5c2b25610767e68ac5560f9dc93685c3689961a1827ffc97",
+          "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\endpoint-replacement-plan.json": "a49def50eaef169ff744f966538e2e2ac50d99a15a6ea414d20c373538da477b",
+          "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\java-analysis.json": "530c4974864452794fe620ffb4fffceebbb09813ed5966ccec49a7460da75965",
           "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\batch-partial-failure\\fixture.draft.json": "08b6deef94649677a572a28f15b39390c83b3ad6e92707a9c8b19c4833156e9a",
           "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\batch-row-limit-rejected\\fixture.draft.json": "63ddfb677dbe4cfc3d2d12d495eaada991b0c5e8e8f738027efd19308306d8da",
           "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\batch-update-success\\fixture.draft.json": "e125d0cfd7a03c33fbfd632a3da1361eaec888721283f5401cd307282840172d",
@@ -178,10 +178,10 @@
           "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\primary-success.json": "3a35d69a91059bf7aa8cc0db0376d28353992226183b1a28e05c65c1a0b28ddf",
           "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\offline-contract\\batch-update-risk-cases.json": "c9c32dedfa51037efbdf6902228ea6b81db292871fe6a1735986921b25cf08d2"
         },
-        "generatedAt": "2026-08-01T09:15:27.641Z",
+        "generatedAt": "2026-08-01T09:41:43.597Z",
         "freshness": "fresh",
         "upstream": [],
-        "reportHash": "172f5ee233ae997d3c7be92ba49dd6588e1198a4b022e9738430d03532957a37"
+        "reportHash": "b33436e9ca58a045daa3278abdde498b0a7bd4aa163647c9f193312e609c3d84"
       }
     },
     {
@@ -496,5 +496,5 @@
       }
     }
   ],
-  "reportHash": "f288c6b054a7d0c074595f8e50e0b2baeca9e877c458340f2c84042ac51fd0f6"
+  "reportHash": "e60006bfa6b98ccf06f35c9b08fb988a3edf797964a997ee871a998d7d48c349"
 }

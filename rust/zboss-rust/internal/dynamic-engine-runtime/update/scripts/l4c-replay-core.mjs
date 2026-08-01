@@ -15,6 +15,8 @@ export const PLAN_PROTOCOL = "migration-guard.batch-update-l4c-plan/v1";
 export const OPERATION_PROTOCOL = "migration-guard.batch-update-l4c-operation/v1";
 export const FAULT_PROTOCOL =
   "migration-guard.batch-update-l4c-fault-controller/v1";
+export const CONCURRENCY_PROTOCOL =
+  "migration-guard.batch-update-l4c-concurrency/v1";
 export const REPORT_PROTOCOL = "migration-guard.batch-update-l4c-replay/v1";
 export const REVIEW_PROTOCOL = "migration-guard.batch-update-l4c-review/v1";
 export const WRITE_APPROVAL =
@@ -682,6 +684,18 @@ async function runScenario(targetKind, scenario, marker, context) {
       undefined,
       operations.seed?.bindings,
     );
+    if (
+      scenario.id === "concurrent-write"
+      && !validConcurrencyEvidence(
+        operations.invoke?.concurrency,
+        marker,
+        scenario.id,
+      )
+    ) {
+      findings.push(
+        `MG-L4C-CONCURRENCY-EVIDENCE-INVALID:${targetKind}:${scenario.id}`,
+      );
+    }
     operations.after = await runOperation(
       targetKind,
       "snapshot",
@@ -1296,6 +1310,18 @@ function validateReportTargetEvidence(report, contract, findings) {
           `MG-L4C-REPORT-FAULT-EVIDENCE-INVALID:${targetKind}:${scenario.scenarioId}`,
         );
       }
+      if (
+        scenarioContract.id === "concurrent-write"
+        && !validConcurrencyEvidence(
+          operations.invoke?.concurrency,
+          scenario.marker,
+          scenario.scenarioId,
+        )
+      ) {
+        findings.push(
+          `MG-L4C-REPORT-CONCURRENCY-EVIDENCE-INVALID:${targetKind}:${scenario.scenarioId}`,
+        );
+      }
     }
   }
   for (const comparison of report.comparisons ?? []) {
@@ -1355,6 +1381,36 @@ function validFaultEvidence(value, marker) {
     && Number.isInteger(value.artifactCount)
     && value.artifactCount > 0
     && /^[a-f0-9]{64}$/.test(value.applyHash ?? "");
+}
+
+export function validConcurrencyEvidence(value, marker, scenarioId) {
+  return Boolean(value)
+    && value.schemaVersion === 1
+    && value.protocol === CONCURRENCY_PROTOCOL
+    && value.status === "passed"
+    && value.scenarioId === scenarioId
+    && value.marker === marker
+    && value.driver === "built-in-barrier-v1"
+    && value.startMode === "barrier"
+    && value.barrier?.status === "released"
+    && value.barrier?.participantCount === 2
+    && value.barrier?.arrivedWriterCount === 2
+    && value.barrier?.releaseCount === 1
+    && scenarioId === "concurrent-write"
+    && value.writerCount === 2
+    && value.completedWriterCount === value.writerCount
+    && Array.isArray(value.writers)
+    && value.writers.length === value.writerCount
+    && new Set(value.writers.map((writer) => writer?.id)).size
+      === value.writerCount
+    && new Set(value.writers.map((writer) => writer?.marker)).size
+      === value.writerCount
+    && value.writers.every((writer) =>
+      typeof writer?.id === "string"
+      && writer.marker === `${marker}:${writer.id}`
+      && Number.isInteger(writer.httpStatus)
+      && writer.httpStatus >= 100
+      && writer.httpStatus <= 599);
 }
 
 export function validateCanonicalObservation(
@@ -1420,9 +1476,19 @@ export function validateCanonicalObservation(
     && ["websocket", "state-profile"].includes(
       dimensions.events?.collector,
     );
+  const concurrencyEvents = scenario.id === "concurrent-write"
+    && ["websocket", "state-profile"].includes(
+      dimensions.events?.collector,
+    )
+    && Array.isArray(dimensions.events?.terminalStatuses)
+    && dimensions.events.terminalStatuses.length > 0
+    && dimensions.events.terminalStatuses.every((status) =>
+      TERMINAL_STATUSES.has(status))
+    && Number.isInteger(dimensions.events?.terminalEventCount)
+    && dimensions.events.terminalEventCount >= 2;
   if (
     dimensions.events?.verified !== true
-    || (!redisEvents && !websocketEvents && !noEvents)
+    || (!redisEvents && !websocketEvents && !noEvents && !concurrencyEvents)
   ) {
     findings.push(`${prefix}:events`);
   }
@@ -1584,6 +1650,16 @@ function canonicalProjection(rows) {
 
 function canonicalTerminal(events) {
   if (!isPlainObject(events)) return undefined;
+  if (
+    Array.isArray(events.terminalStatuses)
+    && events.terminalStatuses.length > 0
+    && Number.isFinite(events.terminalPercentage)
+  ) {
+    return {
+      statuses: [...new Set(events.terminalStatuses)].sort(),
+      percentage: Number(events.terminalPercentage),
+    };
+  }
   if (
     typeof events.terminalStatus === "string"
     && Number.isFinite(events.terminalPercentage)

@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  CONCURRENCY_PROTOCOL,
   FAULT_PROTOCOL,
   OPERATION_PROTOCOL,
   PLAN_PROTOCOL,
@@ -17,6 +18,7 @@ import {
   validateReplayPlan,
   validateReplayReport,
   validateCanonicalObservation,
+  validConcurrencyEvidence,
 } from "./l4c-replay-core.mjs";
 
 const now = Date.now();
@@ -554,9 +556,60 @@ await assert.rejects(
 );
 await slowRun;
 
+const concurrencyEvidence = {
+  schemaVersion: 1,
+  protocol: CONCURRENCY_PROTOCOL,
+  status: "passed",
+  scenarioId: "concurrent-write",
+  marker: "mg-l4c-concurrent",
+  driver: "built-in-barrier-v1",
+  startMode: "barrier",
+  barrier: {
+    status: "released",
+    participantCount: 2,
+    arrivedWriterCount: 2,
+    releaseCount: 1,
+  },
+  writerCount: 2,
+  completedWriterCount: 2,
+  writers: [
+    {
+      id: "writer-a",
+      marker: "mg-l4c-concurrent:writer-a",
+      httpStatus: 200,
+      code: 0,
+    },
+    {
+      id: "writer-b",
+      marker: "mg-l4c-concurrent:writer-b",
+      httpStatus: 200,
+      code: 0,
+    },
+  ],
+};
+assert.equal(validConcurrencyEvidence(
+  concurrencyEvidence,
+  "mg-l4c-concurrent",
+  "concurrent-write",
+), true);
+const duplicateWriter = structuredClone(concurrencyEvidence);
+duplicateWriter.writers[1].marker = duplicateWriter.writers[0].marker;
+assert.equal(validConcurrencyEvidence(
+  duplicateWriter,
+  "mg-l4c-concurrent",
+  "concurrent-write",
+), false);
+const unreleasedBarrier = structuredClone(concurrencyEvidence);
+unreleasedBarrier.barrier.status = "waiting";
+assert.equal(validConcurrencyEvidence(
+  unreleasedBarrier,
+  "mg-l4c-concurrent",
+  "concurrent-write",
+), false);
+
 console.log(JSON.stringify({
   status: "pass",
-  checks: 44,
+  checks: 48,
   coverage: [
     "safe-plan-preflight",
     "production-scope-rejected",
@@ -589,6 +642,9 @@ console.log(JSON.stringify({
     "normalization-profile-unsupported-scenario-rejected",
     "state-profile-hash-drift-rejected",
     "seed-profile-hash-required",
+    "concurrency-evidence-valid",
+    "duplicate-concurrency-writer-rejected",
+    "unreleased-concurrency-barrier-rejected",
   ],
 }, null, 2));
 await rm(testRoot, { recursive: true, force: true });

@@ -59,7 +59,7 @@ try {
         code: 0,
         message: "ok",
         data: {
-          committed: 2,
+          committed: 1,
           requestMarker: body.reqId,
         },
       });
@@ -131,6 +131,22 @@ try {
       verifyCleanup: hook("verifyCleanup"),
     },
   });
+  const concurrentBinding = scenarioBinding();
+  concurrentBinding.request.shared.body = {
+    reqId: "{writerMarker}",
+    panelId: "{panelId}",
+    value: "{writerValue}",
+  };
+  concurrentBinding.concurrencyPlan = {
+    driver: "built-in-barrier-v1",
+    writerCount: 2,
+    startMode: "barrier",
+    sharedSeedBinding: "row-001",
+    writers: [
+      { id: "writer-a", value: "writer value A" },
+      { id: "writer-b", value: "writer value B" },
+    ],
+  };
   const binding = {
     schemaVersion: 1,
     protocol: "migration-guard.batch-update-l4c-bindings/v1",
@@ -143,7 +159,7 @@ try {
     scenarios: {
       "primary-success": scenarioBinding(),
       "dependency-failure": scenarioBinding(),
-      "concurrent-write": scenarioBinding(),
+      "concurrent-write": concurrentBinding,
     },
   };
   await writeFile(bindingPath, `${JSON.stringify(binding, null, 2)}\n`, "utf8");
@@ -160,13 +176,36 @@ try {
     assert.equal(directSeed.status, "passed");
     assert.equal(directSeed.scope.marker, "mg-l4c-process-marker");
     assert.equal(directSeed.seedHash, "a".repeat(64));
+    const ordinaryConcurrencyCategoryInvoke = await runDriver(
+      "invoke",
+      baseUrl,
+      { MG_L4C_CATEGORY: "concurrency" },
+    );
+    assert.equal(ordinaryConcurrencyCategoryInvoke.scope.rowCount, 1);
+    assert.equal(ordinaryConcurrencyCategoryInvoke.concurrency, undefined);
+    const concurrentInvoke = await runDriver("invoke", baseUrl, {
+        MG_L4C_CATEGORY: "concurrency",
+        MG_L4C_SCENARIO_ID: "concurrent-write",
+    });
+    assert.equal(concurrentInvoke.concurrency.barrier.status, "released");
+    assert.equal(concurrentInvoke.concurrency.writerCount, 2);
+    assert.equal(concurrentInvoke.concurrency.completedWriterCount, 2);
+    assert.equal(
+      new Set(concurrentInvoke.concurrency.writers.map((writer) => writer.marker)).size,
+      2,
+    );
+    binding.scenarios["concurrent-write"].concurrencyPlan.driver = "unapproved";
+    await writeFile(bindingPath, `${JSON.stringify(binding, null, 2)}\n`, "utf8");
     await assert.rejects(
       runDriver("invoke", baseUrl, {
         MG_L4C_CATEGORY: "concurrency",
         MG_L4C_SCENARIO_ID: "concurrent-write",
       }),
-      /approved concurrency driver is missing: concurrent-write/,
+      /MG-L4C-BINDING-CONCURRENCY-PLAN-INVALID/,
     );
+    binding.scenarios["concurrent-write"].concurrencyPlan.driver =
+      "built-in-barrier-v1";
+    await writeFile(bindingPath, `${JSON.stringify(binding, null, 2)}\n`, "utf8");
 
     const contract = {
       projectId: "zboss-batch-update-with-progress",
@@ -272,7 +311,7 @@ try {
 
   console.log(JSON.stringify({
     status: "pass",
-    checks: 21,
+    checks: 25,
     coverage: [
       "real-child-process-spawn",
       "built-in-http-health",
@@ -288,7 +327,10 @@ try {
       "fault-controller-revert",
       "fault-controller-inactive-verification",
       "fault-artifact-zero-residue",
-      "unbound-concurrency-driver-fail-closed",
+      "built-in-concurrency-driver",
+      "invalid-concurrency-plan-fail-closed",
+      "ordinary-concurrency-category-single-invoke",
+      "concurrency-barrier-evidence",
     ],
   }, null, 2));
 } finally {

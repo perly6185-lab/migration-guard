@@ -5,7 +5,7 @@
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "ad94a433a79d7c776e7699a2e6aeedbd28faf3824d8452beca3e9af7744c4e81",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -132,8 +132,7 @@
     "status": "pending"
   },
   "blockers": [
-    "MG-SH3C-CONCURRENCY-DRIVER-NOT-BOUND",
     "MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED"
   ],
-  "packageHash": "11ccd2ba9f64b3255acd7e584c49a971f2d1e39dc22e2c42476e54cfc78757ff"
+  "packageHash": "db5b97ecd0ac6173553d092ea556ba935bc2fd3467366719ddd2fcf5a63b94ab"
 }

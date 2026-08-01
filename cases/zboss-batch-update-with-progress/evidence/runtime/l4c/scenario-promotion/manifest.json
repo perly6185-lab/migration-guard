@@ -5,7 +5,7 @@
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "ad94a433a79d7c776e7699a2e6aeedbd28faf3824d8452beca3e9af7744c4e81",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
   "promotionWave": "sh3c-first-wave",
   "scenarioOrder": [
     "primary-success",
@@ -18,40 +18,40 @@
     {
       "scenarioId": "primary-success",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/primary-success.json",
-      "hash": "7be47289fe7f95bcfeb8be62816b7538b005917d4f4ae1afe7d6579d73ddc162",
+      "hash": "787816082a0e21bcaa0e863622017d8244cd3edad2e3c5c252781d651e553786",
       "blockerCount": 1
     },
     {
       "scenarioId": "validation-failure",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/validation-failure.json",
-      "hash": "b3e3de2d4d9e2fdf8ccbb00de4e0dd713d582c9371159371f08ea3acffbfaf80",
+      "hash": "90760caa0aeaf14ce7255767fcd08ae085cf114defe05dc30328f3c227d8993f",
       "blockerCount": 1
     },
     {
       "scenarioId": "batch-partial-failure",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/batch-partial-failure.json",
-      "hash": "b1f84642645c4d7a649efd8e8efea7a815ed69b8f6fb33d10d1fc29d23ac6c0a",
+      "hash": "606f26787d5ab09b567fb6addf020c7ec2a51e8ab50a99666a202c0576478efd",
       "blockerCount": 1
     },
     {
       "scenarioId": "dependency-failure",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/dependency-failure.json",
-      "hash": "ab29091b813f5d4172326d8ad41c568d5fa9aa78285b91110b43b9f65548175b",
+      "hash": "719f400f44424ace02e41ff4e30da7446637765b37bbc703e9d6c53f922a06a1",
       "blockerCount": 2
     },
     {
       "scenarioId": "concurrent-write",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/concurrent-write.json",
-      "hash": "11ccd2ba9f64b3255acd7e584c49a971f2d1e39dc22e2c42476e54cfc78757ff",
-      "blockerCount": 2
+      "hash": "db5b97ecd0ac6173553d092ea556ba935bc2fd3467366719ddd2fcf5a63b94ab",
+      "blockerCount": 1
     }
   ],
   "technicalReview": {
     "path": "evidence/runtime/l4c/scenario-promotion/technical-review.json",
-    "hash": "59f2fd2ae6398dd25e50e0e944dd5806e6c9dda08867a8b4ad0e2c14bf155d21",
+    "hash": "5392324522a10f86388e520913903e21d88b1810a831e67dffd37dc365e64c78",
     "status": "changes-required"
   },
   "readyForHumanReview": true,
   "readyForRealPromotion": false,
-  "manifestHash": "f125face84aea5216f6c43f5102ee132c5d2e3af1279ab134ac764b25cb2aaed"
+  "manifestHash": "a91318e930c56c19f01059e43f5589150f4821c4515a8d58bc1dea210b60d4e3"
 }

@@ -63,6 +63,7 @@ struct RedisState {
     progress_keys: u64,
     lease_fields: u64,
     progress: BTreeMap<String, String>,
+    progress_records: Vec<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -374,6 +375,9 @@ async fn collect(
     let mysql = mysql_state(pool, scope).await?;
     guard_row_limit(scope, mysql.fixture_rows)?;
     let redis = redis_state(redis, scope).await?;
+    let concurrency_events = (scope.scenario_id == "concurrent-write")
+        .then(|| concurrency_event_state(&redis))
+        .transpose()?;
     Ok(json!({
         "rowCount": mysql.fixture_rows,
         "observation": {
@@ -398,7 +402,10 @@ async fn collect(
                     "outboxRows": mysql.outbox_rows,
                 },
                 "state": { "verified": true, "mysql": mysql },
-                "events": if scope.scenario_id == "validation-failure"
+                "events": if let Some(events) = concurrency_events
+                {
+                    events
+                } else if scope.scenario_id == "validation-failure"
                     && redis.progress.is_empty()
                 {
                     json!({
@@ -425,6 +432,46 @@ async fn collect(
                 "collector": "l4c-state-hook",
             }
         }
+    }))
+}
+
+fn concurrency_event_state(redis: &RedisState) -> Result<Value, String> {
+    if redis.progress_records.len() != 2 {
+        return Err("concurrent progress evidence requires two batch records".to_owned());
+    }
+    let mut statuses = BTreeSet::new();
+    let mut minimum_percentage = 100.0f64;
+    for progress in &redis.progress_records {
+        let status = progress
+            .get("state")
+            .filter(|status| matches!(status.as_str(), "SUCCESS" | "FAILED" | "PARTIAL_FAILED"))
+            .ok_or_else(|| "concurrent progress terminal state is invalid".to_owned())?;
+        if progress.get("terminal").map(String::as_str) != Some("1") {
+            return Err("concurrent progress terminal marker is missing".to_owned());
+        }
+        let parse = |field: &str| -> Result<u64, String> {
+            progress
+                .get(field)
+                .ok_or_else(|| format!("concurrent progress {field} is missing"))?
+                .parse::<u64>()
+                .map_err(|_| format!("concurrent progress {field} is invalid"))
+        };
+        let total = parse("total")?;
+        let completed = parse("committed")? + parse("failed")?;
+        if total == 0 || completed != total {
+            return Err("concurrent progress row classification is invalid".to_owned());
+        }
+        minimum_percentage = minimum_percentage.min((completed as f64 / total as f64) * 100.0);
+        statuses.insert(status.clone());
+    }
+    Ok(json!({
+        "verified": true,
+        "collector": "state-profile",
+        "eventCount": redis.progress_records.len(),
+        "terminalEventCount": redis.progress_records.len(),
+        "terminalStatuses": statuses,
+        "terminalPercentage": minimum_percentage,
+        "redis": redis,
     }))
 }
 
@@ -611,12 +658,18 @@ async fn redis_state(
     redis: &mut MultiplexedConnection,
     scope: &Scope,
 ) -> Result<RedisState, String> {
-    let progress_key = progress_key(scope);
-    let progress: BTreeMap<String, String> = redis::cmd("HGETALL")
-        .arg(&progress_key)
-        .query_async(&mut *redis)
-        .await
-        .map_err(|error| format!("snapshot progress Redis key: {error}"))?;
+    let mut progress_records = Vec::new();
+    for progress_key in progress_keys(scope) {
+        let progress: BTreeMap<String, String> = redis::cmd("HGETALL")
+            .arg(&progress_key)
+            .query_async(&mut *redis)
+            .await
+            .map_err(|error| format!("snapshot progress Redis key: {error}"))?;
+        if !progress.is_empty() {
+            progress_records.push(progress);
+        }
+    }
+    let progress = progress_records.first().cloned().unwrap_or_default();
     let mut lease_fields = 0u64;
     for key in lease_keys(scope) {
         let fields: Vec<String> = redis::cmd("HKEYS")
@@ -630,18 +683,21 @@ async fn redis_state(
             .count() as u64;
     }
     Ok(RedisState {
-        progress_keys: u64::from(!progress.is_empty()),
+        progress_keys: progress_records.len() as u64,
         lease_fields,
         progress,
+        progress_records,
     })
 }
 
 async fn cleanup_redis(redis: &mut MultiplexedConnection, scope: &Scope) -> Result<(), String> {
-    redis::cmd("DEL")
-        .arg(progress_key(scope))
-        .query_async::<i64>(&mut *redis)
-        .await
-        .map_err(|error| format!("cleanup progress Redis key: {error}"))?;
+    for progress_key in progress_keys(scope) {
+        redis::cmd("DEL")
+            .arg(progress_key)
+            .query_async::<i64>(&mut *redis)
+            .await
+            .map_err(|error| format!("cleanup progress Redis key: {error}"))?;
+    }
     for key in lease_keys(scope) {
         let fields: Vec<String> = redis::cmd("HKEYS")
             .arg(&key)
@@ -772,10 +828,24 @@ fn marker_like(marker: &str) -> String {
 }
 
 fn progress_key(scope: &Scope) -> String {
+    progress_key_for_batch(scope, &scope.marker)
+}
+
+fn progress_key_for_batch(scope: &Scope, batch_id: &str) -> String {
     format!(
         "zboss:batch-progress:tenant:{}:batch:{}",
-        scope.tenant_id, scope.marker
+        scope.tenant_id, batch_id
     )
+}
+
+fn progress_keys(scope: &Scope) -> Vec<String> {
+    if scope.scenario_id == "concurrent-write" {
+        ["writer-a", "writer-b"]
+            .map(|writer| progress_key_for_batch(scope, &format!("{}:{writer}", scope.marker)))
+            .into()
+    } else {
+        vec![progress_key(scope)]
+    }
 }
 
 fn lease_keys(scope: &Scope) -> [String; 2] {
@@ -794,6 +864,34 @@ fn lease_keys(scope: &Scope) -> [String; 2] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn concurrent_progress_requires_two_complete_terminal_records() {
+        let progress = BTreeMap::from([
+            ("state".to_owned(), "SUCCESS".to_owned()),
+            ("terminal".to_owned(), "1".to_owned()),
+            ("total".to_owned(), "1".to_owned()),
+            ("committed".to_owned(), "1".to_owned()),
+            ("failed".to_owned(), "0".to_owned()),
+        ]);
+        let state = RedisState {
+            progress_keys: 2,
+            lease_fields: 0,
+            progress: progress.clone(),
+            progress_records: vec![progress.clone(), progress],
+        };
+        let evidence = concurrency_event_state(&state).unwrap();
+        assert_eq!(evidence["terminalEventCount"], 2);
+        assert_eq!(evidence["terminalStatuses"][0], "SUCCESS");
+
+        let incomplete = RedisState {
+            progress_keys: 1,
+            lease_fields: 0,
+            progress: state.progress.clone(),
+            progress_records: vec![state.progress.clone()],
+        };
+        assert!(concurrency_event_state(&incomplete).is_err());
+    }
 
     #[test]
     fn accepts_only_disposable_database_and_dynamic_table_names() {

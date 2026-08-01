@@ -735,14 +735,14 @@
             "x-datasource": "${MG_L4C_DATASOURCE}"
           },
           "body": {
-            "reqId": "{marker}",
+            "reqId": "{writerMarker}",
             "pageNo": 1,
             "pageSize": 100,
             "usePageId": "2083035054931869698",
             "pageId": "2083035054357250050",
             "panelId": "2083035054134951937",
             "interId": "2083035050402021377",
-            "clientSessionId": "{marker}",
+            "clientSessionId": "{writerMarker}",
             "enableProgress": true,
             "expectedTotalRows": 1,
             "isLastChunk": true,
@@ -753,7 +753,7 @@
             "batchPostValueList": [
               {
                 "id": "{seed.row-001.generatedId}",
-                "custField66745": "SH-3C concurrent writer A",
+                "custField66745": "{writerValue}",
                 "custField66746": 101
               }
             ]
@@ -777,15 +777,15 @@
             "httpId": "2083035050402021377",
             "usePageId": "2083035054931869698",
             "panelId": "{panelId}",
-            "clientSessionId": "{marker}",
+            "clientSessionId": "{writerMarker}",
             "chunkNo": 0,
             "isLastChunk": true,
-            "batchId": "{marker}",
+            "batchId": "{writerMarker}",
             "batchPostValueList": [
               {
                 "id": "{seed.row-001.generatedId}",
                 "values": {
-                  "value": "SH-3C concurrent writer A",
+                  "value": "{writerValue}",
                   "quantity": 101
                 }
               }
@@ -797,12 +797,19 @@
         }
       },
       "concurrencyPlan": {
+        "driver": "built-in-barrier-v1",
         "writerCount": 2,
         "startMode": "barrier",
         "sharedSeedBinding": "row-001",
-        "writerValues": [
-          "SH-3C concurrent writer A",
-          "SH-3C concurrent writer B"
+        "writers": [
+          {
+            "id": "writer-a",
+            "value": "SH-3C concurrent writer A"
+          },
+          {
+            "id": "writer-b",
+            "value": "SH-3C concurrent writer B"
+          }
         ]
       },
       "eventCollectors": {

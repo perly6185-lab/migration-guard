@@ -189,6 +189,17 @@ try {
       sha256: targetSha256,
     });
   }
+  const concurrentScenarioId = "concurrent-write";
+  binding.scenarios[concurrentScenarioId].concurrencyPlan = {
+    driver: "built-in-barrier-v1",
+    writerCount: 2,
+    startMode: "barrier",
+    sharedSeedBinding: "row-001",
+    writers: [
+      { id: "writer-a", value: "concurrent-a" },
+      { id: "writer-b", value: "concurrent-b" },
+    ],
+  };
   await writeJson(bindingPath, binding);
 
   const ready = await runPreflight(planPath, bindingPath, profilePath);
@@ -203,6 +214,23 @@ try {
   assert.equal(ready.output.rustSeedProfileCount, scenarioIds.length);
   assert.equal(ready.output.checks.environment, true);
   assert.match(ready.output.javaProfileHash, /^[a-f0-9]{64}$/);
+
+  binding.scenarios[concurrentScenarioId].concurrencyPlan.driver =
+    "unapproved-driver";
+  await writeJson(bindingPath, binding);
+  const concurrencyBlocked = await runPreflight(
+    planPath,
+    bindingPath,
+    profilePath,
+    [concurrentScenarioId],
+  );
+  assert.equal(concurrencyBlocked.code, 1);
+  assert.ok(concurrencyBlocked.output.findings.includes(
+    `MG-L4C-CONCURRENCY-PLAN-INVALID:${concurrentScenarioId}`,
+  ));
+  binding.scenarios[concurrentScenarioId].concurrencyPlan.driver =
+    "built-in-barrier-v1";
+  await writeJson(bindingPath, binding);
 
   const primaryBindingPath = path.join(
     testRoot,
@@ -426,7 +454,7 @@ try {
 
   console.log(JSON.stringify({
     status: "pass",
-    checks: 26,
+    checks: 28,
     coverage: [
       "approved-plan-binding-static-preflight",
       "required-environment-present",
@@ -447,6 +475,8 @@ try {
       "target-seed-reserved-key-rejected",
       "validation-no-event-collector-ready",
       "validation-no-event-window-fail-closed",
+      "concurrent-driver-preflight-ready",
+      "invalid-concurrency-driver-fail-closed",
     ],
   }, null, 2));
 } finally {
