@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-update-l4c-real-dual-replay-gate",
+  "status": "blocked",
+  "decision": "KEEP-L4-B",
+  "capability": {
+    "schemaVersion": 1,
+    "achieved": "L4-B",
+    "next": "L4-C",
+    "claims": [
+      {
+        "level": "L0",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L1",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L2",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L3",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-A",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-B",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-C",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-REAL-EVIDENCE-BLOCKED",
+          "MG-CAPABILITY-DUAL-REPLAY-BLOCKED"
+        ]
+      },
+      {
+        "level": "L4",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-UNIFIED-REAL-GATE-BLOCKED"
+        ]
+      }
+    ]
+  },
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "controls": {
+    "real.runtime-evidence": false,
+    "real.dual-replay": false,
+    "real.disposable-write-scope": false,
+    "real.cleanup-verification": false
+  },
+  "evidence": {
+    "replayPath": "artifacts/batch-update-rust/l4c-real-replay.json",
+    "reviewPath": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/review.json",
+    "l3ReportHash": "f70865ba794fa3e8034e63e59ad246c581b0db069313bdd2269de9c4393e2516",
+    "dependencyReportHash": "4b146b7c7d70ac00918fc656794c4c1070b6cc36f7def8ab830cb97c8a30d163",
+    "productionReportHash": "656ef14382af0d814a4989b6a7ed6d840b32107bf068d1d76f94bc1f0006f76c",
+    "scenarioCount": 0,
+    "cleanupVerified": false,
+    "dualReplayPassed": false
+  },
+  "findings": [
+    "MG-L4C-REPORT-MISSING"
+  ],
+  "reportHash": "80c46167fafcdd5b08b575cf9dd26219282af9fca46715b8cb265492de21e100"
+}

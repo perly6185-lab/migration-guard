@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migration-guard.batch-update-l4c-java-seed/v1",
+  "title": "L4-C Java scenario seed profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "protocol",
+    "status",
+    "projectId",
+    "targetKind",
+    "scenarioId",
+    "stateProfileSha256",
+    "resources"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "protocol": {
+      "const": "migration-guard.batch-update-l4c-java-seed/v1"
+    },
+    "status": { "enum": ["template", "approved"] },
+    "projectId": { "const": "zboss-batch-update-with-progress" },
+    "targetKind": { "const": "source" },
+    "scenarioId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{3,128}$"
+    },
+    "stateProfileSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "resources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resourceId", "rows"],
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{2,63}$"
+          },
+          "rows": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["markerSuffix", "values"],
+              "properties": {
+                "markerSuffix": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._:-]{1,64}$"
+                },
+                "values": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "maxProperties": 64,
+                  "propertyNames": {
+                    "pattern": "^[A-Za-z][A-Za-z0-9]{0,63}$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

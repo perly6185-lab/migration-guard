@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migration-guard.batch-update-l4c-java-state-profile/v1",
+  "title": "L4-C Java deployed state profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "protocol",
+    "status",
+    "projectId",
+    "targetKind",
+    "adapter",
+    "connections",
+    "semantics",
+    "mysql",
+    "redis"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "protocol": {
+      "const": "migration-guard.batch-update-l4c-java-state-profile/v1"
+    },
+    "status": { "enum": ["template", "approved"] },
+    "projectId": { "const": "zboss-batch-update-with-progress" },
+    "targetKind": { "const": "source" },
+    "adapter": { "const": "java-deployed-v1" },
+    "connections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mysqlUrlEnv"],
+      "properties": {
+        "mysqlUrlEnv": { "const": "MG_JAVA_DATABASE_URL" },
+        "redisUrlEnv": { "const": "MG_JAVA_REDIS_URL" }
+      }
+    },
+    "semantics": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": { "$ref": "#/$defs/semanticBinding" }
+    },
+    "mysql": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resources"],
+      "properties": {
+        "resources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/mysqlResource" }
+        }
+      }
+    },
+    "redis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resources"],
+      "properties": {
+        "resources": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/redisResource" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+    },
+    "resourceId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{2,63}$"
+    },
+    "semanticBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "storage", "resourceIds"],
+      "properties": {
+        "role": {
+          "enum": [
+            "projection",
+            "idempotency",
+            "commit",
+            "undo",
+            "outbox",
+            "schema-ledger",
+            "progress",
+            "batch-lease",
+            "schema-lease"
+          ]
+        },
+        "storage": {
+          "enum": ["mysql", "redis", "volatile-event", "absent"]
+        },
+        "resourceIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/resourceId" }
+        },
+        "collector": {
+          "enum": ["websocket"]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 12,
+          "maxLength": 512
+        }
+      }
+    },
+    "mysqlResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role",
+        "table",
+        "tenantColumn",
+        "markerColumn",
+        "markerMatch",
+        "orderColumn",
+        "columns",
+        "cleanup",
+        "cleanupOrder"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/resourceId" },
+        "role": {
+          "enum": [
+            "projection",
+            "idempotency",
+            "commit",
+            "undo",
+            "outbox",
+            "schema-ledger"
+          ]
+        },
+        "table": { "$ref": "#/$defs/identifier" },
+        "tenantColumn": { "$ref": "#/$defs/identifier" },
+        "panelColumn": { "$ref": "#/$defs/identifier" },
+        "markerColumn": { "$ref": "#/$defs/identifier" },
+        "markerMatch": { "enum": ["exact", "prefix", "json-path-exact"] },
+        "markerJsonPath": {
+          "type": "string",
+          "pattern": "^\\$\\.[A-Za-z][A-Za-z0-9_]{0,63}$"
+        },
+        "orderColumn": { "$ref": "#/$defs/identifier" },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "alias", "kind"],
+            "properties": {
+              "name": { "$ref": "#/$defs/identifier" },
+              "alias": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9]{0,63}$"
+              },
+              "kind": { "enum": ["scalar", "json", "text"] }
+            }
+          }
+        },
+        "cleanup": { "const": true },
+        "cleanupOrder": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "redisResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role",
+        "dataType",
+        "keyTemplate",
+        "markerLocation",
+        "cleanup"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/resourceId" },
+        "role": { "enum": ["progress", "batch-lease", "schema-lease"] },
+        "dataType": { "enum": ["hash", "string"] },
+        "keyTemplate": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 255
+        },
+        "markerLocation": { "enum": ["key", "hash-field"] },
+        "fields": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "alias"],
+            "properties": {
+              "name": { "$ref": "#/$defs/identifier" },
+              "alias": { "$ref": "#/$defs/identifier" }
+            }
+          }
+        },
+        "cleanup": { "enum": ["exact-key", "matching-hash-fields"] }
+      }
+    }
+  }
+}

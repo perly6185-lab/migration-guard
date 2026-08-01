@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.completion-control-evidence/v1",
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "controlId": "production.adapter.redis-script-executor",
+  "evidenceKind": "static-attestation",
+  "status": "passed",
+  "observedAt": "2026-07-31T08:12:33.644Z",
+  "synthetic": false,
+  "realEligible": true,
+  "producer": {
+    "tool": "migration-guard-zboss-completion-sync",
+    "version": "0.3.0-beta.1",
+    "command": "npm run zboss-rust:completion-sync",
+    "identity": "migration-guard:zboss-evidence-bridge"
+  },
+  "claims": {
+    "productionEligible": true,
+    "upstreamPath": "artifacts/batch-update-rust/l4b-gate.json",
+    "upstreamDecision": "L4-B",
+    "upstreamReportHash": "6f40a22d0965f2f6349a4518b73d1f498ee9d092d8bfb071e816e091e9103424"
+  }
+}

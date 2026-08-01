@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "stage": "batch-update-project-trust",
   "status": "pass",
-  "decision": "L4-A",
+  "decision": "L4-B",
   "capability": {
     "schemaVersion": 1,
-    "achieved": "L4-A",
-    "next": "L4-B",
+    "achieved": "L4-B",
+    "next": "L4-C",
     "claims": [
       {
         "level": "L0",
@@ -35,11 +35,8 @@
       },
       {
         "level": "L4-B",
-        "passed": false,
-        "blockers": [
-          "MG-CAPABILITY-CONCRETE-ADAPTERS-MISSING",
-          "MG-CAPABILITY-DEPLOYABLE-SERVICE-MISSING"
-        ]
+        "passed": true,
+        "blockers": []
       },
       {
         "level": "L4-C",
@@ -60,26 +57,37 @@
   },
   "productionPath": {
     "schemaVersion": 1,
-    "targetRoot": "D:\\learn\\migration-guard\\rust\\batch-update-service",
-    "deployableService": false,
-    "concreteAdapters": false,
-    "productionEligible": false,
+    "targetRoot": "D:\\learn\\migration-guard\\rust\\zboss-rust\\internal\\dynamic-engine-runtime",
+    "targetSourceHash": "27229fbb3ae27391109ea51774adaf280a1482266dd32182a661570971a1885f",
+    "deployableService": true,
+    "concreteAdapters": true,
+    "buildVerified": false,
+    "runtimeVerified": false,
+    "productionEligible": true,
     "evidence": {
-      "rustSourceFiles": 14,
-      "httpRuntimeDetected": false,
+      "rustSourceFiles": 78,
+      "httpRuntimeDetected": true,
       "routeFragments": {
         "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress": true
       },
       "traitImplementations": {
-        "MysqlBatchExecutor": false,
-        "RedisScriptExecutor": false
+        "MysqlBatchExecutor": true,
+        "RedisScriptExecutor": true
+      },
+      "verification": {
+        "required": false,
+        "present": false,
+        "protocolValid": false,
+        "sourceHashMatches": false,
+        "buildLogVerified": false,
+        "runtimeLogVerified": false,
+        "routesExercised": {
+          "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress": false
+        },
+        "referencedFiles": []
       }
     },
-    "findings": [
-      "MG-PRODUCTION-PATH-CONCRETE-ADAPTER-MISSING:MysqlBatchExecutor",
-      "MG-PRODUCTION-PATH-CONCRETE-ADAPTER-MISSING:RedisScriptExecutor",
-      "MG-PRODUCTION-PATH-HTTP-RUNTIME-MISSING"
-    ]
+    "findings": []
   },
   "gateFreshness": {
     "offline": [],

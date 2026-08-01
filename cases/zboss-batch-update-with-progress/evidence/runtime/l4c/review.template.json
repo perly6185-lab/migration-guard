@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-review/v1",
+  "decision": "pending",
+  "identity": "<independent-reviewer>",
+  "reviewedAt": "<iso-8601-after-replay>",
+  "evidenceReportHash": "<l4c-real-replay-report-hash>",
+  "notes": "Confirm all 19 source/target scenario comparisons, disposable scope, redaction and marker-bound cleanup evidence."
+}
+

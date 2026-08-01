@@ -4,7 +4,7 @@
   "fixtureKind": "template",
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
-  "projectHash": "b8d74e551d81131615b27a5d710bd9d94f0b9db943409ea47317879065f62f29",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
   "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
   "scenarioId": "undo-excludes-failed-rows",
   "category": "fault",

@@ -1,0 +1,529 @@
+{
+  "schemaVersion": 1,
+  "stage": "batch-update-l4b-network-runtime",
+  "status": "pass",
+  "decision": "L4-B",
+  "capability": {
+    "schemaVersion": 1,
+    "achieved": "L4-B",
+    "next": "L4-C",
+    "claims": [
+      {
+        "level": "L0",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L1",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L2",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L3",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-A",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-B",
+        "passed": true,
+        "blockers": []
+      },
+      {
+        "level": "L4-C",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-REAL-EVIDENCE-BLOCKED",
+          "MG-CAPABILITY-DUAL-REPLAY-BLOCKED"
+        ]
+      },
+      {
+        "level": "L4",
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-UNIFIED-REAL-GATE-BLOCKED"
+        ]
+      }
+    ]
+  },
+  "productionPath": {
+    "schemaVersion": 1,
+    "targetRoot": "D:\\learn\\migration-guard\\rust\\zboss-rust\\internal\\dynamic-engine-runtime",
+    "targetSourceHash": "27229fbb3ae27391109ea51774adaf280a1482266dd32182a661570971a1885f",
+    "deployableService": true,
+    "concreteAdapters": true,
+    "buildVerified": false,
+    "runtimeVerified": false,
+    "productionEligible": true,
+    "evidence": {
+      "rustSourceFiles": 78,
+      "httpRuntimeDetected": true,
+      "routeFragments": {
+        "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress": true
+      },
+      "traitImplementations": {
+        "MysqlBatchExecutor": true,
+        "RedisScriptExecutor": true
+      },
+      "verification": {
+        "required": false,
+        "present": false,
+        "protocolValid": false,
+        "sourceHashMatches": false,
+        "buildLogVerified": false,
+        "runtimeLogVerified": false,
+        "routesExercised": {
+          "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress": false
+        },
+        "referencedFiles": []
+      }
+    },
+    "findings": []
+  },
+  "environment": {
+    "mysql": "mysql:8.4 over TCP",
+    "redis": "redis:7.4-alpine over TCP",
+    "http": "http://127.0.0.1:18089/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress",
+    "process": "unified zboss binary",
+    "composeProject": "migration-guard-batch-update-l4b"
+  },
+  "scope": {
+    "networkExecutors": [
+      "sqlx MySQL pool",
+      "redis async client"
+    ],
+    "atomicEffects": [
+      "row",
+      "commit marker",
+      "undo",
+      "outbox"
+    ],
+    "progress": "Redis atomic monotonic terminal script",
+    "restartReplayVerified": true,
+    "realBusinessRequestExecuted": false,
+    "referenceJavaModified": false
+  },
+  "evidence": {
+    "l3ReportHash": "f70865ba794fa3e8034e63e59ad246c581b0db069313bdd2269de9c4393e2516",
+    "l4aReportHash": "4b146b7c7d70ac00918fc656794c4c1070b6cc36f7def8ab830cb97c8a30d163",
+    "rustTestsPassed": 236,
+    "checksPassed": 38,
+    "checksTotal": 38
+  },
+  "checks": [
+    {
+      "id": "rust-format",
+      "pass": true
+    },
+    {
+      "id": "rust-tests",
+      "pass": true
+    },
+    {
+      "id": "rust-clippy",
+      "pass": true
+    },
+    {
+      "id": "unified-service-build",
+      "pass": true
+    },
+    {
+      "id": "compose-up-4",
+      "pass": true
+    },
+    {
+      "id": "container-health",
+      "pass": true,
+      "attempt": 12
+    },
+    {
+      "id": "compose-exec-6",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-7",
+      "pass": true
+    },
+    {
+      "id": "mysql-schema-ready",
+      "pass": true,
+      "details": {}
+    },
+    {
+      "id": "compose-exec-9",
+      "pass": true
+    },
+    {
+      "id": "unified-http-readiness",
+      "pass": true,
+      "attempt": 2
+    },
+    {
+      "id": "http-atomic-update-response",
+      "pass": true,
+      "details": {
+        "status": 200,
+        "body": {
+          "code": 0,
+          "data": {
+            "requestId": "request-atomic",
+            "batchId": "batch-1-atomic-session",
+            "clientSessionId": "atomic-session",
+            "chunkNo": 0,
+            "committedRows": [
+              0,
+              1
+            ],
+            "replayedRows": [],
+            "failedRows": [],
+            "status": "SUCCESS",
+            "replayed": false,
+            "finalChunk": true
+          },
+          "msg": ""
+        }
+      }
+    },
+    {
+      "id": "redis-terminal-progress",
+      "pass": true,
+      "details": {
+        "committed": "2",
+        "event_hash": "592d0fb48f171f8dcaf74c04e2a629662a549b46ac8207c60db6ce805ca0a871",
+        "failed": "0",
+        "sequence": "2",
+        "state": "SUCCESS",
+        "terminal": "1",
+        "total": "2"
+      }
+    },
+    {
+      "id": "compose-exec-13",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-14",
+      "pass": true
+    },
+    {
+      "id": "mysql-atomic-row-undo-outbox",
+      "pass": true,
+      "details": {
+        "counts": "2,2,2,5,5",
+        "batchId": "batch-1-atomic-session"
+      }
+    },
+    {
+      "id": "http-idempotent-replay",
+      "pass": true,
+      "details": {
+        "status": 200,
+        "body": {
+          "code": 0,
+          "data": {
+            "requestId": "request-atomic",
+            "batchId": "batch-1-atomic-session",
+            "clientSessionId": "atomic-session",
+            "chunkNo": 0,
+            "committedRows": [
+              0,
+              1
+            ],
+            "replayedRows": [],
+            "failedRows": [],
+            "status": "SUCCESS",
+            "replayed": true,
+            "finalChunk": true
+          },
+          "msg": ""
+        }
+      }
+    },
+    {
+      "id": "compose-exec-17",
+      "pass": true
+    },
+    {
+      "id": "http-replay-side-effects-stable",
+      "pass": true,
+      "details": {
+        "stable": "2,2,5"
+      }
+    },
+    {
+      "id": "http-idempotency-conflict",
+      "pass": true,
+      "details": {
+        "status": 409,
+        "body": {
+          "code": -1,
+          "data": {
+            "error": "IDEMPOTENCY_CONFLICT"
+          },
+          "msg": "client session chunk is bound to a different request hash"
+        }
+      }
+    },
+    {
+      "id": "http-partial-failure",
+      "pass": true,
+      "details": {
+        "status": 200,
+        "body": {
+          "code": 0,
+          "data": {
+            "requestId": "request-partial",
+            "batchId": "batch-1-partial-session",
+            "clientSessionId": "partial-session",
+            "chunkNo": 0,
+            "committedRows": [
+              0
+            ],
+            "replayedRows": [],
+            "failedRows": [
+              1
+            ],
+            "status": "PARTIAL_FAILED",
+            "replayed": false,
+            "finalChunk": true
+          },
+          "msg": ""
+        }
+      }
+    },
+    {
+      "id": "redis-partial-terminal-conserved",
+      "pass": true,
+      "details": {
+        "committed": "1",
+        "event_hash": "79a7433f1a86283211cf6f38cc69911df572e6d385ceeb527dec65a237f7656e",
+        "failed": "1",
+        "sequence": "2",
+        "state": "PARTIAL_FAILED",
+        "terminal": "1",
+        "total": "2"
+      }
+    },
+    {
+      "id": "http-out-of-order-chunk",
+      "pass": true,
+      "details": {
+        "status": 409,
+        "body": {
+          "code": -1,
+          "data": {
+            "error": "OUT_OF_ORDER_CHUNK"
+          },
+          "msg": "previous chunk has not completed"
+        }
+      }
+    },
+    {
+      "id": "compose-exec-23",
+      "pass": true
+    },
+    {
+      "id": "compose-exec-24",
+      "pass": true
+    },
+    {
+      "id": "mysql-transaction-failure-terminal",
+      "pass": true,
+      "details": {
+        "status": 200,
+        "body": {
+          "code": 0,
+          "data": {
+            "requestId": "request-failure",
+            "batchId": "batch-1-failure-session",
+            "clientSessionId": "failure-session",
+            "chunkNo": 0,
+            "committedRows": [],
+            "replayedRows": [],
+            "failedRows": [
+              0
+            ],
+            "status": "FAILED",
+            "replayed": false,
+            "finalChunk": true
+          },
+          "msg": ""
+        }
+      }
+    },
+    {
+      "id": "compose-exec-26",
+      "pass": true
+    },
+    {
+      "id": "mysql-failure-no-row-or-undo",
+      "pass": true,
+      "details": {
+        "residue": "0,0"
+      }
+    },
+    {
+      "id": "unified-http-readiness",
+      "pass": true,
+      "attempt": 2
+    },
+    {
+      "id": "process-restart-durable-replay",
+      "pass": true,
+      "details": {
+        "status": 200,
+        "body": {
+          "code": 0,
+          "data": {
+            "requestId": "request-atomic",
+            "batchId": "batch-1-atomic-session",
+            "clientSessionId": "atomic-session",
+            "chunkNo": 0,
+            "committedRows": [
+              0,
+              1
+            ],
+            "replayedRows": [],
+            "failedRows": [],
+            "status": "SUCCESS",
+            "replayed": true,
+            "finalChunk": true
+          },
+          "msg": ""
+        }
+      }
+    },
+    {
+      "id": "compose-stop-30",
+      "pass": true
+    },
+    {
+      "id": "redis-loss-fails-readiness",
+      "pass": true,
+      "details": {}
+    },
+    {
+      "id": "compose-start-32",
+      "pass": true
+    },
+    {
+      "id": "container-health",
+      "pass": true,
+      "attempt": 1
+    },
+    {
+      "id": "unified-http-readiness",
+      "pass": true,
+      "attempt": 1
+    },
+    {
+      "id": "production-path-concrete-and-deployable",
+      "pass": true,
+      "details": {
+        "schemaVersion": 1,
+        "targetRoot": "D:\\learn\\migration-guard\\rust\\zboss-rust\\internal\\dynamic-engine-runtime",
+        "targetSourceHash": "27229fbb3ae27391109ea51774adaf280a1482266dd32182a661570971a1885f",
+        "deployableService": true,
+        "concreteAdapters": true,
+        "buildVerified": false,
+        "runtimeVerified": false,
+        "productionEligible": true,
+        "evidence": {
+          "rustSourceFiles": 78,
+          "httpRuntimeDetected": true,
+          "routeFragments": {
+            "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress": true
+          },
+          "traitImplementations": {
+            "MysqlBatchExecutor": true,
+            "RedisScriptExecutor": true
+          },
+          "verification": {
+            "required": false,
+            "present": false,
+            "protocolValid": false,
+            "sourceHashMatches": false,
+            "buildLogVerified": false,
+            "runtimeLogVerified": false,
+            "routesExercised": {
+              "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress": false
+            },
+            "referencedFiles": []
+          }
+        },
+        "findings": []
+      }
+    },
+    {
+      "id": "prior-gates-valid",
+      "pass": true,
+      "details": {}
+    },
+    {
+      "id": "capability-l4b",
+      "pass": true,
+      "details": {
+        "schemaVersion": 1,
+        "achieved": "L4-B",
+        "next": "L4-C",
+        "claims": [
+          {
+            "level": "L0",
+            "passed": true,
+            "blockers": []
+          },
+          {
+            "level": "L1",
+            "passed": true,
+            "blockers": []
+          },
+          {
+            "level": "L2",
+            "passed": true,
+            "blockers": []
+          },
+          {
+            "level": "L3",
+            "passed": true,
+            "blockers": []
+          },
+          {
+            "level": "L4-A",
+            "passed": true,
+            "blockers": []
+          },
+          {
+            "level": "L4-B",
+            "passed": true,
+            "blockers": []
+          },
+          {
+            "level": "L4-C",
+            "passed": false,
+            "blockers": [
+              "MG-CAPABILITY-REAL-EVIDENCE-BLOCKED",
+              "MG-CAPABILITY-DUAL-REPLAY-BLOCKED"
+            ]
+          },
+          {
+            "level": "L4",
+            "passed": false,
+            "blockers": [
+              "MG-CAPABILITY-UNIFIED-REAL-GATE-BLOCKED"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "reportHash": "656ef14382af0d814a4989b6a7ed6d840b32107bf068d1d76f94bc1f0006f76c"
+}

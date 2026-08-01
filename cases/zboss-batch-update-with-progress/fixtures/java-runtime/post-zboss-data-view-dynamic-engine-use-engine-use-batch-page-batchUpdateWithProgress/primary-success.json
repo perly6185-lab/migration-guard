@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "status": "ready",
+  "fixtureKind": "real-runtime",
+  "realEvidenceEligible": true,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+  "scenarioId": "primary-success",
+  "category": "success",
+  "request": {
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json",
+      "x-tenant-id": "{tenantId}"
+    },
+    "body": {
+      "reqId": "{marker}",
+      "pageNo": 1,
+      "pageSize": 100,
+      "usePageId": "2083035054931869698",
+      "pageId": "2083035054357250050",
+      "panelId": "2083035054134951937",
+      "interId": "2083035050402021377",
+      "clientSessionId": "{marker}",
+      "enableProgress": true,
+      "expectedTotalRows": 2,
+      "isLastChunk": true,
+      "undo": true,
+      "operationKind": "ROW_UPDATE",
+      "operationLabel": "SH-3C primary success",
+      "batchHeaderValueList": [],
+      "batchPostValueList": [
+        {
+          "id": "{seed.row-001.generatedId}",
+          "custField66745": "SH-3C updated row 001",
+          "custField66746": 101
+        },
+        {
+          "id": "{seed.row-002.generatedId}",
+          "custField66745": "SH-3C updated row 002",
+          "custField66746": 102
+        }
+      ],
+      "_scenario": "primary-success"
+    }
+  },
+  "requestFocus": [],
+  "expectedComparison": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "collectorSpecs": {
+    "events": {
+      "path": "fixtures/java-runtime/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success.collectors/events.json",
+      "hash": "e0ca6a00463687e85e2386c5ac0e6e2fb0d6d60750f0e2f3fd50c99520b9147b"
+    },
+    "mysql": {
+      "path": "fixtures/java-runtime/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success.collectors/mysql.json",
+      "hash": "0cd8237c2cf5d7e3367ce6c4b4c1f9d25660421a315866a3123dd850d975d225"
+    },
+    "redis": {
+      "path": "fixtures/java-runtime/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success.collectors/redis.json",
+      "hash": "b51d3d6bc7d3c8b5ef1bee543fcc5d2a01e8503aec836ff26c30936831b27cb6"
+    }
+  },
+  "expectations": {
+    "batch": {
+      "requireUndoCorrespondence": true,
+      "requireProgressTerminal": true,
+      "requireSharedLock": false,
+      "requireChunkIdempotency": false,
+      "requireTransactionTerminalOrdering": true,
+      "requireRowLimitContract": false,
+      "requireCompleteRowClassification": true,
+      "requireReaderWriterLease": false,
+      "requireUndoDurability": true,
+      "requireProgressTerminalIdentity": false
+    }
+  },
+  "writeSafety": {
+    "mode": "disposable",
+    "disposable": true,
+    "writeApproved": true,
+    "allowedTenantIds": [
+      "2059233802901135363"
+    ],
+    "allowedPanelIds": [
+      "2083035054134951937"
+    ],
+    "allowedTables": [
+      "cust_table7272",
+      "boss_undo_data"
+    ],
+    "maxAffectedRows": 2,
+    "markerKey": "reqId",
+    "cleanupPredicate": "reqId = :marker",
+    "cleanupVerificationRequired": true,
+    "expiresAt": "2026-08-01T08:08:27.404Z"
+  },
+  "environmentBindings": [
+    {
+      "path": "request.headers.authorization",
+      "environment": "MG_JAVA_TOKEN"
+    }
+  ],
+  "authoring": {
+    "reviewed": true,
+    "reviewedBy": "pengshiyu",
+    "reviewedAt": "2026-07-31T08:09:03.130Z",
+    "sourceDraftHash": "8136dd295f166e39dfe66eb4e542a69bb678a4df0c3f1fcf6133445b933f34c1"
+  },
+  "compatibilityDecisionIds": []
+}

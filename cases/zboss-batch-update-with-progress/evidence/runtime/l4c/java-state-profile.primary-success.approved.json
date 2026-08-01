@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-java-state-profile/v1",
+  "status": "approved",
+  "projectId": "zboss-batch-update-with-progress",
+  "targetKind": "source",
+  "adapter": "java-deployed-v1",
+  "connections": {
+    "mysqlUrlEnv": "MG_JAVA_DATABASE_URL"
+  },
+  "semantics": [
+    {
+      "role": "projection",
+      "storage": "mysql",
+      "resourceIds": ["projection"]
+    },
+    {
+      "role": "idempotency",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "The reviewed Java row-update path has no dedicated idempotency record."
+    },
+    {
+      "role": "commit",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "The reviewed Java row-update path commits the projection transaction without a commit-marker table."
+    },
+    {
+      "role": "undo",
+      "storage": "mysql",
+      "resourceIds": ["undo-main"]
+    },
+    {
+      "role": "outbox",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "The reviewed Java row-update path does not write a dedicated outbox record."
+    },
+    {
+      "role": "schema-ledger",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "The primary-success scenario performs no schema transition and writes no schema ledger."
+    },
+    {
+      "role": "progress",
+      "storage": "volatile-event",
+      "resourceIds": [],
+      "collector": "websocket",
+      "rationale": "Batch progress is held in process-local state and emitted through the reviewed panel WebSocket channel."
+    },
+    {
+      "role": "batch-lease",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "The reviewed Java row-update path does not acquire a dedicated batch lease."
+    },
+    {
+      "role": "schema-lease",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "The primary-success scenario performs no schema transition and acquires no schema lease."
+    }
+  ],
+  "mysql": {
+    "resources": [
+      {
+        "id": "projection",
+        "role": "projection",
+        "table": "cust_table7272",
+        "tenantColumn": "tenant_id",
+        "markerColumn": "cust_field66744",
+        "markerMatch": "prefix",
+        "orderColumn": "cust_field66744",
+        "columns": [
+          {
+            "name": "cust_field66744",
+            "alias": "primaryKey",
+            "kind": "text"
+          },
+          {
+            "name": "cust_field66745",
+            "alias": "value",
+            "kind": "text"
+          },
+          {
+            "name": "cust_field66746",
+            "alias": "quantity",
+            "kind": "scalar"
+          }
+        ],
+        "cleanup": true,
+        "cleanupOrder": 60
+      },
+      {
+        "id": "undo-main",
+        "role": "undo",
+        "table": "boss_undo_data",
+        "tenantColumn": "tenant_id",
+        "panelColumn": "panel_id",
+        "markerColumn": "request_param",
+        "markerMatch": "json-path-exact",
+        "markerJsonPath": "$.reqId",
+        "orderColumn": "id",
+        "columns": [
+          {
+            "name": "id",
+            "alias": "undoId",
+            "kind": "text"
+          },
+          {
+            "name": "operation_type",
+            "alias": "operationType",
+            "kind": "text"
+          }
+        ],
+        "cleanup": true,
+        "cleanupOrder": 20
+      }
+    ]
+  },
+  "redis": {
+    "resources": []
+  }
+}

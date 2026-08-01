@@ -36,9 +36,34 @@ Status: completed and connected to the Java runtime evidence gate.
 
 ### WP3 — Evidence generation
 
-Status: generic collectors, templates, all 18 redacted authoring drafts,
-environment contract and coverage matrix completed; project-local read-only
-queries/probes, reviewed promotion and real service evidence remain pending.
+Status: generic collectors, templates, all 19 redacted authoring drafts,
+environment contract, coverage matrix, fail-closed L4-C dual-replay
+orchestrator, concrete HTTP/operation driver, checkpoint recovery and
+field-level comparison are completed. The Rust target now has a project-owned,
+marker-scoped MySQL/Redis state hook plus static and read-only connectivity
+preflight. SH-1 contract hardening is complete: fault-controller
+apply/verify/revert evidence, `faultArtifacts` cleanup enforcement and
+canonical observation validation are fail-closed. SH-2 now provides the
+`java-deployed-v1` declarative MySQL/Redis adapter, machine schema, profile hash
+binding and static validation. Read-only source inspection confirms
+process-local/WebSocket progress plus `boss_undo_data` and
+`boss_undo_data_shard` undo persistence, but does not establish batch-specific
+Redis progress, idempotency, commit-marker, outbox or schema-ledger resources.
+The reviewed deployment profile and explicit resolution of those semantic gaps,
+scenario-specific fault injectors, reviewed fixture promotion and real service
+evidence remain pending.
+
+SH-3A/SH-3B are implemented: semantic roles can now be classified as physical,
+volatile-event or absent, and scenario-specific declarative Seed files are
+transactional, marker-scoped and SHA-256-bound. SH-3C concrete promotion of the
+19 scenario fixtures is in progress. The first five scenarios now have
+deterministic, hash-bound `review-required` packages; none is marked real
+eligible while deployment values, Seed adapters, WebSocket capture or fault
+controls remain unresolved.
+
+The approved state/fault boundary, canonical observation model, cleanup order,
+scenario allocation and delivery slices are defined in
+`evidence/runtime/l4c/STATE_HOOK_DESIGN.md`.
 
 The read-only deployment discovery is also complete:
 
@@ -53,6 +78,8 @@ The read-only deployment discovery is also complete:
 
 - Use the generic runtime lifecycle: setup, start, health, seed, invoke,
   inject-fault, snapshot, collect, cleanup and stop.
+- Use the batch-update L4-C orchestrator for source/target sequencing, explicit
+  disposable-write approval, marker-bound cleanup and semantic comparison.
 - Collect redacted request/response, context, decision trace, database before/after
   snapshots, committed row set, failed rows, undo rows, progress events and lock
   records.
@@ -74,9 +101,13 @@ Status: structural and batch semantic gates implemented; endpoint evidence pendi
 
 ## Delivery order
 
-1. Replace the marked request values in the generated 18 `draft-runtime`
-   fixtures.
-2. Replace the marked MySQL/Redis probes, dry-run each collector spec, set it to
-   `ready`, and promote each fixture with a reviewer identity.
-3. Start the reference services only when available and generate real evidence.
-4. Run Java runtime baseline gate; keep any target-language work out of scope.
+1. Review the deployed Java resource metadata and approve the now-explicit
+   physical/volatile/absent classifications in `java-state-profile.json`.
+2. Resolve the first-wave SH-3C package blockers, formally promote those five
+   request/Seed profiles, then repeat for the remaining 14 scenarios.
+3. Pass structural and read-only connectivity preflight, then pilot
+   `primary-success` and `dependency-failure`.
+4. Obtain an expiring disposable-write approval and run the complete source and
+   target replay inside one 24-hour evidence window.
+5. Independently review the report hash, run the L4-C gate and synchronize the
+   completion controls.

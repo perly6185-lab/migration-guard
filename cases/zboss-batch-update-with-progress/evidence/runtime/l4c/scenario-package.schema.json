@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "migration-guard.batch-update-l4c-scenario-package/v1",
+  "title": "SH-3C review-required scenario package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "protocol",
+    "status",
+    "realEvidenceEligible",
+    "projectId",
+    "projectHash",
+    "runtimeContractHash",
+    "sourceIdentity",
+    "promotionWave",
+    "entrypointId",
+    "scenarioId",
+    "category",
+    "requiredDimensions",
+    "decisionIds",
+    "sourceDraft",
+    "stateProfile",
+    "collectors",
+    "requestPlan",
+    "seedPlan",
+    "expectedObservation",
+    "semanticIntent",
+    "formalPromotion",
+    "blockers",
+    "packageHash"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "protocol": {
+      "const": "migration-guard.batch-update-l4c-scenario-package/v1"
+    },
+    "status": { "const": "review-required" },
+    "realEvidenceEligible": { "const": false },
+    "projectId": { "const": "zboss-batch-update-with-progress" },
+    "projectHash": { "$ref": "#/$defs/hash" },
+    "runtimeContractHash": { "$ref": "#/$defs/hash" },
+    "sourceIdentity": { "type": "object" },
+    "promotionWave": { "const": "sh3c-first-wave" },
+    "entrypointId": { "type": "string", "minLength": 3 },
+    "scenarioId": {
+      "enum": [
+        "primary-success",
+        "validation-failure",
+        "batch-partial-failure",
+        "dependency-failure",
+        "concurrent-write"
+      ]
+    },
+    "category": { "type": "string", "minLength": 3 },
+    "requiredDimensions": {
+      "type": "array",
+      "minItems": 7,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "decisionIds": { "type": "array", "items": { "type": "string" } },
+    "sourceDraft": { "$ref": "#/$defs/reference" },
+    "stateProfile": {
+      "allOf": [
+        { "$ref": "#/$defs/reference" },
+        {
+          "type": "object",
+          "required": ["status"],
+          "properties": { "status": { "const": "template" } }
+        }
+      ]
+    },
+    "collectors": { "type": "object", "minProperties": 3 },
+    "requestPlan": { "type": "object" },
+    "seedPlan": {
+      "type": "object",
+      "required": ["status", "plannedRows", "java", "rust"],
+      "properties": {
+        "status": { "const": "review-required" },
+        "plannedRows": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "java": { "type": "object" },
+        "rust": { "type": "object" }
+      }
+    },
+    "expectedObservation": {
+      "type": "object",
+      "required": ["status", "dimensions", "invariants"],
+      "properties": {
+        "status": { "const": "review-required" },
+        "dimensions": { "type": "array" },
+        "invariants": { "type": "array", "minItems": 3 }
+      }
+    },
+    "semanticIntent": { "type": "object" },
+    "formalPromotion": { "type": "object" },
+    "blockers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^MG-SH3C-" }
+    },
+    "packageHash": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "reference": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 3 },
+        "sha256": { "$ref": "#/$defs/hash" }
+      }
+    }
+  }
+}

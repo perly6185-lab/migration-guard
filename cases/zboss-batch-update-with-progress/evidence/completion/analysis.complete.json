@@ -6,7 +6,7 @@
   "controlId": "analysis.complete",
   "evidenceKind": "analysis-report",
   "status": "passed",
-  "observedAt": "2026-07-30T10:58:41.308Z",
+  "observedAt": "2026-07-31T08:12:33.644Z",
   "synthetic": false,
   "realEligible": true,
   "producer": {
@@ -19,6 +19,6 @@
     "analysisComplete": true,
     "upstreamPath": "cases/zboss-batch-update-with-progress/evidence/gates/offline-gate.json",
     "upstreamDecision": "",
-    "upstreamReportHash": "de11cbab1c7062dcb799f422bdcc581ffe108c9a8af364e1812700c665d9e890"
+    "upstreamReportHash": "f7c540f7db064f6d68c94df1bd929b2d4b06ab042ccd84a3439ba047226f6632"
   }
 }

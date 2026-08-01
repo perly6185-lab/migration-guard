@@ -6,7 +6,7 @@
   "controlId": "scenario.contract",
   "evidenceKind": "test-report",
   "status": "passed",
-  "observedAt": "2026-07-30T10:58:41.308Z",
+  "observedAt": "2026-07-31T08:12:33.644Z",
   "synthetic": false,
   "realEligible": true,
   "producer": {
@@ -19,6 +19,6 @@
     "scenarioContractPassed": true,
     "upstreamPath": "artifacts/batch-update-rust/l3-gate.json",
     "upstreamDecision": "L3",
-    "upstreamReportHash": "670339586eb6c83d2e433e6308b399e4ec0632664733763e5d73f6e6230f142d"
+    "upstreamReportHash": "f70865ba794fa3e8034e63e59ad246c581b0db069313bdd2269de9c4393e2516"
   }
 }

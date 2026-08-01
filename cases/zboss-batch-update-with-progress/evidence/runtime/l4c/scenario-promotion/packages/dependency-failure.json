@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-scenario-package/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "22661e7de2ccd1b5db7b8c3ad49b4fcda61cd8fde20c1c0eae7f5b325f6c9447",
+  "sourceIdentity": {
+    "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+    "dirty": true,
+    "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+    "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+  },
+  "promotionWave": "sh3c-first-wave",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+  "scenarioId": "dependency-failure",
+  "category": "fault",
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "decisionIds": [
+    "BUP-DEC-PROGRESS-TERMINAL"
+  ],
+  "sourceDraft": {
+    "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/dependency-failure/fixture.draft.json",
+    "sha256": "887a61c85e4f7ce5c41a8f4bc688518c3f7ec137bd5189de17762bb2dacfc6fc"
+  },
+  "stateProfile": {
+    "path": "evidence/runtime/l4c/java-state-profile.template.json",
+    "sha256": "16aea545c6f466dc6e2f003fc4d7bb83639e77063a6dd6e4bf2709aff2306e4b",
+    "status": "template"
+  },
+  "collectors": {
+    "events": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/dependency-failure/collectors/events.draft.json",
+      "sha256": "4783fbc3f7d0c33458782b62d0daf5583e5e620782abd8ee460cad6c0b21736b",
+      "status": "draft",
+      "reviewFindings": [
+        "STATUS-NOT-READY",
+        "WEBSOCKET-CAPTURE-NOT-CONFIRMED"
+      ]
+    },
+    "mysql": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/dependency-failure/collectors/mysql.draft.json",
+      "sha256": "4b213cba2e1345a9ba201c7466614c931ae61af91b23410b34872c13c068cbe1",
+      "status": "draft",
+      "reviewFindings": [
+        "STATUS-NOT-READY",
+        "PLACEHOLDER-PROBE"
+      ]
+    },
+    "redis": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/dependency-failure/collectors/redis.draft.json",
+      "sha256": "f5953888bc6bca7a954a08f4959211cf618e65755e77af32a7f4fb060a7109c8",
+      "status": "draft",
+      "reviewFindings": [
+        "STATUS-NOT-READY",
+        "PLACEHOLDER-PROBE",
+        "JAVA-PROGRESS-IS-NOT-REDIS-BACKED"
+      ]
+    }
+  },
+  "requestPlan": {
+    "status": "review-required",
+    "placeholderPaths": [
+      "$.body.batchPkFieldValue",
+      "$.body.clientSessionId",
+      "$.body.domain",
+      "$.body.horizontalId",
+      "$.body.interId",
+      "$.body.operationKind",
+      "$.body.operationLabel",
+      "$.body.pageId",
+      "$.body.panelId",
+      "$.body.reqId",
+      "$.body.usePageId",
+      "$.headers.x-tenant-id"
+    ],
+    "environmentBindings": [
+      {
+        "path": "request.headers.authorization",
+        "environment": "MG_JAVA_TOKEN"
+      }
+    ]
+  },
+  "seedPlan": {
+    "status": "review-required",
+    "plannedRows": 2,
+    "java": {
+      "protocol": "migration-guard.batch-update-l4c-java-seed/v1",
+      "resourceRole": "projection",
+      "binding": "scenario.seedProfiles.source"
+    },
+    "rust": {
+      "status": "adapter-required",
+      "resourceRole": "projection",
+      "binding": "scenario.seedProfiles.target"
+    }
+  },
+  "expectedObservation": {
+    "status": "review-required",
+    "dimensions": [
+      "http",
+      "context",
+      "decisions",
+      "effects",
+      "state",
+      "events",
+      "failures"
+    ],
+    "invariants": [
+      "fault-apply-active-revert-inactive",
+      "no-unapproved-cross-scope-effects",
+      "fault-artifacts-zero-after-cleanup"
+    ]
+  },
+  "semanticIntent": {
+    "intent": "approved-dependency-fault-is-observable-and-reversible",
+    "contractExpectations": {
+      "batch": {
+        "requireUndoCorrespondence": false,
+        "requireProgressTerminal": true,
+        "requireSharedLock": false,
+        "requireChunkIdempotency": false,
+        "requireTransactionTerminalOrdering": true,
+        "requireRowLimitContract": false,
+        "requireCompleteRowClassification": true,
+        "requireReaderWriterLease": false,
+        "requireUndoDurability": false,
+        "requireProgressTerminalIdentity": true
+      }
+    }
+  },
+  "formalPromotion": {
+    "command": "migration-guard migrate runtime-fixture-promote --case-dir cases/zboss-batch-update-with-progress --entrypoint post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress --scenario dependency-failure --reviewed-by <reviewer>",
+    "allowedOnlyWhenBlockersEmpty": true,
+    "status": "pending"
+  },
+  "blockers": [
+    "MG-SH3C-COLLECTOR-REVIEW:events:STATUS-NOT-READY",
+    "MG-SH3C-COLLECTOR-REVIEW:events:WEBSOCKET-CAPTURE-NOT-CONFIRMED",
+    "MG-SH3C-COLLECTOR-REVIEW:mysql:PLACEHOLDER-PROBE",
+    "MG-SH3C-COLLECTOR-REVIEW:mysql:STATUS-NOT-READY",
+    "MG-SH3C-COLLECTOR-REVIEW:redis:JAVA-PROGRESS-IS-NOT-REDIS-BACKED",
+    "MG-SH3C-COLLECTOR-REVIEW:redis:PLACEHOLDER-PROBE",
+    "MG-SH3C-COLLECTOR-REVIEW:redis:STATUS-NOT-READY",
+    "MG-SH3C-FAULT-CONTROLLER-NOT-BOUND",
+    "MG-SH3C-JAVA-SEED-NOT-AUTHORED",
+    "MG-SH3C-REQUEST-REVIEW:$.body.batchPkFieldValue",
+    "MG-SH3C-REQUEST-REVIEW:$.body.clientSessionId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.domain",
+    "MG-SH3C-REQUEST-REVIEW:$.body.horizontalId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.interId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.operationKind",
+    "MG-SH3C-REQUEST-REVIEW:$.body.operationLabel",
+    "MG-SH3C-REQUEST-REVIEW:$.body.pageId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.panelId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.reqId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.usePageId",
+    "MG-SH3C-REQUEST-REVIEW:$.headers.x-tenant-id",
+    "MG-SH3C-RUST-SEED-ADAPTER-NOT-BOUND",
+    "MG-SH3C-STATE-PROFILE-NOT-APPROVED",
+    "MG-SH3C-WEBSOCKET-EVENT-COLLECTOR-NOT-BOUND"
+  ],
+  "packageHash": "9ccf2acd6c32ed70a240e574cd321915075dd55df62468104c0bb1029fb55efe"
+}

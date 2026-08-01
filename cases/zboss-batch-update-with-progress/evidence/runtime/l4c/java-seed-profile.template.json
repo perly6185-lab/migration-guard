@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-java-seed/v1",
+  "status": "template",
+  "projectId": "zboss-batch-update-with-progress",
+  "targetKind": "source",
+  "scenarioId": "<scenario-id>",
+  "stateProfileSha256": "<sha256-of-approved-java-state-profile.json>",
+  "resources": [
+    {
+      "resourceId": "projection",
+      "rows": [
+        {
+          "markerSuffix": "row-001",
+          "values": {
+            "value": "<reviewed-fixture-value>"
+          }
+        }
+      ]
+    }
+  ]
+}

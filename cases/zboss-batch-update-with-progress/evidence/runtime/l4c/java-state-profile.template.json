@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-java-state-profile/v1",
+  "status": "template",
+  "projectId": "zboss-batch-update-with-progress",
+  "targetKind": "source",
+  "adapter": "java-deployed-v1",
+  "connections": {
+    "mysqlUrlEnv": "MG_JAVA_DATABASE_URL"
+  },
+  "semantics": [
+    {
+      "role": "projection",
+      "storage": "mysql",
+      "resourceIds": ["projection"]
+    },
+    {
+      "role": "idempotency",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "No dedicated batch idempotency resource was found on the inspected Java path."
+    },
+    {
+      "role": "commit",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "No dedicated batch commit-marker resource was found on the inspected Java path."
+    },
+    {
+      "role": "undo",
+      "storage": "mysql",
+      "resourceIds": ["undo-main", "undo-shard"]
+    },
+    {
+      "role": "outbox",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "No dedicated batch outbox resource was found on the inspected Java path."
+    },
+    {
+      "role": "schema-ledger",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "No dedicated schema transition ledger was found on the inspected Java path."
+    },
+    {
+      "role": "progress",
+      "storage": "volatile-event",
+      "resourceIds": [],
+      "collector": "websocket",
+      "rationale": "BatchUpdateProgressManager keeps progress in process-local maps and emits WebSocket messages."
+    },
+    {
+      "role": "batch-lease",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "No dedicated batch lease resource was found on the inspected Java path."
+    },
+    {
+      "role": "schema-lease",
+      "storage": "absent",
+      "resourceIds": [],
+      "rationale": "No dedicated schema lease resource was found on the inspected Java path."
+    }
+  ],
+  "mysql": {
+    "resources": [
+      {
+        "id": "projection",
+        "role": "projection",
+        "table": "<reviewed-cust-table>",
+        "tenantColumn": "<tenant-column>",
+        "panelColumn": "<panel-column>",
+        "markerColumn": "<marker-owned-primary-key-column>",
+        "markerMatch": "prefix",
+        "orderColumn": "<stable-order-column>",
+        "columns": [
+          {
+            "name": "<primary-key-column>",
+            "alias": "primaryKey",
+            "kind": "text"
+          },
+          {
+            "name": "<seed-and-observation-column>",
+            "alias": "value",
+            "kind": "scalar"
+          }
+        ],
+        "cleanup": true,
+        "cleanupOrder": 60
+      },
+      {
+        "id": "undo-main",
+        "role": "undo",
+        "table": "boss_undo_data",
+        "tenantColumn": "<reviewed-tenant-column>",
+        "panelColumn": "panel_id",
+        "markerColumn": "<reviewed-marker-owned-column>",
+        "markerMatch": "exact",
+        "orderColumn": "id",
+        "columns": [
+          {
+            "name": "id",
+            "alias": "undoId",
+            "kind": "text"
+          },
+          {
+            "name": "operation_type",
+            "alias": "operationType",
+            "kind": "scalar"
+          }
+        ],
+        "cleanup": true,
+        "cleanupOrder": 20
+      },
+      {
+        "id": "undo-shard",
+        "role": "undo",
+        "table": "boss_undo_data_shard",
+        "tenantColumn": "<reviewed-tenant-column>",
+        "panelColumn": "panel_id",
+        "markerColumn": "<reviewed-marker-owned-column>",
+        "markerMatch": "exact",
+        "orderColumn": "id",
+        "columns": [
+          {
+            "name": "id",
+            "alias": "shardId",
+            "kind": "text"
+          },
+          {
+            "name": "undo_id",
+            "alias": "undoId",
+            "kind": "text"
+          }
+        ],
+        "cleanup": true,
+        "cleanupOrder": 10
+      }
+    ]
+  },
+  "redis": {
+    "resources": []
+  }
+}

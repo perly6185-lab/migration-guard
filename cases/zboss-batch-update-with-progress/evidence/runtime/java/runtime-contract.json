@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-30T09:29:37.757Z",
+  "generatedAt": "2026-07-31T00:50:00.221Z",
   "projectId": "zboss-batch-update-with-progress",
-  "projectHash": "b8d74e551d81131615b27a5d710bd9d94f0b9db943409ea47317879065f62f29",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -40,7 +40,7 @@
         "mysql",
         "redis"
       ],
-      "analysisHash": "a5bcbc82183c240b26f86d919d6ba2b5c09537f5dfa983c928c0228b16a748ee",
+      "analysisHash": "824684054d67c2c6df441da51aa052c338881d7692d2dd0692fe7e9bdca8b728",
       "planHash": "2285a6e1916f2e924f9d733b95d8389ec8a22a58f5166b2a83f62403c54b9efc",
       "scenarios": [
         {
@@ -71,7 +71,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-partial-failure.template.json",
-            "hash": "9de9b18522cedeff8ed82e2afb48e64bc00b769f0a5f897cfcfb82e97e3d8977"
+            "hash": "e0d043bdb7f0ff8686359e282044b8ac7de408f77c514171ee753af982b74c90"
           }
         },
         {
@@ -100,7 +100,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-row-limit-rejected.template.json",
-            "hash": "f47745e8396908d2d3e2044841f5ac6a57a8ace43bc7f3131554a2dd21782685"
+            "hash": "8f8bee0ae60838a38c8127934ec114319b57a595dcc86c4d103301bf3e567c61"
           }
         },
         {
@@ -130,7 +130,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-update-success.template.json",
-            "hash": "31cd57ca284b28d9e0b963be5e23ee3f5f2734bad8bd13e18f1ec3ea045919e5"
+            "hash": "dfc4485123530888f45988a87536fdd528feb5b7f2723640276edf8ac3debf21"
           }
         },
         {
@@ -157,7 +157,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/branch-coverage.template.json",
-            "hash": "ea58d5cf2d3caf3bdb1f7d91ad32255c521ddac29b96eae92bbec3bf5543ed22"
+            "hash": "57ff3c28fad7c4cfa26faa443e21abfeb375537fb1a17d93e93d2ca5a67c24d4"
           }
         },
         {
@@ -187,7 +187,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/chunked-paste-progress.template.json",
-            "hash": "66a42c5daa32b25d5a314961b323423c898f88e2290e9f2a03fe2ceb4f3f097a"
+            "hash": "cdaf322d9f9f1651b7883a870b01527fd12688b5389095a3733f37a08e194c50"
           }
         },
         {
@@ -216,7 +216,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/concurrent-write.template.json",
-            "hash": "aef5d75ad370569b537ced94bff25761bc831e0cb2e15c46cab5f1f8a576b937"
+            "hash": "f82f1e2dd6f448ed80f15d0dff5b5a660be3206e24f9da7db0c6550130882c25"
           }
         },
         {
@@ -243,7 +243,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/context-isolation.template.json",
-            "hash": "fc5e4d2b6686dc50acb0bcd451cc324140a30841b959d057f55ad8a10b9d9ddf"
+            "hash": "8f97763be99766f6717325cab39851273d5f58611cb5d825134aa00d3ba90ace"
           }
         },
         {
@@ -272,7 +272,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/dependency-failure.template.json",
-            "hash": "7484644bba3fa4cf6e9672ddb9dfc14218d24c01e0007a7e2123a1745566117d"
+            "hash": "117c3820b9deaf5142e475dc929118887d9762ad07a43b5f4fc75260b6153359"
           }
         },
         {
@@ -299,7 +299,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/entrypoint-parity.template.json",
-            "hash": "9090651b78b6700993d046ad8ea1e1b953b5b68291c212fae167f6511764ccc1"
+            "hash": "63c326545f20878f85ccc00f7ff0ee448ee36ca10bbd6db42c9dd72042b945dd"
           }
         },
         {
@@ -326,7 +326,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/horizontal-batch-upsert.template.json",
-            "hash": "b0ab350709f27c06442df696e0594caabeb54b2460eab8d3d51d9fdefc66a2ea"
+            "hash": "88863bb8ce7c01674d99cb0f6bccbb6bd42a835a67c64be1f3d383c5aba85cff"
           }
         },
         {
@@ -355,7 +355,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/post-commit-effect-failure.template.json",
-            "hash": "1f1e57655c5e5f51caf950e3b4cbaf9cc5acaf505763d5b75aae1c23e05983f2"
+            "hash": "bbe8aaf868d6a400854cf76c275676e0387372bc8f621d9bfcabe5deaed34568"
           }
         },
         {
@@ -382,7 +382,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success.template.json",
-            "hash": "691a20274dad52eb26c98f7359c8a046d7614d011c0b7ecaf46d47adb0203ac7"
+            "hash": "b0dec318d902f7e830bcd9a086f9114976c6a02241545ef12e1b16d2ec293f8c"
           }
         },
         {
@@ -411,7 +411,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/progress-event-shape.template.json",
-            "hash": "c3de81045565c54d0808bd4491cd47a9251589232de8b1b6553eddac32ee72ea"
+            "hash": "0bfaf367f3e7f83d1472da5df4e0a42dd0dfa029431d3f6884ddc4ff1b479375"
           }
         },
         {
@@ -439,7 +439,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/scale-boundary.template.json",
-            "hash": "4dc04d71a68403cd946b6727dc1729836a2479ff73b1c8f1f33c2f2d6e37a90c"
+            "hash": "da29975b1424668a157a5c3174975920de3a3f7707b437d82b48909d75c5197d"
           }
         },
         {
@@ -468,7 +468,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/schema-transition-failure.template.json",
-            "hash": "f12e697b514b6ecc2faf856ed6e1860a118ff8a190cb4e216cc2f3a4c2c8d201"
+            "hash": "c4fe5e0211b9a71b5346cc14f0f56ebbfd4a4f5be8974c6efac614870c838b6e"
           }
         },
         {
@@ -499,7 +499,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/transaction-failure.template.json",
-            "hash": "bb2d6bcea97c5f587c274e355552c0c110239f7dea87aa47207f84c43dd154a5"
+            "hash": "ba9db4befbb9e425c9c0e5f32f06b36b09232be38fc97e2d4e754f741a961888"
           }
         },
         {
@@ -529,7 +529,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/undo-excludes-failed-rows.template.json",
-            "hash": "99c6e1f8e1b6d6428c8d0b1398ea7b2114afb7e0f86b74d1e4a55bf14adea6d7"
+            "hash": "866f0b6566e1a4e0415b241b043a3c4153e8dc8f456e2eb23947392d2c49f707"
           }
         },
         {
@@ -558,7 +558,7 @@
           ],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/validation-failure.template.json",
-            "hash": "a4df551ff9bbf868b83822ab9f28b4a3967c07f97f282b6f3b12abfb6dd5bf53"
+            "hash": "b85d325b3e025a24e2013181077f4e0e97983f0dc8c6d4ce157a38be5695f0ad"
           }
         },
         {
@@ -585,7 +585,7 @@
           "decisionIds": [],
           "fixtureTemplate": {
             "path": "evidence/runtime/java/fixtures/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/web-rpc-entrypoint-parity.template.json",
-            "hash": "235538471a111d20446b935e2d87abcb840a71cb0037d3f5dc5d5e0c535a9683"
+            "hash": "d3e3047f1a80956a5c4931cb6deb6f4ea96220cdb70d3911178cf24d837306a0"
           }
         }
       ]
@@ -633,5 +633,5 @@
       "hash": "77aa85acb1bf44606e90f0dfd0ce60158cd0f7745abf77df5f8302d3bbba91fd"
     }
   },
-  "contractHash": "20e91b7df989f72e367eea751e002bd0c3436f8a758681e15cefb6ac6cce1676"
+  "contractHash": "22661e7de2ccd1b5db7b8c3ad49b4fcda61cd8fde20c1c0eae7f5b325f6c9447"
 }

@@ -1,0 +1,340 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-bindings/v1",
+  "status": "approved",
+  "projectId": "zboss-batch-update-with-progress",
+  "targets": {
+    "source": {
+      "kind": "java",
+      "stateProfileSha256": "e149e54497a4584d302cf7eecedca23f48f93d0fa16f103754a2032c9064b617",
+      "healthPath": "/actuator/health",
+      "healthMethod": "GET",
+      "acceptedHealthStatuses": [200],
+      "healthJsonPath": "status",
+      "healthExpectedValue": "UP",
+      "invokePath": "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress",
+      "responseFields": {
+        "code": "code"
+      },
+      "timeoutMs": 120000,
+      "hooks": {
+        "doctor": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "doctor"
+          ],
+          "requiresProfileHash": true
+        },
+        "seed": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "seed"
+          ],
+          "requiresProfileHash": true,
+          "requiresSeedProfileHash": true
+        },
+        "snapshot": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "snapshot"
+          ],
+          "requiresProfileHash": true
+        },
+        "collect": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "collect"
+          ],
+          "requiresProfileHash": true
+        },
+        "cleanup": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "cleanup"
+          ],
+          "requiresProfileHash": true
+        },
+        "verifyCleanup": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "verify-cleanup"
+          ],
+          "requiresProfileHash": true
+        }
+      }
+    },
+    "target": {
+      "kind": "rust",
+      "healthPath": "/internal/ready",
+      "healthMethod": "GET",
+      "acceptedHealthStatuses": [200],
+      "healthJsonPath": "status",
+      "healthExpectedValue": "ready",
+      "invokePath": "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress",
+      "responseFields": {
+        "code": "code"
+      },
+      "timeoutMs": 120000,
+      "hooks": {
+        "doctor": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "doctor",
+            "zboss-evidence-v1"
+          ]
+        },
+        "seed": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "seed",
+            "zboss-evidence-v1"
+          ],
+          "requiresSeedProfileHash": true
+        },
+        "snapshot": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "snapshot",
+            "zboss-evidence-v1"
+          ]
+        },
+        "collect": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "collect",
+            "zboss-evidence-v1"
+          ]
+        },
+        "cleanup": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "cleanup",
+            "zboss-evidence-v1"
+          ]
+        },
+        "verifyCleanup": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "verify-cleanup",
+            "zboss-evidence-v1"
+          ]
+        }
+      }
+    }
+  },
+  "scenarios": {
+    "primary-success": {
+      "seedProfiles": {
+        "source": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/primary-success.java-seed.json",
+          "sha256": "4e5ec60c1092e6bc95ab431decdf49d42e68993ef3ad9527e1662eedaafd8757"
+        },
+        "target": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/primary-success.rust-seed.json",
+          "sha256": "cb574a33bcd5633bc2cab5bd6ca41491dd80791b29e4079d2d9e11d7ccd792ed"
+        }
+      },
+      "request": {
+        "source": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "authorization": "${MG_JAVA_TOKEN}",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "reqId": "{marker}",
+            "pageNo": 1,
+            "pageSize": 100,
+            "usePageId": "2083035054931869698",
+            "pageId": "2083035054357250050",
+            "panelId": "2083035054134951937",
+            "interId": "2083035050402021377",
+            "clientSessionId": "{marker}",
+            "enableProgress": true,
+            "expectedTotalRows": 2,
+            "isLastChunk": true,
+            "undo": true,
+            "operationKind": "ROW_UPDATE",
+            "operationLabel": "SH-3C primary success",
+            "batchHeaderValueList": [],
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "custField66745": "SH-3C updated row 001",
+                "custField66746": 101
+              },
+              {
+                "id": "{seed.row-002.generatedId}",
+                "custField66745": "SH-3C updated row 002",
+                "custField66746": 102
+              }
+            ]
+          },
+          "acceptedStatuses": [200],
+          "expectedRowCount": 2,
+          "responseFields": {
+            "code": "code"
+          }
+        },
+        "target": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "interId": "2083035050402021377",
+            "httpId": "2083035050402021377",
+            "usePageId": "2083035054931869698",
+            "panelId": "{panelId}",
+            "clientSessionId": "{marker}",
+            "chunkNo": 0,
+            "isLastChunk": true,
+            "batchId": "{marker}",
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "values": {
+                  "value": "SH-3C updated row 001",
+                  "quantity": 101
+                }
+              },
+              {
+                "id": "{seed.row-002.generatedId}",
+                "values": {
+                  "value": "SH-3C updated row 002",
+                  "quantity": 102
+                }
+              }
+            ]
+          },
+          "acceptedStatuses": [200],
+          "expectedRowCount": 2,
+          "responseFields": {
+            "code": "code"
+          }
+        }
+      },
+      "eventCollectors": {
+        "source": {
+          "kind": "websocket",
+          "path": "/ws/zboss",
+          "openTimeoutMs": 10000,
+          "terminalTimeoutMs": 30000,
+          "maxEvents": 1000,
+          "maxBytes": 1048576,
+          "subscribe": {
+            "type": "panel-subscribe",
+            "stringifyContent": true,
+            "content": {
+              "panelId": "{panelId}",
+              "subscribe": true
+            }
+          },
+          "messageType": "panel-data-update",
+          "contentEncoding": "json-string",
+          "panelIdPath": "panelId",
+          "batchIdPath": "batchId",
+          "statusPath": "status",
+          "percentagePath": "percentage",
+          "terminalStatuses": ["SUCCESS", "FAILED", "PARTIAL_FAILED"],
+          "responseBatchIdPaths": ["data.batchId"]
+        }
+      },
+      "hooks": {}
+    }
+  }
+}

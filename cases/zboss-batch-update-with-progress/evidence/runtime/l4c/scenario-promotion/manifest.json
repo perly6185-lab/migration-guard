@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-scenario-promotion-manifest/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "22661e7de2ccd1b5db7b8c3ad49b4fcda61cd8fde20c1c0eae7f5b325f6c9447",
+  "promotionWave": "sh3c-first-wave",
+  "scenarioOrder": [
+    "primary-success",
+    "validation-failure",
+    "batch-partial-failure",
+    "dependency-failure",
+    "concurrent-write"
+  ],
+  "packages": [
+    {
+      "scenarioId": "primary-success",
+      "path": "evidence/runtime/l4c/scenario-promotion/packages/primary-success.json",
+      "hash": "54f72dee028787de8ba6d6250fdb182a43a58e2c1a43e034f166dd6773656677",
+      "blockerCount": 0
+    },
+    {
+      "scenarioId": "validation-failure",
+      "path": "evidence/runtime/l4c/scenario-promotion/packages/validation-failure.json",
+      "hash": "52105afebb32430e8bc11c16c437be337a62e0c22bf42b946c7193b48b73a2ea",
+      "blockerCount": 23
+    },
+    {
+      "scenarioId": "batch-partial-failure",
+      "path": "evidence/runtime/l4c/scenario-promotion/packages/batch-partial-failure.json",
+      "hash": "631bfffc43b456d1c48b19c8daee84a21c0c7891c9bdf613f6d1883d74189295",
+      "blockerCount": 23
+    },
+    {
+      "scenarioId": "dependency-failure",
+      "path": "evidence/runtime/l4c/scenario-promotion/packages/dependency-failure.json",
+      "hash": "9ccf2acd6c32ed70a240e574cd321915075dd55df62468104c0bb1029fb55efe",
+      "blockerCount": 24
+    },
+    {
+      "scenarioId": "concurrent-write",
+      "path": "evidence/runtime/l4c/scenario-promotion/packages/concurrent-write.json",
+      "hash": "c25a61e9f2eeed425a24ff7ac795204784b1490b532aafce88de4dfffdfd2965",
+      "blockerCount": 24
+    }
+  ],
+  "readyForHumanReview": true,
+  "readyForRealPromotion": true,
+  "manifestHash": "2c623a91b63b2e03329e19de0850e2b8837ca1ef792a37d8857bef8be0d8db5c"
+}
