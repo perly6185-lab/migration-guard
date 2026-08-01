@@ -71,7 +71,7 @@
     },
     "mysql": {
       "path": "fixtures/java-runtime/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success.collectors/mysql.json",
-      "hash": "0cd8237c2cf5d7e3367ce6c4b4c1f9d25660421a315866a3123dd850d975d225"
+      "hash": "42de8c893f1b6b0afdebed29125ac96aa46729501228b3f2fc71afeaa9dcc9c1"
     },
     "redis": {
       "path": "fixtures/java-runtime/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success.collectors/redis.json",

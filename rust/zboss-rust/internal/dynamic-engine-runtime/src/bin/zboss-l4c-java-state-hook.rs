@@ -42,6 +42,7 @@ struct Profile {
     project_id: String,
     target_kind: String,
     adapter: String,
+    applicable_scenarios: Vec<String>,
     connections: Connections,
     semantics: Vec<SemanticBinding>,
     mysql: MysqlProfile,
@@ -420,7 +421,7 @@ fn load_profile() -> Result<(Profile, String), String> {
     if content.len() > 1024 * 1024 {
         return Err("Java state profile exceeds 1 MiB".to_owned());
     }
-    let hash = format!("{:x}", Sha256::digest(&content));
+    let hash = canonical_file_hash(&content);
     let profile = serde_json::from_slice(&content)
         .map_err(|error| format!("decode Java state profile: {error}"))?;
     Ok((profile, hash))
@@ -445,7 +446,7 @@ fn load_seed_profile(
     if content.len() > 1024 * 1024 {
         return Err("Java seed profile exceeds 1 MiB".to_owned());
     }
-    let hash = format!("{:x}", Sha256::digest(&content));
+    let hash = canonical_file_hash(&content);
     let expected_hash = required_env("MG_L4C_SEED_PROFILE_SHA256")?;
     if hash != expected_hash {
         return Err("Java seed profile hash does not match binding".to_owned());
@@ -532,6 +533,21 @@ fn validate_seed_profile(
         return Err("Java seed row count is outside the approved scope".to_owned());
     }
     Ok(())
+}
+
+fn canonical_file_hash(content: &[u8]) -> String {
+    let mut canonical = Vec::with_capacity(content.len());
+    let mut index = 0;
+    while index < content.len() {
+        if content[index] == b'\r' && content.get(index + 1) == Some(&b'\n') {
+            canonical.push(b'\n');
+            index += 2;
+        } else {
+            canonical.push(content[index]);
+            index += 1;
+        }
+    }
+    format!("{:x}", Sha256::digest(canonical))
 }
 
 async fn apply_seed(
@@ -718,6 +734,21 @@ fn validate_profile(profile: &Profile) -> Result<(), String> {
             .is_some_and(|value| value != "MG_JAVA_REDIS_URL")
     {
         return Err("Java state profile identity or approval is invalid".to_owned());
+    }
+    let applicable_scenarios = profile
+        .applicable_scenarios
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if profile.applicable_scenarios.is_empty()
+        || profile.applicable_scenarios.len() > 19
+        || applicable_scenarios.len() != profile.applicable_scenarios.len()
+        || profile
+            .applicable_scenarios
+            .iter()
+            .any(|scenario| !is_profile_id(scenario))
+    {
+        return Err("Java state profile applicable scenarios are invalid".to_owned());
     }
     let mut ids = BTreeSet::new();
     for resource in &profile.mysql.resources {
@@ -952,6 +983,16 @@ fn valid_rationale(value: Option<&str>) -> bool {
 }
 
 fn validate_profile_scope(profile: &Profile, scope: &Scope) -> Result<(), String> {
+    if !profile
+        .applicable_scenarios
+        .iter()
+        .any(|scenario| scenario == &scope.scenario_id)
+    {
+        return Err(format!(
+            "Java state profile is not approved for scenario: {}",
+            scope.scenario_id
+        ));
+    }
     let projection = profile
         .mysql
         .resources
@@ -1875,6 +1916,14 @@ mod tests {
     }
 
     #[test]
+    fn evidence_hash_is_stable_across_line_endings() {
+        assert_eq!(
+            canonical_file_hash(b"{\r\n  \"status\": \"approved\"\r\n}\r\n"),
+            canonical_file_hash(b"{\n  \"status\": \"approved\"\n}\n")
+        );
+    }
+
+    #[test]
     fn projection_table_is_bound_to_approved_scope() {
         let mut profile = fixture_profile();
         let scope = fixture_scope();
@@ -1887,6 +1936,31 @@ mod tests {
             .unwrap()
             .table = scope.table.clone();
         validate_profile_scope(&profile, &scope).unwrap();
+    }
+
+    #[test]
+    fn profile_scenario_approval_is_explicit_and_unique() {
+        let mut profile = fixture_profile();
+        profile.applicable_scenarios.clear();
+        assert!(validate_profile(&profile).is_err());
+
+        let mut profile = fixture_profile();
+        profile
+            .applicable_scenarios
+            .push("primary-success".to_owned());
+        assert!(validate_profile(&profile).is_err());
+
+        let mut profile = fixture_profile();
+        let mut scope = fixture_scope();
+        scope.scenario_id = "dependency-failure".to_owned();
+        profile
+            .mysql
+            .resources
+            .iter_mut()
+            .find(|resource| resource.role == MysqlRole::Projection)
+            .unwrap()
+            .table = scope.table.clone();
+        assert!(validate_profile_scope(&profile, &scope).is_err());
     }
 
     #[test]
@@ -2031,6 +2105,7 @@ mod tests {
             project_id: PROJECT_ID.to_owned(),
             target_kind: "source".to_owned(),
             adapter: ADAPTER_ID.to_owned(),
+            applicable_scenarios: vec!["primary-success".to_owned()],
             connections: Connections {
                 mysql_url_env: "MG_JAVA_DATABASE_URL".to_owned(),
                 redis_url_env: Some("MG_JAVA_REDIS_URL".to_owned()),

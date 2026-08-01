@@ -90,9 +90,14 @@ if ((plan.requiredEnvironment ?? []).includes("MG_L4C_JAVA_STATE_PROFILE")) {
         "Java state profile",
       );
       const content = await readFile(javaProfilePath);
-      javaProfileHash = createHash("sha256").update(content).digest("hex");
+      javaProfileHash = canonicalFileHash(content);
       javaProfile = JSON.parse(content.toString("utf8"));
-      validateJavaStateProfile(javaProfile, plan, findings);
+      validateJavaStateProfile(
+        javaProfile,
+        plan,
+        selectedScenarioIds,
+        findings,
+      );
       if (
         binding?.targets?.source?.stateProfileSha256 !== javaProfileHash
       ) {
@@ -128,7 +133,7 @@ if (
     try {
       const seedPath = nestedPath(configuredSeed.path, "Java seed profile");
       const content = await readFile(seedPath);
-      const seedHash = createHash("sha256").update(content).digest("hex");
+      const seedHash = canonicalFileHash(content);
       validateJavaSeedProfile(
         JSON.parse(content.toString("utf8")),
         scenarioId,
@@ -157,7 +162,7 @@ if (binding?.targets?.target?.hooks?.seed?.requiresSeedProfileHash === true) {
     try {
       const seedPath = nestedPath(configuredSeed.path, "Rust seed profile");
       const content = await readFile(seedPath);
-      const seedHash = createHash("sha256").update(content).digest("hex");
+      const seedHash = canonicalFileHash(content);
       validateRustSeedProfile(
         JSON.parse(content.toString("utf8")),
         scenarioId,
@@ -370,7 +375,12 @@ function validateEnvironment(planValue, targetFindings) {
   }
 }
 
-function validateJavaStateProfile(value, planValue, targetFindings) {
+function validateJavaStateProfile(
+  value,
+  planValue,
+  selectedScenarios,
+  targetFindings,
+) {
   const invalidIdentity =
     value?.schemaVersion !== 1
     || value?.protocol
@@ -390,6 +400,26 @@ function validateJavaStateProfile(value, planValue, targetFindings) {
   }
   if (/<[^>]+>/.test(JSON.stringify(value))) {
     targetFindings.push("MG-L4C-JAVA-PROFILE-PLACEHOLDER");
+  }
+  const applicableScenarios = value.applicableScenarios ?? [];
+  if (
+    !Array.isArray(value.applicableScenarios)
+    || applicableScenarios.length < 1
+    || applicableScenarios.length > 19
+    || new Set(applicableScenarios).size !== applicableScenarios.length
+    || applicableScenarios.some((scenario) =>
+      typeof scenario !== "string"
+      || !/^[a-z][a-z0-9-]{2,63}$/.test(scenario))
+  ) {
+    targetFindings.push("MG-L4C-JAVA-PROFILE-SCENARIOS-INVALID");
+  } else {
+    for (const scenario of selectedScenarios) {
+      if (!applicableScenarios.includes(scenario)) {
+        targetFindings.push(
+          `MG-L4C-JAVA-PROFILE-SCENARIO-NOT-APPROVED:${scenario}`,
+        );
+      }
+    }
   }
   const mysqlResources = value.mysql?.resources ?? [];
   const redisResources = value.redis?.resources ?? [];
@@ -591,6 +621,12 @@ function sameSeedAliases(values, resource) {
 function isIdentifier(value) {
   return typeof value === "string"
     && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(value);
+}
+
+function canonicalFileHash(content) {
+  return createHash("sha256")
+    .update(content.toString("utf8").replaceAll("\r\n", "\n"))
+    .digest("hex");
 }
 
 async function connectProbes(planValue, scenarios) {

@@ -6,7 +6,7 @@
   "targets": {
     "source": {
       "kind": "java",
-      "stateProfileSha256": "e149e54497a4584d302cf7eecedca23f48f93d0fa16f103754a2032c9064b617",
+      "stateProfileSha256": "3c057181a6f94d299b42fa32cadba14acdd4aa57b05b44d866a02f876cdbbe4a",
       "healthPath": "/actuator/health",
       "healthMethod": "GET",
       "acceptedHealthStatuses": [200],
@@ -211,7 +211,7 @@
       "seedProfiles": {
         "source": {
           "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/primary-success.java-seed.json",
-          "sha256": "4e5ec60c1092e6bc95ab431decdf49d42e68993ef3ad9527e1662eedaafd8757"
+          "sha256": "9f06b0a221718416e81f7781c4d2c9978c4e4a4d0afb457b67ab2b4257375a72"
         },
         "target": {
           "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/primary-success.rust-seed.json",

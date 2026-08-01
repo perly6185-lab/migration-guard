@@ -5,6 +5,13 @@
   "projectId": "zboss-batch-update-with-progress",
   "targetKind": "source",
   "adapter": "java-deployed-v1",
+  "applicableScenarios": [
+    "primary-success",
+    "validation-failure",
+    "batch-partial-failure",
+    "dependency-failure",
+    "concurrent-write"
+  ],
   "connections": {
     "mysqlUrlEnv": "MG_JAVA_DATABASE_URL"
   },

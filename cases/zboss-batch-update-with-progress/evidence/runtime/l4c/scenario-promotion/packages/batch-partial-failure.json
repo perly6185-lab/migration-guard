@@ -5,7 +5,7 @@
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "22661e7de2ccd1b5db7b8c3ad49b4fcda61cd8fde20c1c0eae7f5b325f6c9447",
+  "runtimeContractHash": "0e2f0d0d57727e71143f746a41f3e216d3eb7ec7fd1765818b5c92c332c730d8",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -35,9 +35,16 @@
     "sha256": "d1e7be18ed7af2539811f04b297ed7f4c9aeae9d52dca5697d3b8fdef756de06"
   },
   "stateProfile": {
-    "path": "evidence/runtime/l4c/java-state-profile.template.json",
-    "sha256": "16aea545c6f466dc6e2f003fc4d7bb83639e77063a6dd6e4bf2709aff2306e4b",
-    "status": "template"
+    "path": "evidence/runtime/l4c/java-state-profile.primary-success.approved.json",
+    "sha256": "3c057181a6f94d299b42fa32cadba14acdd4aa57b05b44d866a02f876cdbbe4a",
+    "status": "approved",
+    "applicableScenarios": [
+      "primary-success",
+      "validation-failure",
+      "batch-partial-failure",
+      "dependency-failure",
+      "concurrent-write"
+    ]
   },
   "collectors": {
     "events": {
@@ -167,8 +174,7 @@
     "MG-SH3C-REQUEST-REVIEW:$.body.usePageId",
     "MG-SH3C-REQUEST-REVIEW:$.headers.x-tenant-id",
     "MG-SH3C-RUST-SEED-ADAPTER-NOT-BOUND",
-    "MG-SH3C-STATE-PROFILE-NOT-APPROVED",
     "MG-SH3C-WEBSOCKET-EVENT-COLLECTOR-NOT-BOUND"
   ],
-  "packageHash": "631bfffc43b456d1c48b19c8daee84a21c0c7891c9bdf613f6d1883d74189295"
+  "packageHash": "1a8ebaacf069db6b96e387002ba41c5df4b4568858a0d714f4ca937cf396b252"
 }

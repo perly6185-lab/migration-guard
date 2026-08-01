@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-31T00:50:00.929Z",
+  "generatedAt": "2026-08-01T07:54:59.223Z",
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "contractHash": "22661e7de2ccd1b5db7b8c3ad49b4fcda61cd8fde20c1c0eae7f5b325f6c9447",
+  "contractHash": "0e2f0d0d57727e71143f746a41f3e216d3eb7ec7fd1765818b5c92c332c730d8",
   "scenarioCount": 19,
   "draftCount": 19,
   "authoringReady": true,
@@ -259,12 +259,8 @@
         "mysql": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success/collectors/mysql.draft.json",
         "redis": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/primary-success/collectors/redis.draft.json"
       },
-      "placeholderFindings": [
-        "MG-JAVA-AUTHORING-REQUEST-PLACEHOLDER",
-        "mysql:MG-COLLECTOR-MYSQL-QUERY-PLACEHOLDER:replace-with-before-after-snapshot",
-        "redis:MG-COLLECTOR-REDIS-PLACEHOLDER:replace-with-lock-or-ledger-key"
-      ],
-      "promotable": false
+      "placeholderFindings": [],
+      "promotable": true
     },
     {
       "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",

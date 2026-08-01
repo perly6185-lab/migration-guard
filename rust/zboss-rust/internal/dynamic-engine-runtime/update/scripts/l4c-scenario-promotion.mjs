@@ -166,9 +166,17 @@ if (mode === "--write") {
   if (!validatePackage(incompleteReady).includes("MG-SH3C-READY-STATE-INVALID")) {
     throw new Error("incomplete package cannot be marked ready for review");
   }
+  const unapprovedScenario = structuredClone(built.packages[0]);
+  unapprovedScenario.stateProfile.applicableScenarios = [];
+  unapprovedScenario.packageHash = packageHash(unapprovedScenario);
+  if (!validatePackage(unapprovedScenario).includes(
+    "MG-SH3C-STATE-PROFILE-SCENARIO-NOT-APPROVED",
+  )) {
+    throw new Error("state profile scenario approval was not enforced");
+  }
   console.log(JSON.stringify({
     status: "pass",
-    checks: 12,
+    checks: 13,
     coverage: [
       "first-wave-exactly-five",
       "contract-scenario-binding",
@@ -182,6 +190,7 @@ if (mode === "--write") {
       "premature-real-eligibility-rejected",
       "package-tamper-rejected",
       "incomplete-ready-state-rejected",
+      "state-profile-scenario-approval-enforced",
     ],
   }, null, 2));
 } else {
@@ -193,11 +202,14 @@ export async function buildPromotionSet() {
   const primaryBinding = await readJson(primaryBindingPath);
   const primaryJavaSeed = await readJson(primaryJavaSeedPath);
   const primaryRustSeed = await readJson(primaryRustSeedPath);
+  const approvedStateProfile = await readJson(primaryStateProfilePath);
   const entry = contract.entries.find((item) => item.id === entrypointId);
   if (!entry) throw new Error(`runtime contract entry is missing: ${entrypointId}`);
   const packages = [];
   for (const scenarioId of FIRST_WAVE) {
-    const stateProfilePath = scenarioId === "primary-success"
+    const stateProfileApprovedForScenario =
+      approvedStateProfile.applicableScenarios?.includes(scenarioId) === true;
+    const stateProfilePath = stateProfileApprovedForScenario
       ? primaryStateProfilePath
       : stateProfileTemplatePath;
     const stateProfile = await readJson(stateProfilePath);
@@ -241,7 +253,7 @@ export async function buildPromotionSet() {
     const javaSeedFileHash = await fileHash(primaryJavaSeedPath);
     const rustSeedFileHash = await fileHash(primaryRustSeedPath);
     const scenarioBinding = primaryBinding.scenarios?.[scenarioId];
-    const stateProfileReady = primary
+    const stateProfileReady = stateProfileApprovedForScenario
       && stateProfile.status === "approved"
       && primaryBinding.status === "approved"
       && primaryBinding.targets?.source?.stateProfileSha256
@@ -265,6 +277,14 @@ export async function buildPromotionSet() {
       && draft.writeSafety?.disposable === true
       && draft.writeSafety?.writeApproved === true
       && Date.parse(draft.writeSafety?.expiresAt ?? "") > Date.now();
+    const formallyPromoted = primary
+      && promotedFixture?.fixtureKind === "real-runtime"
+      && promotedFixture?.status === "ready"
+      && promotedFixture?.realEvidenceEligible === true
+      && promotedFixture?.authoring?.reviewed === true
+      && promotedFixture?.authoring?.sourceDraftHash === documentHash(draft)
+      && Object.entries(collectors).every(([collector, value]) =>
+        promotedFixture?.collectorSpecs?.[collector]?.hash === value.sha256);
     const technicalBlockers = [
       ...(!stateProfileReady
         ? ["MG-SH3C-STATE-PROFILE-NOT-APPROVED"]
@@ -278,7 +298,7 @@ export async function buildPromotionSet() {
       ...(!websocketReady
         ? ["MG-SH3C-WEBSOCKET-EVENT-COLLECTOR-NOT-BOUND"]
         : []),
-      ...(primary && !writeSafetyReady
+      ...(primary && !formallyPromoted && !writeSafetyReady
         ? ["MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED"]
         : []),
       ...placeholderPaths.map((item) => `MG-SH3C-REQUEST-REVIEW:${item}`),
@@ -294,14 +314,6 @@ export async function buildPromotionSet() {
     ];
     const blockers = [...new Set(technicalBlockers)].sort();
     const readyForReview = blockers.length === 0;
-    const formallyPromoted = primary
-      && promotedFixture?.fixtureKind === "real-runtime"
-      && promotedFixture?.status === "ready"
-      && promotedFixture?.realEvidenceEligible === true
-      && promotedFixture?.authoring?.reviewed === true
-      && promotedFixture?.authoring?.sourceDraftHash === documentHash(draft)
-      && Object.entries(collectors).every(([collector, value]) =>
-        promotedFixture?.collectorSpecs?.[collector]?.hash === value.sha256);
     const document = {
       schemaVersion: 1,
       protocol: PROMOTION_PROTOCOL,
@@ -329,6 +341,7 @@ export async function buildPromotionSet() {
         path: relativeCasePath(stateProfilePath),
         sha256: stateProfileFileHash,
         status: stateProfile.status,
+        applicableScenarios: stateProfile.applicableScenarios ?? [],
       },
       collectors,
       requestPlan: {
@@ -480,6 +493,12 @@ export function validatePackage(value) {
   }
   if (!Array.isArray(value?.blockers)) {
     findings.push("MG-SH3C-REVIEW-BLOCKERS-INVALID");
+  }
+  if (
+    value?.stateProfile?.status === "approved"
+    && !value.stateProfile?.applicableScenarios?.includes(value?.scenarioId)
+  ) {
+    findings.push("MG-SH3C-STATE-PROFILE-SCENARIO-NOT-APPROVED");
   }
   if (
     !Array.isArray(value?.requestPlan?.placeholderPaths)
@@ -634,7 +653,13 @@ async function readJsonIfPresent(value) {
 }
 
 async function fileHash(value) {
-  return createHash("sha256").update(await readFile(value)).digest("hex");
+  return canonicalFileHash(await readFile(value));
+}
+
+function canonicalFileHash(content) {
+  return createHash("sha256")
+    .update(content.toString("utf8").replaceAll("\r\n", "\n"))
+    .digest("hex");
 }
 
 async function writeJson(file, value) {

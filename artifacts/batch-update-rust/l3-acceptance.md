@@ -5,7 +5,7 @@ Status: PASS
 - Decision: L3
 - Runtime scenarios: 19/19
 - Rust tests: 42
-- Runtime contract: 22661e7de2ccd1b5db7b8c3ad49b4fcda61cd8fde20c1c0eae7f5b325f6c9447
-- Source hash: 772da1121afc86237cc912d10c55b9ca518cb9a3849ab48a40df934ce7be5a64
+- Runtime contract: 0e2f0d0d57727e71143f746a41f3e216d3eb7ec7fd1765818b5c92c332c730d8
+- Source hash: 812ca22c47472e2eb8cf3250760d49d42cde34190e29b0858ec801dcb0d62c0b
 - Reference source: unchanged
 - Real runtime evidence: not claimed; external fixtures/environment remain fail-closed

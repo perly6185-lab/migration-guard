@@ -143,7 +143,7 @@ try {
   const planPath = path.join(testRoot, "plan.json");
   const bindingPath = path.join(testRoot, "bindings.json");
   const profilePath = path.join(testRoot, "java-state-profile.json");
-  const profile = javaStateProfile();
+  const profile = javaStateProfile(scenarioIds);
   await writeJson(planPath, plan);
   await writeJson(profilePath, profile);
   binding.targets.source.stateProfileSha256 = createHash("sha256")
@@ -222,6 +222,37 @@ try {
   assert.equal(primaryReady.code, 0);
   assert.equal(primaryReady.output.status, "ready");
   assert.equal(primaryReady.output.selectedScenarioCount, 1);
+
+  const profileWithCrlf = (await readFile(profilePath, "utf8"))
+    .replaceAll("\n", "\r\n");
+  await writeFile(profilePath, profileWithCrlf, "utf8");
+  const crlfReady = await runPreflight(
+    planPath,
+    primaryBindingPath,
+    profilePath,
+    [scenarioIds[0]],
+  );
+  assert.equal(crlfReady.code, 0);
+  assert.equal(crlfReady.output.javaProfileHash,
+    binding.targets.source.stateProfileSha256);
+  await writeJson(profilePath, profile);
+
+  profile.applicableScenarios = profile.applicableScenarios.filter(
+    (scenario) => scenario !== scenarioIds[1],
+  );
+  await writeJson(profilePath, profile);
+  const scenarioApprovalBlocked = await runPreflight(
+    planPath,
+    bindingPath,
+    profilePath,
+    [scenarioIds[1]],
+  );
+  assert.equal(scenarioApprovalBlocked.code, 1);
+  assert.ok(scenarioApprovalBlocked.output.findings.includes(
+    `MG-L4C-JAVA-PROFILE-SCENARIO-NOT-APPROVED:${scenarioIds[1]}`,
+  ));
+  profile.applicableScenarios = [...scenarioIds];
+  await writeJson(profilePath, profile);
 
   profile.status = "template";
   await writeJson(profilePath, profile);
@@ -319,7 +350,7 @@ try {
 
   console.log(JSON.stringify({
     status: "pass",
-    checks: 22,
+    checks: 24,
     coverage: [
       "approved-plan-binding-static-preflight",
       "required-environment-present",
@@ -328,7 +359,9 @@ try {
       "single-promoted-scenario-preflight",
       "placeholder-hook-fail-closed",
       "approved-java-state-profile",
+      "java-state-profile-scenario-approval",
       "java-state-profile-hash",
+      "java-state-profile-line-ending-stable-hash",
       "unapproved-java-state-profile-rejected",
       "java-state-profile-hash-drift-rejected",
       "scenario-seed-profile-validation",
@@ -374,7 +407,7 @@ async function runPreflight(
   };
 }
 
-function javaStateProfile() {
+function javaStateProfile(applicableScenarios) {
   const mysql = (id, role, panel = false) => ({
     id,
     role,
@@ -423,6 +456,7 @@ function javaStateProfile() {
     projectId: "zboss-batch-update-with-progress",
     targetKind: "source",
     adapter: "java-deployed-v1",
+    applicableScenarios,
     connections: {
       mysqlUrlEnv: "MG_JAVA_DATABASE_URL",
       redisUrlEnv: "MG_JAVA_REDIS_URL",

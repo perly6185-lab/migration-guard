@@ -5,6 +5,13 @@
   "projectId": "zboss-batch-update-with-progress",
   "targetKind": "source",
   "adapter": "java-deployed-v1",
+  "applicableScenarios": [
+    "primary-success",
+    "validation-failure",
+    "batch-partial-failure",
+    "dependency-failure",
+    "concurrent-write"
+  ],
   "connections": {
     "mysqlUrlEnv": "MG_JAVA_DATABASE_URL"
   },
@@ -41,7 +48,7 @@
       "role": "schema-ledger",
       "storage": "absent",
       "resourceIds": [],
-      "rationale": "The primary-success scenario performs no schema transition and writes no schema ledger."
+      "rationale": "The reviewed first-wave row-update scenarios perform no schema transition and write no schema ledger."
     },
     {
       "role": "progress",
@@ -60,7 +67,7 @@
       "role": "schema-lease",
       "storage": "absent",
       "resourceIds": [],
-      "rationale": "The primary-success scenario performs no schema transition and acquires no schema lease."
+      "rationale": "The reviewed first-wave row-update scenarios perform no schema transition and acquire no schema lease."
     }
   ],
   "mysql": {
