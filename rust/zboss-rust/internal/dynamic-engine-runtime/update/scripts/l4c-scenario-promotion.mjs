@@ -93,10 +93,6 @@ const blueprints = {
       "zero-undo-delta",
       "no-progress-created-for-all-precheck-failures",
     ],
-    compatibilityBlockers: [
-      "MG-SH3C-NO-EVENT-COMPLETION-NOT-SUPPORTED",
-      "MG-SH3C-EVENT-SEMANTICS-DECISION-REQUIRED",
-    ],
   },
   "batch-partial-failure": {
     plannedSeedRows: 2,
@@ -105,9 +101,6 @@ const blueprints = {
       "complete-row-classification",
       "failed-row-excluded-from-undo",
       "single-source-terminal-progress-identity",
-    ],
-    compatibilityBlockers: [
-      "MG-SH3C-EVENT-SEMANTICS-DECISION-REQUIRED",
     ],
   },
   "dependency-failure": {
@@ -167,9 +160,11 @@ if (mode === "--write") {
   if (requestAuthoredScenarios.some((item) =>
     item.requestPlan.status !== "authored"
     || item.blockers.some((blocker) => blocker.startsWith("MG-SH3C-REQUEST-REVIEW"))
-    || !item.blockers.includes("MG-SH3C-EVENT-SEMANTICS-DECISION-REQUIRED"))) {
+    || item.blockers.includes("MG-SH3C-EVENT-SEMANTICS-DECISION-REQUIRED")
+    || item.blockers.includes("MG-SH3C-NO-EVENT-COMPLETION-NOT-SUPPORTED")
+    || item.status !== "ready-for-review")) {
     throw new Error(
-      "validation and partial-failure requests must be authored with explicit event-semantic blockers",
+      "validation and partial-failure event semantics must be resolved and ready for review",
     );
   }
   const eligible = structuredClone(built.packages[1]);
@@ -217,7 +212,7 @@ if (mode === "--write") {
       "incomplete-ready-state-rejected",
       "state-profile-scenario-approval-enforced",
       "first-wave-seed-and-collector-bindings",
-      "validation-and-partial-request-contracts",
+      "validation-and-partial-event-semantics-resolved",
     ],
   }, null, 2));
 } else {
@@ -302,12 +297,23 @@ export async function buildPromotionSet() {
       && approvedBinding.targets?.target?.hooks?.seed
         ?.requiresSeedProfileHash === true;
     const websocketBinding = scenarioBinding?.eventCollectors?.source;
+    const completionMode = websocketBinding?.completionMode ?? "terminal-event";
     const websocketReady = websocketBinding?.kind === "websocket"
       && websocketBinding.path === "/ws/zboss"
       && websocketBinding.messageType === "panel-data-update"
       && websocketBinding.subscribe?.type === "panel-subscribe"
       && websocketBinding.subscribe?.content?.subscribe === true
-      && websocketBinding.terminalStatuses?.length > 0;
+      && websocketBinding.terminalStatuses?.length > 0
+      && (
+        completionMode === "terminal-event"
+        || (
+          completionMode === "no-event"
+          && scenarioId === "validation-failure"
+          && Number.isInteger(websocketBinding.noEventWindowMs)
+          && websocketBinding.noEventWindowMs >= 100
+          && websocketBinding.noEventWindowMs <= 5_000
+        )
+      );
     const writeSafetyReady = primary
       && draft.writeSafety?.mode === "disposable"
       && draft.writeSafety?.disposable === true

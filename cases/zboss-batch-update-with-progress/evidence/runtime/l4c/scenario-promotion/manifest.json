@@ -5,7 +5,7 @@
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "a4c5baa3ae205071a97925f599cc681c35a7600c530fef6ca5744acdc1cae07e",
+  "runtimeContractHash": "5a9fc1dad2bfde35945f2aabdc38241892b0a7396bb95c287355390bcb8c817a",
   "promotionWave": "sh3c-first-wave",
   "scenarioOrder": [
     "primary-success",
@@ -18,35 +18,35 @@
     {
       "scenarioId": "primary-success",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/primary-success.json",
-      "hash": "bf87d254de7d028a3d2d22bde55386b4f2cbd089e495ff204ca12946bda9247a",
+      "hash": "03ae43f0f16d726d77cdb5bbffa7ee4c9a0e1d04e7accbc6f678c5177af0cd08",
       "blockerCount": 1
     },
     {
       "scenarioId": "validation-failure",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/validation-failure.json",
-      "hash": "c605fa5f0bb10155c959272223c1e1587f33142971c869f47041d065cd05de88",
-      "blockerCount": 2
+      "hash": "18a12e42d9d5af133f3009f45a6e2d0aff70797d81c25d111bd3e96ac3b99f49",
+      "blockerCount": 0
     },
     {
       "scenarioId": "batch-partial-failure",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/batch-partial-failure.json",
-      "hash": "75be11a52dca4e1addd6d42ecc9a8c762ac8160d07e30ed5144e2a818aca4690",
-      "blockerCount": 1
+      "hash": "2b0bcd8beb541d378462274e0c51bbcc9a10d417e018ad6ef508ae438fa86953",
+      "blockerCount": 0
     },
     {
       "scenarioId": "dependency-failure",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/dependency-failure.json",
-      "hash": "e24f663e7af098b24c444ba75516dc71c58142af752de1a2bc1b0a8260b6eac6",
+      "hash": "1b987b63da915c5ba2a38a9bdf60cfaf8030d0994d7d2da8d77d2474b2dab6cf",
       "blockerCount": 13
     },
     {
       "scenarioId": "concurrent-write",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/concurrent-write.json",
-      "hash": "affa093ea056bbd91ce6b89e28623f4b988769b0af9655d71595ff1820690b08",
+      "hash": "00e35e01885372cc412e56df80223b3d19ff22189a5ed1d5ea63af4994d5f401",
       "blockerCount": 13
     }
   ],
   "readyForHumanReview": true,
   "readyForRealPromotion": false,
-  "manifestHash": "a316b49846e9c31e23b4ed6290fff84463d88b16444d2b1b40c19d5459d7fba0"
+  "manifestHash": "9f7e8d593a03bd5b1a1aba084915daea242ae3f45f800024adb1bc870a0516c7"
 }

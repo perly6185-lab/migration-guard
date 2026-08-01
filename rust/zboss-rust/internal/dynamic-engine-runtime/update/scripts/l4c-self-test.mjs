@@ -203,6 +203,77 @@ assert.ok(
     "target",
   ).some((finding) => finding.endsWith(":events")),
 );
+const validationScenario = {
+  ...contract.entries[0].scenarios[0],
+  id: "validation-failure",
+  category: "validation",
+};
+const validationNoEventObservation = canonicalObservation(
+  "validation-failure",
+  plan.scope,
+);
+validationNoEventObservation.dimensions.events = {
+  verified: true,
+  collector: "websocket",
+  completionMode: "no-event",
+  eventCount: 0,
+};
+assert.deepEqual(
+  validateCanonicalObservation(
+    validationNoEventObservation,
+    validationScenario,
+    plan.scope,
+    "source",
+  ),
+  [],
+);
+const validationTargetNoEventObservation = structuredClone(
+  validationNoEventObservation,
+);
+validationTargetNoEventObservation.dimensions.events.collector =
+  "state-profile";
+assert.deepEqual(
+  validateCanonicalObservation(
+    validationTargetNoEventObservation,
+    validationScenario,
+    plan.scope,
+    "target",
+  ),
+  [],
+);
+const nonEmptyNoEventObservation = structuredClone(
+  validationNoEventObservation,
+);
+nonEmptyNoEventObservation.dimensions.events.eventCount = 1;
+assert.ok(
+  validateCanonicalObservation(
+    nonEmptyNoEventObservation,
+    validationScenario,
+    plan.scope,
+    "source",
+  ).some((finding) => finding.endsWith(":events")),
+);
+const primaryNoEventObservation = canonicalObservation(
+  "primary-success",
+  plan.scope,
+);
+primaryNoEventObservation.dimensions.events = {
+  verified: true,
+  collector: "websocket",
+  completionMode: "no-event",
+  eventCount: 0,
+};
+const primaryScenario = contract.entries
+  .flatMap((entry) => entry.scenarios)
+  .find((scenario) => scenario.id === "primary-success");
+assert.ok(
+  validateCanonicalObservation(
+    primaryNoEventObservation,
+    primaryScenario,
+    plan.scope,
+    "source",
+  ).some((finding) => finding.endsWith(":events")),
+);
 
 const profiledPlan = structuredClone(plan);
 profiledPlan.normalization = {
@@ -485,7 +556,7 @@ await slowRun;
 
 console.log(JSON.stringify({
   status: "pass",
-  checks: 40,
+  checks: 44,
   coverage: [
     "safe-plan-preflight",
     "production-scope-rejected",
@@ -507,6 +578,10 @@ console.log(JSON.stringify({
     "canonical-observation-valid",
     "canonical-websocket-observation-valid",
     "empty-redis-terminal-rejected",
+    "validation-no-event-observation-valid",
+    "validation-target-no-event-observation-valid",
+    "non-empty-no-event-observation-rejected",
+    "no-event-observation-scenario-bounded",
     "canonical-observation-fail-closed",
     "batch-update-contract-projection",
     "canonical-projection-identity-protected",

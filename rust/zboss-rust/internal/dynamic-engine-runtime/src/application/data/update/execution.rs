@@ -340,7 +340,7 @@ pub struct BatchExecutionResult {
     pub committed: Vec<usize>,
     pub replayed: Vec<usize>,
     pub failures: Vec<RowFailure>,
-    pub terminal_event: ProgressEvent,
+    pub terminal_event: Option<ProgressEvent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -386,6 +386,26 @@ where
     )
     .map_err(ExecuteError::Plan)?;
     let total = plan.requested.len();
+    let mut failures = command
+        .validation_failures
+        .iter()
+        .filter(|(index, _)| plan.requested.contains(index))
+        .map(|(index, message)| RowFailure {
+            index: *index,
+            phase: FailurePhase::Validation,
+            message: message.clone(),
+        })
+        .collect::<Vec<_>>();
+    failures.sort_by_key(|failure| failure.index);
+    if total > 0 && plan.valid.is_empty() && failures.len() == total {
+        return Ok(BatchExecutionResult {
+            status: TerminalStatus::Success,
+            committed: Vec::new(),
+            replayed: Vec::new(),
+            failures,
+            terminal_event: None,
+        });
+    }
     progress
         .record(
             &command.batch_id,
@@ -400,18 +420,6 @@ where
             ),
         )
         .map_err(ExecuteError::Progress)?;
-
-    let mut failures = command
-        .validation_failures
-        .iter()
-        .filter(|(index, _)| plan.requested.contains(index))
-        .map(|(index, message)| RowFailure {
-            index: *index,
-            phase: FailurePhase::Validation,
-            message: message.clone(),
-        })
-        .collect::<Vec<_>>();
-    failures.sort_by_key(|failure| failure.index);
     progress
         .record(
             &command.batch_id,
@@ -473,7 +481,7 @@ where
         )
         .map_err(ExecuteError::Progress)?;
 
-    let status = terminal_status(committed.len(), failures.len());
+    let status = terminal_status(committed.len(), &failures);
     let terminal_event = progress_event(
         &command.batch_id,
         3,
@@ -497,7 +505,7 @@ where
         committed,
         replayed,
         failures,
-        terminal_event,
+        terminal_event: Some(terminal_event),
     })
 }
 
@@ -521,12 +529,24 @@ fn progress_event(
     }
 }
 
-fn terminal_status(committed: usize, failed: usize) -> TerminalStatus {
-    match (committed, failed) {
+fn terminal_status(committed: usize, failures: &[RowFailure]) -> TerminalStatus {
+    let execution_failures = failures
+        .iter()
+        .filter(|failure| failure.phase != FailurePhase::Validation)
+        .count();
+    match (committed, execution_failures) {
         (_, 0) => TerminalStatus::Success,
         (0, _) => TerminalStatus::Failed,
         _ => TerminalStatus::PartialFailed,
     }
+}
+
+pub fn all_rows_rejected_by_validation(command: &BatchCommand) -> bool {
+    !command.rows.is_empty()
+        && command
+            .rows
+            .iter()
+            .all(|row| command.validation_failures.contains_key(&row.index))
 }
 
 fn validate_context(context: &ExecutionContext) -> Result<(), ExecuteError> {

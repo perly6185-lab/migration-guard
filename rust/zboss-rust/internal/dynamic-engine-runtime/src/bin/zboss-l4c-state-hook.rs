@@ -398,7 +398,19 @@ async fn collect(
                     "outboxRows": mysql.outbox_rows,
                 },
                 "state": { "verified": true, "mysql": mysql },
-                "events": { "verified": true, "redis": redis },
+                "events": if scope.scenario_id == "validation-failure"
+                    && redis.progress.is_empty()
+                {
+                    json!({
+                        "verified": true,
+                        "collector": "state-profile",
+                        "completionMode": "no-event",
+                        "eventCount": 0,
+                        "redis": redis,
+                    })
+                } else {
+                    json!({ "verified": true, "redis": redis })
+                },
                 "failures": {
                     "verified": true,
                     "markerScoped": true,

@@ -108,6 +108,7 @@ if ((plan.requiredEnvironment ?? []).includes("MG_L4C_JAVA_STATE_PROFILE")) {
         for (const scenarioId of selectedScenarioIds) {
           if (!validWebSocketCollector(
             binding?.scenarios?.[scenarioId]?.eventCollectors?.source,
+            scenarioId,
           )) {
             findings.push(
               `MG-L4C-WEBSOCKET-COLLECTOR-INVALID:${scenarioId}`,
@@ -324,7 +325,8 @@ function validateHook(hook, label, targetFindings) {
   }
 }
 
-function validWebSocketCollector(value) {
+function validWebSocketCollector(value, scenarioId) {
+  const completionMode = value?.completionMode ?? "terminal-event";
   return value?.kind === "websocket"
     && value.path === "/ws/zboss"
     && value.messageType === "panel-data-update"
@@ -332,7 +334,21 @@ function validWebSocketCollector(value) {
     && value.subscribe?.type === "panel-subscribe"
     && value.subscribe?.content?.subscribe === true
     && Array.isArray(value.terminalStatuses)
-    && value.terminalStatuses.length > 0;
+    && value.terminalStatuses.length > 0
+    && ["terminal-event", "no-event"].includes(completionMode)
+    && (
+      completionMode !== "no-event"
+      || (
+        scenarioId === "validation-failure"
+        && Number.isInteger(value.noEventWindowMs)
+        && value.noEventWindowMs >= 100
+        && value.noEventWindowMs <= 5_000
+      )
+    )
+    && (
+      completionMode !== "terminal-event"
+      || value.noEventWindowMs === undefined
+    );
 }
 
 function validateEnvironment(planValue, targetFindings) {

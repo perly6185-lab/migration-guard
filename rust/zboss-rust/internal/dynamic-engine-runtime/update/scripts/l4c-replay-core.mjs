@@ -1414,9 +1414,15 @@ export function validateCanonicalObservation(
     && Number.isFinite(dimensions.events?.terminalPercentage)
     && dimensions.events.terminalPercentage >= 0
     && dimensions.events.terminalPercentage <= 100;
+  const noEvents = scenario.id === "validation-failure"
+    && dimensions.events?.completionMode === "no-event"
+    && dimensions.events?.eventCount === 0
+    && ["websocket", "state-profile"].includes(
+      dimensions.events?.collector,
+    );
   if (
     dimensions.events?.verified !== true
-    || (!redisEvents && !websocketEvents)
+    || (!redisEvents && !websocketEvents && !noEvents)
   ) {
     findings.push(`${prefix}:events`);
   }

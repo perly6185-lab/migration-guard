@@ -62,7 +62,7 @@
   "collectorSpecs": {
     "events": {
       "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/validation-failure/collectors/events.draft.json",
-      "hash": "76b0edb596cb294011a26afd89f7f910545ea6c33cefd0710ed194e6b6c7b8db"
+      "hash": "f55bead4b30afa25cb5071a02f0d42820c6c64411dbf8043fdc237d5288c9db7"
     },
     "mysql": {
       "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/validation-failure/collectors/mysql.draft.json",

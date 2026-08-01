@@ -237,6 +237,82 @@ try {
     binding.targets.source.stateProfileSha256);
   await writeJson(profilePath, profile);
 
+  const validationScenarioId = "validation-failure";
+  const validationSeed = seedPaths.get(validationScenarioId);
+  const originalProfileHash = binding.targets.source.stateProfileSha256;
+  const originalValidationSeedHash = validationSeed.sha256;
+  const progressSemantic = profile.semantics.find((item) =>
+    item.role === "progress");
+  Object.assign(progressSemantic, {
+    storage: "volatile-event",
+    resourceIds: [],
+    collector: "websocket",
+    rationale: "Java precheck progress is emitted only when execution starts.",
+  });
+  profile.redis.resources = profile.redis.resources.filter((resource) =>
+    resource.role !== "progress");
+  await writeJson(profilePath, profile);
+  const volatileProfileHash = createHash("sha256")
+    .update(await readFile(profilePath))
+    .digest("hex");
+  binding.targets.source.stateProfileSha256 = volatileProfileHash;
+  validationSeed.seed.stateProfileSha256 = volatileProfileHash;
+  await writeJson(validationSeed.path, validationSeed.seed);
+  binding.scenarios[validationScenarioId].seedProfiles.source.sha256 =
+    createHash("sha256")
+      .update(await readFile(validationSeed.path))
+      .digest("hex");
+  binding.scenarios[validationScenarioId].eventCollectors = {
+    source: {
+      kind: "websocket",
+      path: "/ws/zboss",
+      messageType: "panel-data-update",
+      contentEncoding: "json-string",
+      subscribe: {
+        type: "panel-subscribe",
+        content: { panelId: "{panelId}", subscribe: true },
+      },
+      terminalStatuses: ["SUCCESS", "FAILED", "PARTIAL_FAILED"],
+      completionMode: "no-event",
+      noEventWindowMs: 1000,
+    },
+  };
+  await writeJson(bindingPath, binding);
+  const noEventReady = await runPreflight(
+    planPath,
+    bindingPath,
+    profilePath,
+    [validationScenarioId],
+  );
+  assert.equal(noEventReady.code, 0);
+  assert.equal(noEventReady.output.status, "ready");
+
+  delete binding.scenarios[validationScenarioId]
+    .eventCollectors.source.noEventWindowMs;
+  await writeJson(bindingPath, binding);
+  const noEventWindowBlocked = await runPreflight(
+    planPath,
+    bindingPath,
+    profilePath,
+    [validationScenarioId],
+  );
+  assert.equal(noEventWindowBlocked.code, 1);
+  assert.ok(noEventWindowBlocked.output.findings.includes(
+    `MG-L4C-WEBSOCKET-COLLECTOR-INVALID:${validationScenarioId}`,
+  ));
+
+  const restoredProfile = javaStateProfile(scenarioIds);
+  profile.semantics = restoredProfile.semantics;
+  profile.redis.resources = restoredProfile.redis.resources;
+  await writeJson(profilePath, profile);
+  binding.targets.source.stateProfileSha256 = originalProfileHash;
+  validationSeed.seed.stateProfileSha256 = originalProfileHash;
+  await writeJson(validationSeed.path, validationSeed.seed);
+  binding.scenarios[validationScenarioId].seedProfiles.source.sha256 =
+    originalValidationSeedHash;
+  delete binding.scenarios[validationScenarioId].eventCollectors;
+  await writeJson(bindingPath, binding);
+
   profile.applicableScenarios = profile.applicableScenarios.filter(
     (scenario) => scenario !== scenarioIds[1],
   );
@@ -350,7 +426,7 @@ try {
 
   console.log(JSON.stringify({
     status: "pass",
-    checks: 24,
+    checks: 26,
     coverage: [
       "approved-plan-binding-static-preflight",
       "required-environment-present",
@@ -369,6 +445,8 @@ try {
       "scenario-seed-alias-escape-rejected",
       "target-seed-profile-validation",
       "target-seed-reserved-key-rejected",
+      "validation-no-event-collector-ready",
+      "validation-no-event-window-fail-closed",
     ],
   }, null, 2));
 } finally {

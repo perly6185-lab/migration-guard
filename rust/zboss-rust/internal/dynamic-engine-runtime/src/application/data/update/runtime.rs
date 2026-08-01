@@ -37,7 +37,7 @@ use super::{
     entrypoint::HTTP_PATH,
     execution::{
         BatchCommand, BatchExecutionResult, CommitDisposition, ProgressJournal, RowCommand,
-        TerminalStatus, execute_batch,
+        TerminalStatus, all_rows_rejected_by_validation, execute_batch,
     },
 };
 
@@ -508,6 +508,13 @@ async fn batch_update(
     Json(request): Json<HttpBatchUpdateRequest>,
 ) -> Result<Json<CommonResult<HttpBatchUpdateResponse>>, AppError> {
     let command = build_command(&headers, &request)?;
+    if all_rows_rejected_by_validation(&command.command) {
+        return Ok(Json(CommonResult {
+            code: 0,
+            data: response_from_validation_rejection(&command),
+            msg: String::new(),
+        }));
+    }
     if let Some(response) = load_replay(&state, &command).await? {
         return Ok(Json(CommonResult {
             code: 0,
@@ -559,6 +566,26 @@ async fn batch_update(
             Err(error)
         }
         (Ok(_), Err(error)) => Err(error),
+    }
+}
+
+fn response_from_validation_rejection(command: &RuntimeCommand) -> HttpBatchUpdateResponse {
+    HttpBatchUpdateResponse {
+        request_id: command.context.request_id.clone(),
+        batch_id: command.batch_id.clone(),
+        client_session_id: command.session_id.clone(),
+        chunk_no: command.chunk_no,
+        committed_rows: Vec::new(),
+        replayed_rows: Vec::new(),
+        failed_rows: command
+            .command
+            .validation_failures
+            .keys()
+            .copied()
+            .collect(),
+        status: TerminalStatus::Success.as_str().to_owned(),
+        replayed: false,
+        final_chunk: command.final_chunk,
     }
 }
 
@@ -1412,5 +1439,20 @@ mod tests {
                 .message
                 .contains("batchHeaderValueList")
         );
+    }
+
+    #[test]
+    fn validation_only_rejection_returns_success_without_execution() {
+        let mut request = request();
+        request.batch_post_value_list[0].validation_error = Some("type mismatch".to_owned());
+        let command = build_command(&headers(), &request).unwrap();
+
+        assert!(all_rows_rejected_by_validation(&command.command));
+        let response = response_from_validation_rejection(&command);
+        assert_eq!(response.status, TerminalStatus::Success.as_str());
+        assert_eq!(response.failed_rows, [0]);
+        assert!(response.committed_rows.is_empty());
+        assert!(response.replayed_rows.is_empty());
+        assert!(!response.replayed);
     }
 }

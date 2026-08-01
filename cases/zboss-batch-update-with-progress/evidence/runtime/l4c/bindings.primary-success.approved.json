@@ -429,6 +429,8 @@
       "eventCollectors": {
         "source": {
           "kind": "websocket",
+          "completionMode": "no-event",
+          "noEventWindowMs": 1000,
           "path": "/ws/zboss",
           "openTimeoutMs": 10000,
           "terminalTimeoutMs": 30000,

@@ -266,7 +266,7 @@ async function runInvoke(targetValue, scenarioValue, contextValue) {
 }
 
 async function openEventCollector(configuration, contextValue) {
-  validateEventCollector(configuration);
+  validateEventCollector(configuration, contextValue);
   if (typeof WebSocket !== "function") {
     throw new Error("WebSocket runtime is unavailable");
   }
@@ -363,6 +363,33 @@ async function openEventCollector(configuration, contextValue) {
   await openedPromise;
   return {
     async finish(responseBody) {
+      if (configuration.completionMode === "no-event") {
+        const deadline = Date.now() + configuration.noEventWindowMs;
+        while (Date.now() <= deadline) {
+          if (socketError) throw socketError;
+          if (records.length > 0) {
+            throw new Error("WebSocket event was emitted for a no-event scenario");
+          }
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        const outputRoot = path.resolve(contextValue.outputRoot);
+        const eventPath = path.join(
+          outputRoot,
+          "events",
+          contextValue.targetKind,
+          contextValue.scenarioId,
+          `${contextValue.marker}.jsonl`,
+        );
+        ensureNested(outputRoot, eventPath, "WebSocket event evidence");
+        await mkdir(path.dirname(eventPath), { recursive: true });
+        await writeFile(eventPath, "", "utf8");
+        return {
+          protocol: EVENT_PROTOCOL,
+          collector: "websocket",
+          completionMode: "no-event",
+          eventCount: 0,
+        };
+      }
       const deadline = Date.now()
         + (configuration.terminalTimeoutMs ?? 30_000);
       let selected;
@@ -661,7 +688,7 @@ function validateBinding(value) {
           if (!["source", "target"].includes(targetKind)) {
             throw new Error("event collector target is invalid");
           }
-          validateEventCollector(collector);
+          validateEventCollector(collector, { scenarioId, targetKind });
         } catch {
           findings.push(
             `MG-L4C-BINDING-EVENT-COLLECTOR-INVALID:${targetKind}:${scenarioId}`,
@@ -673,7 +700,8 @@ function validateBinding(value) {
   if (findings.length > 0) throw new Error(findings.sort().join(", "));
 }
 
-function validateEventCollector(value) {
+function validateEventCollector(value, contextValue = {}) {
+  const completionMode = value?.completionMode ?? "terminal-event";
   if (
     !value
     || value.kind !== "websocket"
@@ -695,6 +723,21 @@ function validateEventCollector(value) {
     || value.terminalStatuses.length > 16
     || value.terminalStatuses.some((status) =>
       typeof status !== "string" || !/^[A-Z_]{2,32}$/.test(status))
+    || !["terminal-event", "no-event"].includes(completionMode)
+    || (
+      completionMode === "no-event"
+      && (
+        contextValue.scenarioId !== "validation-failure"
+        || contextValue.targetKind !== "source"
+        || !Number.isInteger(value.noEventWindowMs)
+        || value.noEventWindowMs < 100
+        || value.noEventWindowMs > 5_000
+      )
+    )
+    || (
+      completionMode === "terminal-event"
+      && value.noEventWindowMs !== undefined
+    )
     || (
       value.responseBatchIdPaths !== undefined
       && (

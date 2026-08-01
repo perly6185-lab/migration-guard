@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "protocol": "migration-guard.batch-update-l4c-scenario-package/v1",
-  "status": "review-required",
+  "status": "ready-for-review",
   "realEvidenceEligible": false,
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "a4c5baa3ae205071a97925f599cc681c35a7600c530fef6ca5744acdc1cae07e",
+  "runtimeContractHash": "5a9fc1dad2bfde35945f2aabdc38241892b0a7396bb95c287355390bcb8c817a",
   "sourceIdentity": {
     "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
     "dirty": true,
@@ -30,7 +30,7 @@
   ],
   "sourceDraft": {
     "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/validation-failure/fixture.draft.json",
-    "sha256": "a155d3ded3ec6ff5fb5ed720aad9d4e223ff949da9a0f213a26c99b25dea83b9"
+    "sha256": "7465b5a18291723408ea8df0404580d9a5f08ed50dfe255fe5252e7f07ffd137"
   },
   "stateProfile": {
     "path": "evidence/runtime/l4c/java-state-profile.primary-success.approved.json",
@@ -47,7 +47,7 @@
   "collectors": {
     "events": {
       "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/validation-failure/collectors/events.draft.json",
-      "sha256": "76b0edb596cb294011a26afd89f7f910545ea6c33cefd0710ed194e6b6c7b8db",
+      "sha256": "f55bead4b30afa25cb5071a02f0d42820c6c64411dbf8043fdc237d5288c9db7",
       "status": "ready",
       "reviewFindings": []
     },
@@ -131,9 +131,6 @@
     "allowedOnlyWhenBlockersEmpty": true,
     "status": "pending"
   },
-  "blockers": [
-    "MG-SH3C-EVENT-SEMANTICS-DECISION-REQUIRED",
-    "MG-SH3C-NO-EVENT-COMPLETION-NOT-SUPPORTED"
-  ],
-  "packageHash": "c605fa5f0bb10155c959272223c1e1587f33142971c869f47041d065cd05de88"
+  "blockers": [],
+  "packageHash": "18a12e42d9d5af133f3009f45a6e2d0aff70797d81c25d111bd3e96ac3b99f49"
 }

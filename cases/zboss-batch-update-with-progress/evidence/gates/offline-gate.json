@@ -33,10 +33,10 @@
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\offline-contract\\batch-update-risk-cases.json"
   ],
   "evidenceDigests": {
-    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\index.json": "90822beaae522d2f2e62d99cf5b21c7c1ff1eee69e10df8c6a0f26f0e687ce1b",
-    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\behavior-graph.json": "734d69008d83cf60825ee3cd04a33a20762afb0365834ad913d0ec71c848701a",
-    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\endpoint-replacement-plan.json": "38dc780b4fee98d62c81537d28b944d5e60bdb3e5b5410d170e292864bd788a7",
-    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\java-analysis.json": "50f8b96a4554f80aa9d46674f79077ab71cd4e7a48f980cdbebe5ac8cf5e29fb",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\index.json": "a166e5920ea4e847ddef511f0d05124f26801acbda96cede3ff6686a5b307e23",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\behavior-graph.json": "c83d0ed2598ba6e90c09bf5643958172cd37f82a55acf0afffc951a3f5f624dd",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\endpoint-replacement-plan.json": "5ee4fb69b6beadcdba079a8dd874c6fe4dc799745fce0eb6dc89f1fe3fa8d4cd",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\evidence\\analysis\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\java-analysis.json": "38a51a22fff391bfa61e4e1edd9122d079a4fad1ec1625b60721e05570f7ff49",
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\batch-partial-failure\\fixture.draft.json": "08b6deef94649677a572a28f15b39390c83b3ad6e92707a9c8b19c4833156e9a",
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\batch-row-limit-rejected\\fixture.draft.json": "63ddfb677dbe4cfc3d2d12d495eaada991b0c5e8e8f738027efd19308306d8da",
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\batch-update-success\\fixture.draft.json": "e125d0cfd7a03c33fbfd632a3da1361eaec888721283f5401cd307282840172d",
@@ -54,13 +54,13 @@
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\schema-transition-failure\\fixture.draft.json": "4b72e64078c8df01510310e1bb21600e5ca959bc131baf30781082938fdeda56",
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\transaction-failure\\fixture.draft.json": "56147114c8e3821ea65e15594b7c59abdfd93f33d9f0f7904d17dcaf5328b2bd",
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\undo-excludes-failed-rows\\fixture.draft.json": "6006350267590e9d5df10c638548346e8710a1e53191183f511bd72d85559e27",
-    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\validation-failure\\fixture.draft.json": "23fc745d07b70df4a2778909280f80466699cf41b63b13f0e004e4c438a3f9c4",
+    "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\validation-failure\\fixture.draft.json": "18cfb24cbb1fb0d68231c0fbedb5491c324acca3086f3a997b4673764b33f222",
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime-drafts\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\web-rpc-entrypoint-parity\\fixture.draft.json": "b6106e761161ce96e6b7e18b60c9ab93a1fbe34c8c393d085621a3f1c2a3ad8b",
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\java-runtime\\post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress\\primary-success.json": "3a35d69a91059bf7aa8cc0db0376d28353992226183b1a28e05c65c1a0b28ddf",
     "D:\\learn\\migration-guard\\cases\\zboss-batch-update-with-progress\\fixtures\\offline-contract\\batch-update-risk-cases.json": "c9c32dedfa51037efbdf6902228ea6b81db292871fe6a1735986921b25cf08d2"
   },
-  "generatedAt": "2026-08-01T08:21:24.815Z",
+  "generatedAt": "2026-08-01T08:55:49.887Z",
   "freshness": "fresh",
   "upstream": [],
-  "reportHash": "4adc06aa389434ca7903644b7e52b8e9641d0fb04ce71368deb38502a5901786"
+  "reportHash": "d30add380c666e9d9a64dd07913105a4481efce315600244bb3836ef64f58fc4"
 }

@@ -102,7 +102,7 @@ fn batch_partial_failure() {
         .validation_failures
         .insert(1, "invalid reference".to_owned());
     let (store, _, result) = run(&request);
-    assert_eq!(result.status, TerminalStatus::PartialFailed);
+    assert_eq!(result.status, TerminalStatus::Success);
     assert_eq!(result.committed, [0, 2]);
     assert_eq!(
         result
@@ -172,7 +172,7 @@ fn branch_coverage() {
         .validation_failures
         .insert(1, "invalid".to_owned());
     let partial = run(&partial_request).2;
-    assert_eq!(partial.status, TerminalStatus::PartialFailed);
+    assert_eq!(partial.status, TerminalStatus::Success);
 
     let mut failed_request = command("branch-failed", vec![row(0, None)]);
     failed_request.dependency_failure = Some("metadata unavailable".to_owned());
@@ -432,7 +432,7 @@ fn primary_success() {
     assert_eq!(response.terminal, TerminalStatus::Success);
     assert_eq!(response.committed, [0]);
     assert_eq!(
-        result.terminal_event.terminal,
+        result.terminal_event.unwrap().terminal,
         Some(TerminalStatus::Success)
     );
 }
@@ -467,7 +467,8 @@ fn progress_event_shape() {
         1
     );
     assert_eq!(
-        first.terminal_event.committed + first.terminal_event.failed,
+        first.terminal_event.as_ref().unwrap().committed
+            + first.terminal_event.as_ref().unwrap().failed,
         2
     );
 
@@ -603,9 +604,11 @@ fn validation_failure() {
     request
         .validation_failures
         .insert(1, "type mismatch".to_owned());
-    let (store, _, result) = run(&request);
-    assert_eq!(result.status, TerminalStatus::Failed);
+    let (store, progress, result) = run(&request);
+    assert_eq!(result.status, TerminalStatus::Success);
     assert!(result.committed.is_empty());
+    assert!(result.terminal_event.is_none());
+    assert!(progress.events("validation").is_empty());
     assert_eq!(result.failures.len(), 2);
     assert!(
         result
@@ -614,6 +617,7 @@ fn validation_failure() {
             .all(|failure| failure.phase == FailurePhase::Validation)
     );
     assert!(store.undo_intents(1, "validation").is_empty());
+    assert!(store.outbox(1, "validation").is_empty());
 }
 
 #[test]

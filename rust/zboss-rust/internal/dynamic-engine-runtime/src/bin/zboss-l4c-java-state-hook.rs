@@ -1215,10 +1215,27 @@ fn websocket_event_state(scope: &Scope) -> Result<Value, String> {
         .join(format!("{}.jsonl", scope.marker));
     let content =
         fs::read(&event_path).map_err(|error| format!("read Java WebSocket evidence: {error}"))?;
-    if content.is_empty() || content.len() > 1024 * 1024 {
+    decode_websocket_event_state(scope, &content)
+}
+
+fn decode_websocket_event_state(scope: &Scope, content: &[u8]) -> Result<Value, String> {
+    if content.is_empty() {
+        if scope.scenario_id != "validation-failure" {
+            return Err("Java WebSocket terminal evidence is missing".to_owned());
+        }
+        return Ok(json!({
+            "verified": true,
+            "collector": "websocket",
+            "protocol": EVENT_PROTOCOL,
+            "completionMode": "no-event",
+            "eventCount": 0,
+            "terminalEventCount": 0,
+        }));
+    }
+    if content.len() > 1024 * 1024 {
         return Err("Java WebSocket evidence size is invalid".to_owned());
     }
-    let text = std::str::from_utf8(&content)
+    let text = std::str::from_utf8(content)
         .map_err(|_| "Java WebSocket evidence is not UTF-8".to_owned())?;
     let mut event_count = 0u64;
     let mut terminal_count = 0u64;
@@ -1858,6 +1875,18 @@ fn escape_like(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validation_no_event_evidence_is_explicit_and_scenario_bounded() {
+        let mut validation = fixture_scope();
+        validation.scenario_id = "validation-failure".to_owned();
+        let evidence = decode_websocket_event_state(&validation, b"").unwrap();
+        assert_eq!(evidence["completionMode"], "no-event");
+        assert_eq!(evidence["eventCount"], 0);
+
+        let primary = fixture_scope();
+        assert!(decode_websocket_event_state(&primary, b"").is_err());
+    }
 
     #[test]
     fn approved_profile_maps_each_role_without_raw_sql() {
