@@ -1,7 +1,7 @@
 # L4-C project state hook design
 
-Status: approved design baseline  
-Project: `zboss-batch-update-with-progress`  
+Status: approved design baseline
+Project: `zboss-batch-update-with-progress`
 Scope: disposable Java/Rust dual replay only
 
 ## 1. Decision

@@ -198,4 +198,3 @@ function relative(file) {
 function safeMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
-
