@@ -132,8 +132,7 @@
     "status": "pending"
   },
   "blockers": [
-    "MG-SH3C-FAULT-CONTROLLER-NOT-BOUND",
     "MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED"
   ],
-  "packageHash": "719f400f44424ace02e41ff4e30da7446637765b37bbc703e9d6c53f922a06a1"
+  "packageHash": "23c9849a4280b4fe6be8528acd77a4269911fa3c859d597a0193da210daf8bc0"
 }

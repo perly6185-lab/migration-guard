@@ -374,9 +374,9 @@ scenario mechanisms and approved environment binding pending.
 - The operation driver and the report gate pin `dependency-failure` evidence
   to that mechanism and to `toxiproxy:<target-kind>:` resource identity.
 - Pending: controllers for post-commit effect, schema transition, transaction
-  and undo delivery scenarios; reviewed Toxiproxy endpoints bound in
-  `bindings.json`; interrupted-run `faultArtifacts=0` proof on the real
-  environment.
+  and undo delivery scenarios; approved Toxiproxy endpoint environment values
+  (`MG_L4C_SOURCE/TARGET_TOXIPROXY_*`) for the committed scenario binding;
+  interrupted-run `faultArtifacts=0` proof on the real environment.
 
 ### SH-5 — Pilot and full replay
 

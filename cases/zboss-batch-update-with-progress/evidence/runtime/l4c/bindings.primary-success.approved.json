@@ -709,7 +709,15 @@
           "responseBatchIdPaths": ["data.batchId"]
         }
       },
-      "hooks": {}
+      "hooks": {
+        "faultController": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-toxiproxy-fault-controller.mjs",
+            "{faultAction}"
+          ]
+        }
+      }
     },
     "concurrent-write": {
       "seedProfiles": {

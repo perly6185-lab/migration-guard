@@ -74,6 +74,8 @@ const outputDirectory = path.join(
   "l4c",
   "scenario-promotion",
 );
+const FAULT_CONTROLLER_SCRIPT =
+  "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-toxiproxy-fault-controller.mjs";
 const packageDirectory = path.join(outputDirectory, "packages");
 const manifestPath = path.join(outputDirectory, "manifest.json");
 const technicalReviewPath = path.join(outputDirectory, "technical-review.json");
@@ -186,6 +188,25 @@ if (mode === "--write") {
   ) {
     throw new Error("first-wave concurrency driver must be bound");
   }
+  const dependencyPackage = built.packages.find((item) =>
+    item.scenarioId === "dependency-failure");
+  if (
+    dependencyPackage.blockers.includes(
+      "MG-SH3C-FAULT-CONTROLLER-NOT-BOUND",
+    )
+  ) {
+    throw new Error("first-wave dependency fault controller must be bound");
+  }
+  const unapprovedControllers = [
+    undefined,
+    { program: "node", args: [FAULT_CONTROLLER_SCRIPT] },
+    { program: "node", args: ["scripts/evil-fault-controller.mjs", "{faultAction}"] },
+    { program: "bash", args: [FAULT_CONTROLLER_SCRIPT, "{faultAction}"] },
+    { program: "node", args: [FAULT_CONTROLLER_SCRIPT, "apply"] },
+  ];
+  if (unapprovedControllers.some((value) => validFaultControllerBinding(value))) {
+    throw new Error("unapproved fault controller binding was not rejected");
+  }
   const eligible = structuredClone(built.packages[1]);
   eligible.realEvidenceEligible = true;
   const eligibleFindings = validatePackage(eligible);
@@ -222,7 +243,7 @@ if (mode === "--write") {
   }
   console.log(JSON.stringify({
     status: "pass",
-    checks: 18,
+    checks: 20,
     coverage: [
       "first-wave-exactly-five",
       "contract-scenario-binding",
@@ -242,6 +263,8 @@ if (mode === "--write") {
       "first-wave-write-safety-enforced",
       "technical-review-tamper-rejected",
       "concurrency-driver-bound",
+      "dependency-fault-controller-bound",
+      "unapproved-fault-controller-rejected",
     ],
   }, null, 2));
 } else {
@@ -344,6 +367,8 @@ export async function buildPromotionSet() {
       );
     const concurrencyReady = scenarioId !== "concurrent-write"
       || validConcurrencyPlan(scenarioBinding?.concurrencyPlan);
+    const faultControllerReady = scenarioId !== "dependency-failure"
+      || validFaultControllerBinding(scenarioBinding?.hooks?.faultController);
     const writeSafetyReady = draft.writeSafety?.mode === "disposable"
       && draft.writeSafety?.disposable === true
       && draft.writeSafety?.writeApproved === true
@@ -376,6 +401,7 @@ export async function buildPromotionSet() {
         value.reviewFindings.map((finding) =>
           `MG-SH3C-COLLECTOR-REVIEW:${collector}:${finding}`)),
       ...(scenarioId === "dependency-failure"
+        && !faultControllerReady
         ? ["MG-SH3C-FAULT-CONTROLLER-NOT-BOUND"]
         : []),
       ...(scenarioId === "concurrent-write"
@@ -780,6 +806,14 @@ function validConcurrencyPlan(value) {
       && typeof writer?.value === "string"
       && writer.value.length >= 1
       && writer.value.length <= 256);
+}
+
+function validFaultControllerBinding(value) {
+  return value?.program === "node"
+    && Array.isArray(value?.args)
+    && value.args.length === 2
+    && value.args[0] === FAULT_CONTROLLER_SCRIPT
+    && value.args[1] === "{faultAction}";
 }
 
 function placeholderLocations(value, current = "$", output = []) {

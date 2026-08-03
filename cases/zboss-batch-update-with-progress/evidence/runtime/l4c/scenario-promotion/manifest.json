@@ -36,8 +36,8 @@
     {
       "scenarioId": "dependency-failure",
       "path": "evidence/runtime/l4c/scenario-promotion/packages/dependency-failure.json",
-      "hash": "719f400f44424ace02e41ff4e30da7446637765b37bbc703e9d6c53f922a06a1",
-      "blockerCount": 2
+      "hash": "23c9849a4280b4fe6be8528acd77a4269911fa3c859d597a0193da210daf8bc0",
+      "blockerCount": 1
     },
     {
       "scenarioId": "concurrent-write",
@@ -48,10 +48,10 @@
   ],
   "technicalReview": {
     "path": "evidence/runtime/l4c/scenario-promotion/technical-review.json",
-    "hash": "5392324522a10f86388e520913903e21d88b1810a831e67dffd37dc365e64c78",
+    "hash": "564e0f7fad821bc1519a20a6764a1933c21532702db63e8b55a39ce83ade453e",
     "status": "changes-required"
   },
   "readyForHumanReview": true,
   "readyForRealPromotion": false,
-  "manifestHash": "a91318e930c56c19f01059e43f5589150f4821c4515a8d58bc1dea210b60d4e3"
+  "manifestHash": "17c46964ca94258ca10c74dac9d324f204cf93defb0e837a949398896512d6c4"
 }

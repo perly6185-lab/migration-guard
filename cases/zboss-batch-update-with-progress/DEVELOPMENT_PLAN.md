@@ -61,9 +61,10 @@ deterministic, hash-bound `review-required` packages plus a tamper-evident
 automated technical review. Their requests, Seed adapters and WebSocket capture
 are bound; all five still require a fresh disposable-write approval. The
 concurrency scenario now uses the reviewed built-in two-writer barrier driver;
-dependency failure now has a repo-local `toxiproxy-reset-peer-v1` controller
-whose evidence contract is pinned by the operation driver and report gate, but
-its approved environment endpoints are still unbound. None
+dependency failure now binds the repo-local `toxiproxy-reset-peer-v1`
+controller in the approved scenario bindings, with the promotion package
+gate enforcing that binding; the approved Toxiproxy endpoint environment
+values and fresh write-safety approval remain. None
 is marked real eligible.
 
 The approved state/fault boundary, canonical observation model, cleanup order,
