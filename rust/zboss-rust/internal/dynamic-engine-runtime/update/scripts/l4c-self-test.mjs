@@ -731,8 +731,9 @@ function mockExecutor(options = {}) {
           state: "active",
           scenarioId: operationContext.scenarioId,
           marker: operationContext.marker,
-          mechanismId: "self-test-fault",
-          resourceId: `self-test:${operationContext.marker}`,
+          mechanismId: "toxiproxy-reset-peer-v1",
+          resourceId:
+            `toxiproxy:${operationContext.targetKind}:self-test:${operationContext.marker}`,
           restoreRequired: true,
           artifactCount: 1,
           applyHash: stableHash({

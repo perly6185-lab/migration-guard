@@ -846,6 +846,7 @@ async function executeOperation(definition, operationContext, context) {
   const environment = {
     ...process.env,
     MG_L4C_BASE_URL: operationContext.baseUrl,
+    MG_L4C_ALLOWED_HOSTS: JSON.stringify(context.plan.scope.allowedHosts),
     MG_L4C_CATEGORY: operationContext.category ?? "",
     MG_L4C_DATABASE: context.plan.scope.database,
     MG_L4C_MARKER: operationContext.marker ?? "",
@@ -1140,7 +1141,7 @@ function validateOperationResult(value, operation, marker, scope) {
   }
   if (
     operation === "injectFault"
-    && !validFaultEvidence(value.fault, marker)
+    && !validFaultEvidence(value.fault, marker, value.fault?.scenarioId)
   ) {
     throw new Error("fault controller evidence is invalid");
   }
@@ -1304,7 +1305,11 @@ function validateReportTargetEvidence(report, contract, findings) {
       }
       if (
         scenarioContract.category === "fault"
-        && !validFaultEvidence(operations.injectFault?.fault, scenario.marker)
+        && !validFaultEvidence(
+          operations.injectFault?.fault,
+          scenario.marker,
+          scenario.scenarioId,
+        )
       ) {
         findings.push(
           `MG-L4C-REPORT-FAULT-EVIDENCE-INVALID:${targetKind}:${scenario.scenarioId}`,
@@ -1363,7 +1368,7 @@ function validReportedOperation(value, marker, scope) {
     && value.scope.rowCount <= scope.maxRowsPerScenario;
 }
 
-function validFaultEvidence(value, marker) {
+function validFaultEvidence(value, marker, scenarioId) {
   return Boolean(value)
     && value.schemaVersion === 1
     && value.protocol === FAULT_PROTOCOL
@@ -1371,10 +1376,13 @@ function validFaultEvidence(value, marker) {
     && value.action === "verify-active"
     && value.state === "active"
     && value.marker === marker
-    && typeof value.scenarioId === "string"
-    && value.scenarioId.length > 0
+    && value.scenarioId === scenarioId
     && typeof value.mechanismId === "string"
     && /^[A-Za-z0-9._:-]{3,128}$/.test(value.mechanismId)
+    && (
+      scenarioId !== "dependency-failure"
+      || value.mechanismId === "toxiproxy-reset-peer-v1"
+    )
     && typeof value.resourceId === "string"
     && value.resourceId.includes(marker)
     && value.restoreRequired === true

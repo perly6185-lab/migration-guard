@@ -713,8 +713,18 @@ async function runFaultController(definition, contextValue, action) {
     || value?.scenarioId !== contextValue.scenarioId
     || typeof value?.mechanismId !== "string"
     || !/^[A-Za-z0-9._:-]{3,128}$/.test(value.mechanismId)
+    || (
+      contextValue.scenarioId === "dependency-failure"
+      && value.mechanismId !== "toxiproxy-reset-peer-v1"
+    )
     || typeof value?.resourceId !== "string"
     || !value.resourceId.includes(contextValue.marker)
+    || (
+      contextValue.scenarioId === "dependency-failure"
+      && !value.resourceId.startsWith(
+        `toxiproxy:${contextValue.targetKind}:`,
+      )
+    )
     || !Number.isInteger(value?.artifactCount)
     || value.artifactCount < 0
   ) {

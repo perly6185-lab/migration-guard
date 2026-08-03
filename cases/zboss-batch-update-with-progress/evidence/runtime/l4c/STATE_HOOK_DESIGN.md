@@ -363,9 +363,20 @@ Status: SH-3A and SH-3B code completed; concrete scenario promotion pending.
 
 ### SH-4 — Fault controllers
 
-- Implement one reversible controller for each required mechanism.
-- Add apply/verify/revert recovery tests.
-- Prove `faultArtifacts=0` after interruption.
+Status: `dependency-failure` mechanism code completed and gated; remaining
+scenario mechanisms and approved environment binding pending.
+
+- The `toxiproxy-reset-peer-v1` controller applies, verifies and reverts a
+  marker-bound `reset_peer` toxic through the Toxiproxy admin API. Admin URLs
+  are pinned to the approved plan hosts, toxic configuration drift is
+  fail-closed, and the mock-admin self-test covers apply/verify/revert
+  recovery plus zero-residue verification for both target kinds.
+- The operation driver and the report gate pin `dependency-failure` evidence
+  to that mechanism and to `toxiproxy:<target-kind>:` resource identity.
+- Pending: controllers for post-commit effect, schema transition, transaction
+  and undo delivery scenarios; reviewed Toxiproxy endpoints bound in
+  `bindings.json`; interrupted-run `faultArtifacts=0` proof on the real
+  environment.
 
 ### SH-5 — Pilot and full replay
 

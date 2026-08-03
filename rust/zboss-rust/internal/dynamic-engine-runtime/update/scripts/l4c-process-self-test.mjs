@@ -544,8 +544,8 @@ console.log(JSON.stringify({
   }[action],
   scenarioId,
   marker,
-  mechanismId: "process-self-test-fault",
-  resourceId: "fault:" + targetKind + ":" + marker,
+  mechanismId: "toxiproxy-reset-peer-v1",
+  resourceId: "toxiproxy:" + targetKind + ":self-test:" + marker,
   restoreRequired: active,
   artifactCount: active ? 1 : 0,
 }));

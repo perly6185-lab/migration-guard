@@ -50,8 +50,8 @@ process-local/WebSocket progress plus `boss_undo_data` and
 `boss_undo_data_shard` undo persistence, but does not establish batch-specific
 Redis progress, idempotency, commit-marker, outbox or schema-ledger resources.
 The reviewed deployment profile and explicit resolution of those semantic gaps,
-scenario-specific fault injectors, reviewed fixture promotion and real service
-evidence remain pending.
+the remaining scenario-specific fault injectors, reviewed fixture promotion and
+real service evidence remain pending.
 
 SH-3A/SH-3B are implemented: semantic roles can now be classified as physical,
 volatile-event or absent, and scenario-specific declarative Seed files are
@@ -61,7 +61,9 @@ deterministic, hash-bound `review-required` packages plus a tamper-evident
 automated technical review. Their requests, Seed adapters and WebSocket capture
 are bound; all five still require a fresh disposable-write approval. The
 concurrency scenario now uses the reviewed built-in two-writer barrier driver;
-dependency failure still requires an approved external fault controller. None
+dependency failure now has a repo-local `toxiproxy-reset-peer-v1` controller
+whose evidence contract is pinned by the operation driver and report gate, but
+its approved environment endpoints are still unbound. None
 is marked real eligible.
 
 The approved state/fault boundary, canonical observation model, cleanup order,
