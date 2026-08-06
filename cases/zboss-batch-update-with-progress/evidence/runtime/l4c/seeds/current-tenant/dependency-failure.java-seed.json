@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-java-seed/v1",
+  "status": "draft",
+  "projectId": "zboss-batch-update-with-progress",
+  "targetKind": "source",
+  "scenarioId": "dependency-failure",
+  "stateProfileSha256": "b41dd8ea245be5918eb39915b2f3fdaae69f8de01627c1c22f2062dd9d558b5f",
+  "resources": [
+    {
+      "resourceId": "projection",
+      "rows": [
+        {
+          "markerSuffix": "row-001",
+          "values": {
+            "value": "SH-3C dependency seed row 001",
+            "quantity": 1
+          }
+        },
+        {
+          "markerSuffix": "row-002",
+          "values": {
+            "value": "SH-3C dependency seed row 002",
+            "quantity": 2
+          }
+        }
+      ]
+    }
+  ]
+}

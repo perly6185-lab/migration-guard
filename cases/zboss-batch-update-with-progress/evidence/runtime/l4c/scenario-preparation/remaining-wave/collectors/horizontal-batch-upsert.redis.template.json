@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-redis-collector/v1",
+  "collector": "redis",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "scenarioId": "horizontal-batch-upsert",
+  "sourceDraft": {
+    "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/horizontal-batch-upsert/collectors/redis.draft.json",
+    "sha256": "f5953888bc6bca7a954a08f4959211cf618e65755e77af32a7f4fb060a7109c8"
+  },
+  "connectionEnv": "MG_JAVA_REDIS_URL",
+  "notApplicable": false,
+  "probes": [
+    "marker-scoped-lock-or-ledger-key",
+    "marker-scoped-progress-key-if-approved"
+  ],
+  "reviewRequired": [
+    "confirm-java-progress-is-or-is-not-redis-backed",
+    "bind-key-prefix-and-type-without-wildcard-delete"
+  ]
+}

@@ -4,7 +4,7 @@
   "status": "template",
   "projectId": "zboss-batch-update-with-progress",
   "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
-  "runtimeContractHash": "22661e7de2ccd1b5db7b8c3ad49b4fcda61cd8fde20c1c0eae7f5b325f6c9447",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
   "approval": {
     "mode": "disposable-test-write",
     "approvedBy": "<write-approver>",
@@ -220,7 +220,25 @@
   "normalization": {
     "profile": "batch-update-contract-v1",
     "supportedScenarios": [
-      "primary-success"
+      "batch-partial-failure",
+      "batch-row-limit-rejected",
+      "batch-update-success",
+      "branch-coverage",
+      "chunked-paste-progress",
+      "concurrent-write",
+      "context-isolation",
+      "dependency-failure",
+      "entrypoint-parity",
+      "horizontal-batch-upsert",
+      "post-commit-effect-failure",
+      "primary-success",
+      "progress-event-shape",
+      "scale-boundary",
+      "schema-transition-failure",
+      "transaction-failure",
+      "undo-excludes-failed-rows",
+      "validation-failure",
+      "web-rpc-entrypoint-parity"
     ],
     "ignorePaths": [
       "observation.metadata.durationMs",

@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-remaining-wave-components/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
+  "promotionWave": "sh3c-remaining-wave",
+  "scenarioOrder": [
+    "batch-row-limit-rejected",
+    "batch-update-success",
+    "branch-coverage",
+    "chunked-paste-progress",
+    "context-isolation",
+    "entrypoint-parity",
+    "horizontal-batch-upsert",
+    "post-commit-effect-failure",
+    "progress-event-shape",
+    "scale-boundary",
+    "schema-transition-failure",
+    "transaction-failure",
+    "undo-excludes-failed-rows",
+    "web-rpc-entrypoint-parity"
+  ],
+  "components": [
+    {
+      "scenarioId": "batch-row-limit-rejected",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/batch-row-limit-rejected.json",
+      "hash": "b8eb3ef650228cc5cecc925e0a453be8110c695d79224570333becbd9983f1b4",
+      "blockerCount": 5
+    },
+    {
+      "scenarioId": "batch-update-success",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/batch-update-success.json",
+      "hash": "7c39456fb2846a4ddf1e9ab0b752090f8d8ffd4b62398774d4fb0d9e633fb478",
+      "blockerCount": 5
+    },
+    {
+      "scenarioId": "branch-coverage",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/branch-coverage.json",
+      "hash": "34a6a25d6c9b294e5334476036736cfa6c2dd6268c2a8fd1d9e659bc794c9b07",
+      "blockerCount": 5
+    },
+    {
+      "scenarioId": "chunked-paste-progress",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/chunked-paste-progress.json",
+      "hash": "b63911ed34aa640fa2af0a38f2ad85b051e26ba8dfd6c8408e46e6a0e7103c2b",
+      "blockerCount": 5
+    },
+    {
+      "scenarioId": "context-isolation",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/context-isolation.json",
+      "hash": "d6e1b27e1862b2ea95436c543d3465f6a59f9d1aa7f34d97fe9c86abdee21a9d",
+      "blockerCount": 5
+    },
+    {
+      "scenarioId": "entrypoint-parity",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/entrypoint-parity.json",
+      "hash": "bd462038e97f052aec9c1025899988f09847df6854b86de490e204c4f0be067f",
+      "blockerCount": 5
+    },
+    {
+      "scenarioId": "horizontal-batch-upsert",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/horizontal-batch-upsert.json",
+      "hash": "fb217e0238f407f81f42f83c81f6b9432c3c50c8a16e6ad717cae09387fecd07",
+      "blockerCount": 5
+    },
+    {
+      "scenarioId": "post-commit-effect-failure",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/post-commit-effect-failure.json",
+      "hash": "4562600ba92842c0cd41a0aec0c5d9903bb3dec35090682e536cd2ff8409db20",
+      "blockerCount": 6
+    },
+    {
+      "scenarioId": "progress-event-shape",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/progress-event-shape.json",
+      "hash": "09fc936e923f8623a967cf8abd9edd3891863ca1f148847655ca11ebdab0ab4d",
+      "blockerCount": 5
+    },
+    {
+      "scenarioId": "scale-boundary",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/scale-boundary.json",
+      "hash": "35cf07f881e0527a3c7930fb6a3887ad7d8b529fb8392b396d5b325540d45eb4",
+      "blockerCount": 5
+    },
+    {
+      "scenarioId": "schema-transition-failure",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/schema-transition-failure.json",
+      "hash": "e6f7ceffe60db91f8995dc72d4d3da2490a009b90e6ae391d7a53110a04cd1e3",
+      "blockerCount": 6
+    },
+    {
+      "scenarioId": "transaction-failure",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/transaction-failure.json",
+      "hash": "22eab47253f9674aaaf34cd713671c4a1541b4264518310b9fa5956e1faa8e7a",
+      "blockerCount": 6
+    },
+    {
+      "scenarioId": "undo-excludes-failed-rows",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/undo-excludes-failed-rows.json",
+      "hash": "c0b9717ee4d92e6ba3a19fb367fb90268edbd15feaf01a3044cf51478206b5bd",
+      "blockerCount": 6
+    },
+    {
+      "scenarioId": "web-rpc-entrypoint-parity",
+      "status": "review-required",
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/web-rpc-entrypoint-parity.json",
+      "hash": "3e446efd6f5711ee8e06995e58b1f8a25e0d10929dee82b14a7b02bf61682c82",
+      "blockerCount": 5
+    }
+  ],
+  "binding": {
+    "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/binding-preparation.json",
+    "hash": "0f874961e15e7c4d651112a143e53ad846710ef986c561286d7db7ccdb23d926",
+    "status": "review-required"
+  },
+  "summary": {
+    "scenarioCount": 14,
+    "seedCandidateCount": 28,
+    "collectorCandidateCount": 42,
+    "faultControllerCount": 4
+  },
+  "manifestHash": "181cd4875098628b8ce8a0512fdba595faba86027d7507f7fc59e0f38d1984b8"
+}

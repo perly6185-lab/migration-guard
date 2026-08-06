@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-target-seed/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "targetKind": "target",
+  "scenarioId": "context-isolation",
+  "rows": [
+    {
+      "markerSuffix": "row-001",
+      "values": {
+        "value": "<reviewed-context-isolation-value-1>",
+        "quantity": 1
+      }
+    }
+  ],
+  "adapter": {
+    "status": "review-required",
+    "command": "zboss-l4c-state-hook seed zboss-evidence-v1",
+    "requiredReview": "bind target fixture adapter to the same marker scope"
+  }
+}

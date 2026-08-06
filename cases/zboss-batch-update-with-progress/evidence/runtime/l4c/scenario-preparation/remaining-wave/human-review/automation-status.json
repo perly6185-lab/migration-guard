@@ -1,0 +1,251 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-remaining-wave-automation-status/v1",
+  "status": "current-tenant-fixture-created-real-write-blocked",
+  "observedAt": "2026-08-05",
+  "projectId": "zboss-batch-update-with-progress",
+  "promotionWave": "sh3c-remaining-wave",
+  "automaticWorkCompleted": [
+    "remaining-wave scenario packages generated",
+    "component candidates generated",
+    "human review hash packet generated",
+    "approval intake template generated",
+    "approval intake draft generated",
+    "approval intake validator implemented",
+    "approval record writer implemented",
+    "current-tenant disposable first-wave fixture created with 23-hour cleanup",
+    "optional Java WebSocket eventBaseUrl binding support implemented",
+    "static CI gates integrated",
+    "npm run batch-rust:l4c-ci passed"
+  ],
+  "currentReadableInputs": {
+    "sourceCodeAvailable": true,
+    "deploymentObservationAvailable": true,
+    "runtimeEnvironmentFile": "zboss-l4c.runtime.env.local",
+    "runtimeEnvironmentReadableKeys": [
+      "MG_L4C_APPROVAL_NONCE",
+      "MG_L4C_BINDING_FILE",
+      "MG_L4C_DATASOURCE",
+      "MG_L4C_JAVA_STATE_PROFILE",
+      "MG_L4C_REAL_WRITE_APPROVED"
+    ],
+    "currentProcessMgEnvironmentKeysFound": false
+  },
+  "latestUserProvidedRuntimeFacts": {
+    "receivedAt": "2026-08-05",
+    "javaDeploymentHost": "10.10.10.177",
+    "databaseHost": "10.10.10.14",
+    "redisHost": "10.10.10.14",
+    "tenantId": "2059823220968001539",
+    "userId": "2059823219277697026",
+    "bearerTokenProvidedInConversation": true,
+    "bearerTokenPersisted": false
+  },
+  "readOnlyRuntimeChecks": [
+    {
+      "id": "JAVA-ACTUATOR-HEALTH",
+      "status": "passed",
+      "baseUrl": "http://10.10.10.177:22882",
+      "httpStatus": 200,
+      "operation": "health",
+      "wroteData": false
+    },
+    {
+      "id": "AUTHENTICATED-READ-IDENTITY-MATCH",
+      "status": "matched-existing-evidence",
+      "evidence": "artifacts/batch-update-rust/l4-authenticated-read-replay.json",
+      "tenantId": "2059823220968001539",
+      "userId": "2059823219277697026",
+      "classification": "authenticated-read-baseline-passed-write-gate-blocked",
+      "wroteData": false
+    },
+    {
+      "id": "JAVA-SSH-READONLY-DISCOVERY",
+      "status": "passed",
+      "host": "10.10.10.177",
+      "remoteUser": "testserver",
+      "observations": [
+        "Java deployment processes are running with the test profile",
+        "Java data service ports 21081 and 21082 are listening",
+        "Actuator port 22882 is listening",
+        "MySQL port 3306 and Redis port 6379 are listening on the deployment host",
+        "TCP connectivity from the Java host to 10.10.10.14:3306 and 10.10.10.14:6379 passed",
+        "Nacos test namespace reports zboss-data-server at 10.10.10.177:21081 as healthy",
+        "Nacos test namespace reports zboss-global-data-server at 10.10.10.177:22882 as healthy",
+        "Nacos test namespace reports gateway-server at 10.10.10.177:48080 as healthy",
+        "Nacos test namespace reports infra-server at 10.10.10.177:48082 as healthy"
+      ],
+      "wroteData": false
+    },
+    {
+      "id": "INFRA-SSH-READONLY-DISCOVERY",
+      "status": "passed",
+      "host": "10.10.10.14",
+      "remoteUser": "dev",
+      "observations": [
+        "MySQL is running and port 3306 is listening",
+        "Redis is running and port 6379 is listening",
+        "Nacos is running and port 8848 is listening",
+        "Nacos test namespace contains 11 registered services"
+      ],
+      "wroteData": false
+    },
+    {
+      "id": "INFRA-SSH-KEY-ONLY-VERIFICATION",
+      "status": "passed",
+      "host": "10.10.10.14",
+      "remoteUser": "dev",
+      "observation": "The existing local public key was already present in the remote authorized_keys; native SSH BatchMode hostname and whoami checks passed without password fallback.",
+      "keyChanged": false,
+      "wroteData": false
+    }
+  ],
+  "firstWaveAutomaticReview": {
+    "status": "current-tenant-fixture-created-write-blocked",
+    "evidence": [
+      "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/scenario-promotion/manifest.json",
+      "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/scenario-promotion/technical-review.json",
+      "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/replay-plan.json",
+      "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/java-state-profile.primary-success.approved.json",
+      "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/scenario-preparation/first-wave-current-tenant-fixture.json",
+      "rust/zboss-rust/internal/dynamic-engine-runtime/update/docker-compose.l4c.yml"
+    ],
+    "scenarioIds": [
+      "primary-success",
+      "validation-failure",
+      "batch-partial-failure",
+      "dependency-failure",
+      "concurrent-write"
+    ],
+    "packageHashReview": {
+      "status": "passed",
+      "scenarioCount": 5,
+      "packageHashesPresent": true,
+      "seedProfilesApproved": true,
+      "collectorCandidatesReady": true,
+      "technicalBlockerForAllScenarios": "MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED"
+    },
+    "resourceScope": {
+      "status": "current-tenant-disposable-fixture-created",
+      "database": "zz_boss_test",
+      "projectionTable": "cust_table7400",
+      "undoTable": "boss_undo_data",
+      "tenantColumn": "tenant_id",
+      "markerColumn": "cust_field66744",
+      "cleanupMarker": "reqId",
+      "maxRowsPerScenario": 2,
+      "fixtureTenantId": "2059823220968001539",
+      "currentAuthenticatedTenantId": "2059823220968001539",
+      "scopeMatchesCurrentIdentity": true,
+      "cleanupVerificationRequired": true,
+      "panelId": "2084946130506348194",
+      "pageId": "2084946130506348195",
+      "usePageId": "2084946130506348196",
+      "initialProjectionRows": 0,
+      "cleanupEvent": "mg_sh3c_cleanup_7400",
+      "cleanupAt": "2026-08-06T17:26:12+08:00"
+    },
+    "serviceEndpoints": {
+      "javaHealth": {
+        "endpoint": "http://10.10.10.177:22882/actuator/health",
+        "status": "passed"
+      },
+      "rustHealth": {
+        "endpoint": "http://127.0.0.1:18089/internal/ready",
+        "host": "10.10.10.177",
+        "status": "passed",
+        "bindingVisibility": "loopback-only"
+      },
+      "websocket": {
+        "observedEndpoint": "ws://10.10.10.177:21081/ws/zboss",
+        "status": "handshake-open",
+        "currentBindingBase": "http://10.10.10.177:22882",
+        "bindingStatus": "separate-eventBaseUrl-code-support-added-awaiting-reviewed-binding-update"
+      }
+    },
+    "faultEndpoints": {
+      "dependencyFailureController": {
+        "mechanism": "toxiproxy-reset-peer-v1",
+        "sourceControlUrlBound": false,
+        "targetControlUrlBound": false,
+        "observedAdminPorts": [],
+        "status": "not-bound"
+      },
+      "otherFirstWaveScenarios": "no-real-fault-control-endpoint-required-by-current-package"
+    }
+  },
+  "currentTenantDraftArtifacts": {
+    "status": "draft-awaiting-semantic-review",
+    "fixture": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/scenario-preparation/first-wave-current-tenant-fixture.json",
+    "binding": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/bindings.current-tenant.draft.json",
+    "javaStateProfile": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/java-state-profile.current-tenant.draft.json",
+    "replayPlan": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/replay-plan.current-tenant.draft.json",
+    "javaStateProfileSha256": "b41dd8ea245be5918eb39915b2f3fdaae69f8de01627c1c22f2062dd9d558b5f",
+    "sourceSeedDirectory": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/current-tenant",
+    "scenarioCount": 5,
+    "legacyApprovedArtifactsChanged": false
+  },
+  "knownEnvironment": {
+    "javaBaseUrl": "http://10.10.10.177:22882",
+    "javaServiceProfile": "test",
+    "infrastructureHost": "10.10.10.14",
+    "mysqlDatabase": "zz_boss_test",
+    "redisDatabase": "1",
+    "nacosNamespace": "test"
+  },
+  "blockingFacts": [
+    {
+      "id": "EXPIRED-FIRST-WAVE-PLAN",
+      "detail": "The existing approved L4-C replay plan expired at 2026-08-01T08:08:27.404Z and covers only primary-success."
+    },
+    {
+      "id": "SENSITIVE-RUNTIME-BINDINGS-NOT-CURRENTLY-READABLE",
+      "detail": "A Java bearer token and user identity were provided in conversation and were not persisted. Current readable env input still does not include full source/target MySQL or Redis URLs required by the L4-C state hooks."
+    },
+    {
+      "id": "PREVIOUS-AUDIT-WRITE-BLOCKED",
+      "detail": "artifacts/batch-update-rust/l4-real-binding-audit.json records authenticated-read-ready-write-blocked and says the selected attendance scope is not an approved batch-write fixture."
+    },
+    {
+      "id": "FAULT-ENDPOINTS-NOT-BOUND",
+      "detail": "The four remaining-wave fault controllers are implemented but no real source/target fault control endpoints are currently bound."
+    },
+    {
+      "id": "FIRST-WAVE-FIXTURE-TENANT-MISMATCH",
+      "detail": "The legacy first-wave fixture remains scoped to tenant 2059233802901135363 and must not be used; a new current-tenant fixture is recorded at evidence/runtime/l4c/scenario-preparation/first-wave-current-tenant-fixture.json."
+    },
+    {
+      "id": "FIRST-WAVE-WEBSOCKET-BINDING-PORT-MISMATCH",
+      "detail": "The reviewed WebSocket handshake opens on 10.10.10.177:21081/ws/zboss, while the current first-wave binding base is 10.10.10.177:22882; the binding requires review before evidence collection."
+    },
+    {
+      "id": "FIRST-WAVE-TOXIPROXY-ENDPOINT-NOT-BOUND",
+      "detail": "The dependency-failure controller requires source and target Toxiproxy admin URLs, but neither environment binding nor ports 8474-8476 were found on the two runtime hosts."
+    },
+    {
+      "id": "CURRENT-APP-TOKEN-EXPIRED-OR-INVALID",
+      "detail": "The bearer token supplied in conversation returned code 401 (账号未登录) through the direct Java service and gateway; no batch invoke was attempted."
+    },
+    {
+      "id": "CURRENT-FIXTURE-REVIEW-PENDING",
+      "detail": "The current-tenant metadata fixture exists and is scheduled for automatic cleanup, but the reviewed seed/profile/binding hashes and fresh disposable-write plan still reference the legacy fixture until regenerated."
+    }
+  ],
+  "notBlocked": [
+    "hash verification",
+    "static scenario preparation",
+    "component candidate preparation",
+    "approval template generation",
+    "approval validator self-test",
+    "L4-C static CI"
+  ],
+  "nextAutomaticStepWhenInputsExist": [
+    "regenerate current-tenant seed/profile/binding copies from the recorded fixture IDs",
+    "load a refreshed authenticated application token into process scope only",
+    "materialize approval-intake.json without changing reviewed hashes",
+    "run npm run batch-rust:sh3c-approval-intake-check",
+    "run npm run batch-rust:sh3c-approval-record",
+    "generate a fresh approved replay plan for the selected scenarios",
+    "run preflight before any real write execution"
+  ]
+}

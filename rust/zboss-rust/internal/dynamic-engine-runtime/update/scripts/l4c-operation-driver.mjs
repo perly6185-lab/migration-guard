@@ -8,6 +8,7 @@ import {
   OPERATION_PROTOCOL,
   stableHash,
 } from "./l4c-replay-core.mjs";
+import { SCENARIO_FAULT_DEFINITIONS } from "./l4c-scenario-fault-controller.mjs";
 
 const BINDING_PROTOCOL = "migration-guard.batch-update-l4c-bindings/v1";
 const HOOK_PROTOCOL = "migration-guard.batch-update-l4c-state-hook/v1";
@@ -42,6 +43,7 @@ const scenarioId = process.env.MG_L4C_SCENARIO_ID ?? "";
 const marker = process.env.MG_L4C_MARKER ?? "";
 const phase = process.env.MG_L4C_PHASE ?? "";
 const category = process.env.MG_L4C_CATEGORY ?? "";
+const baseUrl = requiredEnvironment("MG_L4C_BASE_URL");
 const target = binding.targets[targetKind];
 if (!target) throw new Error(`target binding is missing: ${targetKind}`);
 const scenario = scenarioId ? binding.scenarios[scenarioId] : undefined;
@@ -65,7 +67,8 @@ const context = {
   category,
   marker,
   phase,
-  baseUrl: requiredEnvironment("MG_L4C_BASE_URL"),
+  baseUrl,
+  eventBaseUrl: process.env.MG_L4C_EVENT_BASE_URL || baseUrl,
   maxRows: Number(requiredEnvironment("MG_L4C_MAX_ROWS")),
   operation,
   scope,
@@ -398,7 +401,7 @@ async function openEventCollector(configuration, contextValue) {
     throw new Error("MG_L4C_OUTPUT_ROOT is required for WebSocket capture");
   }
   const replacements = replacementValues(contextValue);
-  const base = new URL(contextValue.baseUrl);
+  const base = new URL(contextValue.eventBaseUrl ?? contextValue.baseUrl);
   base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
   const socket = new WebSocket(new URL(configuration.path, base));
   const records = [];
@@ -704,6 +707,8 @@ async function runFaultController(definition, contextValue, action) {
     },
     definition.timeoutMs ?? 120_000,
   );
+  const expectedScenarioMechanism =
+    SCENARIO_FAULT_DEFINITIONS[contextValue.scenarioId]?.mechanismId;
   if (
     value?.schemaVersion !== 1
     || value?.protocol !== FAULT_PROTOCOL
@@ -717,12 +722,22 @@ async function runFaultController(definition, contextValue, action) {
       contextValue.scenarioId === "dependency-failure"
       && value.mechanismId !== "toxiproxy-reset-peer-v1"
     )
+    || (
+      expectedScenarioMechanism
+      && value.mechanismId !== expectedScenarioMechanism
+    )
     || typeof value?.resourceId !== "string"
     || !value.resourceId.includes(contextValue.marker)
     || (
       contextValue.scenarioId === "dependency-failure"
       && !value.resourceId.startsWith(
         `toxiproxy:${contextValue.targetKind}:`,
+      )
+    )
+    || (
+      expectedScenarioMechanism
+      && !value.resourceId.startsWith(
+        `failpoint:${contextValue.targetKind}:${expectedScenarioMechanism}:`,
       )
     )
     || !Number.isInteger(value?.artifactCount)

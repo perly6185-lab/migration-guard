@@ -1,0 +1,918 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-bindings/v1",
+  "status": "draft",
+  "projectId": "zboss-batch-update-with-progress",
+  "targets": {
+    "source": {
+      "kind": "java",
+      "stateProfileSha256": "b41dd8ea245be5918eb39915b2f3fdaae69f8de01627c1c22f2062dd9d558b5f",
+      "healthPath": "/actuator/health",
+      "healthMethod": "GET",
+      "acceptedHealthStatuses": [
+        200
+      ],
+      "healthJsonPath": "status",
+      "healthExpectedValue": "UP",
+      "invokePath": "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress",
+      "responseFields": {
+        "code": "code"
+      },
+      "timeoutMs": 120000,
+      "hooks": {
+        "doctor": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "doctor"
+          ],
+          "requiresProfileHash": true
+        },
+        "seed": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "seed"
+          ],
+          "requiresProfileHash": true,
+          "requiresSeedProfileHash": true
+        },
+        "snapshot": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "snapshot"
+          ],
+          "requiresProfileHash": true
+        },
+        "collect": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "collect"
+          ],
+          "requiresProfileHash": true
+        },
+        "cleanup": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "cleanup"
+          ],
+          "requiresProfileHash": true
+        },
+        "verifyCleanup": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-java-state-hook",
+            "--",
+            "verify-cleanup"
+          ],
+          "requiresProfileHash": true
+        }
+      },
+      "eventBaseUrl": "http://127.0.0.1:21081"
+    },
+    "target": {
+      "kind": "rust",
+      "healthPath": "/internal/ready",
+      "healthMethod": "GET",
+      "acceptedHealthStatuses": [
+        200
+      ],
+      "healthJsonPath": "status",
+      "healthExpectedValue": "ready",
+      "invokePath": "/zboss/data/view/dynamic/engine/use/engine-use-batch-page/batchUpdateWithProgress",
+      "responseFields": {
+        "code": "code"
+      },
+      "timeoutMs": 120000,
+      "hooks": {
+        "doctor": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "doctor",
+            "zboss-evidence-v1"
+          ]
+        },
+        "seed": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "seed",
+            "zboss-evidence-v1"
+          ],
+          "requiresSeedProfileHash": true
+        },
+        "snapshot": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "snapshot",
+            "zboss-evidence-v1"
+          ]
+        },
+        "collect": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "collect",
+            "zboss-evidence-v1"
+          ]
+        },
+        "cleanup": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "cleanup",
+            "zboss-evidence-v1"
+          ]
+        },
+        "verifyCleanup": {
+          "program": "cargo",
+          "args": [
+            "run",
+            "--quiet",
+            "--manifest-path",
+            "rust/zboss-rust/internal/dynamic-engine-runtime/Cargo.toml",
+            "--bin",
+            "zboss-l4c-state-hook",
+            "--",
+            "verify-cleanup",
+            "zboss-evidence-v1"
+          ]
+        }
+      }
+    }
+  },
+  "scenarios": {
+    "primary-success": {
+      "seedProfiles": {
+        "source": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/current-tenant/primary-success.java-seed.json",
+          "sha256": "5af21b54c260a98ef08ec937454e4d6aeeaa2f68e305af5c307404997b28ebe7"
+        },
+        "target": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/primary-success.rust-seed.json",
+          "sha256": "cb574a33bcd5633bc2cab5bd6ca41491dd80791b29e4079d2d9e11d7ccd792ed"
+        }
+      },
+      "request": {
+        "source": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "authorization": "${MG_JAVA_TOKEN}",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "reqId": "{marker}",
+            "pageNo": 1,
+            "pageSize": 100,
+            "usePageId": "2084946130506348196",
+            "pageId": "2084946130506348195",
+            "panelId": "2084946130506348194",
+            "interId": "2084946130506348253",
+            "clientSessionId": "{marker}",
+            "enableProgress": true,
+            "expectedTotalRows": 2,
+            "isLastChunk": true,
+            "undo": true,
+            "operationKind": "ROW_UPDATE",
+            "operationLabel": "SH-3C primary success",
+            "batchHeaderValueList": [],
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "custField66745": "SH-3C updated row 001",
+                "custField66746": 101
+              },
+              {
+                "id": "{seed.row-002.generatedId}",
+                "custField66745": "SH-3C updated row 002",
+                "custField66746": 102
+              }
+            ]
+          },
+          "acceptedStatuses": [
+            200
+          ],
+          "expectedRowCount": 2,
+          "responseFields": {
+            "code": "code"
+          }
+        },
+        "target": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "interId": "2084946130506348253",
+            "httpId": "2084946130506348253",
+            "usePageId": "2084946130506348196",
+            "panelId": "{panelId}",
+            "clientSessionId": "{marker}",
+            "chunkNo": 0,
+            "isLastChunk": true,
+            "batchId": "{marker}",
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "values": {
+                  "value": "SH-3C updated row 001",
+                  "quantity": 101
+                }
+              },
+              {
+                "id": "{seed.row-002.generatedId}",
+                "values": {
+                  "value": "SH-3C updated row 002",
+                  "quantity": 102
+                }
+              }
+            ]
+          },
+          "acceptedStatuses": [
+            200
+          ],
+          "expectedRowCount": 2,
+          "responseFields": {
+            "code": "code"
+          }
+        }
+      },
+      "eventCollectors": {
+        "source": {
+          "kind": "websocket",
+          "path": "/ws/zboss",
+          "openTimeoutMs": 10000,
+          "terminalTimeoutMs": 30000,
+          "maxEvents": 1000,
+          "maxBytes": 1048576,
+          "subscribe": {
+            "type": "panel-subscribe",
+            "stringifyContent": true,
+            "content": {
+              "panelId": "{panelId}",
+              "subscribe": true
+            }
+          },
+          "messageType": "panel-data-update",
+          "contentEncoding": "json-string",
+          "panelIdPath": "panelId",
+          "batchIdPath": "batchId",
+          "statusPath": "status",
+          "percentagePath": "percentage",
+          "terminalStatuses": [
+            "SUCCESS",
+            "FAILED",
+            "PARTIAL_FAILED"
+          ],
+          "responseBatchIdPaths": [
+            "data.batchId"
+          ]
+        }
+      },
+      "hooks": {}
+    },
+    "validation-failure": {
+      "seedProfiles": {
+        "source": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/current-tenant/validation-failure.java-seed.json",
+          "sha256": "7a52a04b6e27ef82b4834e404c3e7213097c2845b760a770b0a701a19e4a52d3"
+        },
+        "target": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/validation-failure.rust-seed.json",
+          "sha256": "9c869f8af2fa21a8b11cb0d266990bb4c1d597842ad6da45be999aae729753a0"
+        }
+      },
+      "request": {
+        "source": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "authorization": "${MG_JAVA_TOKEN}",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "reqId": "{marker}",
+            "pageNo": 1,
+            "pageSize": 100,
+            "usePageId": "2084946130506348196",
+            "pageId": "2084946130506348195",
+            "panelId": "2084946130506348194",
+            "interId": "2084946130506348253",
+            "clientSessionId": "{marker}",
+            "enableProgress": true,
+            "expectedTotalRows": 1,
+            "isLastChunk": true,
+            "undo": true,
+            "operationKind": "ROW_UPDATE",
+            "operationLabel": "SH-3C validation failure",
+            "batchHeaderValueList": [],
+            "batchPostValueList": [
+              {
+                "id": "invalid-primary-key",
+                "custField66745": "SH-3C rejected validation row",
+                "custField66746": 101
+              }
+            ]
+          },
+          "acceptedStatuses": [
+            200
+          ],
+          "expectedRowCount": 0,
+          "responseFields": {
+            "code": "code"
+          }
+        },
+        "target": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "interId": "2084946130506348253",
+            "httpId": "2084946130506348253",
+            "usePageId": "2084946130506348196",
+            "panelId": "{panelId}",
+            "clientSessionId": "{marker}",
+            "chunkNo": 0,
+            "isLastChunk": true,
+            "batchId": "{marker}",
+            "batchPostValueList": [
+              {
+                "id": "invalid-primary-key",
+                "validationError": "primary key format invalid",
+                "values": {
+                  "value": "SH-3C rejected validation row",
+                  "quantity": 101
+                }
+              }
+            ]
+          },
+          "acceptedStatuses": [
+            200
+          ],
+          "expectedRowCount": 0,
+          "responseFields": {
+            "code": "code"
+          }
+        }
+      },
+      "eventCollectors": {
+        "source": {
+          "kind": "websocket",
+          "completionMode": "no-event",
+          "noEventWindowMs": 1000,
+          "path": "/ws/zboss",
+          "openTimeoutMs": 10000,
+          "terminalTimeoutMs": 30000,
+          "maxEvents": 1000,
+          "maxBytes": 1048576,
+          "subscribe": {
+            "type": "panel-subscribe",
+            "stringifyContent": true,
+            "content": {
+              "panelId": "{panelId}",
+              "subscribe": true
+            }
+          },
+          "messageType": "panel-data-update",
+          "contentEncoding": "json-string",
+          "panelIdPath": "panelId",
+          "batchIdPath": "batchId",
+          "statusPath": "status",
+          "percentagePath": "percentage",
+          "terminalStatuses": [
+            "SUCCESS",
+            "FAILED",
+            "PARTIAL_FAILED"
+          ],
+          "responseBatchIdPaths": [
+            "data.batchId"
+          ]
+        }
+      },
+      "hooks": {}
+    },
+    "batch-partial-failure": {
+      "seedProfiles": {
+        "source": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/current-tenant/batch-partial-failure.java-seed.json",
+          "sha256": "c3ca30cc998b8c5e9b98d17147e3f97f4901a925751187b421764104b42a0782"
+        },
+        "target": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/batch-partial-failure.rust-seed.json",
+          "sha256": "6d934a042717280db4432bf1806d8fb944ed18eb0031a0ac9d8b1a0d86b5747b"
+        }
+      },
+      "request": {
+        "source": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "authorization": "${MG_JAVA_TOKEN}",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "reqId": "{marker}",
+            "pageNo": 1,
+            "pageSize": 100,
+            "usePageId": "2084946130506348196",
+            "pageId": "2084946130506348195",
+            "panelId": "2084946130506348194",
+            "interId": "2084946130506348253",
+            "clientSessionId": "{marker}",
+            "enableProgress": true,
+            "expectedTotalRows": 2,
+            "isLastChunk": true,
+            "undo": true,
+            "operationKind": "ROW_UPDATE",
+            "operationLabel": "SH-3C batch partial failure",
+            "batchHeaderValueList": [],
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "custField66745": "SH-3C partial updated row 001",
+                "custField66746": 101
+              },
+              {
+                "id": "invalid-primary-key",
+                "custField66745": "SH-3C partial rejected row 002",
+                "custField66746": 102
+              }
+            ]
+          },
+          "acceptedStatuses": [
+            200
+          ],
+          "expectedRowCount": 1,
+          "responseFields": {
+            "code": "code"
+          }
+        },
+        "target": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "interId": "2084946130506348253",
+            "httpId": "2084946130506348253",
+            "usePageId": "2084946130506348196",
+            "panelId": "{panelId}",
+            "clientSessionId": "{marker}",
+            "chunkNo": 0,
+            "isLastChunk": true,
+            "batchId": "{marker}",
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "values": {
+                  "value": "SH-3C partial updated row 001",
+                  "quantity": 101
+                }
+              },
+              {
+                "id": "invalid-primary-key",
+                "validationError": "primary key format invalid",
+                "values": {
+                  "value": "SH-3C partial rejected row 002",
+                  "quantity": 102
+                }
+              }
+            ]
+          },
+          "acceptedStatuses": [
+            200
+          ],
+          "expectedRowCount": 1,
+          "responseFields": {
+            "code": "code"
+          }
+        }
+      },
+      "eventCollectors": {
+        "source": {
+          "kind": "websocket",
+          "path": "/ws/zboss",
+          "openTimeoutMs": 10000,
+          "terminalTimeoutMs": 30000,
+          "maxEvents": 1000,
+          "maxBytes": 1048576,
+          "subscribe": {
+            "type": "panel-subscribe",
+            "stringifyContent": true,
+            "content": {
+              "panelId": "{panelId}",
+              "subscribe": true
+            }
+          },
+          "messageType": "panel-data-update",
+          "contentEncoding": "json-string",
+          "panelIdPath": "panelId",
+          "batchIdPath": "batchId",
+          "statusPath": "status",
+          "percentagePath": "percentage",
+          "terminalStatuses": [
+            "SUCCESS",
+            "FAILED",
+            "PARTIAL_FAILED"
+          ],
+          "responseBatchIdPaths": [
+            "data.batchId"
+          ]
+        }
+      },
+      "hooks": {}
+    },
+    "dependency-failure": {
+      "seedProfiles": {
+        "source": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/current-tenant/dependency-failure.java-seed.json",
+          "sha256": "d28a17fe78d89c9454675bebf5db7db699ddc3a0078ee7f057c9f3321d8d90cc"
+        },
+        "target": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/dependency-failure.rust-seed.json",
+          "sha256": "15b4d2d4768afca17e5380dd8c8fd0c9bf412388c9892a2ab596e66a89d0dd42"
+        }
+      },
+      "request": {
+        "source": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "authorization": "${MG_JAVA_TOKEN}",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "reqId": "{marker}",
+            "pageNo": 1,
+            "pageSize": 100,
+            "usePageId": "2084946130506348196",
+            "pageId": "2084946130506348195",
+            "panelId": "2084946130506348194",
+            "interId": "2084946130506348253",
+            "clientSessionId": "{marker}",
+            "enableProgress": true,
+            "expectedTotalRows": 2,
+            "isLastChunk": true,
+            "undo": true,
+            "operationKind": "ROW_UPDATE",
+            "operationLabel": "SH-3C dependency failure",
+            "batchHeaderValueList": [],
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "custField66745": "SH-3C dependency failure row 001",
+                "custField66746": 101
+              },
+              {
+                "id": "{seed.row-002.generatedId}",
+                "custField66745": "SH-3C dependency failure row 002",
+                "custField66746": 102
+              }
+            ]
+          },
+          "acceptedStatuses": [
+            200,
+            500
+          ],
+          "expectedRowCount": 0,
+          "responseFields": {
+            "code": "code"
+          }
+        },
+        "target": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "interId": "2084946130506348253",
+            "httpId": "2084946130506348253",
+            "usePageId": "2084946130506348196",
+            "panelId": "{panelId}",
+            "clientSessionId": "{marker}",
+            "chunkNo": 0,
+            "isLastChunk": true,
+            "batchId": "{marker}",
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "values": {
+                  "value": "SH-3C dependency failure row 001",
+                  "quantity": 101
+                }
+              },
+              {
+                "id": "{seed.row-002.generatedId}",
+                "values": {
+                  "value": "SH-3C dependency failure row 002",
+                  "quantity": 102
+                }
+              }
+            ]
+          },
+          "acceptedStatuses": [
+            200,
+            500
+          ],
+          "expectedRowCount": 0,
+          "responseFields": {
+            "code": "code"
+          }
+        }
+      },
+      "eventCollectors": {
+        "source": {
+          "kind": "websocket",
+          "path": "/ws/zboss",
+          "openTimeoutMs": 10000,
+          "terminalTimeoutMs": 30000,
+          "maxEvents": 1000,
+          "maxBytes": 1048576,
+          "subscribe": {
+            "type": "panel-subscribe",
+            "stringifyContent": true,
+            "content": {
+              "panelId": "{panelId}",
+              "subscribe": true
+            }
+          },
+          "messageType": "panel-data-update",
+          "contentEncoding": "json-string",
+          "panelIdPath": "panelId",
+          "batchIdPath": "batchId",
+          "statusPath": "status",
+          "percentagePath": "percentage",
+          "terminalStatuses": [
+            "SUCCESS",
+            "FAILED",
+            "PARTIAL_FAILED"
+          ],
+          "responseBatchIdPaths": [
+            "data.batchId"
+          ]
+        }
+      },
+      "hooks": {
+        "faultController": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-toxiproxy-fault-controller.mjs",
+            "{faultAction}"
+          ]
+        }
+      }
+    },
+    "concurrent-write": {
+      "seedProfiles": {
+        "source": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/current-tenant/concurrent-write.java-seed.json",
+          "sha256": "8f1e1c0d7dcd58680501231ccf4ab0a96febc419a9a071c6001df671ae687f97"
+        },
+        "target": {
+          "path": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/seeds/concurrent-write.rust-seed.json",
+          "sha256": "dacf10d0617cde6bd3a3c4f4749570df940e78979d1cdcf6cdf2ba12f7ea4af7"
+        }
+      },
+      "request": {
+        "source": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "authorization": "${MG_JAVA_TOKEN}",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "reqId": "{writerMarker}",
+            "pageNo": 1,
+            "pageSize": 100,
+            "usePageId": "2084946130506348196",
+            "pageId": "2084946130506348195",
+            "panelId": "2084946130506348194",
+            "interId": "2084946130506348253",
+            "clientSessionId": "{writerMarker}",
+            "enableProgress": true,
+            "expectedTotalRows": 1,
+            "isLastChunk": true,
+            "undo": true,
+            "operationKind": "ROW_UPDATE",
+            "operationLabel": "SH-3C concurrent write",
+            "batchHeaderValueList": [],
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "custField66745": "{writerValue}",
+                "custField66746": 101
+              }
+            ]
+          },
+          "acceptedStatuses": [
+            200
+          ],
+          "expectedRowCount": 1,
+          "responseFields": {
+            "code": "code"
+          }
+        },
+        "target": {
+          "method": "POST",
+          "headers": {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-tenant-id": "{tenantId}",
+            "x-user-id": "${MG_JAVA_USER_ID}",
+            "x-request-id": "{marker}",
+            "x-datasource": "${MG_L4C_DATASOURCE}"
+          },
+          "body": {
+            "interId": "2084946130506348253",
+            "httpId": "2084946130506348253",
+            "usePageId": "2084946130506348196",
+            "panelId": "{panelId}",
+            "clientSessionId": "{writerMarker}",
+            "chunkNo": 0,
+            "isLastChunk": true,
+            "batchId": "{writerMarker}",
+            "batchPostValueList": [
+              {
+                "id": "{seed.row-001.generatedId}",
+                "values": {
+                  "value": "{writerValue}",
+                  "quantity": 101
+                }
+              }
+            ]
+          },
+          "acceptedStatuses": [
+            200
+          ],
+          "expectedRowCount": 1,
+          "responseFields": {
+            "code": "code"
+          }
+        }
+      },
+      "concurrencyPlan": {
+        "driver": "built-in-barrier-v1",
+        "writerCount": 2,
+        "startMode": "barrier",
+        "sharedSeedBinding": "row-001",
+        "writers": [
+          {
+            "id": "writer-a",
+            "value": "SH-3C concurrent writer A"
+          },
+          {
+            "id": "writer-b",
+            "value": "SH-3C concurrent writer B"
+          }
+        ]
+      },
+      "eventCollectors": {
+        "source": {
+          "kind": "websocket",
+          "path": "/ws/zboss",
+          "openTimeoutMs": 10000,
+          "terminalTimeoutMs": 30000,
+          "maxEvents": 1000,
+          "maxBytes": 1048576,
+          "subscribe": {
+            "type": "panel-subscribe",
+            "stringifyContent": true,
+            "content": {
+              "panelId": "{panelId}",
+              "subscribe": true
+            }
+          },
+          "messageType": "panel-data-update",
+          "contentEncoding": "json-string",
+          "panelIdPath": "panelId",
+          "batchIdPath": "batchId",
+          "statusPath": "status",
+          "percentagePath": "percentage",
+          "terminalStatuses": [
+            "SUCCESS",
+            "FAILED",
+            "PARTIAL_FAILED"
+          ],
+          "responseBatchIdPaths": [
+            "data.batchId"
+          ]
+        }
+      },
+      "hooks": {}
+    }
+  },
+  "reviewStatus": "awaiting-current-tenant-semantic-review"
+}

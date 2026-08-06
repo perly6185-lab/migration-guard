@@ -5,8 +5,8 @@
   "decision": "KEEP-L4-B",
   "capability": {
     "schemaVersion": 1,
-    "achieved": "L4-B",
-    "next": "L4-C",
+    "achieved": "L0",
+    "next": "L1",
     "claims": [
       {
         "level": "L0",
@@ -15,28 +15,41 @@
       },
       {
         "level": "L1",
-        "passed": true,
-        "blockers": []
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-SOURCE-GUARD-MISSING",
+          "MG-CAPABILITY-ANALYSIS-INCOMPLETE"
+        ]
       },
       {
         "level": "L2",
-        "passed": true,
-        "blockers": []
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-OFFLINE-CONTRACT-BLOCKED"
+        ]
       },
       {
         "level": "L3",
-        "passed": true,
-        "blockers": []
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-IMPLEMENTATION-CHECKS-BLOCKED",
+          "MG-CAPABILITY-SCENARIO-CONTRACT-BLOCKED"
+        ]
       },
       {
         "level": "L4-A",
-        "passed": true,
-        "blockers": []
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-DEPENDENCY-PROTOCOL-BLOCKED"
+        ]
       },
       {
         "level": "L4-B",
-        "passed": true,
-        "blockers": []
+        "passed": false,
+        "blockers": [
+          "MG-CAPABILITY-CONCRETE-ADAPTERS-MISSING",
+          "MG-CAPABILITY-DEPLOYABLE-SERVICE-MISSING"
+        ]
       },
       {
         "level": "L4-C",
@@ -67,14 +80,16 @@
     "replayPath": "artifacts/batch-update-rust/l4c-real-replay.json",
     "reviewPath": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/review.json",
     "l3ReportHash": "e60006bfa6b98ccf06f35c9b08fb988a3edf797964a997ee871a998d7d48c349",
-    "dependencyReportHash": "4b146b7c7d70ac00918fc656794c4c1070b6cc36f7def8ab830cb97c8a30d163",
+    "dependencyReportHash": "6f3c33766f15adb2ca02e34900fd875a7e29c7b741a7e3652125d1ddf3fd7677",
     "productionReportHash": "656ef14382af0d814a4989b6a7ed6d840b32107bf068d1d76f94bc1f0006f76c",
     "scenarioCount": 0,
     "cleanupVerified": false,
     "dualReplayPassed": false
   },
   "findings": [
+    "MG-L4C-PRIOR-REPORT-STALE:l3",
+    "MG-L4C-PRIOR-REPORT-STALE:production",
     "MG-L4C-REPORT-MISSING"
   ],
-  "reportHash": "b01a7b772bba991d4b16a897579f40cc98bc2e95e25ddf30b77340930ed9e848"
+  "reportHash": "cee93d9e4802db289041d7f558f32db9d77e791fa460b87a9a9048c749eacc0b"
 }

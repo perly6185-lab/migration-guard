@@ -241,9 +241,18 @@ if (mode === "--write") {
   )) {
     throw new Error("technical review tampering was not rejected");
   }
+  const prematureManifest = structuredClone(built.manifest);
+  prematureManifest.readyForRealPromotion = true;
+  prematureManifest.manifestHash = manifestHash(prematureManifest);
+  if (!validatePromotionSet({
+    ...built,
+    manifest: prematureManifest,
+  }).includes("MG-SH3C-MANIFEST-INVALID")) {
+    throw new Error("partial first-wave promotion was marked ready");
+  }
   console.log(JSON.stringify({
     status: "pass",
-    checks: 20,
+    checks: 21,
     coverage: [
       "first-wave-exactly-five",
       "contract-scenario-binding",
@@ -262,6 +271,7 @@ if (mode === "--write") {
       "validation-and-partial-event-semantics-resolved",
       "first-wave-write-safety-enforced",
       "technical-review-tamper-rejected",
+      "partial-promotion-readiness-rejected",
       "concurrency-driver-bound",
       "dependency-fault-controller-bound",
       "unapproved-fault-controller-rejected",
@@ -557,7 +567,7 @@ export async function buildPromotionSet() {
       status: technicalReview.status,
     },
     readyForHumanReview: true,
-    readyForRealPromotion: packages.some((item) => item.status === "promoted"),
+    readyForRealPromotion: packages.every((item) => item.status === "promoted"),
     manifestHash: "",
   };
   manifest.manifestHash = manifestHash(manifest);
@@ -584,7 +594,7 @@ export function validatePromotionSet(value) {
   if (
     value.manifest.realEvidenceEligible !== false
     || value.manifest.readyForRealPromotion
-      !== value.packages.some((item) => item.status === "promoted")
+      !== value.packages.every((item) => item.status === "promoted")
     || value.manifest.manifestHash !== manifestHash(value.manifest)
     || value.manifest.technicalReview?.hash
       !== value.technicalReview?.reviewHash

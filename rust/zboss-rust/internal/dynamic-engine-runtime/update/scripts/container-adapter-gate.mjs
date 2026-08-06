@@ -150,11 +150,14 @@ try {
 
   mysql(`
     INSERT INTO batch_idempotency
-      (tenant_id, session_id, chunk_no, request_hash, state, response_json)
+      (
+        tenant_id, panel_id, session_id, chunk_no, idempotency_key,
+        request_hash, batch_id, state, response_json
+      )
       VALUES (
-        1, 'session-1', 0,
+        1, 10, 'session-1', 0, 'session-1:0',
         'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        'SUCCEEDED', JSON_OBJECT('terminal', 'SUCCESS')
+        'container-chunk', 'SUCCEEDED', JSON_OBJECT('terminal', 'SUCCESS')
       );
   `);
   const replay = mysqlScalar(`

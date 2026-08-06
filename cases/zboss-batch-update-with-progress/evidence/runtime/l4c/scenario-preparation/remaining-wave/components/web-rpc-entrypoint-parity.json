@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-remaining-wave-components/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
+  "promotionWave": "sh3c-remaining-wave",
+  "scenarioId": "web-rpc-entrypoint-parity",
+  "sourceDraft": {
+    "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/web-rpc-entrypoint-parity/fixture.draft.json",
+    "sha256": "0c3e36ff870d77235a55a8b16b9e42de6420e07a6231dbb800fc83fa2d94fc75"
+  },
+  "seedCandidates": {
+    "java": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/web-rpc-entrypoint-parity.java-seed.template.json",
+      "sha256": "af70ff3f5dacf97be27699015ec0501ccf9d8534d746257f5605c1efafd9cb88",
+      "status": "review-required"
+    },
+    "rust": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/web-rpc-entrypoint-parity.rust-seed.adapter-template.json",
+      "sha256": "c148c5d3afd348cd626c61f52d0ffd9515acece2abc5bfc5634c0af3bcaed125",
+      "status": "review-required"
+    }
+  },
+  "collectorCandidates": {
+    "events": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/web-rpc-entrypoint-parity.events.template.json",
+      "sha256": "7d6133d3a69fadbc6602912c4b64fe267a834eb35d723f73807592a45da0cf38",
+      "status": "review-required"
+    },
+    "mysql": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/web-rpc-entrypoint-parity.mysql.template.json",
+      "sha256": "215efd705753ec66fddce403a82130501981fdd9ecfc59b8ec495c599d19ad66",
+      "status": "review-required"
+    },
+    "redis": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/web-rpc-entrypoint-parity.redis.template.json",
+      "sha256": "881437a44efca6b19400845546e89a0cbf555ffad1f811cd378191aa16ac61be",
+      "status": "review-required"
+    }
+  },
+  "binding": {
+    "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/binding-preparation.json",
+    "status": "review-required",
+    "scenarioBindingHash": "82ad03e149d84428e46ff8708697489020f011e5a410a0dce539952e066feded"
+  },
+  "blockers": [
+    "MG-SH3C-BINDING-REVIEW-REQUIRED",
+    "MG-SH3C-COLLECTOR-REVIEW-REQUIRED",
+    "MG-SH3C-COMPONENT-REVIEW-REQUIRED",
+    "MG-SH3C-JAVA-SEED-REVIEW-REQUIRED",
+    "MG-SH3C-RUST-SEED-ADAPTER-REVIEW-REQUIRED"
+  ],
+  "componentHash": "3e446efd6f5711ee8e06995e58b1f8a25e0d10929dee82b14a7b02bf61682c82"
+}

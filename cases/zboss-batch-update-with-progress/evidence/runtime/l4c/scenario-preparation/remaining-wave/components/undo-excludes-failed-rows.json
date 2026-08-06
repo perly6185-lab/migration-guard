@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-remaining-wave-components/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
+  "promotionWave": "sh3c-remaining-wave",
+  "scenarioId": "undo-excludes-failed-rows",
+  "sourceDraft": {
+    "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/undo-excludes-failed-rows/fixture.draft.json",
+    "sha256": "644ffbadbe265066a6af4b683216368f8f5161ce4a2f47607f38f8b6205bd308"
+  },
+  "seedCandidates": {
+    "java": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/undo-excludes-failed-rows.java-seed.template.json",
+      "sha256": "2eed996ae8d216a799db48fa8fcef490cdc50cf5290f3b907b0582b746019d3c",
+      "status": "review-required"
+    },
+    "rust": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/undo-excludes-failed-rows.rust-seed.adapter-template.json",
+      "sha256": "88d62e5967d70a37b2ffee5639a49ed2c8735461ff11913c6f47a01dab3f76dc",
+      "status": "review-required"
+    }
+  },
+  "collectorCandidates": {
+    "events": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/undo-excludes-failed-rows.events.template.json",
+      "sha256": "4662ee633420fc9fa47cdb98a215ec36a56b34549cb06c2879b9ea1ea6f683c0",
+      "status": "review-required"
+    },
+    "mysql": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/undo-excludes-failed-rows.mysql.template.json",
+      "sha256": "982df306c0a4bc7df2040ef73857d5f0dd800164fe0ea2f23f4b7ed35526a1da",
+      "status": "review-required"
+    },
+    "redis": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/undo-excludes-failed-rows.redis.template.json",
+      "sha256": "99163912e0590cae28570de1f57a7dbbd18fc19e26588c3dc807eee1977720e3",
+      "status": "review-required"
+    }
+  },
+  "binding": {
+    "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/binding-preparation.json",
+    "status": "review-required",
+    "scenarioBindingHash": "562b10e7277fe734a5b0288270961a8935b3b9ffe7979031301e36ad2ec9d7cc"
+  },
+  "blockers": [
+    "MG-SH3C-BINDING-REVIEW-REQUIRED",
+    "MG-SH3C-COLLECTOR-REVIEW-REQUIRED",
+    "MG-SH3C-COMPONENT-REVIEW-REQUIRED",
+    "MG-SH3C-FAULT-MECHANISM-NOT-BOUND",
+    "MG-SH3C-JAVA-SEED-REVIEW-REQUIRED",
+    "MG-SH3C-RUST-SEED-ADAPTER-REVIEW-REQUIRED"
+  ],
+  "componentHash": "c0b9717ee4d92e6ba3a19fb367fb90268edbd15feaf01a3044cf51478206b5bd"
+}

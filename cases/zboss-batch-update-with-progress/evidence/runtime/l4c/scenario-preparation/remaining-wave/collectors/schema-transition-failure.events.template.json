@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-event-collector/v1",
+  "collector": "events",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "scenarioId": "schema-transition-failure",
+  "sourceDraft": {
+    "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/schema-transition-failure/collectors/events.draft.json",
+    "sha256": "452b8065319f4aaa487ed18009178f283731ceacdab5bebb55f91a858791aeae"
+  },
+  "capture": {
+    "kind": "websocket",
+    "path": "/ws/zboss",
+    "messageType": "panel-data-update",
+    "correlationFields": [
+      "scenarioId",
+      "requestId",
+      "batchId"
+    ],
+    "includeFields": [
+      "scenarioId",
+      "requestId",
+      "batchId",
+      "type",
+      "stage",
+      "sequence"
+    ]
+  },
+  "reviewRequired": [
+    "confirm-websocket-endpoint-and-subscription",
+    "confirm-terminal-event-and-no-event-window",
+    "bind-redacted-event-output-path"
+  ]
+}

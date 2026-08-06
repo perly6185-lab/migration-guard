@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-plan/v1",
+  "status": "draft",
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "22661e7de2ccd1b5db7b8c3ad49b4fcda61cd8fde20c1c0eae7f5b325f6c9447",
+  "approval": {
+    "mode": "disposable-test-write",
+    "status": "pending-current-tenant-approval"
+  },
+  "scope": {
+    "environment": "test",
+    "allowedHosts": [
+      "127.0.0.1"
+    ],
+    "database": "zz_boss_test",
+    "tenantId": "2059823220968001539",
+    "panelId": "2084946130506348194",
+    "table": "cust_table7400",
+    "markerPrefix": "mg-sh3c-7400-",
+    "maxRowsPerScenario": 2,
+    "schemaChangesAllowed": false
+  },
+  "environmentValueBindings": [
+    "MG_JAVA_TOKEN",
+    "MG_JAVA_DATABASE_URL",
+    "ZBOSS_BATCH_UPDATE_MYSQL_URL",
+    "ZBOSS_BATCH_UPDATE_REDIS_URL"
+  ],
+  "requiredEnvironment": [
+    "MG_L4C_BINDING_FILE",
+    "MG_L4C_JAVA_STATE_PROFILE",
+    "MG_JAVA_TOKEN",
+    "MG_JAVA_USER_ID",
+    "MG_L4C_DATASOURCE",
+    "MG_JAVA_DATABASE_URL",
+    "ZBOSS_BATCH_UPDATE_MYSQL_URL",
+    "ZBOSS_BATCH_UPDATE_REDIS_URL"
+  ],
+  "targets": {
+    "source": {
+      "kind": "java",
+      "baseUrl": "http://127.0.0.1:22882",
+      "operations": {
+        "health": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "health",
+            "{targetKind}"
+          ],
+          "timeoutMs": 30000
+        },
+        "seed": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "seed",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        },
+        "snapshot": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "snapshot",
+            "{scenarioId}",
+            "{marker}",
+            "{phase}"
+          ],
+          "timeoutMs": 120000
+        },
+        "invoke": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "invoke",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        },
+        "injectFault": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "inject-fault",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        },
+        "collect": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "collect",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        },
+        "cleanup": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "cleanup",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        },
+        "verifyCleanup": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "verify-cleanup",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        }
+      },
+      "eventBaseUrl": "http://127.0.0.1:21081"
+    },
+    "target": {
+      "kind": "rust",
+      "baseUrl": "http://127.0.0.1:18089",
+      "operations": {
+        "health": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "health",
+            "{targetKind}"
+          ],
+          "timeoutMs": 30000
+        },
+        "seed": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "seed",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        },
+        "snapshot": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "snapshot",
+            "{scenarioId}",
+            "{marker}",
+            "{phase}"
+          ],
+          "timeoutMs": 120000
+        },
+        "invoke": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "invoke",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        },
+        "injectFault": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "inject-fault",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        },
+        "collect": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "collect",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        },
+        "cleanup": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "cleanup",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        },
+        "verifyCleanup": {
+          "program": "node",
+          "args": [
+            "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-operation-driver.mjs",
+            "verify-cleanup",
+            "{scenarioId}",
+            "{marker}"
+          ],
+          "timeoutMs": 120000
+        }
+      }
+    }
+  },
+  "normalization": {
+    "profile": "batch-update-contract-v1",
+    "supportedScenarios": [
+      "primary-success"
+    ],
+    "ignorePaths": [
+      "observation.metadata.durationMs",
+      "observation.metadata.observedAt"
+    ]
+  },
+  "scenarios": [
+    "primary-success"
+  ],
+  "reviewStatus": "awaiting-current-tenant-semantic-review",
+  "fixtureRegistry": "cases/zboss-batch-update-with-progress/evidence/runtime/l4c/scenario-preparation/first-wave-current-tenant-fixture.json"
+}

@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-disposable-fixture/v1",
+  "status": "created-write-pending-verification",
+  "projectId": "zboss-batch-update-with-progress",
+  "promotionWave": "sh3c-first-wave",
+  "scenarioIds": [
+    "primary-success",
+    "validation-failure",
+    "batch-partial-failure",
+    "dependency-failure",
+    "concurrent-write"
+  ],
+  "scope": {
+    "environment": "test",
+    "database": "zz_boss_test",
+    "tenantId": "2059823220968001539",
+    "panelId": "2084946130506348194",
+    "pageId": "2084946130506348195",
+    "usePageId": "2084946130506348196",
+    "projectionTable": "cust_table7400",
+    "undoTable": "boss_undo_data",
+    "markerColumn": "cust_field66744",
+    "cleanupMarker": "reqId",
+    "maxRowsPerScenario": 2,
+    "schemaChangesAllowed": false,
+    "initialProjectionRows": 0
+  },
+  "runtimeResources": {
+    "source": {
+      "javaHttpBaseUrl": "http://10.10.10.177:22882",
+      "javaEventBaseUrl": "http://10.10.10.177:21081",
+      "javaWebSocketPath": "/ws/zboss"
+    },
+    "target": {
+      "rustReadyUrl": "http://127.0.0.1:18089/internal/ready",
+      "visibility": "loopback-only-on-10.10.10.177"
+    }
+  },
+  "metadataClone": {
+    "sourceTemplateTenantId": "2059233802901135363",
+    "sourceTemplatePanelId": "2083035054134951937",
+    "sourceTemplatePageId": "2083035054357250050",
+    "sourceTemplateUsePageId": "2083035054931869698",
+    "createdCounts": {
+      "boss_view_dynamic_panel_data": 1,
+      "boss_view_dynamic_page_data": 1,
+      "boss_view_dynamic_use_page_data": 1,
+      "boss_view_dynamic_field_data": 33,
+      "boss_view_dynamic_http_data": 13,
+      "boss_view_dynamic_operational_data": 1,
+      "boss_sql_dynamic_data_set": 1,
+      "boss_sql_dynamic_table_data": 4,
+      "boss_sql_dynamic_set_table_data": 4,
+      "boss_sql_dynamic_field_data": 128,
+      "boss_sql_dynamic_inter_data": 3,
+      "boss_sql_dynamic_operational_data": 3
+    }
+  },
+  "cleanup": {
+    "mode": "mysql-one-time-event",
+    "eventName": "mg_sh3c_cleanup_7400",
+    "eventStatus": "ENABLED",
+    "eventScheduler": "ON",
+    "cleanupAt": "2026-08-06T17:26:12+08:00",
+    "cleanupWithinHours": 24,
+    "dropsProjectionTable": true,
+    "deletesUndoByTenantPanelMarkerPrefix": true
+  },
+  "verification": {
+    "metadataTenantMatchesCurrentIdentity": true,
+    "projectionTableExists": true,
+    "requiredProjectionColumnsPresent": [
+      "cust_field66744",
+      "cust_field66745",
+      "cust_field66746"
+    ],
+    "initialProjectionRows": 0,
+    "realReplayExecuted": false,
+    "cleanupEvidenceVerified": false,
+    "faultControlEndpointBound": false
+  },
+  "nextReview": [
+    "replace the legacy first-wave IDs in the reviewed binding and seed/profile copies",
+    "set source eventBaseUrl to the 21081 WebSocket service in the new reviewed plan",
+    "refresh authenticated application access before any batch invoke",
+    "bind or explicitly defer the dependency-failure fault endpoint"
+  ]
+}

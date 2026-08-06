@@ -357,9 +357,45 @@ Status: SH-3A and SH-3B code completed; concrete scenario promotion pending.
   driver and requires distinct terminal evidence for both batch identities.
   Every package requires fresh expiring write-safety approval; dependency
   failure additionally retains its explicit fault-controller blocker.
-- Pending: resolve those approval and external-driver blockers and invoke the existing
-  `runtime-fixture-promote` command with a reviewer identity; then repeat the
-  same process for the remaining 14 scenarios.
+- The remaining wave now has 14 deterministic `review-required` packages and a
+  separate fault-mechanism matrix under
+  `evidence/runtime/l4c/scenario-preparation/remaining-wave/`. Four remaining
+  fault scenarios are explicitly marked `not-bound` and none is real eligible.
+  Regenerate/check this static preparation with
+  `npm run batch-rust:sh3c-remaining-prepare` and
+  `npm run batch-rust:sh3c-remaining-check`.
+- The remaining-wave component preparation emits 28 Seed candidates, 42
+  collector candidates and one 14-scenario binding candidate. The candidates
+  are deliberately `review-required`; they bind no live database, Redis,
+  WebSocket or fault-control endpoint. The four fault controllers implement
+  the common apply/active/revert/inactive protocol and call only an explicitly
+  host-allowlisted target control URL. Their mock-admin self-test covers both
+  target kinds, marker-bound resource identity and zero residue. Generate and
+  check these candidates with `npm run batch-rust:sh3c-components-prepare` and
+  `npm run batch-rust:sh3c-components-check`.
+- The per-scenario human review packet is generated at
+  `evidence/runtime/l4c/scenario-preparation/remaining-wave/human-review/`.
+  It re-hashes the source draft, component, both Seed candidates, all three
+  collector candidates, package and binding cross-references. A passing hash
+  check is recorded separately from the pending semantic decision; it never
+  marks a scenario approved. Use
+  `npm run batch-rust:sh3c-human-review-check` to verify the packet.
+- The approval intake template is generated beside the review packet as
+  `approval-intake.template.json`. It records the 14 scenario IDs, Seed,
+  collector, package and binding hashes, DB/Redis/WebSocket resource scopes,
+  reviewer identity, expiring disposable-write authorization and the four
+  fault-control endpoints. `npm run batch-rust:sh3c-approval-template-check`
+  verifies that the template is current and still pending. Use
+  `npm run batch-rust:sh3c-approval-draft` to create a protected
+  `approval-intake.json` draft for manual completion. A completed
+  `approval-intake.json` must pass
+  `npm run batch-rust:sh3c-approval-intake-check` before
+  `npm run batch-rust:sh3c-approval-record` can emit `approval-record.json`.
+  The record remains static-promotion input only; it does not run replay or
+  mutate fixtures by itself.
+- Pending: resolve the recorded Seed, collector, request, state-profile,
+  write-safety and fault-mechanism blockers, then invoke the existing
+  `runtime-fixture-promote` command with a reviewer identity.
 
 ### SH-4 — Fault controllers
 
@@ -373,10 +409,15 @@ scenario mechanisms and approved environment binding pending.
   recovery plus zero-residue verification for both target kinds.
 - The operation driver and the report gate pin `dependency-failure` evidence
   to that mechanism and to `toxiproxy:<target-kind>:` resource identity.
-- Pending: controllers for post-commit effect, schema transition, transaction
-  and undo delivery scenarios; approved Toxiproxy endpoint environment values
-  (`MG_L4C_SOURCE/TARGET_TOXIPROXY_*`) for the committed scenario binding;
-  interrupted-run `faultArtifacts=0` proof on the real environment.
+- The remaining four controllers are now implemented as fail-closed target
+  control adapters: `fault-post-commit-effect-v1`,
+  `fault-schema-transition-v1`, `fault-transaction-rollback-v1` and
+  `fault-undo-delivery-v1`. Each requires a target-specific
+  `MG_L4C_SOURCE/TARGET_FAULT_CONTROL_URL`, validates the returned
+  marker-bound resource and enforces zero artifacts after revert.
+- Pending: approve and bind the target control endpoints, then produce
+  interrupted-run `faultArtifacts=0` proof on the real environment. Code and
+  mock lifecycle coverage are not real fault evidence.
 
 ### SH-5 — Pilot and full replay
 

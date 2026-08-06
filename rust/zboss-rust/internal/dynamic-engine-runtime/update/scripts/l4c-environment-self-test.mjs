@@ -93,6 +93,8 @@ try {
   });
   plan.targets.source.baseUrl = "http://127.0.0.1:18001";
   plan.targets.target.baseUrl = "http://127.0.0.1:18002";
+  plan.targets.source.eventBaseUrl = "http://127.0.0.1:18003";
+  plan.targets.target.eventBaseUrl = "http://127.0.0.1:18004";
   const scenarioIds = contract.entries.flatMap((entry) =>
     entry.scenarios.map((scenario) => scenario.id));
 

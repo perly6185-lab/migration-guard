@@ -1,0 +1,279 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-fault-mechanism-matrix/v1",
+  "status": "review-required",
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
+  "promotionWave": "sh3c-remaining-wave",
+  "scenarios": [
+    {
+      "scenarioId": "batch-row-limit-rejected",
+      "category": "concurrency",
+      "mechanism": {
+        "id": "none",
+        "status": "not-applicable",
+        "requiredBindings": [],
+        "cleanupRequirements": [
+          "marker-bound-cleanup-zero"
+        ]
+      },
+      "blockers": []
+    },
+    {
+      "scenarioId": "batch-update-success",
+      "category": "concurrency",
+      "mechanism": {
+        "id": "none",
+        "status": "not-applicable",
+        "requiredBindings": [],
+        "cleanupRequirements": [
+          "marker-bound-cleanup-zero"
+        ]
+      },
+      "blockers": []
+    },
+    {
+      "scenarioId": "branch-coverage",
+      "category": "branch",
+      "mechanism": {
+        "id": "none",
+        "status": "not-applicable",
+        "requiredBindings": [],
+        "cleanupRequirements": [
+          "marker-bound-cleanup-zero"
+        ]
+      },
+      "blockers": []
+    },
+    {
+      "scenarioId": "chunked-paste-progress",
+      "category": "success",
+      "mechanism": {
+        "id": "none",
+        "status": "not-applicable",
+        "requiredBindings": [],
+        "cleanupRequirements": [
+          "marker-bound-cleanup-zero"
+        ]
+      },
+      "blockers": []
+    },
+    {
+      "scenarioId": "context-isolation",
+      "category": "context",
+      "mechanism": {
+        "id": "none",
+        "status": "not-applicable",
+        "requiredBindings": [],
+        "cleanupRequirements": [
+          "marker-bound-cleanup-zero"
+        ]
+      },
+      "blockers": []
+    },
+    {
+      "scenarioId": "entrypoint-parity",
+      "category": "compatibility",
+      "mechanism": {
+        "id": "none",
+        "status": "not-applicable",
+        "requiredBindings": [],
+        "cleanupRequirements": [
+          "marker-bound-cleanup-zero"
+        ]
+      },
+      "blockers": []
+    },
+    {
+      "scenarioId": "horizontal-batch-upsert",
+      "category": "concurrency",
+      "mechanism": {
+        "id": "none",
+        "status": "not-applicable",
+        "requiredBindings": [],
+        "cleanupRequirements": [
+          "marker-bound-cleanup-zero"
+        ]
+      },
+      "blockers": []
+    },
+    {
+      "scenarioId": "post-commit-effect-failure",
+      "category": "fault",
+      "mechanism": {
+        "id": "fault-post-commit-effect-v1",
+        "status": "not-bound",
+        "implementation": {
+          "status": "implemented-unbound",
+          "controller": "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-post-commit-effect-fault-controller.mjs",
+          "protocol": "migration-guard.batch-update-l4c-fault-controller/v1",
+          "lifecycle": [
+            "apply",
+            "verify-active",
+            "revert",
+            "verify-inactive"
+          ],
+          "controlUrlEnvironment": [
+            "MG_L4C_SOURCE_FAULT_CONTROL_URL",
+            "MG_L4C_TARGET_FAULT_CONTROL_URL"
+          ]
+        },
+        "requiredBindings": [
+          "post-commit effect failure injector"
+        ],
+        "cleanupRequirements": [
+          "fault-apply-active-revert-inactive",
+          "fault-artifacts-zero-after-cleanup"
+        ]
+      },
+      "blockers": [
+        "MG-SH3C-FAULT-MECHANISM-NOT-BOUND"
+      ]
+    },
+    {
+      "scenarioId": "progress-event-shape",
+      "category": "success",
+      "mechanism": {
+        "id": "none",
+        "status": "not-applicable",
+        "requiredBindings": [],
+        "cleanupRequirements": [
+          "marker-bound-cleanup-zero"
+        ]
+      },
+      "blockers": []
+    },
+    {
+      "scenarioId": "scale-boundary",
+      "category": "scale",
+      "mechanism": {
+        "id": "none",
+        "status": "not-applicable",
+        "requiredBindings": [],
+        "cleanupRequirements": [
+          "marker-bound-cleanup-zero"
+        ]
+      },
+      "blockers": []
+    },
+    {
+      "scenarioId": "schema-transition-failure",
+      "category": "fault",
+      "mechanism": {
+        "id": "fault-schema-transition-v1",
+        "status": "not-bound",
+        "implementation": {
+          "status": "implemented-unbound",
+          "controller": "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-schema-transition-fault-controller.mjs",
+          "protocol": "migration-guard.batch-update-l4c-fault-controller/v1",
+          "lifecycle": [
+            "apply",
+            "verify-active",
+            "revert",
+            "verify-inactive"
+          ],
+          "controlUrlEnvironment": [
+            "MG_L4C_SOURCE_FAULT_CONTROL_URL",
+            "MG_L4C_TARGET_FAULT_CONTROL_URL"
+          ]
+        },
+        "requiredBindings": [
+          "marker-bound disposable DDL failure injector"
+        ],
+        "cleanupRequirements": [
+          "fault-apply-active-revert-inactive",
+          "fault-artifacts-zero-after-cleanup"
+        ]
+      },
+      "blockers": [
+        "MG-SH3C-FAULT-MECHANISM-NOT-BOUND"
+      ]
+    },
+    {
+      "scenarioId": "transaction-failure",
+      "category": "fault",
+      "mechanism": {
+        "id": "fault-transaction-rollback-v1",
+        "status": "not-bound",
+        "implementation": {
+          "status": "implemented-unbound",
+          "controller": "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-transaction-fault-controller.mjs",
+          "protocol": "migration-guard.batch-update-l4c-fault-controller/v1",
+          "lifecycle": [
+            "apply",
+            "verify-active",
+            "revert",
+            "verify-inactive"
+          ],
+          "controlUrlEnvironment": [
+            "MG_L4C_SOURCE_FAULT_CONTROL_URL",
+            "MG_L4C_TARGET_FAULT_CONTROL_URL"
+          ]
+        },
+        "requiredBindings": [
+          "marker-bound transaction failure injector"
+        ],
+        "cleanupRequirements": [
+          "fault-apply-active-revert-inactive",
+          "fault-artifacts-zero-after-cleanup"
+        ]
+      },
+      "blockers": [
+        "MG-SH3C-FAULT-MECHANISM-NOT-BOUND"
+      ]
+    },
+    {
+      "scenarioId": "undo-excludes-failed-rows",
+      "category": "fault",
+      "mechanism": {
+        "id": "fault-undo-delivery-v1",
+        "status": "not-bound",
+        "implementation": {
+          "status": "implemented-unbound",
+          "controller": "rust/zboss-rust/internal/dynamic-engine-runtime/update/scripts/l4c-undo-delivery-fault-controller.mjs",
+          "protocol": "migration-guard.batch-update-l4c-fault-controller/v1",
+          "lifecycle": [
+            "apply",
+            "verify-active",
+            "revert",
+            "verify-inactive"
+          ],
+          "controlUrlEnvironment": [
+            "MG_L4C_SOURCE_FAULT_CONTROL_URL",
+            "MG_L4C_TARGET_FAULT_CONTROL_URL"
+          ]
+        },
+        "requiredBindings": [
+          "marker-bound undo delivery failure injector"
+        ],
+        "cleanupRequirements": [
+          "fault-apply-active-revert-inactive",
+          "fault-artifacts-zero-after-cleanup"
+        ]
+      },
+      "blockers": [
+        "MG-SH3C-FAULT-MECHANISM-NOT-BOUND"
+      ]
+    },
+    {
+      "scenarioId": "web-rpc-entrypoint-parity",
+      "category": "context",
+      "mechanism": {
+        "id": "none",
+        "status": "not-applicable",
+        "requiredBindings": [],
+        "cleanupRequirements": [
+          "marker-bound-cleanup-zero"
+        ]
+      },
+      "blockers": []
+    }
+  ],
+  "summary": {
+    "scenarioCount": 14,
+    "faultScenarioCount": 4,
+    "boundFaultMechanismCount": 0
+  },
+  "matrixHash": "1da29ee6be1702562fb8de8973fecdebc9099131c51206bce9918567709067b8"
+}

@@ -638,6 +638,10 @@ async function runTarget(targetKind, context) {
     runtime: context.plan.targets[targetKind].kind,
     status: passed ? "passed" : "blocked",
     baseUrl: redactUrl(context.plan.targets[targetKind].baseUrl),
+    eventBaseUrl: redactUrl(
+      context.plan.targets[targetKind].eventBaseUrl
+      ?? context.plan.targets[targetKind].baseUrl,
+    ),
     scenarios,
     findings,
   };
@@ -803,6 +807,9 @@ async function runOperation(
     outputRoot: context.outputRoot,
     scope: context.plan.scope,
     baseUrl: context.plan.targets[targetKind].baseUrl,
+    eventBaseUrl:
+      context.plan.targets[targetKind].eventBaseUrl
+      ?? context.plan.targets[targetKind].baseUrl,
     seedBindings,
   };
   const raw = await context.operationExecutor(
@@ -846,6 +853,7 @@ async function executeOperation(definition, operationContext, context) {
   const environment = {
     ...process.env,
     MG_L4C_BASE_URL: operationContext.baseUrl,
+    MG_L4C_EVENT_BASE_URL: operationContext.eventBaseUrl,
     MG_L4C_ALLOWED_HOSTS: JSON.stringify(context.plan.scope.allowedHosts),
     MG_L4C_CATEGORY: operationContext.category ?? "",
     MG_L4C_DATABASE: context.plan.scope.database,
@@ -997,6 +1005,28 @@ function validateTargets(targets, scope, repositoryRoot, findings) {
       || /prod|production/i.test(url.hostname)
     ) {
       findings.push(`MG-L4C-TARGET-URL-UNSAFE:${targetKind}`);
+    }
+    if (target.eventBaseUrl !== undefined) {
+      let eventUrl;
+      try {
+        eventUrl = new URL(target.eventBaseUrl);
+      } catch {
+        findings.push(`MG-L4C-TARGET-EVENT-URL-INVALID:${targetKind}`);
+      }
+      if (
+        eventUrl
+        && (
+          !["http:", "https:"].includes(eventUrl.protocol)
+          || eventUrl.username
+          || eventUrl.password
+          || eventUrl.search
+          || eventUrl.hash
+          || !scope?.allowedHosts?.includes(eventUrl.hostname)
+          || /prod|production/i.test(eventUrl.hostname)
+        )
+      ) {
+        findings.push(`MG-L4C-TARGET-EVENT-URL-UNSAFE:${targetKind}`);
+      }
     }
     for (const operation of REQUIRED_OPERATIONS) {
       if (!target.operations?.[operation]) {

@@ -41,15 +41,31 @@
     "projectHash": { "$ref": "#/$defs/hash" },
     "runtimeContractHash": { "$ref": "#/$defs/hash" },
     "sourceIdentity": { "type": "object" },
-    "promotionWave": { "const": "sh3c-first-wave" },
+    "promotionWave": {
+      "enum": ["sh3c-first-wave", "sh3c-remaining-wave"]
+    },
     "entrypointId": { "type": "string", "minLength": 3 },
     "scenarioId": {
       "enum": [
-        "primary-success",
-        "validation-failure",
         "batch-partial-failure",
+        "batch-row-limit-rejected",
+        "batch-update-success",
+        "branch-coverage",
+        "chunked-paste-progress",
+        "concurrent-write",
+        "context-isolation",
         "dependency-failure",
-        "concurrent-write"
+        "entrypoint-parity",
+        "horizontal-batch-upsert",
+        "post-commit-effect-failure",
+        "primary-success",
+        "progress-event-shape",
+        "scale-boundary",
+        "schema-transition-failure",
+        "transaction-failure",
+        "undo-excludes-failed-rows",
+        "validation-failure",
+        "web-rpc-entrypoint-parity"
       ]
     },
     "category": { "type": "string", "minLength": 3 },
@@ -73,6 +89,18 @@
     },
     "collectors": { "type": "object", "minProperties": 3 },
     "requestPlan": { "type": "object" },
+    "componentPreparation": {
+      "type": "object",
+      "required": ["status", "path", "sha256", "seedCandidates", "collectorCandidates", "binding"],
+      "properties": {
+        "status": { "const": "review-required" },
+        "path": { "type": "string", "minLength": 3 },
+        "sha256": { "$ref": "#/$defs/hash" },
+        "seedCandidates": { "type": "object", "minProperties": 2 },
+        "collectorCandidates": { "type": "object", "minProperties": 3 },
+        "binding": { "type": "object" }
+      }
+    },
     "seedPlan": {
       "type": "object",
       "required": ["status", "plannedRows", "java", "rust"],

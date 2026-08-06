@@ -67,6 +67,23 @@ gate enforcing that binding; the approved Toxiproxy endpoint environment
 values and fresh write-safety approval remain. None
 is marked real eligible.
 
+The remaining 14 scenarios now have a separate static preparation wave with
+hash-bound review-required packages and a fault-mechanism matrix. It records
+missing Seed, collector, request, state-profile, write-safety and fault
+controller bindings without treating drafts as real evidence. Four remaining
+fault mechanisms are currently not bound. The component slice now emits 28
+Seed candidates, 42 collector candidates and one 14-scenario binding candidate;
+the four fault controllers are implemented as fail-closed target-control
+adapters, but endpoint approval and real interrupted-run cleanup evidence are
+still pending. A separate human-review packet now verifies all cross-file
+hashes for the 14 scenarios while keeping every semantic decision pending.
+The approval-intake template now captures the reviewer identity, expiring
+disposable-write scope, DB/Redis/WebSocket resource boundaries, all Seed,
+collector and binding hashes, and the four fault-control endpoints. The intake
+validator can produce a tamper-evident approval record only after those fields
+are filled and still current; it does not promote fixtures or claim real replay
+evidence.
+
 The approved state/fault boundary, canonical observation model, cleanup order,
 scenario allocation and delivery slices are defined in
 `evidence/runtime/l4c/STATE_HOOK_DESIGN.md`.

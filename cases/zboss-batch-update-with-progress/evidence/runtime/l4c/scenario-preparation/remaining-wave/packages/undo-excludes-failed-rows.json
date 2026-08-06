@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-scenario-package/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
+  "sourceIdentity": {
+    "revision": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee",
+    "dirty": true,
+    "dirtyFingerprint": "bffb6682d768b19e32dacea82f5870cfd0acbf74b06051dbbf5da56511df2167",
+    "identity": "a95e4cb51ceb62cc07602fe02c3cbb3e45f271ee+dirty:bffb6682d768"
+  },
+  "promotionWave": "sh3c-remaining-wave",
+  "entrypointId": "post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress",
+  "scenarioId": "undo-excludes-failed-rows",
+  "category": "fault",
+  "requiredDimensions": [
+    "http",
+    "context",
+    "decisions",
+    "effects",
+    "state",
+    "events",
+    "failures"
+  ],
+  "decisionIds": [
+    "BUP-DEC-PARTIAL-COMMIT",
+    "BUP-DEC-UNDO-DURABILITY"
+  ],
+  "sourceDraft": {
+    "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/undo-excludes-failed-rows/fixture.draft.json",
+    "sha256": "644ffbadbe265066a6af4b683216368f8f5161ce4a2f47607f38f8b6205bd308"
+  },
+  "stateProfile": {
+    "path": "evidence/runtime/l4c/java-state-profile.template.json",
+    "sha256": "cab45568032446da26aaae696c083c6ef61f17ccdb58377091c5e8c09501ca6f",
+    "status": "template",
+    "applicableScenarios": [
+      "primary-success",
+      "validation-failure",
+      "batch-partial-failure",
+      "dependency-failure",
+      "concurrent-write"
+    ]
+  },
+  "collectors": {
+    "events": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/undo-excludes-failed-rows/collectors/events.draft.json",
+      "sha256": "2122892b5ad67c2392907abf4241f82eb74f406c8f59f1d9604aadea79d2870f",
+      "status": "draft",
+      "reviewFindings": [
+        "STATUS-NOT-READY",
+        "WEBSOCKET-CAPTURE-NOT-CONFIRMED"
+      ]
+    },
+    "mysql": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/undo-excludes-failed-rows/collectors/mysql.draft.json",
+      "sha256": "4b213cba2e1345a9ba201c7466614c931ae61af91b23410b34872c13c068cbe1",
+      "status": "draft",
+      "reviewFindings": [
+        "STATUS-NOT-READY",
+        "PLACEHOLDER-PROBE"
+      ]
+    },
+    "redis": {
+      "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/undo-excludes-failed-rows/collectors/redis.draft.json",
+      "sha256": "f5953888bc6bca7a954a08f4959211cf618e65755e77af32a7f4fb060a7109c8",
+      "status": "draft",
+      "reviewFindings": [
+        "STATUS-NOT-READY",
+        "PLACEHOLDER-PROBE",
+        "JAVA-PROGRESS-IS-NOT-REDIS-BACKED"
+      ]
+    }
+  },
+  "requestPlan": {
+    "status": "review-required",
+    "placeholderPaths": [
+      "$.body.batchPkFieldValue",
+      "$.body.clientSessionId",
+      "$.body.domain",
+      "$.body.horizontalId",
+      "$.body.interId",
+      "$.body.operationKind",
+      "$.body.operationLabel",
+      "$.body.pageId",
+      "$.body.panelId",
+      "$.body.reqId",
+      "$.body.usePageId",
+      "$.headers.x-tenant-id"
+    ],
+    "environmentBindings": [
+      {
+        "path": "request.headers.authorization",
+        "environment": "MG_JAVA_TOKEN"
+      }
+    ]
+  },
+  "seedPlan": {
+    "status": "review-required",
+    "plannedRows": 1,
+    "java": {
+      "status": "seed-required",
+      "resourceRole": "projection",
+      "binding": "scenario.seedProfiles.source"
+    },
+    "rust": {
+      "status": "adapter-required",
+      "resourceRole": "projection",
+      "binding": "scenario.seedProfiles.target"
+    }
+  },
+  "componentPreparation": {
+    "status": "review-required",
+    "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/components/undo-excludes-failed-rows.json",
+    "sha256": "c0b9717ee4d92e6ba3a19fb367fb90268edbd15feaf01a3044cf51478206b5bd",
+    "seedCandidates": {
+      "java": {
+        "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/undo-excludes-failed-rows.java-seed.template.json",
+        "sha256": "2eed996ae8d216a799db48fa8fcef490cdc50cf5290f3b907b0582b746019d3c",
+        "status": "review-required"
+      },
+      "rust": {
+        "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/undo-excludes-failed-rows.rust-seed.adapter-template.json",
+        "sha256": "88d62e5967d70a37b2ffee5639a49ed2c8735461ff11913c6f47a01dab3f76dc",
+        "status": "review-required"
+      }
+    },
+    "collectorCandidates": {
+      "events": {
+        "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/undo-excludes-failed-rows.events.template.json",
+        "sha256": "4662ee633420fc9fa47cdb98a215ec36a56b34549cb06c2879b9ea1ea6f683c0",
+        "status": "review-required"
+      },
+      "mysql": {
+        "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/undo-excludes-failed-rows.mysql.template.json",
+        "sha256": "982df306c0a4bc7df2040ef73857d5f0dd800164fe0ea2f23f4b7ed35526a1da",
+        "status": "review-required"
+      },
+      "redis": {
+        "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/undo-excludes-failed-rows.redis.template.json",
+        "sha256": "99163912e0590cae28570de1f57a7dbbd18fc19e26588c3dc807eee1977720e3",
+        "status": "review-required"
+      }
+    },
+    "binding": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/binding-preparation.json",
+      "status": "review-required",
+      "scenarioBindingHash": "562b10e7277fe734a5b0288270961a8935b3b9ffe7979031301e36ad2ec9d7cc"
+    }
+  },
+  "expectedObservation": {
+    "status": "review-required",
+    "dimensions": [
+      "http",
+      "context",
+      "decisions",
+      "effects",
+      "state",
+      "events",
+      "failures"
+    ],
+    "invariants": [
+      "fault-observable-and-reversible",
+      "no-unapproved-cross-scope-effects",
+      "marker-bound-cleanup-zero"
+    ]
+  },
+  "semanticIntent": {
+    "intent": "remaining-wave-undo-excludes-failed-rows-contract",
+    "contractExpectations": {
+      "batch": {
+        "requireUndoCorrespondence": false,
+        "requireProgressTerminal": true,
+        "requireSharedLock": false,
+        "requireChunkIdempotency": false,
+        "requireTransactionTerminalOrdering": true,
+        "requireRowLimitContract": false,
+        "requireCompleteRowClassification": true,
+        "requireReaderWriterLease": false,
+        "requireUndoDurability": true,
+        "requireProgressTerminalIdentity": false
+      }
+    }
+  },
+  "formalPromotion": {
+    "command": "migration-guard migrate runtime-fixture-promote --case-dir cases/zboss-batch-update-with-progress --entrypoint post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress --scenario undo-excludes-failed-rows --reviewed-by <reviewer>",
+    "allowedOnlyWhenBlockersEmpty": true,
+    "status": "pending"
+  },
+  "blockers": [
+    "MG-SH3C-COLLECTOR-REVIEW:events:STATUS-NOT-READY",
+    "MG-SH3C-COLLECTOR-REVIEW:events:WEBSOCKET-CAPTURE-NOT-CONFIRMED",
+    "MG-SH3C-COLLECTOR-REVIEW:mysql:PLACEHOLDER-PROBE",
+    "MG-SH3C-COLLECTOR-REVIEW:mysql:STATUS-NOT-READY",
+    "MG-SH3C-COLLECTOR-REVIEW:redis:JAVA-PROGRESS-IS-NOT-REDIS-BACKED",
+    "MG-SH3C-COLLECTOR-REVIEW:redis:PLACEHOLDER-PROBE",
+    "MG-SH3C-COLLECTOR-REVIEW:redis:STATUS-NOT-READY",
+    "MG-SH3C-FAULT-MECHANISM-NOT-BOUND",
+    "MG-SH3C-FIXTURE-WRITE-SAFETY-APPROVAL-REQUIRED",
+    "MG-SH3C-JAVA-SEED-NOT-AUTHORED",
+    "MG-SH3C-REQUEST-REVIEW:$.body.batchPkFieldValue",
+    "MG-SH3C-REQUEST-REVIEW:$.body.clientSessionId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.domain",
+    "MG-SH3C-REQUEST-REVIEW:$.body.horizontalId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.interId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.operationKind",
+    "MG-SH3C-REQUEST-REVIEW:$.body.operationLabel",
+    "MG-SH3C-REQUEST-REVIEW:$.body.pageId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.panelId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.reqId",
+    "MG-SH3C-REQUEST-REVIEW:$.body.usePageId",
+    "MG-SH3C-REQUEST-REVIEW:$.headers.x-tenant-id",
+    "MG-SH3C-RUST-SEED-ADAPTER-NOT-BOUND",
+    "MG-SH3C-STATE-PROFILE-NOT-APPROVED",
+    "MG-SH3C-WEBSOCKET-EVENT-COLLECTOR-NOT-BOUND"
+  ],
+  "packageHash": "d56520b92429eef8d18b02547f047ac322acc04e95fe49ccf84fcc620673bd73"
+}

@@ -687,6 +687,9 @@ async function connectProbes(planValue, scenarios) {
           MG_L4C_MARKER: marker,
           MG_L4C_PHASE: "preflight",
           MG_L4C_BASE_URL: planValue.targets[targetKind].baseUrl,
+          MG_L4C_EVENT_BASE_URL:
+            planValue.targets[targetKind].eventBaseUrl
+            ?? planValue.targets[targetKind].baseUrl,
           MG_L4C_MAX_ROWS: String(planValue.scope.maxRowsPerScenario),
           MG_L4C_DATABASE: planValue.scope.database,
           MG_L4C_TENANT_ID: String(planValue.scope.tenantId),

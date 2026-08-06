@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-remaining-wave-components/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
+  "promotionWave": "sh3c-remaining-wave",
+  "scenarioId": "schema-transition-failure",
+  "sourceDraft": {
+    "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/schema-transition-failure/fixture.draft.json",
+    "sha256": "cb19b959580cf885dc055451586a7bb332b5eeecf61985325338b279bd2b58ee"
+  },
+  "seedCandidates": {
+    "java": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/schema-transition-failure.java-seed.template.json",
+      "sha256": "3f41e2320dcb7b827dfd99ae571d39a8d5d8b268fd159cfcb509f8366be1e37d",
+      "status": "review-required"
+    },
+    "rust": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/schema-transition-failure.rust-seed.adapter-template.json",
+      "sha256": "4effb1538218210d182120a0ecb8a2b0348fd657bf7fcd7a2c23ce5d3239764b",
+      "status": "review-required"
+    }
+  },
+  "collectorCandidates": {
+    "events": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/schema-transition-failure.events.template.json",
+      "sha256": "6844acce66f2fa61362e68347315a658705dce4f432b3d1101cfa6f1bfe8a47b",
+      "status": "review-required"
+    },
+    "mysql": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/schema-transition-failure.mysql.template.json",
+      "sha256": "378e453656c8e97ca89dc0fbcd7c3a8706671069853e0851b75f9288cdc434d7",
+      "status": "review-required"
+    },
+    "redis": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/schema-transition-failure.redis.template.json",
+      "sha256": "febf90c1b00268ab68dafdcde7d8badc7a7caa6b879c885c798da17b27926c48",
+      "status": "review-required"
+    }
+  },
+  "binding": {
+    "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/binding-preparation.json",
+    "status": "review-required",
+    "scenarioBindingHash": "316be68356a73872c0820dc60a915ec57b707452b33a34fac3cce74a4e5c9590"
+  },
+  "blockers": [
+    "MG-SH3C-BINDING-REVIEW-REQUIRED",
+    "MG-SH3C-COLLECTOR-REVIEW-REQUIRED",
+    "MG-SH3C-COMPONENT-REVIEW-REQUIRED",
+    "MG-SH3C-FAULT-MECHANISM-NOT-BOUND",
+    "MG-SH3C-JAVA-SEED-REVIEW-REQUIRED",
+    "MG-SH3C-RUST-SEED-ADAPTER-REVIEW-REQUIRED"
+  ],
+  "componentHash": "e6f7ceffe60db91f8995dc72d4d3da2490a009b90e6ae391d7a53110a04cd1e3"
+}

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-remaining-wave-components/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
+  "promotionWave": "sh3c-remaining-wave",
+  "scenarioId": "batch-row-limit-rejected",
+  "sourceDraft": {
+    "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-row-limit-rejected/fixture.draft.json",
+    "sha256": "af33fb5a734acb7786b613c2f277af3a78e22e8a1b685d00dc00206be79ed6c5"
+  },
+  "seedCandidates": {
+    "java": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/batch-row-limit-rejected.java-seed.template.json",
+      "sha256": "bd61d0679116dd211b92cdd6d6175adde18f07ab063c133a0aa798be9dd5cdbe",
+      "status": "review-required"
+    },
+    "rust": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/batch-row-limit-rejected.rust-seed.adapter-template.json",
+      "sha256": "6266972ee0dbca97724e4baa134a7c7026c103515d154894791dbb1126ec958b",
+      "status": "review-required"
+    }
+  },
+  "collectorCandidates": {
+    "events": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/batch-row-limit-rejected.events.template.json",
+      "sha256": "fb9750e4f9ef90a0baed1eb7c5a5c82acff6f8bf261b1db771d66feca0352630",
+      "status": "review-required"
+    },
+    "mysql": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/batch-row-limit-rejected.mysql.template.json",
+      "sha256": "3a9bc68cf83e0c659be0babead4cfa60634b75ac705a947493f3c6fa72b8e612",
+      "status": "review-required"
+    },
+    "redis": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/batch-row-limit-rejected.redis.template.json",
+      "sha256": "600b5ea2022560873c43042c37ae37fd6ce0f0e24fe339d5c021288ca3c676f7",
+      "status": "review-required"
+    }
+  },
+  "binding": {
+    "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/binding-preparation.json",
+    "status": "review-required",
+    "scenarioBindingHash": "6fa5d7a67aa5c6c2b65340ed874bdbf5f5e504e84c4a9911ed6644f1c1ff36f0"
+  },
+  "blockers": [
+    "MG-SH3C-BINDING-REVIEW-REQUIRED",
+    "MG-SH3C-COLLECTOR-REVIEW-REQUIRED",
+    "MG-SH3C-COMPONENT-REVIEW-REQUIRED",
+    "MG-SH3C-JAVA-SEED-REVIEW-REQUIRED",
+    "MG-SH3C-RUST-SEED-ADAPTER-REVIEW-REQUIRED"
+  ],
+  "componentHash": "b8eb3ef650228cc5cecc925e0a453be8110c695d79224570333becbd9983f1b4"
+}

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-remaining-wave-components/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
+  "promotionWave": "sh3c-remaining-wave",
+  "scenarioId": "batch-update-success",
+  "sourceDraft": {
+    "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/batch-update-success/fixture.draft.json",
+    "sha256": "246228525d6e265198937fb0d90160f12eefbd893aea97dc2dcde3599bfb3bcc"
+  },
+  "seedCandidates": {
+    "java": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/batch-update-success.java-seed.template.json",
+      "sha256": "b8b7aa55de9c1a3c647032c3d9eb131a87b27b845a04aad630511d608e2eb167",
+      "status": "review-required"
+    },
+    "rust": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/batch-update-success.rust-seed.adapter-template.json",
+      "sha256": "7f19f1e884f95b7ec86dc6c0a90802b293eaf1794d36c2b62490c38fc5e25c9f",
+      "status": "review-required"
+    }
+  },
+  "collectorCandidates": {
+    "events": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/batch-update-success.events.template.json",
+      "sha256": "6726dbd152a7e15a5bae909467912fd763bad0b60f783ca710480884ee2b265f",
+      "status": "review-required"
+    },
+    "mysql": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/batch-update-success.mysql.template.json",
+      "sha256": "55f2b51fd58bc4b8da02f7d28283768848e0d0ec3f7c8b770d8d3b880a5cf865",
+      "status": "review-required"
+    },
+    "redis": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/batch-update-success.redis.template.json",
+      "sha256": "cc4198fa87ddd8a73c5b4deab1bebe35d3a598cb4ba226ffdd3bd3acf7ca46cf",
+      "status": "review-required"
+    }
+  },
+  "binding": {
+    "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/binding-preparation.json",
+    "status": "review-required",
+    "scenarioBindingHash": "1bc50317d1935ae1ec092c3445485e0ba4e733159377a72270bfa8aa8141e175"
+  },
+  "blockers": [
+    "MG-SH3C-BINDING-REVIEW-REQUIRED",
+    "MG-SH3C-COLLECTOR-REVIEW-REQUIRED",
+    "MG-SH3C-COMPONENT-REVIEW-REQUIRED",
+    "MG-SH3C-JAVA-SEED-REVIEW-REQUIRED",
+    "MG-SH3C-RUST-SEED-ADAPTER-REVIEW-REQUIRED"
+  ],
+  "componentHash": "7c39456fb2846a4ddf1e9ab0b752090f8d8ffd4b62398774d4fb0d9e633fb478"
+}

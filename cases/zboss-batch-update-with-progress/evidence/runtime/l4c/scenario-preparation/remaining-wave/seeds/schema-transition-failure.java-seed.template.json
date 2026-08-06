@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-java-seed/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "targetKind": "source",
+  "scenarioId": "schema-transition-failure",
+  "stateProfileSha256": "<sha256-of-approved-java-state-profile>",
+  "resources": [
+    {
+      "resourceId": "projection",
+      "rows": [
+        {
+          "markerSuffix": "row-001",
+          "values": {
+            "value": "<reviewed-schema-transition-failure-value-1>",
+            "quantity": 1
+          }
+        }
+      ]
+    }
+  ],
+  "review": {
+    "required": [
+      "resolve-state-profile-hash",
+      "review-projection-resource-and-column-aliases",
+      "obtain-disposable-write-approval"
+    ]
+  }
+}

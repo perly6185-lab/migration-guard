@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "protocol": "migration-guard.batch-update-l4c-remaining-wave-components/v1",
+  "status": "review-required",
+  "realEvidenceEligible": false,
+  "projectId": "zboss-batch-update-with-progress",
+  "projectHash": "c31120bc701b3bd350a8ab9af4d543a25610a9923a2601b5298dc71ae5feebcc",
+  "runtimeContractHash": "6457fbc0bf6728b0ba03115cc3fb2b920f22cd128d27b8e04157a21336322902",
+  "promotionWave": "sh3c-remaining-wave",
+  "scenarioId": "post-commit-effect-failure",
+  "sourceDraft": {
+    "path": "fixtures/java-runtime-drafts/post-zboss-data-view-dynamic-engine-use-engine-use-batch-page-batchUpdateWithProgress/post-commit-effect-failure/fixture.draft.json",
+    "sha256": "ba7715035b058792c08370d35da8a02a1442598c8b8f4b2c3084632bf85c2086"
+  },
+  "seedCandidates": {
+    "java": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/post-commit-effect-failure.java-seed.template.json",
+      "sha256": "764df0639e9995b086bf674b12ba41e5d0192865a739b54ba87ba91af8ece7c0",
+      "status": "review-required"
+    },
+    "rust": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/seeds/post-commit-effect-failure.rust-seed.adapter-template.json",
+      "sha256": "92c24c421a53dba686a098e82d6e3ecf2f794a16108f8b8525f59455445915d9",
+      "status": "review-required"
+    }
+  },
+  "collectorCandidates": {
+    "events": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/post-commit-effect-failure.events.template.json",
+      "sha256": "9be2d63eb622c07ff425ed533a6104b68d7ea2ee0f68a743336a7beec2b02289",
+      "status": "review-required"
+    },
+    "mysql": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/post-commit-effect-failure.mysql.template.json",
+      "sha256": "6c64a028505aecfc4381e9a021c4390f28bfeea11ed9ae8bcc7fa08ba6c2fa5b",
+      "status": "review-required"
+    },
+    "redis": {
+      "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/collectors/post-commit-effect-failure.redis.template.json",
+      "sha256": "8c562a90973092aa1aeadf4853dc5e9eb39c1fc5328b2ca900bbf0c37502eddb",
+      "status": "review-required"
+    }
+  },
+  "binding": {
+    "path": "evidence/runtime/l4c/scenario-preparation/remaining-wave/binding-preparation.json",
+    "status": "review-required",
+    "scenarioBindingHash": "dd25a0c83b2faafc8abf7ba0b7e7b40b4602423a84d49f5d22ee455f1ed9cfcd"
+  },
+  "blockers": [
+    "MG-SH3C-BINDING-REVIEW-REQUIRED",
+    "MG-SH3C-COLLECTOR-REVIEW-REQUIRED",
+    "MG-SH3C-COMPONENT-REVIEW-REQUIRED",
+    "MG-SH3C-FAULT-MECHANISM-NOT-BOUND",
+    "MG-SH3C-JAVA-SEED-REVIEW-REQUIRED",
+    "MG-SH3C-RUST-SEED-ADAPTER-REVIEW-REQUIRED"
+  ],
+  "componentHash": "4562600ba92842c0cd41a0aec0c5d9903bb3dec35090682e536cd2ff8409db20"
+}
